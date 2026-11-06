@@ -26,10 +26,21 @@ export function loadConfig(env = process.env) {
     haUrl: env.HA_URL ?? 'http://192.168.68.94:8123',
     haToken: env.HA_TOKEN ?? '',
     ollamaUrl: env.OLLAMA_URL ?? 'http://127.0.0.1:11434',
-    ollamaModel: env.OLLAMA_MODEL ?? 'gemma3:12b',
+    ollamaModel: env.OLLAMA_MODEL ?? 'gemma4:12b',
+    // How long Ollama keeps Gemma after Load. "-1" = forever, which is how
+    // jarvis normally runs it. A number is seconds; "30m" style also works.
+    ollamaKeepAlive: env.OLLAMA_KEEP_ALIVE ?? '-1',
     openWebUiUrl: env.OPEN_WEBUI_URL ?? 'https://jarvis.snakebird-ph.ts.net',
     jarvisUrl: env.JARVIS_URL ?? 'https://jarvis.snakebird-ph.ts.net:8443',
     jarvisUnit: env.JARVIS_UNIT ?? 'jarvis',
+    // WSL puts nvidia-smi here, and it isn't on PATH by default.
+    nvidiaSmi: env.NVIDIA_SMI ?? '/usr/lib/wsl/lib/nvidia-smi',
+    // The cloud digest (docs/digest.md): a private repo, a read-only token
+    // that can see only that repo, and where the file sits in it.
+    digestRepo: env.DIGEST_REPO ?? 'dwongbound/home-lab-digest',
+    digestBranch: env.DIGEST_BRANCH ?? 'main',
+    digestPath: env.DIGEST_PATH ?? 'digest.json',
+    digestToken: env.DIGEST_TOKEN ?? '',
     // Where WSL mounts the Windows C: drive.
     windowsDrive: env.WINDOWS_DRIVE ?? '/mnt/c',
   }

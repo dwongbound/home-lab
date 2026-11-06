@@ -84,3 +84,13 @@ test('no sideways scrolling', async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
 })
+
+test('the Claude page shows threads waiting on me first, linked to the thread', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Claude' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Claude' })).toBeVisible()
+  const threads = page.getByRole('region', { name: 'Claude threads' })
+  await expect(threads.getByRole('heading', { level: 3 }).first()).toHaveText(/Waiting on you/)
+  await expect(threads.getByRole('link', { name: 'Fix unverified app warning on calendar picker' })).toHaveAttribute('target', '_blank')
+  await expect(page.getByRole('region', { name: 'Shipping' })).toContainText('tapworship.com')
+})
