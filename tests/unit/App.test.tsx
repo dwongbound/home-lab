@@ -1,0 +1,96 @@
+// The page in jsdom with fetch faked: the blocking spinner on first load,
+// the overview, the error state, and the Unload Gemma flow.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { SWRConfig } from 'swr'
+import { App } from '../../src/App'
+import { createMockSource } from '../../server/sources/mock.mjs'
+
+/** Renders the app with a fresh SWR cache so tests don't share data. */
+function renderApp() {
+  return render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <App />
+    </SWRConfig>,
+  )
+}
+
+/** Answers /api/* from a real mock source, the way the server would. */
+function fakeServer(options: { actionGate?: Promise<void> } = {}) {
+  const source = createMockSource()
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/snapshot') return Response.json(await source.snapshot())
+    if (url.startsWith('/api/actions/') && init?.method === 'POST') {
+      if (options.actionGate) await options.actionGate
+      return Response.json(await source.action(url.split('/').pop()))
+    }
+    return new Response('not found', { status: 404 })
+  })
+}
+
+beforeEach(() => {
+  window.location.hash = ''
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('App', () => {
+  it('shows a blocking spinner until the first snapshot arrives, then the overview', async () => {
+    vi.stubGlobal('fetch', fakeServer())
+    renderApp()
+    expect(screen.getByRole('status')).toHaveTextContent('Reading jarvis…')
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(/, Dylan$/)
+    expect(screen.getByText('Sample data')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Jarvis requests' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '2 things need you.' })).toHaveAttribute('href', '#schedule')
+  })
+
+  it('explains how to fix it when the server is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 502 })))
+    renderApp()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Can’t reach the jarvis server')
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+
+  it('unloads Gemma: confirm dialog with Close, blocking spinner while it runs, then a toast', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', fakeServer({ actionGate: gate }))
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Unload Gemma' }))
+    const dialog = screen.getByRole('dialog', { hidden: true })
+    expect(dialog).toHaveTextContent('Unload Gemma?')
+    expect(screen.getByRole('button', { name: 'Close', hidden: true })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: 'Unload', hidden: true }))
+    expect(await screen.findByText('Unloading Gemma…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close', hidden: true })).toBeDisabled()
+
+    release()
+    expect(await screen.findByText('Gemma unloaded', {}, { timeout: 3000 })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load Gemma' })).toBeInTheDocument())
+  })
+
+  it('Close dismisses the dialog without doing anything', async () => {
+    const fetch = fakeServer()
+    vi.stubGlobal('fetch', fetch)
+    const user = userEvent.setup()
+    renderApp()
+    await user.click(await screen.findByRole('button', { name: 'Unload Gemma' }))
+    await user.click(screen.getByRole('button', { name: 'Close', hidden: true }))
+    expect(screen.queryByRole('dialog', { hidden: true })).not.toBeInTheDocument()
+    expect(fetch.mock.calls.some((c) => String(c[0]).startsWith('/api/actions/'))).toBe(false)
+  })
+
+  it('switches pages from the hash', async () => {
+    vi.stubGlobal('fetch', fakeServer())
+    window.location.hash = '#services'
+    renderApp()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Services' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Services' })).toHaveAttribute('aria-current', 'page')
+  })
+})
