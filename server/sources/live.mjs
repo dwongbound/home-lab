@@ -21,6 +21,16 @@ function round1(n) {
   return Math.round(n * 10) / 10
 }
 
+/**
+ * Ollama wants keep_alive as a number of seconds (-1 = forever) or a
+ * duration string like "30m". Env vars are always strings, so turn
+ * "-1" or "3600" back into numbers and leave "30m" alone.
+ */
+export function parseKeepAlive(value) {
+  if (/^-?\d+$/.test(value)) return Number(value)
+  return value
+}
+
 /** The value of a Promise.allSettled result, or null if it failed. */
 function valueOrNull(result) {
   if (result.status === 'fulfilled') return result.value
@@ -73,7 +83,7 @@ export function createLiveSource(config, deps = {}) {
 
   /** GPU use from nvidia-smi, which WSL exposes for the RTX 3060. */
   async function readGpu() {
-    const { stdout } = await execFile('nvidia-smi', [
+    const { stdout } = await execFile(config.nvidiaSmi, [
       '--query-gpu=memory.used,memory.total', '--format=csv,noheader,nounits',
     ], { timeout: PROBE_TIMEOUT_MS })
     const [usedMb, totalMb] = stdout.trim().split(',').map((s) => Number(s.trim()))
@@ -110,10 +120,29 @@ export function createLiveSource(config, deps = {}) {
     }
   }
 
-  /** "up" if the probe answered OK, otherwise "down". */
-  function httpStatus(probe) {
-    if (probe !== null && probe.ok) return 'up'
+  /**
+   * For a web page (Open WebUI, Jarvis): any answer below 500 means the
+   * server is up. Jarvis answers 404 at "/" because it only serves its API
+   * routes, and that is still a healthy server.
+   */
+  function webStatus(probe) {
+    if (probe !== null && probe.res.status < 500) return 'up'
     return 'down'
+  }
+
+  /** Home Assistant: OK is up, 401 means running but the token was rejected. */
+  function haStatus(probe) {
+    if (probe === null) return 'down'
+    if (probe.ok) return 'up'
+    if (probe.res.status === 401) return 'degraded'
+    return 'down'
+  }
+
+  /** The words after the status for Home Assistant. */
+  function haDetail(probe) {
+    if (!config.haToken) return 'No token set'
+    if (probe !== null && probe.res.status === 401) return 'Token rejected'
+    return 'Token set'
   }
 
   /**
@@ -123,7 +152,7 @@ export function createLiveSource(config, deps = {}) {
    */
   function jarvisStatus(unitState, probe) {
     if (unitState !== 'active') return 'down'
-    if (probe !== null && probe.ok) return 'up'
+    if (webStatus(probe) === 'up') return 'up'
     return 'degraded'
   }
 
@@ -180,9 +209,9 @@ export function createLiveSource(config, deps = {}) {
         today: [],
         activity: [],
         services: [
-          { id: 'ha', name: 'Home Assistant', detail: config.haToken ? 'Token set' : 'No token set', status: httpStatus(ha), latencyMs: ha?.ms, url: config.haUrl },
+          { id: 'ha', name: 'Home Assistant', detail: haDetail(ha), status: haStatus(ha), latencyMs: ha?.ms, url: config.haUrl },
           { id: 'ollama', name: 'Ollama', detail: model ? `${model.name} loaded` : 'No model loaded', status: ollamaStatus(ollama, model), latencyMs: ollama?.ms },
-          { id: 'webui', name: 'Open WebUI', detail: 'Chat with Gemma', status: httpStatus(webui), latencyMs: webui?.ms, url: config.openWebUiUrl },
+          { id: 'webui', name: 'Open WebUI', detail: 'Chat with Gemma', status: webStatus(webui), latencyMs: webui?.ms, url: config.openWebUiUrl },
           { id: 'jarvis', name: 'Jarvis', detail: `systemd says ${unitState}`, status: jarvisStatus(unitState, jarvisHttp), latencyMs: jarvisHttp?.ms, url: config.jarvisUrl },
         ],
         model: {
@@ -196,8 +225,8 @@ export function createLiveSource(config, deps = {}) {
 
     /**
      * Loads or unloads Gemma. Ollama has no "unload" call: you send an empty
-     * generate request with keep_alive 0 (unload now) or a duration (load
-     * and keep it for that long).
+     * generate request with keep_alive 0 (unload now) or OLLAMA_KEEP_ALIVE
+     * (load and keep it that long; -1 = forever, how jarvis runs it).
      */
     async action(name) {
       if (name !== 'ollama-unload' && name !== 'ollama-load') {
@@ -207,7 +236,7 @@ export function createLiveSource(config, deps = {}) {
       const res = await fetchFn(`${config.ollamaUrl}/api/generate`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ model: config.ollamaModel, keep_alive: unloading ? 0 : '30m' }),
+        body: JSON.stringify({ model: config.ollamaModel, keep_alive: unloading ? 0 : parseKeepAlive(config.ollamaKeepAlive) }),
         // Loading Gemma takes about 3 minutes on this PC, so allow 5.
         signal: AbortSignal.timeout(unloading ? 30_000 : 300_000),
       })
