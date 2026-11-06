@@ -52,16 +52,6 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
   background: radial-gradient(circle, var(--sun) 0%, transparent 62%); opacity: var(--sun-a); filter: blur(10px);
 }
 .backdrop__ridge { position: absolute; left: 0; right: 0; bottom: 18%; width: 100%; height: 22vh; fill: var(--ridge); filter: blur(3px); }
-.backdrop__mullions {
-  position: absolute; inset: 0;
-  /* window frame: two verticals and a transom, softly out of focus */
-  background:
-    linear-gradient(90deg, transparent calc(33.3% - 5px), rgba(10,14,18,.55) calc(33.3% - 5px), rgba(10,14,18,.55) calc(33.3% + 5px), transparent calc(33.3% + 5px)),
-    linear-gradient(90deg, transparent calc(66.6% - 5px), rgba(10,14,18,.55) calc(66.6% - 5px), rgba(10,14,18,.55) calc(66.6% + 5px), transparent calc(66.6% + 5px)),
-    linear-gradient(180deg, transparent 21%, rgba(10,14,18,.5) 21%, rgba(10,14,18,.5) calc(21% + 9px), transparent calc(21% + 9px)),
-    linear-gradient(180deg, transparent 82%, rgba(12,16,20,.72) 82%);
-  filter: blur(6px);
-}
 .backdrop__grain { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 120%, rgba(0,0,0,.45), transparent 60%); }
 
 .backdrop[data-phase='dusk'] { --sky-top: #2a3550; --sky-mid: #7d6a7c; --sky-low: #e3a874; --sky-floor: #3b3130; --sun: #ffcf8f; --sun-a: .75; --sun-x: 70%; --sun-y: 66%; --ridge: #3a3442; }
@@ -246,12 +236,12 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 .stale { margin-top: 14px; font-size: 13px; color: #f6d3a6; }
 .toast { position: fixed; z-index: 5; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 999px; background: var(--frost); color: var(--basalt); font-weight: 600; box-shadow: 0 10px 30px -10px rgba(0,0,0,.5); }
 
-/* ---------- Motion: one load sequence, only when wanted ---------- */
+/* ---------- Motion: only when wanted ---------- */
 @media (prefers-reduced-motion: no-preference) {
-  .main > * { animation: rise .7s cubic-bezier(.2, .7, .2, 1) both; }
-  .main > :nth-child(2) { animation-delay: 80ms; }
-  .main > :nth-child(3) { animation-delay: 160ms; }
-  .main > :nth-child(4) { animation-delay: 240ms; }
+  /* The one load moment is the bars growing. Nothing that contains glass
+     is animated: a transform or opacity animation on a glass panel's
+     ancestor breaks backdrop-filter (Chrome shows no blur until it ends,
+     Safari leaves blocky light/dark patches). */
   .chart__bar { transform-origin: bottom; animation: grow .9s cubic-bezier(.2, .7, .2, 1) 260ms both; }
   .spinner__ring { animation: spin .9s linear infinite; }
   .icon-btn[data-spinning] svg { animation: spin 1s linear infinite; }
