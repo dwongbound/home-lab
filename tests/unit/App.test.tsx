@@ -44,7 +44,8 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(/, Dylan$/)
     expect(screen.getByText('Sample data')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Jarvis requests' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '2 things need you.' })).toHaveAttribute('href', '#schedule')
+    // Jarvis needs attention, the 9 am run failed, and two threads wait on him.
+    expect(screen.getByRole('link', { name: '4 things need you.' })).toHaveAttribute('href', '#claude')
   })
 
   it('explains how to fix it when the server is unreachable', async () => {

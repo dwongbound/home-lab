@@ -50,6 +50,43 @@ function pacificWeekdayIndex(date) {
 /** Delay helper for the fake actions, so the blocking spinner is visible. */
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+const PROJECT_URL = 'https://claude.ai/code/project/chan_example'
+
+/**
+ * A sample cloud digest, shaped like the one the scheduled task writes
+ * (docs/digest.md). Titles are examples, not real threads.
+ */
+function mockDigest(t, minutesAgo) {
+  const thread = (id, title, state, min) => ({ id, title, state, lastActivityAt: minutesAgo(min), url: `${PROJECT_URL}?thread=${id}` })
+  return {
+    updatedAt: minutesAgo(12),
+    threads: [
+      thread('t-lab', 'Build glassy home lab admin page', 'working', 2),
+      thread('t-oauth', 'Fix unverified app warning on calendar picker', 'blocked', 140),
+      thread('t-fantasy', 'Fantasy basketball pickup advisor', 'blocked', 300),
+      thread('t-rules', 'Make rule changes org-wide', 'review_ready', 95),
+      thread('t-brief', 'Daily briefing and deal watch', 'done', 420),
+      thread('t-dinner', 'Anniversary dinner shortlist', 'done', 1500),
+    ],
+    calendar: [
+      { id: 'c1', title: 'Flight block N8318B', start: atPacificTime(t, 15, 0), end: atPacificTime(t, 17, 0), allDay: false, calendar: 'VFF' },
+      { id: 'c2', title: 'Worship practice', start: atPacificTime(t, 19, 30), end: atPacificTime(t, 21, 0), allDay: false, calendar: 'Church' },
+    ],
+    email: [
+      { id: 'e1', from: 'Google Cloud', subject: 'OAuth verification: action needed', why: 'Waiting on your scope declaration' },
+      { id: 'e2', from: 'VFF Flying Club', subject: 'November dues', why: 'Due Friday' },
+    ],
+    deploys: [
+      { project: 'tapworship.com', state: 'ready', at: minutesAgo(180), url: 'https://tapworship.com' },
+      { project: 'vardafreeflyers.com', state: 'ready', at: minutesAgo(2900), url: 'https://vardafreeflyers.com' },
+    ],
+    pullRequests: [
+      { repo: 'home-lab', number: 2, title: "Match the live source to what's really on jarvis", ci: 'passing', url: 'https://github.com/dwongbound/home-lab/pull/2' },
+      { repo: 'worship-scheduler', number: 228, title: 'Calendar picker to staging', ci: 'passing', url: 'https://github.com/dwongbound/worship-scheduler/pull/228' },
+    ],
+  }
+}
+
 /**
  * Creates a mock source. `now` is injectable so tests can pin the clock.
  */
@@ -106,6 +143,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
           { id: 'jarvis', name: 'Jarvis', detail: 'Running, code changed since start', status: 'degraded', latencyMs: 22, url: 'https://jarvis.snakebird-ph.ts.net:8443' },
         ],
         model: { name: 'Gemma 12B', loaded, vramGb: loaded ? 10.1 : 0, loadSeconds: 168 },
+        cloud: mockDigest(t, minutesAgo),
       }
     },
 
