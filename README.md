@@ -425,6 +425,14 @@ These match TapWorship's:
 - **Motion degrades to the plain page.** The one load sequence and the
   spinners live inside `@media (prefers-reduced-motion: no-preference)`;
   without it, everything is simply there. A unit test enforces this.
+- **Changing page is smooth.** The old and new page crossfade in a view
+  transition (`src/useHashView.ts`), which works on flat snapshots, so the
+  glass keeps its blur throughout; the top bar stays live and the light
+  under the pills slides across, darkening the labels it passes. Never
+  animate a glass panel or anything containing one (Chrome drops the blur,
+  Safari leaves patches), and don't replay animations inside glass on
+  every visit: the chart bars grow once per visit, because regrowing them
+  each time halved the frame rate coming back to Overview.
 - Without `backdrop-filter` support, glass falls back to a solid panel.
 - Every log is **newest first**.
 - Phone button rows are full width at 44 px touch height, confirm on the

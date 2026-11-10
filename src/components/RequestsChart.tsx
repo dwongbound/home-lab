@@ -1,9 +1,14 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import type { DayCount } from '../types'
 
 // Jarvis requests per day this week, as frosted bars. Today's bar is the
 // one lit in blue, like the highlighted bar in the reference design.
 // Bars are plain divs sized with a CSS variable: no chart library needed.
+
+// The bars grow once, the first time the chart appears in a visit. Growing
+// them again on every return to Overview made the page stutter: each frame
+// of it repaints the frosted panel's blur.
+let hasGrown = false
 
 /** The chart panel. Shows an empty state until Jarvis reports counts. */
 export const RequestsChart = memo(function RequestsChart({ days }: { days: DayCount[] }) {
@@ -13,9 +18,10 @@ export const RequestsChart = memo(function RequestsChart({ days }: { days: DayCo
   // Round the scale up to the next 10 so the gridlines land on round numbers.
   const top = Math.max(10, Math.ceil(max / 10) * 10)
   const ticks = [top, top / 2, 0]
+  const [grow] = useState(() => { const first = !hasGrown; hasGrown = true; return first })
 
   return (
-    <section className="glass panel chart" aria-labelledby="chart-title">
+    <section className="glass panel chart" aria-labelledby="chart-title" data-grow={grow || undefined}>
       <header className="panel__head">
         <div>
           <h2 id="chart-title" className="panel__title">Jarvis requests</h2>
