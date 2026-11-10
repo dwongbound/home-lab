@@ -59,7 +59,7 @@ Nothing else is needed for sample data: no `.env`, no token, no PC.
 
 ## What's on the page
 
-Seven pages, picked from the pill bar at the top. Each is a plain link to a
+Eight pages, picked from the pill bar at the top. Each is a plain link to a
 `#hash`, so the back button, bookmarks and the keyboard all work.
 
 | Page | What it shows |
@@ -69,6 +69,7 @@ Seven pages, picked from the pill bar at the top. Each is a plain link to a
 | **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
 | **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. |
 | **Services** (`#services`) | Every service with its status, response time and a link to open it, the Gemma card, and how to restart Jarvis (it needs your password, so the page can't). |
+| **Shell** (`#shell`) | A terminal on jarvis (tmux through ttyd), so you can run commands from your phone. Only your Tailscale login gets in. See [The Shell page](#the-shell-page). |
 | **Schedule** (`#schedule`) | Today's runs on jarvis next to your calendar for the day, then email that needs you and recent activity. Calendar and email come from the [cloud digest](#cloud-digest). |
 | **Settings** (`#preferences`) | The sky behind the page (follow the clock, or pin dawn, day, dusk or night; saved in that browser only) and where the data is coming from. |
 
@@ -81,6 +82,25 @@ what's happening. When it's done the dialog closes and a toast says
 "Gemma unloaded". **Load Gemma** brings it back (about 3 minutes).
 
 Only one action runs at a time: the server answers `409` to a second one.
+
+### The Shell page
+
+A real terminal on jarvis, as `dwong`, in a frame on the page (or full
+screen with the arrow button). It's `tmux new -A -s main`, so it's the same
+session every time, and a long command keeps going if your phone locks.
+
+ttyd has no login of its own, so the page's server is the lock
+(`server/shell.mjs`). `/shell/` and its WebSocket get through only when:
+
+1. `SHELL_USERS` is set (empty, the default, means the shell is off),
+2. the `Tailscale-User-Login` header that `tailscale serve` adds is one of
+   those logins, and
+3. any `Origin` is this page itself, so another website open in your
+   browser can't use your login to reach the terminal.
+
+ttyd listens on 127.0.0.1 only and runs as a user service
+(`deploy/ttyd.service`; setup steps are at the top of that file). It isn't
+proxied in `npm run dev`; use `npm start` to try it.
 
 ### Ask Jarvis
 
@@ -233,6 +253,8 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `DIGEST_BRANCH` | `main` | Its branch. |
 | `DIGEST_PATH` | `digest.json` | The file in it. |
 | `DIGEST_TOKEN` | *(empty)* | Fine-grained GitHub token, **Contents: Read-only on that one repo**. **Secret.** Empty (and no `DIGEST_FILE`) turns the cloud panels off. |
+| `SHELL_USERS` | *(empty)* | Tailscale logins allowed to use the Shell page, comma-separated. Empty turns the shell off. |
+| `SHELL_URL` | `http://127.0.0.1:7681` | Where ttyd listens (`deploy/ttyd.service`). |
 | `DIGEST_FILE` | *(empty)* | Read the digest from this file on the PC instead of GitHub (for a digest Jarvis writes locally). No token needed. |
 | `SKIP_CALENDARS` | `Wong Fam` | Calendars never shown, comma-separated. Wong Fam is shared with family and holds their plans. |
 | `WINDOWS_DRIVE` | `/mnt/c` | Where WSL mounts C:. |

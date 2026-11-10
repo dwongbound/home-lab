@@ -7,10 +7,12 @@ import { extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig, loadEnvFile } from './config.mjs'
 import { createApi, createSource } from './app.mjs'
+import { createShellProxy, isShellPath } from './shell.mjs'
 
 loadEnvFile()
 const config = loadConfig()
 const api = createApi(createSource(config))
+const shell = createShellProxy(config)
 const distDir = resolve(fileURLToPath(new URL('../dist/', import.meta.url)))
 const indexHtml = resolve(distDir, 'index.html')
 
@@ -63,8 +65,18 @@ async function serveStatic(req, res) {
   }
 }
 
-http
-  .createServer((req, res) => api(req, res, () => serveStatic(req, res)))
-  .listen(config.port, config.host, () => {
+/** Routes a request: the terminal under /shell/, else the API, else the page. */
+function handle(req, res) {
+  if (isShellPath(req.url)) return shell.request(req, res)
+  return api(req, res, () => serveStatic(req, res))
+}
+
+const server = http.createServer(handle)
+// The terminal's WebSocket arrives as an upgrade, not a normal request.
+server.on('upgrade', (req, socket, head) => {
+  if (isShellPath(req.url)) return shell.upgrade(req, socket, head)
+  socket.destroy()
+})
+server.listen(config.port, config.host, () => {
     console.log(`home-lab on http://${config.host}:${config.port} (${config.dataSource} data)`)
   })

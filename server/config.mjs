@@ -48,6 +48,10 @@ export function loadConfig(env = process.env) {
     // Calendars never shown, comma-separated. "Wong Fam" is shared with
     // Dylan's parents and holds their plans.
     skipCalendars: (env.SKIP_CALENDARS ?? 'Wong Fam').split(',').map((s) => s.trim()).filter(Boolean),
+    // The Shell page: ttyd on this PC (deploy/ttyd.service), and the
+    // Tailscale logins allowed to use it. Empty turns the shell off.
+    shellUrl: env.SHELL_URL ?? 'http://127.0.0.1:7681',
+    shellUsers: (env.SHELL_USERS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     // Where WSL mounts the Windows C: drive.
     windowsDrive: env.WINDOWS_DRIVE ?? '/mnt/c',
   }
