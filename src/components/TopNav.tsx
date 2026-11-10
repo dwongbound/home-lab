@@ -9,7 +9,7 @@ import { Icon, type IconName } from './Icon'
 // copy of the pills that moves the other way, so whatever the light passes
 // over reads dark on light all the way across, like a segmented control.
 
-export type View = 'overview' | 'home' | 'claude' | 'money' | 'services' | 'schedule' | 'preferences'
+export type View = 'overview' | 'home' | 'claude' | 'money' | 'services' | 'shell' | 'schedule' | 'preferences'
 // Settings lives at #preferences: claude.ai reserves #settings, and the
 // preview page is hosted there.
 export const VIEWS: { id: View; label: string; icon: IconName }[] = [
@@ -18,6 +18,7 @@ export const VIEWS: { id: View; label: string; icon: IconName }[] = [
   { id: 'claude', label: 'Claude', icon: 'claude' },
   { id: 'money', label: 'Money', icon: 'money' },
   { id: 'services', label: 'Services', icon: 'services' },
+  { id: 'shell', label: 'Shell', icon: 'terminal' },
   { id: 'schedule', label: 'Schedule', icon: 'schedule' },
   { id: 'preferences', label: 'Settings', icon: 'settings' },
 ]

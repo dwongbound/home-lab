@@ -57,7 +57,7 @@ test('changing page cross-fades and slides the pill light, and never with reduce
 test('pill navigation reaches every page and keeps the back button working', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: 'Sections' })
-  for (const name of ['Home', 'Money', 'Services', 'Schedule', 'Settings']) {
+  for (const name of ['Home', 'Money', 'Services', 'Shell', 'Schedule', 'Settings']) {
     await nav.getByRole('link', { name }).click()
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
     await expect(nav.getByRole('link', { name })).toHaveAttribute('aria-current', 'page')
@@ -143,4 +143,15 @@ test('the first load lands with a show, once, and the glass ends fully frosted',
   await expect(page.locator('[data-landing]')).toHaveCount(0)
   const blur = await page.locator('.main .glass').first().evaluate((el) => getComputedStyle(el).backdropFilter)
   expect(blur).toContain('blur(26px)')
+})
+
+test('Shell shows the terminal frame, and says so when the shell is off', async ({ page }) => {
+  await page.goto('/#shell')
+  await expect(page.getByRole('heading', { level: 1, name: 'Shell' })).toBeVisible()
+  // The test server has no SHELL_USERS, so the frame explains instead of opening a terminal.
+  const frame = page.frameLocator('iframe[title="Terminal on jarvis"]')
+  await expect(frame.getByText('The shell is off')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open the terminal full screen' })).toHaveAttribute('href', './shell/')
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(0)
 })

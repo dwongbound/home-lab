@@ -1,0 +1,21 @@
+# The terminal behind the page's Shell tab: ttyd running tmux, as dwong,
+# listening on 127.0.0.1 only. The page's server (server/shell.mjs) is the
+# only way in, and it lets through only the Tailscale logins in SHELL_USERS.
+#
+# A user unit, so no sudo:
+#   mkdir -p ~/.config/systemd/user && cp deploy/ttyd.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now ttyd
+#   sudo loginctl enable-linger dwong   # once, so it runs without a login
+#
+# tmux `new -A -s main` reattaches the same session every time, so a command
+# keeps running if the phone locks or the tab closes.
+[Unit]
+Description=ttyd terminal for the home-lab Shell page
+After=network.target
+
+[Service]
+ExecStart=%h/.local/bin/ttyd --interface 127.0.0.1 --port 7681 --base-path /shell --writable --check-origin -t fontSize=15 -t 'theme={"background":"#16212c"}' tmux new -A -s main
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

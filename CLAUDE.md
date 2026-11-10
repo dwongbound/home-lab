@@ -23,6 +23,8 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
   `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`),
   `POST /api/home/control` (`{entity, command, value?}`, same header + Tailscale login; allowlist in
   `server/sources/home.mjs`, which also reads devices/weather/sun into `snapshot.home`).
+- **Shell:** `server/shell.mjs` proxies `/shell/` (HTTP + WebSocket upgrade, wired in `server/index.mjs`)
+  to ttyd on 127.0.0.1:7681 (`deploy/ttyd.service`, tmux) only for `SHELL_USERS` Tailscale logins with a same-origin `Origin`.
 - **Sources:** `server/sources/mock.mjs` (default; Pacific-time schedule, remembers
   Gemma loaded/unloaded), `server/sources/live.mjs` (parallel probes, 2.5 s timeouts).
   Picked by `DATA_SOURCE` in `server/app.mjs createSource`.
@@ -33,7 +35,7 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 - **Cloud digest:** `server/sources/digest.mjs` reads `digest.json` from the private
   `DIGEST_REPO` with `DIGEST_TOKEN` (2 min cache; written every 15 min); shape `CloudDigest` in `src/types.ts`;
   panels in `src/components/CloudPanels.tsx`; the scheduled task's prompt + setup in `docs/digest.md`.
-- **Views:** `src/views/{Overview,Home,Claude,Money,Services,Schedule,Settings}.tsx`, chosen by
+- **Views:** `src/views/{Overview,Home,Claude,Money,Shell,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,
