@@ -13,7 +13,17 @@ export interface Metric {
 }
 
 export interface DayCount { day: string; count: number; today: boolean }
-export interface TimelineItem { id: string; at: string; title: string; detail: string; status: RunStatus }
+export interface TimelineItem {
+  id: string
+  at: string
+  title: string
+  detail: string
+  status: RunStatus
+  /** Where it came from, on the Overview's combined day; Jarvis when missing. */
+  source?: 'calendar' | 'jarvis' | 'alert'
+  /** An all-day calendar event: shown as "All day" instead of a time. */
+  allDay?: boolean
+}
 export interface ActivityItem { id: string; at: string; kind: 'jarvis' | 'ha' | 'ollama' | 'system'; text: string }
 export interface Service { id: string; name: string; detail: string; status: ServiceStatus; latencyMs?: number; url?: string }
 
@@ -109,4 +119,9 @@ export interface DataSource {
   ask(text: string, caller?: { login?: string }): Promise<ActionResult>
   /** Sends one command to one Home Assistant device. */
   control(entity: string, command: HomeCommand, value?: number, caller?: { login?: string }): Promise<ActionResult>
+  /** Asks Jarvis to rewrite the digest now (calendar, email, money). */
+  refreshDigest(caller?: { login?: string }): Promise<DigestRefresh>
 }
+
+/** Whether Jarvis is rewriting the digest, and when it last wrote one. */
+export interface DigestRefresh { running: boolean; lastWrite: string | null }

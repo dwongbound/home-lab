@@ -172,6 +172,10 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 .timeline__item[data-status='running'] { --status: var(--glacier); }
 .timeline__item[data-status='scheduled'] { --status: rgba(242,239,233,.35); }
 .timeline__item[data-status='done'] .timeline__card { opacity: .78; }
+.updating { color: var(--glacier); }
+.timeline__source { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--frost-faint); margin-top: 2px; }
+/* Calendar rows get the sky-blue edge while they're later, so they stand apart from Jarvis's. */
+.timeline__item[data-source='calendar'][data-status='scheduled'] { --status: var(--glacier); }
 
 .badge { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.1); color: var(--frost-dim); }
 .badge[data-status='failed'] { background: rgba(240,145,154,.18); color: #ffc2c8; }

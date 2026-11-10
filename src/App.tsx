@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSnapshot } from './api/client'
+import { DigestRefreshing, useDigestRefresh } from './api/digestRefresh'
 import { Backdrop } from './components/Backdrop'
 import { TopNav } from './components/TopNav'
 import { Spinner } from './components/Spinner'
@@ -50,6 +51,8 @@ export function App() {
 
   const chooseSky = useCallback((s: SkyChoice) => { setSky(s); writeSky(s) }, [])
   const refresh = useCallback(() => { void mutate() }, [mutate])
+  // Opening the page asks Jarvis for a fresh digest; panels say so meanwhile.
+  const digestRefreshing = useDigestRefresh(data?.cloud?.updatedAt ?? null, refresh)
 
   let body: React.ReactNode
   if (!data && error) {
@@ -86,7 +89,9 @@ export function App() {
       {/* data-landing waits for the data, so the arrival plays on the real page, not the spinner. */}
       <div className="shell" data-landing={landing && hasData ? '' : undefined}>
         <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} />
-        <main className="main" key={data ? 'ready' : 'waiting'}>{body}</main>
+        <DigestRefreshing.Provider value={digestRefreshing}>
+          <main className="main" key={data ? 'ready' : 'waiting'}>{body}</main>
+        </DigestRefreshing.Provider>
         {data && error ? <p className="stale" role="status">Last update failed. Showing numbers from {new Date(data.generatedAt).toLocaleTimeString()}.</p> : null}
       </div>
       {toast ? <p className="toast" role="status">{toast}</p> : null}

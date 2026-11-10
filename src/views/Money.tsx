@@ -6,6 +6,7 @@
 import { createContext, useContext, useState } from 'react'
 import type { MoneyAccount, MoneyDigest, Snapshot } from '../types'
 import { ago, dollars } from '../lib/format'
+import { useDigestRefreshing } from '../api/digestRefresh'
 
 const Hidden = createContext(true)
 
@@ -159,13 +160,19 @@ function Flags({ money }: { money: MoneyDigest }) {
 export function Money({ data, now }: { data: Snapshot; now: Date }) {
   const [hidden, setHidden] = useState(true)
   const money = data.cloud?.money ?? null
+  const refreshing = useDigestRefreshing()
 
   return (
     <Hidden.Provider value={hidden}>
       <section className="hero hero--small money__hero">
         <div>
           <h1 className="hero__title">Money</h1>
-          {money !== null && data.cloud ? <p className="hero__sub">From Copilot, updated {ago(data.cloud.updatedAt, now)}.</p> : null}
+          {money !== null && data.cloud ? (
+            <p className="hero__sub">
+              From Copilot, updated {ago(data.cloud.updatedAt, now)}.
+              {refreshing ? <span className="updating" role="status"> Updating from Jarvis…</span> : null}
+            </p>
+          ) : null}
         </div>
         {money !== null ? (
           <button type="button" className="btn" aria-pressed={!hidden} onClick={() => setHidden((h) => !h)}>

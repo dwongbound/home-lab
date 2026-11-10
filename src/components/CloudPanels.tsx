@@ -5,6 +5,7 @@ import { memo } from 'react'
 import type { CalendarEvent, ClaudeThread, CloudDigest, Deploy, EmailItem, PullRequest, ThreadState } from '../types'
 import { ago, clock } from '../lib/format'
 import { Icon } from './Icon'
+import { useDigestRefreshing } from '../api/digestRefresh'
 
 /** Section names for each thread state, in the order they're shown. */
 const STATE_GROUPS: { state: ThreadState; label: string }[] = [
@@ -14,9 +15,18 @@ const STATE_GROUPS: { state: ThreadState; label: string }[] = [
   { state: 'failed', label: 'Failed' },
 ]
 
-/** The "Updated 12 min ago" line every cloud panel carries. */
-function UpdatedLine({ cloud, now }: { cloud: CloudDigest; now: Date }) {
-  return <p className="panel__sub">Updated {ago(cloud.updatedAt, now)}</p>
+/**
+ * The "Updated 12 min ago" line every cloud panel carries, plus "Updating
+ * from Jarvis…" while Jarvis rewrites the digest (the data shown stays).
+ */
+export function UpdatedLine({ cloud, now }: { cloud: CloudDigest; now: Date }) {
+  const refreshing = useDigestRefreshing()
+  return (
+    <p className="panel__sub">
+      Updated {ago(cloud.updatedAt, now)}
+      {refreshing ? <span className="updating" role="status"> · Updating from Jarvis…</span> : null}
+    </p>
+  )
 }
 
 /** What a cloud panel shows before the digest is set up. */
