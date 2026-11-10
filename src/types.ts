@@ -20,7 +20,7 @@ export interface TimelineItem {
   detail: string
   status: RunStatus
   /** Where it came from, on the Overview's combined day; Jarvis when missing. */
-  source?: 'calendar' | 'jarvis' | 'alert'
+  source?: 'calendar' | 'jarvis'
   /** An all-day calendar event: shown as "All day" instead of a time. */
   allDay?: boolean
 }

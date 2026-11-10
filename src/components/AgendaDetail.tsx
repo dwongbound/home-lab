@@ -8,7 +8,7 @@ import { DetailDialog, type Fact, type OutLink } from './DetailDialog'
 // Schedule: #overview/j/<row id>, #schedule/e/<event id>, #schedule/m/<email id>.
 // Links out to Google Calendar or Gmail show when the digest has them.
 
-const STATUS_WORDS = { done: 'Done', failed: 'Needs you', running: 'Happening now', scheduled: 'Later today' } as const
+const STATUS_WORDS = { done: 'Done', failed: 'Failed', running: 'Happening now', scheduled: 'Later today' } as const
 
 /** "3:00 PM to 5:00 PM", or "All day". */
 function eventWhen(e: CalendarEvent): string {
@@ -28,15 +28,13 @@ function EventDetail({ e }: { e: CalendarEvent }) {
   return <DetailDialog title={e.title} sub={eventWhen(e)} facts={facts} links={links} onClose={closeDetail} />
 }
 
-/** The pop-up for a Today row that isn't a calendar event: a Jarvis job or reminder, or an alert. */
+/** The pop-up for a Today row that isn't a calendar event: a Jarvis job or reminder. */
 function ItemDetail({ item }: { item: TimelineItem }) {
-  const facts: Fact[] = [{ label: 'Status', value: STATUS_WORDS[item.status] }]
-  if (item.source === 'alert') {
-    facts.push({ label: 'What to do', value: <a href="#services">See it on Services</a> })
-  } else {
-    facts.unshift({ label: 'When', value: clock(item.at) })
-    facts.push({ label: 'From', value: 'Jarvis' })
-  }
+  const facts: Fact[] = [
+    { label: 'When', value: clock(item.at) },
+    { label: 'Status', value: STATUS_WORDS[item.status] },
+    { label: 'From', value: 'Jarvis' },
+  ]
   return <DetailDialog title={item.title} sub={item.detail} facts={facts} onClose={closeDetail} />
 }
 

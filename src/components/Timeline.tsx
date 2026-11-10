@@ -9,7 +9,7 @@ import { clock } from '../lib/format'
 const STATUS: Record<RunStatus, string> = { done: 'Done', failed: 'Failed', running: 'Now', scheduled: 'Later' }
 
 /** Where a row came from, as the small word under its title. */
-const SOURCE = { calendar: 'Calendar', jarvis: 'Jarvis', alert: 'Alert' } as const
+const SOURCE = { calendar: 'Calendar', jarvis: 'Jarvis' } as const
 
 interface TimelineProps {
   items: TimelineItem[]

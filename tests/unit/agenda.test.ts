@@ -1,6 +1,7 @@
-// The Overview's combined day: calendar, Jarvis and alerts in one order.
+// The Overview's combined day (calendar and Jarvis in one order), and the
+// alerts that go in the banner instead.
 import { describe, expect, it } from 'vitest'
-import { todayAgenda } from '../../src/lib/agenda'
+import { activeAlerts, todayAgenda } from '../../src/lib/agenda'
 import type { Snapshot } from '../../src/types'
 
 const NOW = new Date('2026-11-10T20:00:00Z')
@@ -13,7 +14,7 @@ function snap(parts: Partial<Snapshot>): Snapshot {
 const cloud = (calendar: unknown[]) => ({ updatedAt: NOW.toISOString(), threads: [], calendar, email: [], deploys: [], pullRequests: [] })
 
 describe('todayAgenda', () => {
-  it('puts alerts first, then all-day events, then calendar and Jarvis by time', () => {
+  it('puts all-day events first, then calendar and Jarvis by time, and leaves alerts out', () => {
     const items = todayAgenda(snap({
       services: [{ id: 'jarvis', name: 'Jarvis', detail: 'Not answering', status: 'down' }, { id: 'ha', name: 'HA', detail: 'ok', status: 'up' }] as Snapshot['services'],
       today: [{ id: 'j1', at: '2026-11-10T17:00:00Z', title: 'Fantasy pickups', detail: 'Jarvis', status: 'done' }],
@@ -23,12 +24,23 @@ describe('todayAgenda', () => {
         { id: 'c3', title: 'Standup', start: '2026-11-10T19:30:00Z', end: '2026-11-10T20:15:00Z', allDay: false, calendar: 'Work' },
       ]) as Snapshot['cloud'],
     }), NOW)
-    expect(items.map((i) => i.title)).toEqual(['Jarvis: Not answering', 'Anniversary', 'Fantasy pickups', 'Standup', 'Flight block'])
-    expect(items.map((i) => i.source)).toEqual(['alert', 'calendar', 'jarvis', 'calendar', 'calendar'])
+    expect(items.map((i) => i.title)).toEqual(['Anniversary', 'Fantasy pickups', 'Standup', 'Flight block'])
+    expect(items.map((i) => i.source)).toEqual(['calendar', 'jarvis', 'calendar', 'calendar'])
     // Standup is on now, the flight is later.
-    expect(items[3].status).toBe('running')
-    expect(items[4].status).toBe('scheduled')
-    expect(items[1].allDay).toBe(true)
+    expect(items[2].status).toBe('running')
+    expect(items[3].status).toBe('scheduled')
+    expect(items[0].allDay).toBe(true)
+  })
+
+  it('lists services that are down or degraded as alerts for the banner', () => {
+    const alerts = activeAlerts(snap({
+      services: [
+        { id: 'jarvis', name: 'Jarvis', detail: 'Not answering', status: 'down' },
+        { id: 'ha', name: 'HA', detail: 'ok', status: 'up' },
+        { id: 'ollama', name: 'Ollama', detail: 'Slow', status: 'degraded' },
+      ] as Snapshot['services'],
+    }))
+    expect(alerts).toEqual([{ id: 'jarvis', text: 'Jarvis: Not answering' }, { id: 'ollama', text: 'Ollama: Slow' }])
   })
 
   it('marks a finished event done, and has only Jarvis without a digest', () => {

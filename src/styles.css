@@ -361,6 +361,15 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .stale { margin-top: 14px; font-size: 13px; color: #f6d3a6; }
 .toast { position: fixed; z-index: 5; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 999px; background: var(--frost); color: var(--basalt); font-weight: 600; box-shadow: 0 10px 30px -10px rgba(0,0,0,.5); }
 
+/* ---------- The alert banner (AlertBanner) ----------
+   Solid amber-tinted, not glass, so it reads at a glance over any sky. */
+.banner { display: flex; align-items: center; gap: 12px; min-height: 48px; margin-bottom: var(--gap); padding: 4px 6px 4px 14px; border-radius: 14px; background: rgba(70, 52, 18, .78); border: 1px solid rgba(242, 201, 76, .55); color: #fbe7b5; }
+.banner__text { flex: 1; min-width: 0; color: inherit; font-weight: 600; font-size: 14.5px; text-decoration: none; overflow-wrap: anywhere; }
+.banner__text:hover { text-decoration: underline; text-underline-offset: 3px; }
+.banner__more { font-weight: 500; color: #f2d58f; }
+.banner__close { height: 40px; color: #fbe7b5; }
+.shell[data-view='overview'] .banner { flex: none; }
+
 /* ---------- Tappable rows and detail pop-ups ---------- */
 /* A column of panels inside a two-column grid, so each side fills on its own. */
 .stack { display: grid; gap: var(--gap); align-content: start; min-width: 0; }

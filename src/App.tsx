@@ -4,6 +4,8 @@ import { DigestRefreshing, useDigestRefresh } from './api/digestRefresh'
 import { Backdrop } from './components/Backdrop'
 import { TopNav } from './components/TopNav'
 import { ThinkingLoader } from './components/ThinkingLoader'
+import { AlertBanner } from './components/AlertBanner'
+import { activeAlerts } from './lib/agenda'
 import { Overview } from './views/Overview'
 import { Services } from './views/Services'
 import { Claude } from './views/Claude'
@@ -101,6 +103,8 @@ export function App() {
       {/* data-view lets the Overview fill exactly one screen on a display-sized window. */}
       <div className="shell" data-view={view} data-sky={shownPhase(now, sky)} data-landing={landing && hasData ? '' : undefined}>
         <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} />
+        {/* Anything needing him right now sits above every page, not inside Today. */}
+        {data ? <AlertBanner alerts={activeAlerts(data)} /> : null}
         <DigestRefreshing.Provider value={digestRefreshing}>
           <main className="main" key={data ? 'ready' : 'waiting'}>{body}</main>
         </DigestRefreshing.Provider>

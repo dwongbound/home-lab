@@ -24,12 +24,18 @@ test('overview shows the PC at a glance', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Unload Gemma' })).toHaveCount(0)
 })
 
-test("Today on the overview combines alerts, the calendar and Jarvis's day", async ({ page }) => {
+test('an alert is a banner across the top, not a row in Today, and Close hides it', async ({ page }) => {
   await page.goto('/')
-  const today = page.locator('.timeline')
-  // The sample Jarvis is degraded, so an alert leads the list, whatever the time.
-  await expect(today.locator('.timeline__item').first()).toContainText('Jarvis: Running, code changed since start')
-  await expect(today.locator('.timeline__item').first()).toContainText('Alert')
+  // The sample Jarvis is degraded.
+  const banner = page.getByRole('alert')
+  await expect(banner).toContainText('Jarvis: Running, code changed since start')
+  await expect(page.locator('.timeline')).not.toContainText('code changed since start')
+  await expect(banner.getByRole('link')).toHaveAttribute('href', '#services')
+  // It follows to every page.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Money' }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await page.getByRole('alert').getByRole('button', { name: 'Close' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
 test('opening the page asks Jarvis for a fresh digest, showing the last one meanwhile', async ({ page }) => {
