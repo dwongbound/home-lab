@@ -1,8 +1,13 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Icon, type IconName } from './Icon'
 
 // The top bar: host name on the left, pill navigation in the middle, and
 // data source, refresh and avatar on the right. Navigation is plain links
 // to #hashes, so it works with the keyboard, back button and bookmarks.
+// The light on the current pill is one element that slides from pill to
+// pill, rather than each pill lighting up on its own. It carries a dark
+// copy of the pills that moves the other way, so whatever the light passes
+// over reads dark on light all the way across, like a segmented control.
 
 export type View = 'overview' | 'claude' | 'services' | 'schedule' | 'preferences'
 // Settings lives at #preferences: claude.ai reserves #settings, and the
@@ -22,20 +27,58 @@ interface Props {
   onRefresh: () => void
 }
 
+/** Where the sliding light sits: under the current pill, in px from the bar's edge. */
+function useIndicator(view: View) {
+  const navRef = useRef<HTMLElement>(null)
+  const [box, setBox] = useState<{ x: number; w: number } | null>(null)
+
+  // Measured before paint, so the light never shows in the wrong place.
+  // Re-measured when the bar resizes (narrow screens hide the labels).
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    if (nav === null) return
+    const place = () => {
+      const current = nav.querySelector<HTMLElement>('[aria-current="page"]')
+      if (current) setBox({ x: current.offsetLeft, w: current.offsetWidth })
+    }
+    place()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(place)
+    observer.observe(nav)
+    return () => observer.disconnect()
+  }, [view])
+
+  return { navRef, box }
+}
+
 /** The top bar. */
 export function TopNav({ view, source, refreshing, onRefresh }: Props) {
+  const { navRef, box } = useIndicator(view)
   return (
     <header className="topbar">
       <a className="topbar__host" href="#overview" aria-label="jarvis overview">
         <span className="topbar__orb" aria-hidden="true" />
         <span>jarvis</span>
       </a>
-      <nav aria-label="Sections" className="pills">
+      <nav aria-label="Sections" className="pills" ref={navRef}>
+        {box ? (
+          <span
+            className="pills__light"
+            aria-hidden="true"
+            style={{ transform: `translateX(${box.x}px)`, width: box.w }}
+          >
+            <span className="pills__ink" style={{ transform: `translateX(${-box.x}px)` }}>
+              {VIEWS.map((v) => (
+                <span key={v.id} className="pill">
+                  <Icon name={v.icon} size={16} />
+                  <span className="pill__label">{v.label}</span>
+                </span>
+              ))}
+            </span>
+          </span>
+        ) : null}
         {VIEWS.map((v) => (
           <a key={v.id} href={`#${v.id}`} className="pill" aria-current={v.id === view ? 'page' : undefined}>
-            {/* The light highlight behind the active pill. Only one exists at
-                a time, so a page change slides it from pill to pill. */}
-            {v.id === view ? <span className="pill__glow" aria-hidden="true" /> : null}
             <Icon name={v.icon} size={16} />
             <span className="pill__label">{v.label}</span>
           </a>

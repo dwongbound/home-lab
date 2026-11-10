@@ -5,32 +5,31 @@ import { VIEWS, type View } from './components/TopNav'
 // Which page is showing, read from the URL hash (#services and so on).
 // useSyncExternalStore keeps it in step with back/forward without an effect.
 //
-// Switching pages runs inside a view transition where the browser has one
-// and motion is welcome: the browser photographs the page before and after
-// and cross-fades the two pictures, while the active pill's highlight
-// slides across (styles.css, "Page changes"). Animating the live page
-// instead would break the glass: a transform or opacity animation on an
-// ancestor of backdrop-filter shows patches until it ends.
+// Changing page runs inside a view transition where the browser has one
+// (and motion is wanted): the browser snapshots the old page, React swaps
+// in the new one synchronously, and the two crossfade. The snapshots are
+// flat images, so the frosted glass stays intact the whole way through,
+// which animating the panels themselves can't do.
 
 const ids = new Set<string>(VIEWS.map((v) => v.id))
 const read = (): View => { const h = window.location.hash.slice(1); return (ids.has(h) ? h : 'overview') as View }
 
-/** True when the browser can run a view transition and the person hasn't asked for less motion. */
+/** True when the browser can run a view transition and motion is wanted. */
 function canTransition(): boolean {
   if (typeof document.startViewTransition !== 'function') return false
-  return !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 }
 
-/** Tells React the hash changed, inside a view transition when one is welcome. */
-function subscribe(notify: () => void) {
+const subscribe = (cb: () => void) => {
+  let shown = read()
   const onHashChange = () => {
-    if (!canTransition()) {
-      notify()
-      return
-    }
-    // flushSync makes React draw the new page before the browser takes the
-    // "after" picture; without it the picture would still show the old page.
-    document.startViewTransition(() => flushSync(notify))
+    const next = read()
+    if (next === shown) return cb()
+    shown = next
+    // A new page starts at the top, like any other page would.
+    const swap = () => { flushSync(cb); window.scrollTo(0, 0) }
+    if (canTransition()) document.startViewTransition(swap)
+    else swap()
   }
   window.addEventListener('hashchange', onHashChange)
   return () => window.removeEventListener('hashchange', onHashChange)

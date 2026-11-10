@@ -27,7 +27,7 @@ test('Schedule has the requests chart; Services has every service and the Gemma 
   await expect(page.getByRole('button', { name: 'Unload Gemma' })).toBeVisible()
 })
 
-test('changing page cross-fades and slides the pill highlight, and never with reduced motion', async ({ browser }) => {
+test('changing page cross-fades and slides the pill light, and never with reduced motion', async ({ browser }) => {
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     const context = await browser.newContext({ reducedMotion })
     const page = await context.newPage()
@@ -45,9 +45,11 @@ test('changing page cross-fades and slides the pill highlight, and never with re
     await expect(page.getByRole('heading', { level: 1, name: 'Services' })).toBeVisible()
     const transitions = await page.evaluate(() => (window as unknown as { transitions: number }).transitions)
     expect(transitions).toBe(reducedMotion === 'reduce' ? 0 : 1)
-    // One highlight, on the current pill.
-    await expect(nav.locator('.pill__glow')).toHaveCount(1)
-    await expect(nav.getByRole('link', { name: 'Services' }).locator('.pill__glow')).toHaveCount(1)
+    // One light, sitting under the current pill once it settles.
+    await expect(nav.locator('.pills__light')).toHaveCount(1)
+    const current = await nav.getByRole('link', { name: 'Services' }).boundingBox()
+    // Within a pixel: the bar's 1 px border and subpixel layout can round either way.
+    await expect.poll(async () => Math.abs((await nav.locator('.pills__light').boundingBox())!.x - current!.x)).toBeLessThanOrEqual(1.5)
     await context.close()
   }
 })
