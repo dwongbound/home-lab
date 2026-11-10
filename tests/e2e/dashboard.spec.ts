@@ -4,6 +4,9 @@
 //   - I unload Gemma before gaming, and see it working until it's done.
 //   - I pick a sky in Settings and it's remembered.
 //   - The first load lands with a show; with reduced motion on, nothing moves.
+//   - I tap any money row, Today row, event or email for a pop-up with more, and links out.
+//   - Purchases still in "Other" stand out so I know to sort them.
+//   - The iPad can stay on as a wall display.
 import { expect, test } from '@playwright/test'
 
 test('overview shows the PC at a glance', async ({ page }) => {
@@ -177,4 +180,87 @@ test('Shell shows the terminal frame, and says so when the shell is off', async 
   expect(frameWidth).toBeGreaterThan(heroWidth - 80)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
+})
+
+test('Money flags purchases to sort, and every row opens a detail that Close and Back dismiss', async ({ page }) => {
+  await page.goto('/#money')
+  await expect(page.getByRole('heading', { level: 1, name: 'Money' })).toBeVisible()
+  // The "undefined" from Venmo is gone, and the row is marked to sort.
+  const venmo = page.getByRole('link', { name: /Venmo Alex/ })
+  await expect(venmo).not.toContainText('undefined')
+  await expect(venmo).toContainText('needs a category')
+  // $0 accounts wait behind a button.
+  await expect(page.getByText('Old Checking')).toHaveCount(0)
+
+  await page.getByRole('link', { name: /One purchase needs a category/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Needs a category' })
+  await expect(dialog).toBeVisible()
+  // From the list, straight into the purchase.
+  await dialog.getByRole('link', { name: /Venmo Alex/ }).click()
+  await expect(page.getByRole('dialog', { name: 'Venmo Alex' })).toContainText('Lesson')
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page).toHaveURL(/#money$/)
+
+  // An account shows what's been on it; Back closes the pop-up.
+  await page.getByRole('link', { name: /Sapphire/ }).click()
+  await expect(page.getByRole('dialog', { name: 'Sapphire' })).toContainText('Trader Joe’s')
+  await page.goBack()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('heading', { level: 1, name: 'Money' })).toBeVisible()
+})
+
+test('the detail pop-up fits the screen and stays one size', async ({ page }) => {
+  await page.goto('/#money/sort')
+  const dialog = page.getByRole('dialog', { name: 'Needs a category' })
+  await expect(dialog).toBeVisible()
+  const box = (await dialog.boundingBox())!
+  const view = page.viewportSize()!
+  expect(box.width).toBeLessThanOrEqual(view.width - 31)
+  expect(box.height).toBeLessThanOrEqual(view.height - 31)
+  await page.goto('/#money/t/x4')
+  const other = (await page.getByRole('dialog', { name: 'Spotify' }).boundingBox())!
+  expect(Math.round(other.height)).toBe(Math.round(box.height))
+})
+
+test('Today and calendar rows open their details, with a link to Google Calendar', async ({ page }) => {
+  await page.goto('/#schedule')
+  await page.locator('section', { has: page.getByRole('heading', { name: 'Calendar' }) }).getByRole('link', { name: /Flight block N8318B/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Flight block N8318B' })
+  await expect(dialog).toContainText('Santa Monica Airport')
+  await expect(dialog.getByRole('link', { name: 'Open in Calendar' })).toHaveAttribute('target', '_blank')
+  await dialog.getByRole('button', { name: 'Close' }).click()
+
+  await page.getByRole('link', { name: /OAuth verification/ }).click()
+  await expect(page.getByRole('dialog').getByRole('link', { name: 'Open in Gmail' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await page.goto('/')
+  await page.locator('.timeline').getByRole('link').first().click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+})
+
+test('Settings can keep the screen on, and remembers it', async ({ page }) => {
+  await page.goto('/#preferences')
+  const awake = page.getByRole('switch', { name: 'Keep the screen on' })
+  await expect(awake).toHaveAttribute('aria-checked', 'false')
+  await awake.click()
+  await expect(awake).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByRole('status').filter({ hasText: /^On\./ })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('switch', { name: 'Keep the screen on' })).toHaveAttribute('aria-checked', 'true')
+})
+
+test('every page fits without sideways scrolling, and tappable rows are finger-sized on touch', async ({ page }, info) => {
+  for (const hash of ['#money', '#schedule', '#home', '#preferences', '#claude']) {
+    await page.goto('/' + hash)
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow, hash).toBeLessThanOrEqual(0)
+  }
+  if (info.project.name === 'desktop') return
+  await page.goto('/#money')
+  const heights = await page.locator('.row-link').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
+  expect(Math.min(...heights)).toBeGreaterThanOrEqual(44)
 })

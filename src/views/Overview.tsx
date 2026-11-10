@@ -1,4 +1,4 @@
-import type { Snapshot } from '../types'
+import type { Snapshot, TimelineItem } from '../types'
 import { greeting, uptime } from '../lib/format'
 import { StatCard } from '../components/StatCard'
 import { Timeline } from '../components/Timeline'
@@ -6,6 +6,8 @@ import { JarvisPanel } from '../components/JarvisPanel'
 import { ClaudeThreadsPanel } from '../components/CloudPanels'
 import { todayAgenda } from '../lib/agenda'
 import { useDigestRefreshing } from '../api/digestRefresh'
+import { AgendaDetail } from '../components/AgendaDetail'
+import { detailHref } from '../useHashView'
 
 // The home view, kept to a glance: the greeting with what needs you, the
 // Ask Jarvis box, the four stat cards, and what's left today (calendar,
@@ -42,6 +44,9 @@ function AttentionLine({ count, toClaude }: { count: number; toClaude: boolean }
   return <a href={href} className="hero__alert">{text}</a>
 }
 
+/** Each Today row opens its detail. Defined once so the memoized Timeline doesn't redraw. */
+const todayLink = (item: TimelineItem) => detailHref('overview', 'j', item.id)
+
 /** The overview page. */
 export function Overview({ data, now }: { data: Snapshot; now: Date }) {
   const needs = attentionCount(data)
@@ -65,9 +70,10 @@ export function Overview({ data, now }: { data: Snapshot; now: Date }) {
       </div>
 
       <div className="grid grid--split">
-        <Timeline items={todayAgenda(data, now)} now={now} limit={5} upcoming presorted empty="Nothing else today." note={note} />
+        <Timeline items={todayAgenda(data, now)} now={now} limit={5} upcoming presorted empty="Nothing else today." note={note} linkTo={todayLink} />
         <ClaudeThreadsPanel cloud={data.cloud} now={now} compact />
       </div>
+      <AgendaDetail data={data} now={now} />
     </>
   )
 }

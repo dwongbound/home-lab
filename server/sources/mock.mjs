@@ -69,11 +69,11 @@ function mockDigest(t, minutesAgo) {
       thread('t-dinner', 'Anniversary dinner shortlist', 'done', 1500),
     ],
     calendar: [
-      { id: 'c1', title: 'Flight block N8318B', start: atPacificTime(t, 15, 0), end: atPacificTime(t, 17, 0), allDay: false, calendar: 'VFF' },
+      { id: 'c1', title: 'Flight block N8318B', start: atPacificTime(t, 15, 0), end: atPacificTime(t, 17, 0), allDay: false, calendar: 'VFF', location: 'Santa Monica Airport', url: 'https://calendar.google.com/calendar/r/day' },
       { id: 'c2', title: 'Worship practice', start: atPacificTime(t, 19, 30), end: atPacificTime(t, 21, 0), allDay: false, calendar: 'Church' },
     ],
     email: [
-      { id: 'e1', from: 'Google Cloud', subject: 'OAuth verification: action needed', why: 'Waiting on your scope declaration' },
+      { id: 'e1', from: 'Google Cloud', subject: 'OAuth verification: action needed', why: 'Waiting on your scope declaration', url: 'https://mail.google.com/mail/u/0/#inbox' },
       { id: 'e2', from: 'VFF Flying Club', subject: 'November dues', why: 'Due Friday' },
     ],
     deploys: [
@@ -92,6 +92,8 @@ function mockDigest(t, minutesAgo) {
         { id: 'm2', name: 'Savings', institution: 'Example Bank', kind: 'cash', balance: 18250 },
         { id: 'm3', name: 'Sapphire', institution: 'Example Card Co', kind: 'credit', balance: 1284.19 },
         { id: 'm4', name: 'Brokerage', institution: 'Example Invest', kind: 'investment', balance: 24823.64 },
+        // An old account with nothing in it: the page tucks these away.
+        { id: 'm5', name: 'Old Checking', institution: 'Example Bank', kind: 'cash', balance: 0 },
       ],
       spending: { thisMonth: 1862.4, lastMonthToDate: 2104.75, budget: 4000 },
       categories: [
@@ -101,10 +103,12 @@ function mockDigest(t, minutesAgo) {
         { name: 'Subscriptions', spent: 96.97, budget: 120 },
       ],
       recent: [
-        { id: 'x1', date: minutesAgo(200), merchant: 'Trader Joe’s', category: 'Food & drink', amount: 64.18 },
-        { id: 'x2', date: minutesAgo(1500), merchant: 'Shell', category: 'Transport', amount: 48.02 },
-        { id: 'x3', date: minutesAgo(2900), merchant: 'Payroll', category: 'Income', amount: -3450 },
-        { id: 'x4', date: minutesAgo(4300), merchant: 'Spotify', category: 'Subscriptions', amount: 11.99 },
+        { id: 'x1', date: minutesAgo(200), merchant: 'Trader Joe’s', category: 'Food & drink', amount: 64.18, account: 'Sapphire', accountId: 'm3' },
+        // Venmo notes arrive with a stray "undefined", and land in Other until sorted.
+        { id: 'x5', date: minutesAgo(900), merchant: 'Venmo Alex "undefined"', category: 'Other', amount: 120, account: 'Checking', accountId: 'm1', note: 'Lesson' },
+        { id: 'x2', date: minutesAgo(1500), merchant: 'Shell', category: 'Transport', amount: 48.02, account: 'Sapphire', accountId: 'm3', pending: true },
+        { id: 'x3', date: minutesAgo(2900), merchant: 'Payroll', category: 'Income', amount: -3450, account: 'Checking', accountId: 'm1' },
+        { id: 'x4', date: minutesAgo(4300), merchant: 'Spotify', category: 'Subscriptions', amount: 11.99, account: 'Sapphire', accountId: 'm3' },
       ],
       flags: [
         { id: 'f1', text: 'Shopping is at 97% of its budget with 20 days to go' },

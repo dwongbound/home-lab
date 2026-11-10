@@ -64,16 +64,19 @@ the token on the PC can read only that repo.
 - `threads[].state` is one of `working`, `blocked` (waiting on Dylan),
   `review_ready`, `done`, `failed`, `stopped`. Threads active in the last 7 days only.
 - `calendar` is today in Pacific time, across all of his calendars except "Wong Fam" (his parents' shared one; the server drops it too, `SKIP_CALENDARS`).
+  Optional `url` (the event in Google Calendar) and `location` show in the event's pop-up.
 - `email` is at most three messages that need him, with a few words on why.
-  Never message bodies.
+  Never message bodies. Optional `url` (the thread in Gmail) adds **Open in Gmail**.
 - `deploys` are the latest production deploys of tapworship.com and vardafreeflyers.com.
 - `pullRequests` are his open PRs on worship-scheduler, vff-app and home-lab.
 - `money` comes from Dylan's **Copilot** connector (shape: `MoneyDigest` in
   `src/types.ts`), in US dollars. `kind` is `cash`, `credit`, `investment`,
   `loan` or `other`; a credit or loan `balance` is what's owed, as a positive
   number. `netWorth` and the budgets may be `null` if Copilot doesn't say.
-  `categories` is this month's top six by spend; `recent` the last 10
-  transactions, newest first, with money coming in as a negative `amount`;
+  `categories` is this month's top six by spend; `recent` up to 40
+  transactions from the last 30 days, newest first, with money coming in as a negative `amount`
+  and optional `account`, `accountId`, `pending` and `note`. Keep Copilot's own category
+  (the page flags "Other" and empty ones for sorting) and keep $0 accounts (the page tucks them away);
   `flags` at most three things worth a look (a big or unusual charge, a new
   subscription, a budget nearly spent, a low cash balance). Never account
   numbers. Leave `money` out entirely if Copilot fails, and the page says

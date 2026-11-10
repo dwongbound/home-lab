@@ -6,6 +6,8 @@ import type { CalendarEvent, ClaudeThread, CloudDigest, Deploy, EmailItem, PullR
 import { ago, clock } from '../lib/format'
 import { Icon } from './Icon'
 import { useDigestRefreshing } from '../api/digestRefresh'
+import { detailHref } from '../useHashView'
+import type { View } from './TopNav'
 
 /** Section names for each thread state, in the order they're shown. */
 const STATE_GROUPS: { state: ThreadState; label: string }[] = [
@@ -115,7 +117,7 @@ function eventTime(event: CalendarEvent): string {
 }
 
 /** Today's calendar events across all of Dylan's calendars, in time order. */
-export const CalendarPanel = memo(function CalendarPanel({ cloud, now }: { cloud: CloudDigest | null; now: Date }) {
+export const CalendarPanel = memo(function CalendarPanel({ cloud, now, view }: { cloud: CloudDigest | null; now: Date; view?: View }) {
   return (
     <section className="glass panel" aria-labelledby="calendar-title">
       <header className="panel__head">
@@ -124,30 +126,37 @@ export const CalendarPanel = memo(function CalendarPanel({ cloud, now }: { cloud
           {cloud ? <UpdatedLine cloud={cloud} now={now} /> : null}
         </div>
       </header>
-      {cloud === null ? <NotSetUp what="Today’s calendar" /> : <CalendarList events={cloud.calendar} />}
+      {cloud === null ? <NotSetUp what="Today’s calendar" /> : <CalendarList events={cloud.calendar} view={view} />}
     </section>
   )
 })
 
 /** The calendar rows, or an empty state when the day is free. */
-function CalendarList({ events }: { events: CalendarEvent[] }) {
+function CalendarList({ events, view }: { events: CalendarEvent[]; view?: View }) {
   if (events.length === 0) return <p className="empty">Nothing on your calendars today.</p>
   const sorted = events.toSorted((a, b) => a.start.localeCompare(b.start))
   return (
     <ul className="cloud__list">
-      {sorted.map((e) => (
-        <li key={e.id} className="cloud__row cloud__row--event">
-          <span className="cloud__time">{eventTime(e)}</span>
-          <span className="cloud__title">{e.title}</span>
-          <span className="cloud__meta">{e.calendar}</span>
-        </li>
-      ))}
+      {sorted.map((e) => {
+        const inside = (
+          <>
+            <span className="cloud__time">{eventTime(e)}</span>
+            <span className="cloud__title">{e.title}</span>
+            <span className="cloud__meta">{e.calendar}</span>
+          </>
+        )
+        return (
+          <li key={e.id} className="cloud__row cloud__row--event">
+            {view ? <a className="row-link" href={detailHref(view, 'e', e.id)}>{inside}</a> : inside}
+          </li>
+        )
+      })}
     </ul>
   )
 }
 
 /** Up to three emails that need Dylan, with why. */
-export const EmailPanel = memo(function EmailPanel({ cloud, now }: { cloud: CloudDigest | null; now: Date }) {
+export const EmailPanel = memo(function EmailPanel({ cloud, now, view }: { cloud: CloudDigest | null; now: Date; view?: View }) {
   return (
     <section className="glass panel" aria-labelledby="email-title">
       <header className="panel__head">
@@ -156,22 +165,29 @@ export const EmailPanel = memo(function EmailPanel({ cloud, now }: { cloud: Clou
           {cloud ? <UpdatedLine cloud={cloud} now={now} /> : null}
         </div>
       </header>
-      {cloud === null ? <NotSetUp what="Email that needs you" /> : <EmailList items={cloud.email} />}
+      {cloud === null ? <NotSetUp what="Email that needs you" /> : <EmailList items={cloud.email} view={view} />}
     </section>
   )
 })
 
 /** The email rows, or an empty state when nothing needs him. */
-function EmailList({ items }: { items: EmailItem[] }) {
+function EmailList({ items, view }: { items: EmailItem[]; view?: View }) {
   if (items.length === 0) return <p className="empty">Nothing in your inbox needs you.</p>
   return (
     <ul className="cloud__list">
-      {items.map((m) => (
-        <li key={m.id} className="cloud__row cloud__row--stack">
-          <span className="cloud__title">{m.subject}</span>
-          <span className="cloud__meta">{m.from}. {m.why}</span>
-        </li>
-      ))}
+      {items.map((m) => {
+        const inside = (
+          <>
+            <span className="cloud__title">{m.subject}</span>
+            <span className="cloud__meta">{m.from}. {m.why}</span>
+          </>
+        )
+        return (
+          <li key={m.id} className="cloud__row cloud__row--stack">
+            {view ? <a className="row-link row-link--stack" href={detailHref(view, 'm', m.id)}>{inside}</a> : inside}
+          </li>
+        )
+      })}
     </ul>
   )
 }

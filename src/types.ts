@@ -32,8 +32,16 @@ export interface Service { id: string; name: string; detail: string; status: Ser
 // read by the PC. See docs/digest.md for how it's made.
 export type ThreadState = 'working' | 'blocked' | 'review_ready' | 'done' | 'failed' | 'stopped'
 export interface ClaudeThread { id: string; title: string; state: ThreadState; lastActivityAt: string; url: string }
-export interface CalendarEvent { id: string; title: string; start: string; end: string; allDay: boolean; calendar: string }
-export interface EmailItem { id: string; from: string; subject: string; why: string }
+export interface CalendarEvent {
+  id: string; title: string; start: string; end: string; allDay: boolean; calendar: string
+  /** Optional: the event in Google Calendar, and where it is. */
+  url?: string; location?: string
+}
+export interface EmailItem {
+  id: string; from: string; subject: string; why: string
+  /** Optional: the thread in Gmail. */
+  url?: string
+}
 export interface Deploy { project: string; state: 'ready' | 'building' | 'error'; at: string; url: string }
 export interface PullRequest { repo: string; number: number; title: string; ci: 'passing' | 'failing' | 'running' | 'none'; url: string }
 
@@ -43,7 +51,11 @@ export interface PullRequest { repo: string; number: number; title: string; ci: 
 export type AccountKind = 'cash' | 'credit' | 'investment' | 'loan' | 'other'
 export interface MoneyAccount { id: string; name: string; institution: string; kind: AccountKind; balance: number }
 export interface SpendCategory { name: string; spent: number; budget: number | null }
-export interface MoneyTransaction { id: string; date: string; merchant: string; category: string; amount: number }
+export interface MoneyTransaction {
+  id: string; date: string; merchant: string; category: string; amount: number
+  /** Optional, when the digest has them: which account, still pending, a note. */
+  account?: string; accountId?: string; pending?: boolean; note?: string
+}
 export interface MoneyFlag { id: string; text: string }
 export interface MoneyDigest {
   netWorth: number | null
