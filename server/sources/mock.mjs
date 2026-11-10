@@ -2,8 +2,10 @@
 // reviewed before anything on the PC is wired up. It returns the same
 // Snapshot shape as the live source (see src/types.ts).
 //
-// It also keeps a tiny bit of state (is Gemma loaded?) so the Unload and
-// Load buttons visibly do something in the preview.
+// It also keeps a tiny bit of state (is Gemma loaded? which lights are on?)
+// so the Unload/Load buttons and the Home page visibly do something in the
+// preview.
+import { doneMessage, toDevices } from '../home.mjs'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const REQUESTS_PER_DAY = [14, 22, 9, 31, 26, 7, 4]
@@ -114,10 +116,47 @@ function mockDigest(t, minutesAgo) {
 }
 
 /**
+ * Sample Home Assistant entities, in HA's own /api/states shape so they go
+ * through the same toDevices() as the real ones. Made-up devices.
+ */
+function mockEntities() {
+  const dimmable = { supported_color_modes: ['brightness'] }
+  return [
+    { entity_id: 'scene.movie_night', state: 'unknown', attributes: { friendly_name: 'Movie night' } },
+    { entity_id: 'scene.good_night', state: 'unknown', attributes: { friendly_name: 'Good night' } },
+    { entity_id: 'light.living_room_lamp', state: 'on', attributes: { friendly_name: 'Living room lamp', ...dimmable, brightness: 153 } },
+    { entity_id: 'light.bedroom_lamp', state: 'off', attributes: { friendly_name: 'Bedroom lamp', ...dimmable } },
+    { entity_id: 'light.porch', state: 'off', attributes: { friendly_name: 'Porch light', supported_color_modes: ['onoff'] } },
+    { entity_id: 'climate.thermostat', state: 'heat', attributes: { friendly_name: 'Thermostat', current_temperature: 68, temperature: 70 } },
+    { entity_id: 'lock.front_door', state: 'locked', attributes: { friendly_name: 'Front door' } },
+    { entity_id: 'cover.garage_door', state: 'closed', attributes: { friendly_name: 'Garage door' } },
+    { entity_id: 'fan.bedroom_fan', state: 'off', attributes: { friendly_name: 'Bedroom fan' } },
+    { entity_id: 'switch.desk_plug', state: 'on', attributes: { friendly_name: 'Desk plug' } },
+    { entity_id: 'switch.christmas_tree', state: 'unavailable', attributes: { friendly_name: 'Christmas tree' } },
+  ]
+}
+
+/**
+ * Applies a checked Home request to the sample entities, the way HA would.
+ * Scenes change nothing here; they just "run".
+ */
+function applyToEntity(entity, request) {
+  const { command, value } = request
+  if (command === 'turn_on') entity.state = entity.entity_id.startsWith('climate.') ? 'heat' : 'on'
+  if (command === 'turn_off') entity.state = 'off'
+  if (command === 'brightness') { entity.state = 'on'; entity.attributes.brightness = Math.round((value / 100) * 255) }
+  if (command === 'temperature') entity.attributes.temperature = value
+  if (command === 'lock') entity.state = 'locked'
+  if (command === 'unlock') entity.state = 'unlocked'
+  if (command === 'open') entity.state = 'open'
+  if (command === 'close') entity.state = 'closed'
+}
+
+/**
  * Creates a mock source. `now` is injectable so tests can pin the clock.
  */
 export function createMockSource({ now = () => new Date() } = {}) {
-  const state = { modelLoaded: true }
+  const state = { modelLoaded: true, entities: mockEntities() }
 
   return {
     kind: 'mock',
@@ -170,6 +209,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         ],
         model: { name: 'Gemma 12B', loaded, vramGb: loaded ? 10.1 : 0, loadSeconds: 168 },
         cloud: mockDigest(t, minutesAgo),
+        home: toDevices(state.entities),
       }
     },
 
@@ -192,6 +232,15 @@ export function createMockSource({ now = () => new Date() } = {}) {
     async ask(text) {
       await delay(900)
       return { ok: true, message: `Sample data: on the PC, Jarvis would answer "${text}" here.` }
+    },
+
+    /** Pretends to be Home Assistant, remembering what changed. */
+    async home(request) {
+      const entity = state.entities.find((e) => e.entity_id === request.id)
+      if (!entity) return { ok: false, message: `Home Assistant doesn't know ${request.id}` }
+      await delay(600)
+      applyToEntity(entity, request)
+      return { ok: true, message: doneMessage(request) }
     },
   }
 }

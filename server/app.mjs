@@ -4,11 +4,13 @@
 //   POST /api/actions/ollama-unload free Gemma's ~10 GB of GPU memory
 //   POST /api/actions/ollama-load   load Gemma back (about 3 minutes)
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
+//   POST /api/home                  {"id", "command", "value"?} -> change one HA device
 //
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
 import { createMockSource } from './sources/mock.mjs'
 import { createLiveSource } from './sources/live.mjs'
+import { parseHomeRequest } from './home.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
@@ -94,6 +96,21 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
+  /**
+   * Changes one Home Assistant device. Only the commands in server/home.mjs
+   * get through; anything else is refused here, before HA sees it. Unlike
+   * the Gemma actions these can overlap: two lights at once is fine.
+   */
+  async function handleHome(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const parsed = parseHomeRequest(await readJson(req))
+    if (parsed.error) return sendJson(res, 400, { ok: false, message: parsed.error })
+    const result = await source.home(parsed.request)
+    return sendJson(res, result.ok ? 200 : 502, result)
+  }
+
   return async function api(req, res, next) {
     const { pathname } = new URL(req.url ?? '/', 'http://localhost')
     if (!pathname.startsWith('/api/')) {
@@ -111,6 +128,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/ask') {
         return await handleAsk(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/home') {
+        return await handleHome(req, res)
       }
       return sendJson(res, 404, { error: 'Not found' })
     } catch (err) {

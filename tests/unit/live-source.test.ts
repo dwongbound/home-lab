@@ -7,6 +7,13 @@ import { loadConfig } from '../../server/config.mjs'
 const config = loadConfig({ DATA_SOURCE: 'live', HA_TOKEN: 'token' })
 const GB = 1024 ** 3
 
+/** A few entities as HA's /api/states lists them, plus one the page ignores. */
+const HA_STATES = [
+  { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk lamp', supported_color_modes: ['brightness'], brightness: 128 } },
+  { entity_id: 'lock.front_door', state: 'unlocked', attributes: { friendly_name: 'Front door' } },
+  { entity_id: 'sensor.outside_temperature', state: '61', attributes: { friendly_name: 'Outside' } },
+]
+
 interface Fakes {
   ollamaModels?: unknown[]
   jarvisAnswers?: boolean
@@ -28,7 +35,8 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return new Response(JSON.stringify({ reply: 'Lamp is off.' }), { status: jarvisStatusCode })
     }
-    if (url.endsWith('/api/') && url.startsWith(config.haUrl)) return new Response('{}', { status: haStatusCode })
+    if (url === `${config.haUrl}/api/states`) return new Response(JSON.stringify(HA_STATES), { status: haStatusCode })
+    if (url.startsWith(`${config.haUrl}/api/services/`)) return new Response('[]', { status: haStatusCode })
     return new Response('ok')
   })
   const execFile = vi.fn(async (cmd: string) => {
@@ -93,8 +101,39 @@ describe('live snapshot', () => {
   it('sends the HA token as a bearer header', async () => {
     const { source, fetch } = liveWith({})
     await source.snapshot()
-    const haCall = fetch.mock.calls.find((c: any[]) => String(c[0]).endsWith('/api/'))!
+    const haCall = fetch.mock.calls.find((c: any[]) => String(c[0]).endsWith('/api/states'))!
     expect((haCall[1] as any).headers.Authorization).toBe('Bearer token')
+  })
+})
+
+describe('live home', () => {
+  it('lists Home Assistant devices from the same /api/states call that checks HA is up', async () => {
+    const { source, fetch } = liveWith({})
+    const snap = await source.snapshot()
+    expect(snap.home!.map((d: { id: string }) => d.id)).toEqual(['light.desk', 'lock.front_door'])
+    expect(snap.home![0]).toMatchObject({ name: 'Desk lamp', on: true, brightness: 50 })
+    expect(snap.home![1]).toMatchObject({ kind: 'lock', on: false })
+    const haCalls = fetch.mock.calls.filter((c: any[]) => String(c[0]).startsWith(config.haUrl))
+    expect(haCalls).toHaveLength(1)
+  })
+
+  it('has no devices (null) when HA rejects the token', async () => {
+    expect((await liveWith({ haStatusCode: 401 }).source.snapshot()).home).toBeNull()
+  })
+
+  it('calls the matching HA service with the token', async () => {
+    const { source, fetch } = liveWith({})
+    const result = await source.home({ id: 'light.desk', command: 'brightness', value: 40 })
+    expect(result).toEqual({ ok: true, message: 'set to 40%' })
+    const [url, init] = fetch.mock.calls.at(-1)!
+    expect(url).toBe(`${config.haUrl}/api/services/light/turn_on`)
+    expect(JSON.parse(String(init!.body))).toEqual({ entity_id: 'light.desk', brightness_pct: 40 })
+    expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer token')
+  })
+
+  it('says when HA refuses', async () => {
+    const result = await liveWith({ haStatusCode: 401 }).source.home({ id: 'lock.front_door', command: 'lock' })
+    expect(result).toEqual({ ok: false, message: 'Home Assistant rejected the token' })
   })
 })
 

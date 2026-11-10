@@ -7,6 +7,7 @@ import { Overview } from './views/Overview'
 import { Services } from './views/Services'
 import { Claude } from './views/Claude'
 import { Money } from './views/Money'
+import { Home } from './views/Home'
 import { Schedule } from './views/Schedule'
 import { Settings, type SkyChoice } from './views/Settings'
 import { useHashView } from './useHashView'
@@ -47,6 +48,8 @@ export function App() {
     )
   } else if (!data) {
     body = <section className="state state--loading"><Spinner label="Reading jarvis…" /></section>
+  } else if (view === 'home') {
+    body = <Home data={data} onToast={setToast} />
   } else if (view === 'claude') {
     body = <Claude data={data} now={now} />
   } else if (view === 'money') {

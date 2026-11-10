@@ -1,11 +1,11 @@
-// The page's only door to data. Components call useSnapshot(), runAction()
-// and askJarvis(); nothing else in src/ knows where the numbers come from.
+// The page's only door to data. Components call useSnapshot(), runAction(),
+// askJarvis() and controlHome(); nothing else in src/ knows where the numbers come from.
 //
 // Normally both go to the small Node server on the PC (server/app.mjs).
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, DataSource, Snapshot } from '../types'
+import type { ActionName, ActionResult, DataSource, HomeRequest, Snapshot } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -85,6 +85,28 @@ export async function askJarvis(text: string): Promise<ActionResult> {
     method: 'POST',
     headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
     body: JSON.stringify({ text }),
+  })
+  try {
+    return await res.json()
+  } catch {
+    return { ok: false, message: `The server answered ${res.status}` }
+  }
+}
+
+/**
+ * Asks Home Assistant, through the server, to change one device. On
+ * success `message` says what happened ("unlocked"); the caller refetches
+ * the snapshot to show the new state.
+ */
+export async function controlHome(request: HomeRequest): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.home(request)
+  }
+  const res = await fetch('/api/home', {
+    method: 'POST',
+    headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+    body: JSON.stringify(request),
   })
   try {
     return await res.json()

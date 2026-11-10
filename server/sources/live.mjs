@@ -11,11 +11,14 @@ import { statfs } from 'node:fs/promises'
 import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createDigestReader } from './digest.mjs'
+import { doneMessage, serviceCall, toDevices } from '../home.mjs'
 
 const realExecFile = promisify(execFileCallback)
 const PROBE_TIMEOUT_MS = 2500
 // Jarvis can take a while: Claude thinking, or Gemma loading first.
 const ASK_TIMEOUT_MS = 180_000
+// A light or lock answers within a second or two; allow a slow cloud device.
+const HOME_TIMEOUT_MS = 10_000
 const HISTORY_POINTS = 24
 const GB = 1024 ** 3
 
@@ -138,6 +141,21 @@ export function createLiveSource(config, deps = {}) {
     return 'down'
   }
 
+  /**
+   * The devices the Home page shows, from the same /api/states answer that
+   * tells us HA is up. null when HA didn't answer or has no token.
+   */
+  async function readHome(probe) {
+    if (!config.haToken || probe === null || !probe.ok) return null
+    try {
+      const states = await probe.res.json()
+      if (!Array.isArray(states)) return null
+      return toDevices(states)
+    } catch {
+      return null
+    }
+  }
+
   /** The words after the status for Home Assistant. */
   function haDetail(probe) {
     if (!config.haToken) return 'No token set'
@@ -191,7 +209,8 @@ export function createLiveSource(config, deps = {}) {
       const results = await Promise.allSettled([
         readGpu(),
         readDisk(),
-        probeHttp(`${config.haUrl}/api/`, haHeaders),
+        // /api/states both proves HA is up and lists the devices: one request.
+        probeHttp(`${config.haUrl}/api/states`, haHeaders),
         probeHttp(`${config.ollamaUrl}/api/ps`),
         probeHttp(config.openWebUiUrl),
         probeHttp(`${config.jarvisApiUrl}/health`),
@@ -210,6 +229,7 @@ export function createLiveSource(config, deps = {}) {
 
       const models = await readLoadedModels(ollama)
       const jarvisHealth = await readJarvisHealth(jarvisHttp)
+      const home = await readHome(ha)
       const model = models.find((m) => m.name === config.ollamaModel) ?? models[0]
 
       return {
@@ -240,6 +260,7 @@ export function createLiveSource(config, deps = {}) {
           loadSeconds: null,
         },
         cloud,
+        home,
       }
     },
 
@@ -288,6 +309,29 @@ export function createLiveSource(config, deps = {}) {
       if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
       const body = await res.json().catch(() => ({}))
       return { ok: true, message: String(body.reply ?? '') }
+    },
+
+    /**
+     * Changes one device through HA's REST API. The request was already
+     * checked against the allow list (server/home.mjs parseHomeRequest).
+     */
+    async home(request) {
+      if (!config.haToken) return { ok: false, message: 'Home Assistant has no token set' }
+      const { domain, service, data } = serviceCall(request)
+      let res
+      try {
+        res = await fetchFn(`${config.haUrl}/api/services/${domain}/${service}`, {
+          method: 'POST',
+          headers: { ...haHeaders, 'content-type': 'application/json' },
+          body: JSON.stringify(data),
+          signal: AbortSignal.timeout(HOME_TIMEOUT_MS),
+        })
+      } catch {
+        return { ok: false, message: 'Home Assistant is not answering' }
+      }
+      if (res.status === 401) return { ok: false, message: 'Home Assistant rejected the token' }
+      if (!res.ok) return { ok: false, message: `Home Assistant answered ${res.status}` }
+      return { ok: true, message: doneMessage(request) }
     },
   }
 }

@@ -58,6 +58,30 @@ export interface CloudDigest {
   money?: MoneyDigest | null
 }
 
+// Home Assistant devices the Home page can control. The server turns HA's
+// entities into this smaller shape; the HA token never reaches the page.
+export type DeviceKind = 'light' | 'switch' | 'fan' | 'climate' | 'lock' | 'cover' | 'scene'
+export interface HomeDevice {
+  /** Home Assistant's entity id, like "light.living_room_lamp". */
+  id: string
+  name: string
+  kind: DeviceKind
+  /** On for lights, switches and fans; locked for locks; open for covers; not "off" for climate. */
+  on: boolean
+  /** HA's own state, in words: "on", "locked", "heat", "unavailable"... */
+  state: string
+  unavailable: boolean
+  /** Lights that dim: 0 to 100. Null for lights that only switch. */
+  brightness: number | null
+  /** Climate only: the room now and the set point, in HA's unit. */
+  temperature: number | null
+  target: number | null
+}
+
+/** What the Home page can ask Home Assistant to do. */
+export type HomeCommand = 'turn_on' | 'turn_off' | 'brightness' | 'temperature' | 'lock' | 'unlock' | 'open' | 'close' | 'activate'
+export interface HomeRequest { id: string; command: HomeCommand; value?: number }
+
 export interface Snapshot {
   generatedAt: string
   source: 'mock' | 'live'
@@ -70,6 +94,8 @@ export interface Snapshot {
   model: { name: string; loaded: boolean; vramGb: number; loadSeconds: number | null }
   /** null until the digest is set up (no token) or before its first read. */
   cloud: CloudDigest | null
+  /** null when Home Assistant isn't reachable or has no token. */
+  home: HomeDevice[] | null
 }
 
 export interface ActionResult { ok: boolean; message: string }
@@ -82,4 +108,6 @@ export interface DataSource {
   action(name: ActionName): Promise<ActionResult>
   /** Asks Jarvis. On success `message` is Jarvis's reply. */
   ask(text: string, caller?: { login?: string }): Promise<ActionResult>
+  /** Asks Home Assistant to change one device. */
+  home(request: HomeRequest): Promise<ActionResult>
 }
