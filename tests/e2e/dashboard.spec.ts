@@ -152,6 +152,10 @@ test('Shell shows the terminal frame, and says so when the shell is off', async 
   const frame = page.frameLocator('iframe[title="Terminal on jarvis"]')
   await expect(frame.getByText('The shell is off')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Open the terminal full screen' })).toHaveAttribute('href', './shell/')
+  // The terminal spans the page's full content width, as wide as the hero above it.
+  const frameWidth = await page.locator('iframe[title="Terminal on jarvis"]').evaluate((el) => el.getBoundingClientRect().width)
+  const heroWidth = await page.locator('.hero').evaluate((el) => el.getBoundingClientRect().width)
+  expect(frameWidth).toBeGreaterThan(heroWidth - 80)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
 })
