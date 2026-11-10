@@ -30,7 +30,7 @@ export function loadConfig(env = process.env) {
     // How long Ollama keeps Gemma after Load. "-1" = forever, which is how
     // jarvis normally runs it. A number is seconds; "30m" style also works.
     ollamaKeepAlive: env.OLLAMA_KEEP_ALIVE ?? '-1',
-    openWebUiUrl: env.OPEN_WEBUI_URL ?? 'https://jarvis.snakebird-ph.ts.net',
+    openWebUiUrl: env.OPEN_WEBUI_URL ?? 'https://jarvis.snakebird-ph.ts.net:8081',
     jarvisUrl: env.JARVIS_URL ?? 'https://jarvis.snakebird-ph.ts.net:8443',
     jarvisUnit: env.JARVIS_UNIT ?? 'jarvis',
     // Jarvis's own HTTP API (/health, /ask), which listens on this PC only.

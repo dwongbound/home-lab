@@ -139,7 +139,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         services: [
           { id: 'ha', name: 'Home Assistant', detail: '2026.10.2 in Docker', status: 'up', latencyMs: 14, url: 'http://192.168.68.94:8123' },
           { id: 'ollama', name: 'Ollama', detail: loaded ? 'Gemma 12B loaded' : 'No model loaded', status: loaded ? 'up' : 'idle', latencyMs: 3 },
-          { id: 'webui', name: 'Open WebUI', detail: 'Chat with Gemma', status: 'up', latencyMs: 41, url: 'https://jarvis.snakebird-ph.ts.net' },
+          { id: 'webui', name: 'Open WebUI', detail: 'Chat with Gemma', status: 'up', latencyMs: 41, url: 'https://jarvis.snakebird-ph.ts.net:8081' },
           { id: 'jarvis', name: 'Jarvis', detail: 'Running, code changed since start', status: 'degraded', latencyMs: 22, url: 'https://jarvis.snakebird-ph.ts.net:8443' },
         ],
         model: { name: 'Gemma 12B', loaded, vramGb: loaded ? 10.1 : 0, loadSeconds: 168 },

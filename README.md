@@ -216,7 +216,7 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `OLLAMA_MODEL` | `gemma4:12b` | The model the Gemma card loads and unloads. Check the exact name with `ollama list`. |
 | `OLLAMA_KEEP_ALIVE` | `-1` | How long Load keeps Gemma. `-1` = forever, a number = seconds, or `30m` style. |
 | `NVIDIA_SMI` | `/usr/lib/wsl/lib/nvidia-smi` | WSL's nvidia-smi, which isn't on PATH. |
-| `OPEN_WEBUI_URL` | `https://jarvis.snakebird-ph.ts.net` | Open WebUI, for its status and link. |
+| `OPEN_WEBUI_URL` | `https://jarvis.snakebird-ph.ts.net:8081` | Open WebUI, for its status and link. |
 | `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's address on the tailnet, for the link on its row. |
 | `JARVIS_API_URL` | `http://127.0.0.1:8765` | Jarvis's own API on the PC, for `/health` and Ask Jarvis. |
 | `JARVIS_UNIT` | `jarvis` | The systemd unit to ask about (skipped in Docker, which has no systemctl). |
@@ -286,26 +286,29 @@ By default the server only listens on `127.0.0.1`, which is the PC itself.
 The way to open it from other devices is `tailscale serve`, the same way
 Jarvis and Open WebUI are published. It works for both the Docker and the
 systemd setup, and it's what makes Ask Jarvis work, because it tells the
-page (and so Jarvis) who you are. From Ubuntu:
+page (and so Jarvis) who you are. The page has the PC's main address and
+Open WebUI moves to :8081. From Ubuntu:
 
 ```bash
-"/mnt/c/Program Files/Tailscale/tailscale.exe" serve --bg --https=8080 http://127.0.0.1:4180
+TS="/mnt/c/Program Files/Tailscale/tailscale.exe"
+"$TS" serve --bg --https=8081 http://127.0.0.1:3000   # Open WebUI
+"$TS" serve --bg --https=443 http://127.0.0.1:4180    # this page
 ```
 
-Then open `https://jarvis.snakebird-ph.ts.net:8080` on the phone or Mac
-with Tailscale on. `tailscale.exe serve status` lists what's published;
-`serve --https=8080 off` takes it down.
+Then open `https://jarvis.snakebird-ph.ts.net` on the phone or Mac with
+Tailscale on; Open WebUI is at `https://jarvis.snakebird-ph.ts.net:8081`.
+`"$TS" serve status` lists what's published.
 
 Two things that don't work on jarvis, so you don't have to find out:
 
 - **Publishing on the same port the page listens on.** WSL's mirrored
   networking shares ports between Ubuntu and Windows, and `serve --http=80`
   in front of a page on `127.0.0.1:80` never answered (connection refused).
-  Every service here uses two numbers (Open WebUI 3000 → 443, Jarvis
-  8765 → 8443); keep to that.
-- **Plain `http://jarvis.snakebird-ph.ts.net` on port 80.** Open WebUI
-  already answers `https://` on that name, and browsers try `https://`
-  first, so they land on Open WebUI. Use an `https://` port.
+  Every service here uses two numbers (this page 4180 → 443, Open WebUI
+  3000 → 8081, Jarvis 8765 → 8443); keep to that.
+- **Plain `http://jarvis.snakebird-ph.ts.net` on port 80.** Browsers try
+  `https://` first on that name, so they land on whatever is on 443. Use
+  `https://`.
 
 **Without `tailscale serve`**, for the page only (Ask Jarvis won't work):
 
