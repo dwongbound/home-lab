@@ -10,6 +10,7 @@ const PATHS = {
   memory: 'M3 6.5h14v7H3zM6 9h.01M9 9h.01M12 9h.01M6 13.5v2M10 13.5v2M14 13.5v2',
   gpu: 'M2.5 5.5h15v9h-15zM7 10a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM14.5 8v4',
   disk: 'M3.5 12h13l-2-7h-9zM3.5 12v3h13v-3M13.5 13.5h.01',
+  claude: 'M10 3v14M3 10h14M5 5l10 10M15 5 5 15',
   refresh: 'M15.5 8A6 6 0 0 0 4.6 6.5M4.5 3.5v3h3M4.5 12a6 6 0 0 0 10.9 1.5M15.5 16.5v-3h-3',
 } as const
 

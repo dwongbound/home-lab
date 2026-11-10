@@ -4,11 +4,12 @@ import { Icon, type IconName } from './Icon'
 // data source, refresh and avatar on the right. Navigation is plain links
 // to #hashes, so it works with the keyboard, back button and bookmarks.
 
-export type View = 'overview' | 'services' | 'schedule' | 'preferences'
+export type View = 'overview' | 'claude' | 'services' | 'schedule' | 'preferences'
 // Settings lives at #preferences: claude.ai reserves #settings, and the
 // preview page is hosted there.
 export const VIEWS: { id: View; label: string; icon: IconName }[] = [
   { id: 'overview', label: 'Overview', icon: 'home' },
+  { id: 'claude', label: 'Claude', icon: 'claude' },
   { id: 'services', label: 'Services', icon: 'services' },
   { id: 'schedule', label: 'Schedule', icon: 'schedule' },
   { id: 'preferences', label: 'Settings', icon: 'settings' },

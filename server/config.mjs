@@ -35,6 +35,12 @@ export function loadConfig(env = process.env) {
     jarvisUnit: env.JARVIS_UNIT ?? 'jarvis',
     // WSL puts nvidia-smi here, and it isn't on PATH by default.
     nvidiaSmi: env.NVIDIA_SMI ?? '/usr/lib/wsl/lib/nvidia-smi',
+    // The cloud digest (docs/digest.md): a private repo, a read-only token
+    // that can see only that repo, and where the file sits in it.
+    digestRepo: env.DIGEST_REPO ?? 'dwongbound/home-lab-digest',
+    digestBranch: env.DIGEST_BRANCH ?? 'main',
+    digestPath: env.DIGEST_PATH ?? 'digest.json',
+    digestToken: env.DIGEST_TOKEN ?? '',
     // Where WSL mounts the Windows C: drive.
     windowsDrive: env.WINDOWS_DRIVE ?? '/mnt/c',
   }

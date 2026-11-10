@@ -65,8 +65,9 @@ Four pages, picked from the pill bar at the top. Each is a plain link to a
 | Page | What it shows |
 | --- | --- |
 | **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The Gemma card. |
+| **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
 | **Services** (`#services`) | Every service with its status, response time and a link to open it, the Gemma card, and how to restart Jarvis (it needs your password, so the page can't). |
-| **Schedule** (`#schedule`) | All of today's runs next to recent activity. |
+| **Schedule** (`#schedule`) | Today's runs on jarvis next to your calendar for the day, then email that needs you and recent activity. Calendar and email come from the [cloud digest](#cloud-digest). |
 | **Settings** (`#preferences`) | The sky behind the page (follow the clock, or pin dawn, day, dusk or night; saved in that browser only) and where the data is coming from. |
 
 ### The Gemma button
@@ -171,6 +172,19 @@ minutes.
 4. Add a unit test for the source and, if it's interactive, an end-to-end
    test in `tests/e2e/`.
 
+## Cloud digest
+
+Claude project threads, today's calendar, email needing you, deploys and
+open PRs can't be read from the PC: they live in claude.ai and its
+connectors. A scheduled Claude task collects them hourly from 7 am to 11 pm
+into `digest.json` in a private repo, and the server reads it with a
+read-only token (cached 5 minutes, last good copy kept if GitHub is down).
+Each panel says how old the digest is.
+
+Setup, the file's shape and the task's prompt are in
+[docs/digest.md](docs/digest.md). Without `DIGEST_TOKEN` the panels say
+they aren't set up yet, and everything else works as before.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` (gitignored). The server loads it at startup
@@ -191,6 +205,10 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `OPEN_WEBUI_URL` | `https://jarvis.snakebird-ph.ts.net` | Open WebUI, for its status and link. |
 | `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's web port, for its status and link. |
 | `JARVIS_UNIT` | `jarvis` | The systemd unit to ask about. |
+| `DIGEST_REPO` | `dwongbound/home-lab-digest` | Private repo holding the cloud digest. |
+| `DIGEST_BRANCH` | `main` | Its branch. |
+| `DIGEST_PATH` | `digest.json` | The file in it. |
+| `DIGEST_TOKEN` | *(empty)* | Fine-grained GitHub token, **Contents: Read-only on that one repo**. **Secret.** Empty turns the cloud panels off. |
 | `WINDOWS_DRIVE` | `/mnt/c` | Where WSL mounts C:. |
 | `HOME_LAB_ENV_FILE` | `.env` | Which env file to load. |
 | `VITE_DATA` | *(unset)* | Build-time only. `static` builds the serverless preview (below). |

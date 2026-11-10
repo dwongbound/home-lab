@@ -10,6 +10,7 @@ import os from 'node:os'
 import { statfs } from 'node:fs/promises'
 import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
+import { createDigestReader } from './digest.mjs'
 
 const realExecFile = promisify(execFileCallback)
 const PROBE_TIMEOUT_MS = 2500
@@ -45,6 +46,7 @@ export function createLiveSource(config, deps = {}) {
   const fetchFn = deps.fetch ?? globalThis.fetch
   const execFile = deps.execFile ?? realExecFile
   const statfsFn = deps.statfs ?? statfs
+  const digest = createDigestReader(config, { fetch: fetchFn })
 
   // The sparklines need a little history. The server keeps the last 24
   // samples in memory; one sample is taken per snapshot request.
@@ -179,8 +181,9 @@ export function createLiveSource(config, deps = {}) {
         probeHttp(config.openWebUiUrl),
         probeHttp(config.jarvisUrl),
         readUnitState(),
+        digest.read(),
       ])
-      const [gpu, disk, ha, ollama, webui, jarvisHttp, unitResult] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, webui, jarvisHttp, unitResult, cloud] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -220,6 +223,7 @@ export function createLiveSource(config, deps = {}) {
           vramGb: model ? round1((model.size_vram ?? 0) / GB) : 0,
           loadSeconds: null,
         },
+        cloud,
       }
     },
 
