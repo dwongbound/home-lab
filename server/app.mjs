@@ -5,6 +5,7 @@
 //   POST /api/actions/ollama-load   load Gemma back (about 3 minutes)
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
+//   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
 //
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
@@ -109,6 +110,15 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
+  /** Asks Jarvis to rewrite the digest, as whoever opened the page. */
+  async function handleDigestRefresh(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, await source.refreshDigest({ login }))
+  }
+
   return async function api(req, res, next) {
     const { pathname } = new URL(req.url ?? '/', 'http://localhost')
     if (!pathname.startsWith('/api/')) {
@@ -129,6 +139,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/home/control') {
         return await handleControl(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/digest/refresh') {
+        return await handleDigestRefresh(req, res)
       }
       return sendJson(res, 404, { error: 'Not found' })
     } catch (err) {

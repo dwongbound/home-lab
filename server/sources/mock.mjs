@@ -116,9 +116,25 @@ function mockDigest(t, minutesAgo) {
 /**
  * Creates a mock source. `now` is injectable so tests can pin the clock.
  */
+// How long a pretend digest refresh takes.
+const MOCK_REFRESH_MS = 4000
+
+/** The digest, stamped with the last pretend refresh that has finished. */
+function withRefresh(digest, state) {
+  let done = state.digestDoneAt
+  if (state.digestReadyAt !== 0 && Date.now() >= state.digestReadyAt) done = state.digestReadyAt
+  if (done === 0) return digest
+  return { ...digest, updatedAt: new Date(done).toISOString() }
+}
+
 export function createMockSource({ now = () => new Date() } = {}) {
   const state = {
     modelLoaded: true,
+    // When a pretend digest refresh finishes (ms), so the page's
+    // "Updating from Jarvis…" can be seen and then clear.
+    digestReadyAt: 0,
+    // When the last finished one finished, so a new one doesn't hide it.
+    digestDoneAt: 0,
     // Sample devices for the Home page. Its buttons change these.
     home: [
       { id: 'light.living_room_lamp', name: 'Living room lamp', kind: 'light', state: 'on', available: true, brightness: 0.6 },
@@ -180,7 +196,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
           { id: 'jarvis', name: 'Jarvis', detail: 'Running, code changed since start', status: 'degraded', latencyMs: 22, url: 'https://jarvis.snakebird-ph.ts.net:8443' },
         ],
         model: { name: 'Gemma 12B', loaded, vramGb: loaded ? 10.1 : 0, loadSeconds: 168 },
-        cloud: mockDigest(t, minutesAgo),
+        cloud: withRefresh(mockDigest(t, minutesAgo), state),
         home: {
           devices: state.home.map((d) => ({ ...d })),
           weather: { condition: 'partlycloudy', temperature: 61, unit: '°F' },
@@ -217,6 +233,20 @@ export function createMockSource({ now = () => new Date() } = {}) {
       else if (command === 'volume') device.volume = value
       else if (command !== 'run') return { ok: false, message: `Can't ${command} that` }
       return { ok: true, message: 'Done' }
+    },
+
+    /**
+     * Pretends Jarvis rewrites the digest, taking a few seconds. An ask
+     * during a run pushes its end back, so every page that asks sees the
+     * "Updating" state (pages share this sample server in the tests).
+     */
+    async refreshDigest() {
+      const t = Date.now()
+      if (t >= state.digestReadyAt) state.digestDoneAt = state.digestReadyAt
+      state.digestReadyAt = t + MOCK_REFRESH_MS
+      let lastWrite = null
+      if (state.digestDoneAt !== 0) lastWrite = new Date(state.digestDoneAt).toISOString()
+      return { running: true, lastWrite }
     },
 
     /** Pretends to be Jarvis, so the Ask box works on sample data. */

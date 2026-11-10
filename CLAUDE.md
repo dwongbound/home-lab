@@ -22,7 +22,9 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
   (`ollama-unload`, `ollama-load`; needs header `x-home-lab: 1`; one at a time, 409 otherwise),
   `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`),
   `POST /api/home/control` (`{entity, command, value?}`, same header + Tailscale login; allowlist in
-  `server/sources/home.mjs`, which also reads devices/weather/sun into `snapshot.home`).
+  `server/sources/home.mjs`, which also reads devices/weather/sun into `snapshot.home`),
+  `POST /api/digest/refresh` (same header; asks Jarvis `/digest/refresh`; client hook `src/api/digestRefresh.tsx`).
+- **Today:** live `today` = Jarvis `GET /schedule/today`; Overview merges it with calendar + alerts in `src/lib/agenda.ts`.
 - **Shell:** `server/shell.mjs` proxies `/shell/` (HTTP + WebSocket upgrade, wired in `server/index.mjs`)
   to ttyd on 127.0.0.1:7681 (`deploy/ttyd.service`, tmux) only for `SHELL_USERS` Tailscale logins with a same-origin `Origin`.
 - **Sources:** `server/sources/mock.mjs` (default; Pacific-time schedule, remembers

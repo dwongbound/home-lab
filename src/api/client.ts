@@ -1,12 +1,12 @@
 // The page's only door to data. Components call useSnapshot(), runAction(),
-// askJarvis() and controlDevice(); nothing else in src/ knows where the
+// askJarvis(), controlDevice() and refreshDigest(); nothing else in src/ knows where the
 // numbers come from.
 //
 // Normally both go to the small Node server on the PC (server/app.mjs).
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, DataSource, HomeCommand, Snapshot } from '../types'
+import type { ActionName, ActionResult, DataSource, DigestRefresh, HomeCommand, Snapshot } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -109,5 +109,20 @@ export async function controlDevice(entity: string, command: HomeCommand, value?
     return await res.json()
   } catch {
     return { ok: false, message: `The server answered ${res.status}` }
+  }
+}
+
+/** Asks Jarvis to rewrite the digest now. Never throws: trouble reads as "not running". */
+export async function refreshDigest(): Promise<DigestRefresh> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.refreshDigest()
+  }
+  try {
+    const res = await fetch('/api/digest/refresh', { method: 'POST', headers: { 'x-home-lab': '1' } })
+    if (!res.ok) return { running: false, lastWrite: null }
+    return await res.json()
+  } catch {
+    return { running: false, lastWrite: null }
   }
 }

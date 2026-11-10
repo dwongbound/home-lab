@@ -166,7 +166,7 @@ opened at `http://127.0.0.1` it says so instead of answering.
   Home Assistant reports nothing changed (a device asleep or disconnected,
   like an Apple TV that has lost its connection), the tile says so instead
   of looking like it worked.
-- **Actions need a header.** `POST /api/actions/*`, `POST /api/jarvis/ask` and `POST /api/home/control` are refused without
+- **Actions need a header.** `POST /api/actions/*`, `POST /api/jarvis/ask`, `POST /api/home/control` and `POST /api/digest/refresh` are refused without
   `x-home-lab: 1`. A cross-site form can't set a custom header, so another
   web page can't trigger actions on the PC.
 
@@ -203,7 +203,9 @@ interface DataSource {
 | Jarvis | `GET $JARVIS_API_URL/health`, which says which brain Jarvis is using ("Thinking with claude"), plus `systemctl is-active jarvis` where there is a systemctl. Answering is "Running"; silent while systemd says active is "Needs attention"; anything else is "Not responding". In Docker there's no systemctl, so `/health` alone decides. |
 | Ask Jarvis | `POST $JARVIS_API_URL/ask` with `{"text": ...}` and the caller's `Tailscale-User-Login`, waiting up to 3 minutes. |
 | Unload / load Gemma | `POST $OLLAMA_URL/api/generate` with `keep_alive: 0` (unload now) or `OLLAMA_KEEP_ALIVE` (load; `-1`, the default, keeps it loaded forever, which is how jarvis runs Gemma). Ollama has no separate unload call. |
-| Requests chart, Today, Recent activity | **Not available yet.** Jarvis doesn't publish these, so the live source returns empty lists and the page shows its empty states. Adding a small `/stats` endpoint to Jarvis is the next step. |
+| Today (Jarvis's part) | `GET $JARVIS_API_URL/schedule/today`: Jarvis's reminders, nags and daily runs for today in Pacific time, past ones included and shown as done. An older Jarvis without it (404) just adds nothing. The Overview's Today merges these with today's calendar from the digest and any service that needs you (`src/lib/agenda.ts`). |
+| Fresh digest on open | `POST $JARVIS_API_URL/digest/refresh` with the caller's `Tailscale-User-Login`, sent when the page opens or comes back after 2 minutes away. Jarvis skips it if a run is going or its last write is recent. The page keeps showing the last digest, with "Updating from Jarvis…" on its panels, and checks every 5 seconds until the new one lands (giving up after 3 minutes). |
+| Requests chart, Recent activity | **Not available yet.** Jarvis doesn't publish these, so the live source returns empty lists and the page shows its empty states. |
 
 Sparkline history is kept in the server's memory (the last 24 samples, one
 per snapshot), so it starts empty after a restart and fills in over a few
@@ -219,6 +221,11 @@ minutes.
    test in `tests/e2e/`.
 
 ## Cloud digest
+
+On jarvis, Jarvis's `home_lab_digest` job writes the digest locally
+(`DIGEST_FILE`, mounted by `docker-compose.yml`) every 15 minutes, and
+again whenever the page is opened (see "Fresh digest on open" above). The
+GitHub route below is the alternative for a PC without Jarvis.
 
 Claude project threads, today's calendar, email needing you, deploys and
 open PRs can't be read from the PC: they live in claude.ai and its

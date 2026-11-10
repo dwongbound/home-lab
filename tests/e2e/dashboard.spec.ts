@@ -19,6 +19,25 @@ test('overview shows the PC at a glance', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Unload Gemma' })).toHaveCount(0)
 })
 
+test("Today on the overview combines alerts, the calendar and Jarvis's day", async ({ page }) => {
+  await page.goto('/')
+  const today = page.locator('.timeline')
+  // The sample Jarvis is degraded, so an alert leads the list, whatever the time.
+  await expect(today.locator('.timeline__item').first()).toContainText('Jarvis: Running, code changed since start')
+  await expect(today.locator('.timeline__item').first()).toContainText('Alert')
+})
+
+test('opening the page asks Jarvis for a fresh digest, showing the last one meanwhile', async ({ page }) => {
+  await page.goto('/#schedule')
+  const calendar = page.locator('section', { has: page.getByRole('heading', { name: 'Calendar' }) })
+  await expect(calendar.getByText('Updating from Jarvis…')).toBeVisible()
+  // The last digest stays on screen while Jarvis works.
+  await expect(calendar.getByText('Flight block N8318B')).toBeVisible()
+  // The sample refresh takes 4 s; the page looks every 5 s.
+  await expect(calendar.getByText('Updating from Jarvis…')).toHaveCount(0, { timeout: 15_000 })
+  await expect(calendar.getByText('Updated just now')).toBeVisible()
+})
+
 test('Schedule has the requests chart; Services has every service and the Gemma card', async ({ page }) => {
   await page.goto('/#schedule')
   await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toBeVisible()

@@ -13,7 +13,7 @@ export function Schedule({ data, now }: { data: Snapshot; now: Date }) {
     <>
       <section className="hero hero--small"><h1 className="hero__title">Schedule</h1></section>
       <div className="grid grid--split">
-        <Timeline items={data.today} now={now} />
+        <Timeline items={data.today} now={now} title="Jarvis today" />
         <CalendarPanel cloud={data.cloud} now={now} />
       </div>
       <div className="grid grid--split">

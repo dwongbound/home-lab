@@ -14,15 +14,25 @@ interface Fakes {
   haStatusCode?: number
   unitState?: string
   gpuFails?: boolean
+  /** Jarvis's GET /schedule/today answer; undefined = an older Jarvis that 404s. */
+  schedule?: unknown
 }
 
 /** A live source whose fetch/execFile/statfs answer as described. */
-function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 200, haStatusCode = 200, unitState = 'active', gpuFails = false }: Fakes) {
+function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 200, haStatusCode = 200, unitState = 'active', gpuFails = false, schedule }: Fakes) {
   const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
     if (url.endsWith('/api/ps')) return new Response(JSON.stringify({ models: ollamaModels }))
     if (url === `${config.jarvisApiUrl}/health`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return new Response(JSON.stringify({ ok: true, brain: 'claude' }), { status: jarvisStatusCode })
+    }
+    if (url === `${config.jarvisApiUrl}/schedule/today`) {
+      if (schedule === undefined) return new Response('not found', { status: 404 })
+      return Response.json(schedule)
+    }
+    if (url === `${config.jarvisApiUrl}/digest/refresh`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      return Response.json({ running: true, lastWrite: '2026-11-10T09:16:11Z' }, { status: jarvisStatusCode })
     }
     if (url === `${config.jarvisApiUrl}/ask`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
@@ -52,6 +62,25 @@ function service(snap: any, id: string) {
 }
 
 describe('live snapshot', () => {
+  it("puts Jarvis's reminders for today on the timeline, past ones done", async () => {
+    const past = new Date(Date.now() - 3600_000).toISOString()
+    const later = new Date(Date.now() + 3600_000).toISOString()
+    const schedule = { items: [
+      { id: 'r1', kind: 'reminder', text: 'Call Noah about guitar', at: later },
+      { id: 'p1', kind: 'pickups', text: 'Fantasy pickups', at: past },
+      { id: 'bad', kind: 'reminder', text: 'No time', at: 'soon' },
+    ] }
+    const snap = await liveWith({ schedule }).source.snapshot()
+    expect(snap.today).toEqual([
+      { id: 'jarvis-r1', at: later, title: 'Call Noah about guitar', detail: 'Jarvis reminder', status: 'scheduled' },
+      { id: 'jarvis-p1', at: past, title: 'Fantasy pickups', detail: 'Jarvis: fantasy pickups', status: 'done' },
+    ])
+  })
+
+  it('has an empty timeline when Jarvis has no schedule endpoint yet', async () => {
+    expect((await liveWith({}).source.snapshot()).today).toEqual([])
+  })
+
   it('reads GPU and disk', async () => {
     const snap = await liveWith({}).source.snapshot()
     const gpu = snap.metrics.find((m: { id: string }) => m.id === 'gpu')!
@@ -158,5 +187,22 @@ describe('parseKeepAlive', () => {
     expect(parseKeepAlive('-1')).toBe(-1)
     expect(parseKeepAlive('3600')).toBe(3600)
     expect(parseKeepAlive('30m')).toBe('30m')
+  })
+})
+
+describe('digest refresh', () => {
+  it("asks Jarvis as the caller and passes on whether it's running", async () => {
+    const { source, fetch } = liveWith({})
+    expect(await source.refreshDigest({ login: 'dylan@example.com' })).toEqual({ running: true, lastWrite: '2026-11-10T09:16:11Z' })
+    const [, init] = fetch.mock.calls.find(([url]) => url.endsWith('/digest/refresh'))!
+    expect(init!.method).toBe('POST')
+    expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
+  })
+
+  it('reads as not running without a login, when Jarvis is down, or on an older Jarvis', async () => {
+    const idle = { running: false, lastWrite: null }
+    expect(await liveWith({}).source.refreshDigest({})).toEqual(idle)
+    expect(await liveWith({ jarvisAnswers: false }).source.refreshDigest({ login: 'd' })).toEqual(idle)
+    expect(await liveWith({ jarvisStatusCode: 404 }).source.refreshDigest({ login: 'd' })).toEqual(idle)
   })
 })

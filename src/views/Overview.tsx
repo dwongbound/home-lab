@@ -4,10 +4,12 @@ import { StatCard } from '../components/StatCard'
 import { Timeline } from '../components/Timeline'
 import { JarvisPanel } from '../components/JarvisPanel'
 import { ClaudeThreadsPanel } from '../components/CloudPanels'
+import { todayAgenda } from '../lib/agenda'
+import { useDigestRefreshing } from '../api/digestRefresh'
 
 // The home view, kept to a glance: the greeting with what needs you, the
-// Ask Jarvis box, the four stat cards, and what's next today next to the
-// Claude threads. Everything else has its own page: the requests chart,
+// Ask Jarvis box, the four stat cards, and what's left today (calendar,
+// Jarvis's reminders and jobs, alerts) next to the Claude threads. Everything else has its own page: the requests chart,
 // calendar and activity on Schedule; services and Gemma on Services.
 
 /** Claude threads waiting on Dylan, from the cloud digest (0 without one). */
@@ -43,6 +45,9 @@ function AttentionLine({ count, toClaude }: { count: number; toClaude: boolean }
 /** The overview page. */
 export function Overview({ data, now }: { data: Snapshot; now: Date }) {
   const needs = attentionCount(data)
+  // The calendar half of Today comes from Jarvis's digest, so say when it's being refreshed.
+  let note: string | undefined
+  if (useDigestRefreshing()) note = 'Updating from Jarvis…'
   return (
     <>
       <section className="hero">
@@ -60,7 +65,7 @@ export function Overview({ data, now }: { data: Snapshot; now: Date }) {
       </div>
 
       <div className="grid grid--split">
-        <Timeline items={data.today} now={now} limit={3} />
+        <Timeline items={todayAgenda(data, now)} now={now} limit={5} upcoming presorted empty="Nothing else today." note={note} />
         <ClaudeThreadsPanel cloud={data.cloud} now={now} compact />
       </div>
     </>

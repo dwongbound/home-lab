@@ -95,3 +95,15 @@ describe('secrets', () => {
     expect(res.body).not.toContain(token)
   })
 })
+
+describe('POST /api/digest/refresh', () => {
+  it('needs the page header, and asks Jarvis as the caller', async () => {
+    let seen: unknown = null
+    const source = { ...createMockSource(), refreshDigest: async (caller: unknown) => { seen = caller; return { running: true, lastWrite: null } } }
+    const api = createApi(source)
+    expect((await callApi(api, 'POST', '/api/digest/refresh')).statusCode).toBe(403)
+    const res = await callApi(api, 'POST', '/api/digest/refresh', { ...ACTION_HEADER, 'tailscale-user-login': 'dylan@example.com' })
+    expect(res.json()).toEqual({ running: true, lastWrite: null })
+    expect(seen).toEqual({ login: 'dylan@example.com' })
+  })
+})

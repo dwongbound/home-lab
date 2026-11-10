@@ -45,6 +45,15 @@ function valueOrNull(result) {
  * Creates the live source.
  * `deps` lets tests swap in fake `fetch`, `execFile` and `statfs`.
  */
+/** A Jarvis schedule kind ("reminder", "pickups"...) as a short label for the page. */
+export function jarvisKindLabel(kind) {
+  if (kind === 'reminder') return 'Jarvis reminder'
+  if (kind === 'pickups') return 'Jarvis: fantasy pickups'
+  if (kind === 'marketplace') return 'Jarvis: Marketplace scan'
+  if (kind === 'nag') return 'Jarvis: nagging until done'
+  return 'Jarvis'
+}
+
 export function createLiveSource(config, deps = {}) {
   const fetchFn = deps.fetch ?? globalThis.fetch
   const execFile = deps.execFile ?? realExecFile
@@ -182,6 +191,28 @@ export function createLiveSource(config, deps = {}) {
     return 'idle'
   }
 
+  /**
+   * Jarvis's reminders and jobs for today (GET /schedule/today on its local
+   * API), as timeline items. Anything already past or fired is done.
+   * An older Jarvis without that endpoint answers 404: no items, no error.
+   */
+  async function readJarvisSchedule() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/schedule/today`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return []
+    const body = await res.json()
+    const items = Array.isArray(body?.items) ? body.items : []
+    const now = Date.now()
+    const today = []
+    for (const it of items) {
+      const at = Date.parse(it?.at)
+      if (Number.isNaN(at) || typeof it.text !== 'string') continue
+      let status = 'scheduled'
+      if (it.done === true || at < now) status = 'done'
+      today.push({ id: `jarvis-${it.id ?? at}`, at: new Date(at).toISOString(), title: it.text, detail: jarvisKindLabel(it.kind), status })
+    }
+    return today
+  }
+
   const haHeaders = {}
   if (config.haToken) haHeaders.Authorization = `Bearer ${config.haToken}`
 
@@ -200,8 +231,9 @@ export function createLiveSource(config, deps = {}) {
         readUnitState(),
         digest.read(),
         home.read(),
+        readJarvisSchedule(),
       ])
-      const [gpu, disk, ha, ollama, webui, jarvisHttp, unitResult, cloud, homeState] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, webui, jarvisHttp, unitResult, cloud, homeState, jarvisToday] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -225,10 +257,10 @@ export function createLiveSource(config, deps = {}) {
           { id: 'cpu', label: 'Processor', value: Math.round(cpu), unit: '%', total: 100, history: [...history.cpu] },
           { id: 'disk', label: 'Free on C:', value: disk && Math.round(disk.freeGb), unit: 'GB', total: disk && Math.round(disk.totalGb), history: [...history.disk] },
         ],
-        // Jarvis doesn't publish request counts, its schedule or an activity
-        // log yet. Empty lists make the page show its empty states.
+        // Jarvis doesn't publish request counts or an activity log yet.
+        // Empty lists make the page show its empty states.
         requests: [],
-        today: [],
+        today: jarvisToday ?? [],
         activity: [],
         services: [
           { id: 'ha', name: 'Home Assistant', detail: haDetail(ha), status: haStatus(ha), latencyMs: ha?.ms, url: config.haUrl },
@@ -304,6 +336,31 @@ export function createLiveSource(config, deps = {}) {
       if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
       const body = await res.json().catch(() => ({}))
       return { ok: true, message: String(body.reply ?? '') }
+    },
+
+    /**
+     * Asks Jarvis to rewrite the digest now (POST /digest/refresh). Jarvis
+     * skips it when a run is going or the last write is under 2 minutes
+     * old, and answers at once; the page keeps showing the last digest
+     * meanwhile. Anything but a clear answer counts as "not running".
+     */
+    async refreshDigest(caller = {}) {
+      const idle = { running: false, lastWrite: null }
+      if (!caller.login) return idle
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/digest/refresh`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return idle
+        const body = await res.json()
+        let lastWrite = null
+        if (typeof body?.lastWrite === 'string') lastWrite = body.lastWrite
+        return { running: body?.running === true, lastWrite }
+      } catch {
+        return idle
+      }
     },
   }
 }
