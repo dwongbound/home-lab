@@ -17,12 +17,12 @@ const STATES = [
 ]
 
 /** A reader whose fetch answers /api/states with STATES and records service calls. */
-function readerWith() {
+function readerWith(changed: unknown[] = [{ entity_id: 'x' }]) {
   const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
     if (url.endsWith('/api/states')) return Response.json(STATES)
     // Home Assistant's template answer: the speaker's own settings switch.
     if (url.endsWith('/api/template')) return new Response('["switch.speaker_loudness"]')
-    return Response.json([])
+    return Response.json(changed)
   })
   return { reader: createHomeReader(config, { fetch }), fetch }
 }
@@ -63,6 +63,16 @@ describe('home reader', () => {
     expect((await reader.act('light.lamp; rm', 'toggle')).ok).toBe(false)
     expect((await reader.act('light.lamp', 'brightness', 7)).ok).toBe(false)
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it("says so when on/off went through but the device didn't change", async () => {
+    const asleep = readerWith([])
+    const result = await asleep.reader.act('media_player.tv', 'power', undefined, 'off')
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/didn’t respond/)
+    // Volume it already has changes nothing either, and that's not a failure.
+    expect((await asleep.reader.act('media_player.tv', 'volume', 0.3)).ok).toBe(true)
+    expect((await readerWith().reader.act('light.lamp', 'toggle')).ok).toBe(true)
   })
 
   it('leaves out anything that is not a device', () => {
