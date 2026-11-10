@@ -33,6 +33,8 @@ export function loadConfig(env = process.env) {
     openWebUiUrl: env.OPEN_WEBUI_URL ?? 'https://jarvis.snakebird-ph.ts.net',
     jarvisUrl: env.JARVIS_URL ?? 'https://jarvis.snakebird-ph.ts.net:8443',
     jarvisUnit: env.JARVIS_UNIT ?? 'jarvis',
+    // Jarvis's own HTTP API (/health, /ask), which listens on this PC only.
+    jarvisApiUrl: env.JARVIS_API_URL ?? 'http://127.0.0.1:8765',
     // WSL puts nvidia-smi here, and it isn't on PATH by default.
     nvidiaSmi: env.NVIDIA_SMI ?? '/usr/lib/wsl/lib/nvidia-smi',
     // The cloud digest (docs/digest.md): a private repo, a read-only token

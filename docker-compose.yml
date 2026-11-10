@@ -1,0 +1,29 @@
+# The page on jarvis, on port 80: `docker compose up -d --build`.
+#
+# Host networking, so 127.0.0.1 inside the container is the PC itself and
+# Ollama, Jarvis (127.0.0.1:8765) and Home Assistant answer at the same
+# addresses as outside it. It listens on 127.0.0.1:80 only; `tailscale
+# serve` on Windows is what puts it on your phone and Mac (README,
+# "Reaching it"). Never set HOST=0.0.0.0 here: the page passes on the
+# Tailscale login header to Jarvis, so it must only hear from Tailscale.
+services:
+  home-lab:
+    build: .
+    container_name: home-lab
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      DATA_SOURCE: live
+      HOST: 127.0.0.1
+      PORT: "80"
+      # nvidia-smi finds the driver's libnvidia-ml.so here, as it does in WSL.
+      LD_LIBRARY_PATH: /usr/lib/wsl/lib
+    volumes:
+      # Free space on C:, read-only.
+      - /mnt/c:/mnt/c:ro
+      # WSL's nvidia-smi and the driver libraries it needs, read-only.
+      - /usr/lib/wsl:/usr/lib/wsl:ro
+    devices:
+      # The GPU as WSL exposes it, so nvidia-smi can read memory use.
+      - /dev/dxg

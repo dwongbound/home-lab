@@ -64,7 +64,7 @@ Four pages, picked from the pill bar at the top. Each is a plain link to a
 
 | Page | What it shows |
 | --- | --- |
-| **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The Gemma card. |
+| **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. **Ask Jarvis**, a box for talking to Jarvis (below). A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The Gemma card. |
 | **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
 | **Services** (`#services`) | Every service with its status, response time and a link to open it, the Gemma card, and how to restart Jarvis (it needs your password, so the page can't). |
 | **Schedule** (`#schedule`) | Today's runs on jarvis next to your calendar for the day, then email that needs you and recent activity. Calendar and email come from the [cloud digest](#cloud-digest). |
@@ -79,6 +79,19 @@ what's happening. When it's done the dialog closes and a toast says
 "Gemma unloaded". **Load Gemma** brings it back (about 3 minutes).
 
 Only one action runs at a time: the server answers `409` to a second one.
+
+### Ask Jarvis
+
+Type a question and Jarvis answers in the panel, through the same `/ask`
+endpoint the Siri Shortcut uses, so it has the same memory, tools and
+Home Assistant access. The page keeps that visit's questions and answers
+until you reload; Jarvis keeps its own memory.
+
+The page holds no Jarvis password. Jarvis decides who may ask: the server
+passes on the `Tailscale-User-Login` header that `tailscale serve` adds,
+and Jarvis checks it against `JARVIS_TAILSCALE_USERS`. So Ask Jarvis only
+works when the page is opened through Tailscale (see [Reaching it](#reaching-it-from-your-phone-or-mac));
+opened at `http://127.0.0.1` it says so instead of answering.
 
 ### States every page handles
 
@@ -107,7 +120,7 @@ Only one action runs at a time: the server answers `409` to a second one.
                                                                              │  2.5 s timeout each)
                      nvidia-smi · statfs /mnt/c · os.* · systemctl is-active jarvis
                      Home Assistant /api/ (with the token) · Ollama /api/ps
-                     Open WebUI · Jarvis :8443
+                     Open WebUI · Jarvis 127.0.0.1:8765/health
 ```
 
 - **One call per refresh.** Everything the page shows comes back from
@@ -121,7 +134,7 @@ Only one action runs at a time: the server answers `409` to a second one.
 - **Secrets stay on the server.** The Home Assistant token is read from
   the environment by `server/config.mjs`, sent only to Home Assistant, and
   never included in a response. A unit test checks this.
-- **Actions need a header.** `POST /api/actions/*` is refused without
+- **Actions need a header.** `POST /api/actions/*` and `POST /api/jarvis/ask` are refused without
   `x-home-lab: 1`. A cross-site form can't set a custom header, so another
   web page can't trigger actions on the PC.
 
@@ -155,7 +168,8 @@ interface DataSource {
 | Home Assistant | `GET $HA_URL/api/` with `Authorization: Bearer $HA_TOKEN`. A 401 shows as "Needs attention. Token rejected". |
 | Ollama and Gemma | `GET $OLLAMA_URL/api/ps` (which models are in memory) |
 | Open WebUI | `GET $OPEN_WEBUI_URL`. Any answer below 500 counts as up. |
-| Jarvis | `systemctl is-active jarvis` plus `GET $JARVIS_URL` (Jarvis answers 404 at `/`, which counts as answering). Active and answering is "Running"; active but silent is "Needs attention"; anything else is "Not responding". |
+| Jarvis | `GET $JARVIS_API_URL/health`, which says which brain Jarvis is using ("Thinking with claude"), plus `systemctl is-active jarvis` where there is a systemctl. Answering is "Running"; silent while systemd says active is "Needs attention"; anything else is "Not responding". In Docker there's no systemctl, so `/health` alone decides. |
+| Ask Jarvis | `POST $JARVIS_API_URL/ask` with `{"text": ...}` and the caller's `Tailscale-User-Login`, waiting up to 3 minutes. |
 | Unload / load Gemma | `POST $OLLAMA_URL/api/generate` with `keep_alive: 0` (unload now) or `OLLAMA_KEEP_ALIVE` (load; `-1`, the default, keeps it loaded forever, which is how jarvis runs Gemma). Ollama has no separate unload call. |
 | Requests chart, Today, Recent activity | **Not available yet.** Jarvis doesn't publish these, so the live source returns empty lists and the page shows its empty states. Adding a small `/stats` endpoint to Jarvis is the next step. |
 
@@ -203,8 +217,9 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `OLLAMA_KEEP_ALIVE` | `-1` | How long Load keeps Gemma. `-1` = forever, a number = seconds, or `30m` style. |
 | `NVIDIA_SMI` | `/usr/lib/wsl/lib/nvidia-smi` | WSL's nvidia-smi, which isn't on PATH. |
 | `OPEN_WEBUI_URL` | `https://jarvis.snakebird-ph.ts.net` | Open WebUI, for its status and link. |
-| `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's web port, for its status and link. |
-| `JARVIS_UNIT` | `jarvis` | The systemd unit to ask about. |
+| `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's address on the tailnet, for the link on its row. |
+| `JARVIS_API_URL` | `http://127.0.0.1:8765` | Jarvis's own API on the PC, for `/health` and Ask Jarvis. |
+| `JARVIS_UNIT` | `jarvis` | The systemd unit to ask about (skipped in Docker, which has no systemctl). |
 | `DIGEST_REPO` | `dwongbound/home-lab-digest` | Private repo holding the cloud digest. |
 | `DIGEST_BRANCH` | `main` | Its branch. |
 | `DIGEST_PATH` | `digest.json` | The file in it. |
@@ -241,6 +256,25 @@ sudo systemctl enable --now home-lab
 systemctl status home-lab
 ```
 
+### In Docker, on port 80
+
+The other way to run it, with nothing installed on Ubuntu but Docker
+(which jarvis already has for Home Assistant and Open WebUI):
+
+```bash
+cd ~/home-lab
+cp .env.example .env        # then edit .env (see "Going live")
+docker compose up -d --build
+curl -s http://127.0.0.1/api/snapshot | head -c 300
+```
+
+`docker-compose.yml` sets `DATA_SOURCE=live`, `HOST=127.0.0.1` and
+`PORT=80`, whatever `.env` says. It uses host networking, so Ollama, Jarvis
+and Home Assistant answer at the same addresses as outside the container,
+and mounts `/mnt/c` and WSL's `nvidia-smi` read-only for the disk and GPU
+cards. `restart: unless-stopped` brings it back after a reboot, once
+Docker is up. **Updating:** `git pull && docker compose up -d --build`.
+
 The unit caps the process at 200 MB (`MemoryMax`), since Gemma needs the
 RAM more. It typically uses well under 100 MB.
 
@@ -249,7 +283,24 @@ RAM more. It typically uses well under 100 MB.
 ## Reaching it from your phone or Mac
 
 By default the server only listens on `127.0.0.1`, which is the PC itself.
-To open it from other devices on the tailnet:
+The way to open it from other devices is `tailscale serve`, the same way
+Jarvis and Open WebUI are published. It works for both the Docker and the
+systemd setup, and it's what makes Ask Jarvis work, because it tells the
+page (and so Jarvis) who you are. From Ubuntu, with the Docker setup on
+port 80:
+
+```bash
+"/mnt/c/Program Files/Tailscale/tailscale.exe" serve --bg --http=80 http://127.0.0.1:80
+```
+
+Then open `http://jarvis.snakebird-ph.ts.net` on the phone or Mac with
+Tailscale on. (Plain `http` is fine here: Tailscale encrypts the traffic
+between your devices. For the systemd setup on 4180, use
+`--https=4180 http://127.0.0.1:4180` and `https://jarvis.snakebird-ph.ts.net:4180`.)
+`tailscale.exe serve status` lists what's published; `serve --http=80 off`
+takes it down.
+
+**Without `tailscale serve`**, for the page only (Ask Jarvis won't work):
 
 1. Set `HOST=0.0.0.0` in `.env` and restart the service.
 2. WSL uses **mirrored networking**, so Windows' Hyper-V firewall has to
@@ -263,7 +314,9 @@ To open it from other devices on the tailnet:
    Tailscale on.
 
 There's no login on the page. It relies on Tailscale for who can reach it,
-the same way Open WebUI does. Don't expose port 4180 to the internet.
+the same way Open WebUI does. Don't expose it to the internet, and with
+Ask Jarvis don't use `HOST=0.0.0.0` either: anyone on the home network
+could then send a made-up Tailscale login header and talk to Jarvis.
 
 ## Going live
 
@@ -272,7 +325,8 @@ the same way Open WebUI does. Don't expose port 4180 to the internet.
    in `.env` as `HA_TOKEN=`. (Or point `HOME_LAB_ENV_FILE` at a file that
    already holds it.)
 2. Check the model name with `ollama list` and set `OLLAMA_MODEL` to match.
-3. Set `DATA_SOURCE=live` and restart: `sudo systemctl restart home-lab`.
+3. Set `DATA_SOURCE=live` and restart: `sudo systemctl restart home-lab`
+   (Docker sets it for you; `docker compose up -d` again picks up `.env` changes).
 4. Open the page. "Sample data" disappears from the top bar, and Settings →
    Data says "Reading live from jarvis".
 5. If a card says "Not reporting" or a service "Not responding", run the
@@ -405,6 +459,7 @@ tests/
   unit/                Vitest
   e2e/                 Playwright (desktop + phone)
 deploy/home-lab.service  systemd unit for jarvis
+Dockerfile, docker-compose.yml  the Docker setup on port 80
 ```
 
 ## Working on it

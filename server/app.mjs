@@ -3,6 +3,7 @@
 //   GET  /api/snapshot              everything the page shows, in one call
 //   POST /api/actions/ollama-unload free Gemma's ~10 GB of GPU memory
 //   POST /api/actions/ollama-load   load Gemma back (about 3 minutes)
+//   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
 //
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
@@ -11,6 +12,7 @@ import { createLiveSource } from './sources/live.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
+const MAX_BODY_BYTES = 8 * 1024
 
 /** Picks the data source from config: "live" reads the PC, anything else is mock. */
 export function createSource(config) {
@@ -24,6 +26,20 @@ function sendJson(res, status, body) {
   res.setHeader('content-type', 'application/json')
   res.setHeader('cache-control', 'no-store')
   res.end(JSON.stringify(body))
+}
+
+/** Reads a small JSON request body, or null when it's missing, too big or not JSON. */
+async function readJson(req) {
+  let raw = ''
+  for await (const chunk of req) {
+    raw += chunk
+    if (raw.length > MAX_BODY_BYTES) return null
+  }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -58,6 +74,26 @@ export function createApi(source) {
     }
   }
 
+  /**
+   * Passes a question to Jarvis. Jarvis decides who may ask: the server
+   * forwards the Tailscale-User-Login header that `tailscale serve` adds,
+   * and Jarvis checks it against its own allow list, so the page holds no
+   * Jarvis password.
+   */
+  async function handleAsk(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    const text = typeof body?.text === 'string' ? body.text.trim() : ''
+    if (!text) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"text": "..."}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.ask(text, { login })
+    return sendJson(res, result.ok ? 200 : 502, result)
+  }
+
   return async function api(req, res, next) {
     const { pathname } = new URL(req.url ?? '/', 'http://localhost')
     if (!pathname.startsWith('/api/')) {
@@ -72,6 +108,9 @@ export function createApi(source) {
       const actionMatch = pathname.match(ACTION_PATH)
       if (req.method === 'POST' && actionMatch) {
         return await handleAction(req, res, actionMatch[1])
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/ask') {
+        return await handleAsk(req, res)
       }
       return sendJson(res, 404, { error: 'Not found' })
     } catch (err) {

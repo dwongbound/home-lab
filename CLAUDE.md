@@ -19,7 +19,8 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 ## Where things are
 
 - **API:** `server/app.mjs` — `GET /api/snapshot`, `POST /api/actions/:name`
-  (`ollama-unload`, `ollama-load`; needs header `x-home-lab: 1`; one at a time, 409 otherwise).
+  (`ollama-unload`, `ollama-load`; needs header `x-home-lab: 1`; one at a time, 409 otherwise),
+  `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`).
 - **Sources:** `server/sources/mock.mjs` (default; Pacific-time schedule, remembers
   Gemma loaded/unloaded), `server/sources/live.mjs` (parallel probes, 2.5 s timeouts).
   Picked by `DATA_SOURCE` in `server/app.mjs createSource`.
@@ -34,14 +35,15 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,
-  `Spinner`, `Backdrop`, `Icon`.
+  `JarvisPanel` (Ask Jarvis), `Spinner`, `Backdrop`, `Icon`.
 - **Helpers:** `src/lib/format.ts`, `sky.ts` (phase by hour), `sparkline.ts`,
   `prefs.ts` (localStorage key `home-lab:v1:sky`, guarded).
 - **Styles:** `src/styles.css` — tokens in `:root`, sky phases on `.backdrop[data-phase]`,
   ALL animation inside `@media (prefers-reduced-motion: no-preference)` (tested).
 - **Tests:** `tests/unit/*` (Vitest), `tests/e2e/dashboard.spec.ts` (Playwright).
   `tests/unit/helpers.ts callApi` drives the handler without a port.
-- **Deploy:** `deploy/home-lab.service` (systemd on jarvis), CI in `.github/workflows/ci.yml`
+- **Deploy:** `deploy/home-lab.service` (systemd on jarvis) or `Dockerfile` +
+  `docker-compose.yml` (host network, 127.0.0.1:80, published by `tailscale serve`), CI in `.github/workflows/ci.yml`
   (its `merge` job rebase-merges a passing non-draft PR into `dev`, then it and
   `promote` fast-forward `main` to `dev`).
 

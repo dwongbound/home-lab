@@ -1,5 +1,5 @@
 // The page in jsdom with fetch faked: the blocking spinner on first load,
-// the overview, the error state, and the Unload Gemma flow.
+// the overview, the error state, the Unload Gemma flow and Ask Jarvis.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -24,6 +24,9 @@ function fakeServer(options: { actionGate?: Promise<void> } = {}) {
     if (url.startsWith('/api/actions/') && init?.method === 'POST') {
       if (options.actionGate) await options.actionGate
       return Response.json(await source.action(url.split('/').pop()))
+    }
+    if (url === '/api/jarvis/ask' && init?.method === 'POST') {
+      return Response.json(await source.ask(JSON.parse(String(init.body)).text))
     }
     return new Response('not found', { status: 404 })
   })
@@ -85,6 +88,24 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Close', hidden: true }))
     expect(screen.queryByRole('dialog', { hidden: true })).not.toBeInTheDocument()
     expect(fetch.mock.calls.some((c) => String(c[0]).startsWith('/api/actions/'))).toBe(false)
+  })
+
+  it('asks Jarvis and shows the question and the answer', async () => {
+    const fetch = fakeServer()
+    vi.stubGlobal('fetch', fetch)
+    const user = userEvent.setup()
+    renderApp()
+
+    const input = await screen.findByRole('textbox', { name: 'Question for Jarvis' })
+    expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled()
+    await user.type(input, 'Is the porch light on?')
+    await user.click(screen.getByRole('button', { name: 'Ask' }))
+
+    expect(await screen.findByText('Sample data: on the PC, Jarvis would answer "Is the porch light on?" here.', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByText('Is the porch light on?')).toBeInTheDocument()
+    expect(input).toHaveValue('')
+    const [, init] = fetch.mock.calls.find((c) => c[0] === '/api/jarvis/ask')!
+    expect((init!.headers as Record<string, string>)['x-home-lab']).toBe('1')
   })
 
   it('switches pages from the hash', async () => {

@@ -13,6 +13,7 @@ export function callApi(
   method: string,
   url: string,
   headers: Record<string, string> = {},
+  body = '',
 ): Promise<FakeResponse> {
   return new Promise((resolve) => {
     const res = {
@@ -25,6 +26,8 @@ export function callApi(
         resolve({ statusCode: this.statusCode, headers: this.headers, body: this.body, json: () => JSON.parse(this.body) })
       },
     }
-    void handler({ method, url, headers }, res)
+    // The request is an async iterable of body chunks, like Node's.
+    const req = { method, url, headers, async *[Symbol.asyncIterator]() { if (body) yield body } }
+    void handler(req, res)
   })
 }

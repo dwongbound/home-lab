@@ -1,5 +1,5 @@
-// The page's only door to data. Components call useSnapshot() and
-// runAction(); nothing else in src/ knows where the numbers come from.
+// The page's only door to data. Components call useSnapshot(), runAction()
+// and askJarvis(); nothing else in src/ knows where the numbers come from.
 //
 // Normally both go to the small Node server on the PC (server/app.mjs).
 // A build made with VITE_DATA=static has no server (that's the shareable
@@ -73,4 +73,22 @@ export async function runAction(name: ActionName): Promise<ActionResult> {
     }
   }
   return result
+}
+
+/** Asks Jarvis a question. On success `message` is the reply. */
+export async function askJarvis(text: string): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.ask(text)
+  }
+  const res = await fetch('/api/jarvis/ask', {
+    method: 'POST',
+    headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  try {
+    return await res.json()
+  } catch {
+    return { ok: false, message: `The server answered ${res.status}` }
+  }
 }

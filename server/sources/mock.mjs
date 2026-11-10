@@ -161,5 +161,11 @@ export function createMockSource({ now = () => new Date() } = {}) {
       }
       return { ok: false, message: `Unknown action: ${name}` }
     },
+
+    /** Pretends to be Jarvis, so the Ask box works on sample data. */
+    async ask(text) {
+      await delay(900)
+      return { ok: true, message: `Sample data: on the PC, Jarvis would answer "${text}" here.` }
+    },
   }
 }

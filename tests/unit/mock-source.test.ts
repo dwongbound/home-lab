@@ -47,6 +47,12 @@ describe('createMockSource', () => {
     expect(snap.services.find((s: { id: string }) => s.id === 'ollama')!.status).toBe('idle')
   })
 
+  it('answers Ask Jarvis with a sample reply', async () => {
+    const result = await createMockSource().ask('hello')
+    expect(result.ok).toBe(true)
+    expect(result.message).toContain('"hello"')
+  })
+
   it('refuses unknown actions', async () => {
     const result = await createMockSource({ now }).action('format-c')
     expect(result).toEqual({ ok: false, message: 'Unknown action: format-c' })
