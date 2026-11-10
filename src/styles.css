@@ -282,7 +282,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
      is animated: a transform or opacity animation on a glass panel's
      ancestor breaks backdrop-filter (Chrome shows no blur until it ends,
      Safari leaves blocky light/dark patches). */
-  .chart__bar { transform-origin: bottom; animation: grow .9s cubic-bezier(.2, .7, .2, 1) 260ms both; }
+  .chart[data-grow] .chart__bar { transform-origin: bottom; animation: grow .9s cubic-bezier(.2, .7, .2, 1) 260ms both; }
   .spinner__ring { animation: spin .9s linear infinite; }
   .icon-btn[data-spinning] svg { animation: spin 1s linear infinite; }
   .toast { animation: rise .35s ease both; }
