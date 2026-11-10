@@ -13,12 +13,12 @@ const Ridge = (
 
 /**
  * The backdrop. `override` is the Settings choice; "auto" (or nothing)
- * follows the clock.
+ * follows the clock. `landing` plays the first-load arrival (styles.css).
  */
-export const Backdrop = memo(function Backdrop({ now, override }: { now: Date; override?: string | null }) {
+export const Backdrop = memo(function Backdrop({ now, override, landing = false }: { now: Date; override?: string | null; landing?: boolean }) {
   const phase = override && override !== 'auto' ? override : skyPhase(now)
   return (
-    <div className="backdrop" data-phase={phase} aria-hidden="true">
+    <div className="backdrop" data-phase={phase} data-landing={landing ? '' : undefined} aria-hidden="true">
       <div className="backdrop__sky" />
       <div className="backdrop__sun" />
       {Ridge}

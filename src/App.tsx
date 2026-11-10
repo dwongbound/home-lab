@@ -19,6 +19,9 @@ import { readSky, writeSky } from './lib/prefs'
 // (blocking spinner), can't reach the server (error with Try again), and
 // ready.
 
+// Long enough for the slowest landing animation (styles.css) to finish.
+const LANDING_MS = 2600
+
 /** The app. */
 export function App() {
   const { data, error, isValidating, mutate } = useSnapshot()
@@ -33,6 +36,16 @@ export function App() {
     const id = setTimeout(() => setToast(null), 4000)
     return () => clearTimeout(id)
   }, [toast])
+
+  // The landing plays once, when the first snapshot arrives, and is then
+  // switched off so it never replays (page changes have their own crossfade).
+  const hasData = data !== undefined
+  const [landing, setLanding] = useState(true)
+  useEffect(() => {
+    if (!hasData) return
+    const id = setTimeout(() => setLanding(false), LANDING_MS)
+    return () => clearTimeout(id)
+  }, [hasData])
 
   const chooseSky = useCallback((s: SkyChoice) => { setSky(s); writeSky(s) }, [])
   const refresh = useCallback(() => { void mutate() }, [mutate])
@@ -66,8 +79,9 @@ export function App() {
 
   return (
     <>
-      <Backdrop now={now} override={sky} />
-      <div className="shell">
+      <Backdrop now={now} override={sky} landing={landing} />
+      {/* data-landing waits for the data, so the arrival plays on the real page, not the spinner. */}
+      <div className="shell" data-landing={landing && hasData ? '' : undefined}>
         <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} />
         <main className="main" key={data ? 'ready' : 'waiting'}>{body}</main>
         {data && error ? <p className="stale" role="status">Last update failed. Showing numbers from {new Date(data.generatedAt).toLocaleTimeString()}.</p> : null}

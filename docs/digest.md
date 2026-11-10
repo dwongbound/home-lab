@@ -63,7 +63,7 @@ the token on the PC can read only that repo.
 
 - `threads[].state` is one of `working`, `blocked` (waiting on Dylan),
   `review_ready`, `done`, `failed`, `stopped`. Threads active in the last 7 days only.
-- `calendar` is today in Pacific time, across all of his calendars.
+- `calendar` is today in Pacific time, across all of his calendars except "Wong Fam" (his parents' shared one; the server drops it too, `SKIP_CALENDARS`).
 - `email` is at most three messages that need him, with a few words on why.
   Never message bodies.
 - `deploys` are the latest production deploys of tapworship.com and vardafreeflyers.com.
@@ -89,7 +89,7 @@ Kept here so it's reviewed like code. If it changes, update the task too.
 > one, with the commit message "Digest <ISO time>". Use `list_threads`
 > (threads active in the last 7 days, skipping threads titled
 > "home-lab digest"), Google Calendar (`list_calendars`, then today's events
-> on every calendar, in Pacific time), Gmail (at most three threads from the
+> on every calendar except "Wong Fam", in Pacific time), Gmail (at most three threads from the
 > last 2 days that need Dylan's reply or action; subject, sender and a few
 > words on why, never bodies), Vercel (latest production deploy of
 > tapworship.com and vardafreeflyers.com), and GitHub (Dylan's open PRs on

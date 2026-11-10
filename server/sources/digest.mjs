@@ -5,17 +5,28 @@
 //
 // It's fetched at most every 2 minutes, however often the page refreshes,
 // and the last good copy is kept if GitHub is unreachable.
+//
+// DIGEST_FILE switches it to a file on this PC instead (for a digest that
+// Jarvis writes locally); then no GitHub token is needed.
+//
+// Calendars named in SKIP_CALENDARS are dropped here, whoever wrote the
+// digest (Dylan's "Wong Fam" calendar is his parents' plans, not his).
+
+import { readFile } from 'node:fs/promises'
 
 const CACHE_MS = 2 * 60_000
 const FETCH_TIMEOUT_MS = 5000
 
 /**
- * Creates the digest reader. Returns null from read() when no token is set,
+ * Creates the digest reader. Returns null from read() when neither a token
+ * nor a file is set,
  * which the page shows as "not set up yet".
- * `deps.fetch` and `deps.now` are swappable for tests.
+ * `deps.fetch`, `deps.readFile` and `deps.now` are swappable for tests.
  */
 export function createDigestReader(config, deps = {}) {
   const fetchFn = deps.fetch ?? globalThis.fetch
+  const readFileFn = deps.readFile ?? readFile
+  const skip = new Set(config.skipCalendars.map((name) => name.toLowerCase()))
   const now = deps.now ?? (() => Date.now())
   let cached = null
   let cachedAt = 0
@@ -26,8 +37,16 @@ export function createDigestReader(config, deps = {}) {
     return `https://api.github.com/repos/${digestRepo}/contents/${digestPath}?ref=${encodeURIComponent(digestBranch)}`
   }
 
-  /** Downloads and parses the digest. Throws on any failure. */
+  /** Leaves out events from skipped calendars. */
+  function withoutSkipped(digest) {
+    if (!Array.isArray(digest?.calendar)) return digest
+    const calendar = digest.calendar.filter((event) => !skip.has(String(event.calendar).toLowerCase()))
+    return { ...digest, calendar }
+  }
+
+  /** Downloads (or reads, with DIGEST_FILE) and parses the digest. Throws on any failure. */
   async function download() {
+    if (config.digestFile) return JSON.parse(await readFileFn(config.digestFile, 'utf8'))
     const res = await fetchFn(digestUrl(), {
       headers: {
         Authorization: `Bearer ${config.digestToken}`,
@@ -45,10 +64,10 @@ export function createDigestReader(config, deps = {}) {
   return {
     /** The digest, from cache when it's under 2 minutes old. */
     async read() {
-      if (!config.digestToken) return null
+      if (!config.digestToken && !config.digestFile) return null
       if (cached !== null && now() - cachedAt < CACHE_MS) return cached
       try {
-        cached = await download()
+        cached = withoutSkipped(await download())
         cachedAt = now()
       } catch {
         // Keep showing the last good copy; its updatedAt says how old it is.

@@ -43,6 +43,11 @@ export function loadConfig(env = process.env) {
     digestBranch: env.DIGEST_BRANCH ?? 'main',
     digestPath: env.DIGEST_PATH ?? 'digest.json',
     digestToken: env.DIGEST_TOKEN ?? '',
+    // Or a digest file on this PC (written by Jarvis); no token needed.
+    digestFile: env.DIGEST_FILE ?? '',
+    // Calendars never shown, comma-separated. "Wong Fam" is shared with
+    // Dylan's parents and holds their plans.
+    skipCalendars: (env.SKIP_CALENDARS ?? 'Wong Fam').split(',').map((s) => s.trim()).filter(Boolean),
     // Where WSL mounts the Windows C: drive.
     windowsDrive: env.WINDOWS_DRIVE ?? '/mnt/c',
   }

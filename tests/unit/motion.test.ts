@@ -31,6 +31,16 @@ describe('motion', () => {
     const block = motionBlock(css)
     // Fading a glass panel, or anything holding one, breaks its blur.
     expect(block).toMatch(/\.main \.glass > \*\s*\{[^}]*animation-timeline:\s*view\(\)/)
-    expect(block).not.toMatch(/\.glass\s*\{[^}]*animation/)
+    // The one animation glass may run is the landing's frost, which never
+    // touches opacity or transform (checked below).
+    const glassAnimations = [...block.matchAll(/\.glass\s*\{([^}]*)\}/g)].map((m) => m[1]).filter((rule) => /animation/.test(rule))
+    for (const rule of glassAnimations) expect(rule).toMatch(/animation:\s*land-frost\b/)
+  })
+
+  it('the landing frosts the glass without fading or moving it', () => {
+    const frost = css.slice(css.indexOf('@keyframes land-frost'))
+    const body = frost.slice(0, frost.indexOf('\n}') + 2)
+    expect(body).toContain('backdrop-filter')
+    expect(body).not.toMatch(/opacity|transform/)
   })
 })

@@ -3,7 +3,7 @@
 //   - I move between Overview, Services, Schedule and Settings, and it glides.
 //   - I unload Gemma before gaming, and see it working until it's done.
 //   - I pick a sky in Settings and it's remembered.
-//   - With reduced motion on, nothing moves.
+//   - The first load lands with a show; with reduced motion on, nothing moves.
 import { expect, test } from '@playwright/test'
 
 test('overview shows the PC at a glance', async ({ page }) => {
@@ -130,4 +130,17 @@ test('the Claude page shows threads waiting on me first, linked to the thread', 
   await expect(threads.getByRole('heading', { level: 3 }).first()).toHaveText(/Waiting on you/)
   await expect(threads.getByRole('link', { name: 'Fix unverified app warning on calendar picker' })).toHaveAttribute('target', '_blank')
   await expect(page.getByRole('region', { name: 'Shipping' })).toContainText('tapworship.com')
+})
+
+test('the first load lands with a show, once, and the glass ends fully frosted', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('.shell[data-landing]')).toHaveCount(1)
+  await expect(page.locator('.backdrop[data-landing]')).toHaveCount(1)
+  // It switches itself off, and changing page doesn't bring it back.
+  await expect(page.locator('.shell[data-landing]')).toHaveCount(0, { timeout: 5000 })
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Home' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
+  await expect(page.locator('[data-landing]')).toHaveCount(0)
+  const blur = await page.locator('.main .glass').first().evaluate((el) => getComputedStyle(el).backdropFilter)
+  expect(blur).toContain('blur(26px)')
 })

@@ -50,4 +50,20 @@ describe('digest reader', () => {
     advance(6 * 60_000)
     expect(await reader.read()).toEqual(SAMPLE)
   })
+
+  it('reads a local file instead when DIGEST_FILE is set, with no token', async () => {
+    const readFile = vi.fn(async () => JSON.stringify(SAMPLE))
+    const fetch = vi.fn()
+    const reader = createDigestReader(loadConfig({ DIGEST_FILE: '/data/digest.json' }), { fetch, readFile, now: () => 0 })
+    expect(await reader.read()).toEqual(SAMPLE)
+    expect(readFile).toHaveBeenCalledWith('/data/digest.json', 'utf8')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('drops events from skipped calendars (Wong Fam by default)', async () => {
+    const event = (calendar: string) => ({ id: calendar, title: 'x', start: '', end: '', allDay: false, calendar })
+    const digest = { ...SAMPLE, calendar: [event('Personal'), event('Wong Fam'), event('wong fam')] }
+    const { reader } = readerWith([Response.json(digest)])
+    expect((await reader.read()).calendar.map((e: { calendar: string }) => e.calendar)).toEqual(['Personal'])
+  })
 })
