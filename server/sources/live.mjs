@@ -11,6 +11,7 @@ import { statfs } from 'node:fs/promises'
 import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createDigestReader } from './digest.mjs'
+import { createHomeReader } from './home.mjs'
 
 const realExecFile = promisify(execFileCallback)
 const PROBE_TIMEOUT_MS = 2500
@@ -49,6 +50,7 @@ export function createLiveSource(config, deps = {}) {
   const execFile = deps.execFile ?? realExecFile
   const statfsFn = deps.statfs ?? statfs
   const digest = createDigestReader(config, { fetch: fetchFn })
+  const home = createHomeReader(config, { fetch: fetchFn })
 
   // The sparklines need a little history. The server keeps the last 24
   // samples in memory; one sample is taken per snapshot request.
@@ -197,8 +199,9 @@ export function createLiveSource(config, deps = {}) {
         probeHttp(`${config.jarvisApiUrl}/health`),
         readUnitState(),
         digest.read(),
+        home.read(),
       ])
-      const [gpu, disk, ha, ollama, webui, jarvisHttp, unitResult, cloud] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, webui, jarvisHttp, unitResult, cloud, homeState] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -240,6 +243,7 @@ export function createLiveSource(config, deps = {}) {
           loadSeconds: null,
         },
         cloud,
+        home: homeState,
       }
     },
 
@@ -262,6 +266,18 @@ export function createLiveSource(config, deps = {}) {
       })
       if (!res.ok) return { ok: false, message: `Ollama answered ${res.status}` }
       return { ok: true, message: unloading ? 'Gemma unloaded' : 'Gemma loaded' }
+    },
+
+    /**
+     * Controls one Home Assistant device. Like Ask Jarvis, it needs the
+     * Tailscale login that `tailscale serve` adds, so only someone on the
+     * tailnet (not anything else on the PC or the home network) can do it.
+     */
+    async control(entityId, command, value, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to control the house' }
+      const now = await home.read()
+      const current = now?.devices.find((d) => d.id === entityId)?.state
+      return home.act(entityId, command, value, current)
     },
 
     /**

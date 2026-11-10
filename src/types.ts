@@ -58,6 +58,29 @@ export interface CloudDigest {
   money?: MoneyDigest | null
 }
 
+// Home Assistant devices for the Home page (server/sources/home.mjs).
+export type DeviceKind = 'light' | 'switch' | 'fan' | 'media' | 'scene' | 'script'
+export interface Device {
+  id: string
+  name: string
+  kind: DeviceKind
+  /** Home Assistant's own state: "on", "off", "playing", "paused", "idle"... */
+  state: string
+  available: boolean
+  /** 0-1, lights only. */
+  brightness?: number
+  /** 0-1, media players only. */
+  volume?: number
+  /** What's playing, or the app open. */
+  detail?: string
+}
+export interface HomeState {
+  devices: Device[]
+  weather: { condition: string; temperature: number | null; unit: string } | null
+  sun: { rising: string | null; setting: string | null }
+}
+export type HomeCommand = 'toggle' | 'brightness' | 'power' | 'playpause' | 'volume' | 'run'
+
 export interface Snapshot {
   generatedAt: string
   source: 'mock' | 'live'
@@ -70,6 +93,8 @@ export interface Snapshot {
   model: { name: string; loaded: boolean; vramGb: number; loadSeconds: number | null }
   /** null until the digest is set up (no token) or before its first read. */
   cloud: CloudDigest | null
+  /** null without a Home Assistant token, or when it doesn't answer. */
+  home: HomeState | null
 }
 
 export interface ActionResult { ok: boolean; message: string }
@@ -82,4 +107,6 @@ export interface DataSource {
   action(name: ActionName): Promise<ActionResult>
   /** Asks Jarvis. On success `message` is Jarvis's reply. */
   ask(text: string, caller?: { login?: string }): Promise<ActionResult>
+  /** Sends one command to one Home Assistant device. */
+  control(entity: string, command: HomeCommand, value?: number, caller?: { login?: string }): Promise<ActionResult>
 }

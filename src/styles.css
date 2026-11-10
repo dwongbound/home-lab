@@ -246,6 +246,20 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .segmented__opt { height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.06); color: var(--frost-dim); font: 500 14px var(--font-body); cursor: pointer; }
 .segmented__opt[aria-checked='true'] { background: var(--frost); color: var(--basalt); border-color: transparent; }
 
+/* ---------- Home ---------- */
+.grid--devices { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); align-items: start; }
+.device { display: grid; gap: 12px; }
+.device__head .panel__title { font-size: 17px; }
+.device__head .panel__sub { overflow-wrap: anywhere; }
+.device[data-on] .device__head .panel__sub { color: var(--frost); }
+.device[data-unavailable] > * { opacity: .55; }
+.device__row { display: flex; gap: 8px; }
+.device__row .btn { flex: 1; }
+.device__level { display: grid; grid-template-columns: auto 1fr 3.2em; align-items: center; gap: 10px; font-size: 13px; color: var(--frost-dim); }
+.device__level input { width: 100%; accent-color: var(--frost); min-height: 44px; }
+.device__pct { text-align: right; font-variant-numeric: tabular-nums; }
+.device__error { color: #ffc2c8; font-size: 13.5px; }
+
 /* ---------- Money ---------- */
 .money__hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .grid--money { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -344,6 +358,13 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .grid--stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid--lower { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .grid--lower > :first-child { grid-column: 1 / -1; }
+}
+/* Seven pills with labels don't fit beside the host name and buttons
+   below about 1120px, so they go icon-only there (labels stay for screen
+   readers), as they already do on phones. */
+@media (max-width: 1120px) {
+  .pill__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pill { padding: 0 12px; }
 }
 @media (max-width: 820px) {
   .grid--main, .grid--split { grid-template-columns: minmax(0, 1fr); }

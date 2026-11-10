@@ -1,7 +1,7 @@
 // The page in jsdom with fetch faked: the blocking spinner on first load,
 // the overview, the error state, the Unload Gemma flow and Ask Jarvis.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SWRConfig } from 'swr'
 import { App } from '../../src/App'
@@ -24,6 +24,10 @@ function fakeServer(options: { actionGate?: Promise<void> } = {}) {
     if (url.startsWith('/api/actions/') && init?.method === 'POST') {
       if (options.actionGate) await options.actionGate
       return Response.json(await source.action(url.split('/').pop()))
+    }
+    if (url === '/api/home/control' && init?.method === 'POST') {
+      const { entity, command, value } = JSON.parse(String(init.body))
+      return Response.json(await source.control(entity, command, value))
     }
     if (url === '/api/jarvis/ask' && init?.method === 'POST') {
       return Response.json(await source.ask(JSON.parse(String(init.body)).text))
@@ -112,6 +116,20 @@ describe('App', () => {
     expect(input).toHaveValue('')
     const [, init] = fetch.mock.calls.find((c) => c[0] === '/api/jarvis/ask')!
     expect((init!.headers as Record<string, string>)['x-home-lab']).toBe('1')
+  })
+
+  it('Home: turning a switch on, and a scene with no on/off', async () => {
+    vi.stubGlobal('fetch', fakeServer())
+    window.location.hash = '#home'
+    const user = userEvent.setup()
+    renderApp()
+
+    const porch = await screen.findByRole('region', { name: 'Porch lights' })
+    expect(porch).toHaveTextContent('Off')
+    await user.click(within(porch).getByRole('button', { name: 'Turn on' }))
+    await waitFor(() => expect(within(porch).getByRole('button', { name: 'Turn off' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByRole('region', { name: 'TV' })).toHaveTextContent('Unavailable')
+    expect(within(screen.getByRole('region', { name: 'Movie night' })).getByRole('button', { name: 'Run' })).toBeEnabled()
   })
 
   it('switches pages from the hash', async () => {
