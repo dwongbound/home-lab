@@ -1,12 +1,12 @@
 // Reads the cloud digest: one JSON file that a scheduled Claude task writes
-// to a private GitHub repo every hour (see docs/digest.md). The PC can't
+// to a private GitHub repo every 15 minutes (see docs/digest.md). The PC can't
 // reach claude.ai threads or Dylan's connectors itself, so this file is how
 // they get here.
 //
-// It's fetched at most every 5 minutes, however often the page refreshes,
+// It's fetched at most every 2 minutes, however often the page refreshes,
 // and the last good copy is kept if GitHub is unreachable.
 
-const CACHE_MS = 5 * 60_000
+const CACHE_MS = 2 * 60_000
 const FETCH_TIMEOUT_MS = 5000
 
 /**
@@ -43,7 +43,7 @@ export function createDigestReader(config, deps = {}) {
   }
 
   return {
-    /** The digest, from cache when it's under 5 minutes old. */
+    /** The digest, from cache when it's under 2 minutes old. */
     async read() {
       if (!config.digestToken) return null
       if (cached !== null && now() - cachedAt < CACHE_MS) return cached
@@ -52,7 +52,7 @@ export function createDigestReader(config, deps = {}) {
         cachedAt = now()
       } catch {
         // Keep showing the last good copy; its updatedAt says how old it is.
-        // Try again on the next refresh rather than waiting 5 minutes.
+        // Try again on the next refresh rather than waiting 2 minutes.
       }
       return cached
     },

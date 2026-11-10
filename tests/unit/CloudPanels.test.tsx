@@ -21,7 +21,7 @@ function digest(): CloudDigest {
 describe('ClaudeThreadsPanel', () => {
   it('explains how to set it up when there is no digest', () => {
     render(<ClaudeThreadsPanel cloud={null} now={now} />)
-    expect(screen.getByText(/once the hourly digest is set up/)).toBeInTheDocument()
+    expect(screen.getByText(/once the Claude digest is set up/)).toBeInTheDocument()
   })
 
   it('shows waiting-on-you first, links each thread, and says how old the digest is', () => {

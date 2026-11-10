@@ -1,4 +1,4 @@
-// The cloud digest reader: off without a token, cached for 5 minutes, keeps
+// The cloud digest reader: off without a token, cached for 2 minutes, keeps
 // the last good copy when GitHub fails, and asks for the raw file.
 import { describe, expect, it, vi } from 'vitest'
 import { createDigestReader } from '../../server/sources/digest.mjs'
@@ -34,13 +34,13 @@ describe('digest reader', () => {
     expect((init!.headers as Record<string, string>).Accept).toBe('application/vnd.github.raw+json')
   })
 
-  it('serves from cache for 5 minutes, then fetches again', async () => {
+  it('serves from cache for 2 minutes, then fetches again', async () => {
     const { reader, fetch, advance } = readerWith([Response.json(SAMPLE), Response.json({ ...SAMPLE, updatedAt: 'later' })])
     await reader.read()
-    advance(4 * 60_000)
+    advance(90_000)
     await reader.read()
     expect(fetch).toHaveBeenCalledTimes(1)
-    advance(2 * 60_000)
+    advance(60_000)
     expect((await reader.read())!.updatedAt).toBe('later')
   })
 
