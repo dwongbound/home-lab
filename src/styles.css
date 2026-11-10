@@ -339,7 +339,24 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .spinner__ring { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.2); border-top-color: var(--frost); }
 .state { border-radius: var(--r-panel); display: grid; gap: 12px; justify-items: start; max-width: 560px; }
 .state p { color: var(--frost-dim); }
-.state--loading { min-height: 50vh; place-items: center; max-width: none; justify-items: center; }
+.state--loading { grid-column: 1 / -1; grid-row: 1 / -1; min-height: calc(100dvh - 160px); place-items: center; max-width: none; justify-items: center; }
+
+/* ---------- The first-load loader (ThinkingLoader) ---------- */
+.thinking { display: grid; justify-items: center; gap: 34px; }
+.thinking__orb { position: relative; width: 168px; height: 168px; display: grid; place-items: center; }
+.thinking__orb > * { position: absolute; border-radius: 50%; }
+.thinking__halo { inset: -30px; background: radial-gradient(circle, rgba(142, 197, 234, .38), rgba(142, 197, 234, 0) 62%); }
+.thinking__core { width: 64px; height: 64px; background: radial-gradient(circle at 34% 32%, #fff, #cfe8f8 18%, var(--glacier) 52%, #3f78a3 100%); box-shadow: 0 0 34px rgba(142, 197, 234, .75), 0 0 90px rgba(142, 197, 234, .35), inset -6px -8px 18px rgba(20, 50, 80, .45); }
+/* Three orbits on different tilts; each carries one spark on its rim. */
+.thinking__orbit { inset: 0; border: 1px solid rgba(185, 220, 243, .28); }
+.thinking__orbit--a { transform: rotateX(68deg) rotateZ(0deg); }
+.thinking__orbit--b { inset: 14px; transform: rotateY(64deg) rotateZ(30deg); border-color: rgba(185, 220, 243, .2); }
+.thinking__orbit--c { inset: 28px; transform: rotateX(58deg) rotateY(40deg); border-color: rgba(185, 220, 243, .16); }
+.thinking__spark { position: absolute; top: -3px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 2px rgba(185, 220, 243, .9); }
+.thinking__label { font-family: var(--font-display); font-size: clamp(20px, 2.4vw, 26px); font-weight: 500; letter-spacing: -0.01em; color: var(--frost); }
+.thinking__dots { margin-left: 2px; }
+/* Their own colour: inline-blocks aren't painted by the label's shimmer (background-clip: text). */
+.thinking__dots span { display: inline-block; color: var(--frost); }
 
 .stale { margin-top: 14px; font-size: 13px; color: #f6d3a6; }
 .toast { position: fixed; z-index: 5; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 999px; background: var(--frost); color: var(--basalt); font-weight: 600; box-shadow: 0 10px 30px -10px rgba(0,0,0,.5); }
@@ -396,6 +413,19 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
      Safari leaves blocky light/dark patches). */
   .chart[data-grow] .chart__bar { transform-origin: bottom; animation: grow .9s cubic-bezier(.2, .7, .2, 1) 260ms both; }
   .spinner__ring { animation: spin .9s linear infinite; }
+
+  /* The first-load loader: the orb breathes, its halo pulses a beat
+     behind, the orbits turn at different speeds, and the dots bounce. */
+  .thinking__core { animation: think-breathe 2.4s ease-in-out infinite; }
+  .thinking__halo { animation: think-halo 2.4s ease-in-out infinite; }
+  .thinking__orbit--a { animation: think-orbit-a 3.2s linear infinite; }
+  .thinking__orbit--b { animation: think-orbit-b 4.6s linear infinite; }
+  .thinking__orbit--c { animation: think-orbit-c 2.6s linear infinite reverse; }
+  .thinking__label { background: linear-gradient(90deg, var(--frost-dim) 0%, #fff 45%, var(--frost-dim) 90%) 0 0 / 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: think-shimmer 2.8s linear infinite; }
+  .thinking__dots span { animation: think-dot 1.3s ease-in-out infinite; }
+  .thinking__dots span:nth-child(2) { animation-delay: .16s; }
+  .thinking__dots span:nth-child(3) { animation-delay: .32s; }
+  .thinking { animation: rise .5s ease both; }
   .icon-btn[data-spinning] svg { animation: spin 1s linear infinite; }
   .toast { animation: rise .35s ease both; }
 
@@ -485,6 +515,13 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 @keyframes grow { from { transform: scaleY(0); } }
 @keyframes reveal { from { opacity: 0; transform: translateY(12px); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes think-breathe { 0%, 100% { transform: scale(.92); } 50% { transform: scale(1.06); } }
+@keyframes think-halo { 0%, 100% { opacity: .55; transform: scale(.9); } 55% { opacity: 1; transform: scale(1.08); } }
+@keyframes think-orbit-a { from { transform: rotateX(68deg) rotateZ(0deg); } to { transform: rotateX(68deg) rotateZ(360deg); } }
+@keyframes think-orbit-b { from { transform: rotateY(64deg) rotateZ(30deg); } to { transform: rotateY(64deg) rotateZ(390deg); } }
+@keyframes think-orbit-c { from { transform: rotateX(58deg) rotateY(40deg) rotateZ(0deg); } to { transform: rotateX(58deg) rotateY(40deg) rotateZ(360deg); } }
+@keyframes think-shimmer { from { background-position: 110% 0; } to { background-position: -110% 0; } }
+@keyframes think-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-6px); opacity: 1; } }
 @keyframes enter-from-right { from { opacity: 0; transform: translateX(28px); } }
 @keyframes enter-from-left { from { opacity: 0; transform: translateX(-28px); } }
 @keyframes land-sky { from { filter: brightness(.15) saturate(.4); } }

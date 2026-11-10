@@ -144,7 +144,7 @@ frosted the whole time. Chrome keeps the crossfade.
 
 ### States every page handles
 
-- **First load:** a blocking spinner, "Reading jarvis…", until the first
+- **First load:** a full-page loader, Jarvis's orb breathing inside its orbits with "Jarvis is thinking...", until the first
   snapshot arrives.
 - **Server unreachable:** a panel saying what's wrong and how to fix it,
   with **Try again**.

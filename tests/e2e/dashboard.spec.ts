@@ -349,3 +349,24 @@ test('in Safari, changing tab keeps the glass frosted and slides the contents in
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.enter ?? 'done')).toBe('done')
   await context.close()
 })
+
+test('while the first snapshot is on its way, a full-page "Jarvis is thinking" loader shows, still with reduced motion', async ({ browser }) => {
+  for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+    const context = await browser.newContext({ reducedMotion })
+    const page = await context.newPage()
+    // Hold the first snapshot back so the loader can be seen.
+    let release = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    await page.route('**/api/snapshot', async (route) => { await held; await route.continue() })
+    await page.goto(test.info().project.use.baseURL + '/')
+    const loader = page.getByRole('status').filter({ hasText: 'Jarvis is thinking' })
+    await expect(loader).toBeVisible()
+    const moving = await page.evaluate(() => document.getAnimations().filter((a) => (a.effect as KeyframeEffect | null)?.target instanceof Element && ((a.effect as KeyframeEffect).target as Element).closest('.thinking')).length)
+    if (reducedMotion === 'reduce') expect(moving).toBe(0)
+    else expect(moving).toBeGreaterThan(3)
+    release()
+    await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+    await expect(loader).toHaveCount(0)
+    await context.close()
+  }
+})

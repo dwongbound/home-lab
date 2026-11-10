@@ -3,7 +3,7 @@ import { useSnapshot } from './api/client'
 import { DigestRefreshing, useDigestRefresh } from './api/digestRefresh'
 import { Backdrop } from './components/Backdrop'
 import { TopNav } from './components/TopNav'
-import { Spinner } from './components/Spinner'
+import { ThinkingLoader } from './components/ThinkingLoader'
 import { Overview } from './views/Overview'
 import { Services } from './views/Services'
 import { Claude } from './views/Claude'
@@ -74,7 +74,7 @@ export function App() {
       </section>
     )
   } else if (!data) {
-    body = <section className="state state--loading"><Spinner label="Reading jarvis…" /></section>
+    body = <section className="state state--loading"><ThinkingLoader /></section>
   } else if (view === 'claude') {
     body = <Claude data={data} now={now} />
   } else if (view === 'shell') {
