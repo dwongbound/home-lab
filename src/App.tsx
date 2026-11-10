@@ -55,7 +55,7 @@ export function App() {
   } else if (view === 'preferences') {
     body = <Settings data={data} sky={sky} onSky={chooseSky} />
   } else {
-    body = <Overview data={data} now={now} onToast={setToast} />
+    body = <Overview data={data} now={now} />
   }
 
   return (

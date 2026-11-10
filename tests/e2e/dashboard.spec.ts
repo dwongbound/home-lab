@@ -1,6 +1,6 @@
 // User stories, on desktop and phone:
 //   - I open the page and see how jarvis is doing.
-//   - I move between Overview, Services, Schedule and Settings.
+//   - I move between Overview, Services, Schedule and Settings, and it glides.
 //   - I unload Gemma before gaming, and see it working until it's done.
 //   - I pick a sky in Settings and it's remembered.
 //   - With reduced motion on, nothing moves.
@@ -12,9 +12,44 @@ test('overview shows the PC at a glance', async ({ page }) => {
   for (const label of ['Memory', 'GPU memory', 'Processor', 'Free on C:']) {
     await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible()
   }
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible()
+  // Kept to a glance: the chart, services and Gemma live on their own pages.
+  await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Unload Gemma' })).toHaveCount(0)
+})
+
+test('Schedule has the requests chart; Services has every service and the Gemma card', async ({ page }) => {
+  await page.goto('/#schedule')
   await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toBeVisible()
-  await expect(page.getByRole('img', { name: /requests$/ }).first()).toBeVisible()
+  await page.goto('/#services')
   await expect(page.getByRole('link', { name: 'Open Home Assistant' })).toHaveAttribute('href', 'http://192.168.68.94:8123')
+  await expect(page.getByRole('button', { name: 'Unload Gemma' })).toBeVisible()
+})
+
+test('changing page cross-fades and slides the pill highlight, and never with reduced motion', async ({ browser }) => {
+  for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+    const context = await browser.newContext({ reducedMotion })
+    const page = await context.newPage()
+    await page.goto(test.info().project.use.baseURL + '/')
+    await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+    // Count view transitions the page starts.
+    await page.evaluate(() => {
+      const w = window as unknown as { transitions: number }
+      w.transitions = 0
+      const start = document.startViewTransition.bind(document)
+      document.startViewTransition = ((cb?: () => void) => { w.transitions++; return start(cb) }) as typeof document.startViewTransition
+    })
+    const nav = page.getByRole('navigation', { name: 'Sections' })
+    await nav.getByRole('link', { name: 'Services' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Services' })).toBeVisible()
+    const transitions = await page.evaluate(() => (window as unknown as { transitions: number }).transitions)
+    expect(transitions).toBe(reducedMotion === 'reduce' ? 0 : 1)
+    // One highlight, on the current pill.
+    await expect(nav.locator('.pill__glow')).toHaveCount(1)
+    await expect(nav.getByRole('link', { name: 'Services' }).locator('.pill__glow')).toHaveCount(1)
+    await context.close()
+  }
 })
 
 test('pill navigation reaches every page and keeps the back button working', async ({ page }) => {
@@ -30,7 +65,7 @@ test('pill navigation reaches every page and keeps the back button working', asy
 })
 
 test('unloading Gemma blocks the dialog until it finishes, then loading it back works', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#services')
   await page.getByRole('button', { name: 'Unload Gemma' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Unload Gemma?')
@@ -50,7 +85,7 @@ test('unloading Gemma blocks the dialog until it finishes, then loading it back 
 })
 
 test('Close dismisses the dialog with Esc or the button', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#services')
   await page.getByRole('button', { name: 'Unload Gemma' }).click()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -72,7 +107,7 @@ test('nothing animates with reduced motion', async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: 'reduce' })
   const page = await context.newPage()
   await page.goto(test.info().project.use.baseURL + '/')
-  await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
   const running = await page.evaluate(() => document.getAnimations().length)
   expect(running).toBe(0)
   await context.close()
@@ -80,7 +115,7 @@ test('nothing animates with reduced motion', async ({ browser }) => {
 
 test('no sideways scrolling', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
 })

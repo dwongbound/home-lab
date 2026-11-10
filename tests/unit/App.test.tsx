@@ -46,7 +46,10 @@ describe('App', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Reading jarvis…')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(/, Dylan$/)
     expect(screen.getByText('Sample data')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Jarvis requests' })).toBeInTheDocument()
+    // The overview is a glance: no chart, services list or Gemma card.
+    expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Jarvis requests' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unload Gemma' })).not.toBeInTheDocument()
     // Jarvis needs attention, the 9 am run failed, and two threads wait on him.
     expect(screen.getByRole('link', { name: '4 things need you.' })).toHaveAttribute('href', '#claude')
   })
@@ -63,6 +66,8 @@ describe('App', () => {
     const gate = new Promise<void>((resolve) => { release = resolve })
     vi.stubGlobal('fetch', fakeServer({ actionGate: gate }))
     const user = userEvent.setup()
+    // The Gemma card lives on Services.
+    window.location.hash = '#services'
     renderApp()
 
     await user.click(await screen.findByRole('button', { name: 'Unload Gemma' }))
@@ -83,6 +88,7 @@ describe('App', () => {
     const fetch = fakeServer()
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
+    window.location.hash = '#services'
     renderApp()
     await user.click(await screen.findByRole('button', { name: 'Unload Gemma' }))
     await user.click(screen.getByRole('button', { name: 'Close', hidden: true }))
