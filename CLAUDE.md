@@ -42,7 +42,8 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 - **Tests:** `tests/unit/*` (Vitest), `tests/e2e/dashboard.spec.ts` (Playwright).
   `tests/unit/helpers.ts callApi` drives the handler without a port.
 - **Deploy:** `deploy/home-lab.service` (systemd on jarvis), CI in `.github/workflows/ci.yml`
-  (its `merge` job rebase-merges a passing non-draft PR into `dev`).
+  (its `merge` job rebase-merges a passing non-draft PR into `dev`, then it and
+  `promote` fast-forward `main` to `dev`).
 
 ## The PC
 

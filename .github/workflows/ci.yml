@@ -1,6 +1,7 @@
 # Typecheck, unit tests and end-to-end tests (desktop + phone) on every
 # push and pull request. A pull request into dev that passes is merged
-# straight away by the `merge` job below; main is never merged here.
+# straight away by the `merge` job, and main is then moved up to dev, so
+# passing work reaches main with no clicks.
 name: CI
 
 on:
@@ -48,3 +49,38 @@ jobs:
           # while CI ran can't slip in untested.
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: gh pr merge "$PR_URL" --rebase --delete-branch --match-head-commit "$HEAD_SHA"
+      # The merge above pushes with GitHub's built-in token, which never
+      # starts another CI run, so the push to dev can't promote itself.
+      # Promote here instead.
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+      - name: Move main up to dev
+        run: git push origin HEAD:refs/heads/main
+
+  # A push to dev made by a person (merging a PR by hand, or pushing
+  # directly) moves main up to that commit once its tests pass.
+  promote:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Move main up to this commit
+        run: |
+          git fetch origin main
+          # Skip when main already has this commit, which happens when a
+          # newer dev commit was promoted first. Pushing would then fail as
+          # a step backwards.
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "main already has $GITHUB_SHA"
+            exit 0
+          fi
+          # A plain push only fast-forwards, so if someone committed to
+          # main directly this fails loudly instead of overwriting it.
+          git push origin "$GITHUB_SHA:refs/heads/main"
