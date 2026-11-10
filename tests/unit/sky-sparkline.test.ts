@@ -1,6 +1,6 @@
 // The backdrop's time-of-day phases and the sparkline path builder.
 import { describe, expect, it } from 'vitest'
-import { skyPhase } from '../../src/lib/sky'
+import { shownPhase, skyPhase } from '../../src/lib/sky'
 import { sparkPath } from '../../src/lib/sparkline'
 
 /** A Date at local h:m today. */
@@ -30,5 +30,14 @@ describe('sparkPath', () => {
   })
   it('draws a flat line for constant values instead of dividing by zero', () => {
     expect(sparkPath([5, 5, 5], 100, 20, 0)).toBe('M0.0 20.0L50.0 20.0L100.0 20.0')
+  })
+})
+
+describe('shownPhase', () => {
+  it('uses the Settings choice, or the clock for auto', () => {
+    const noon = new Date(2026, 10, 10, 12, 0)
+    expect(shownPhase(noon, 'night')).toBe('night')
+    expect(shownPhase(noon, 'auto')).toBe('day')
+    expect(shownPhase(noon, null)).toBe('day')
   })
 })
