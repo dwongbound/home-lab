@@ -82,9 +82,13 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 .topbar__end { display: flex; align-items: center; gap: 8px; justify-self: end; }
 
 .pills { display: flex; gap: 6px; padding: 5px; border-radius: 999px; background: rgba(255,255,255,.07); border: 1px solid var(--glass-edge); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
-.pill { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px; border-radius: 999px; text-decoration: none; color: var(--frost-dim); font-weight: 500; font-size: 14px; }
+.pill { position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px; border-radius: 999px; text-decoration: none; color: var(--frost-dim); font-weight: 500; font-size: 14px; }
 .pill:hover { color: var(--frost); background: rgba(255,255,255,.06); }
-.pill[aria-current='page'] { color: var(--basalt); background: var(--frost); }
+.pill[aria-current='page'] { color: var(--basalt); }
+.pill[aria-current='page']:hover { background: none; }
+/* Sits behind the active pill's icon and label (isolation keeps z-index -1
+   inside the pill). Named so a view transition moves it between pills. */
+.pill__glow { position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--frost); view-transition-name: pill-glow; }
 
 .chip { font-size: 12.5px; padding: 5px 11px; border-radius: 999px; background: rgba(232, 176, 106, .16); color: #f6d3a6; border: 1px solid rgba(232,176,106,.32); white-space: nowrap; }
 .icon-btn { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.07); color: var(--frost); cursor: pointer; text-decoration: none; flex: none; }
@@ -282,11 +286,24 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .spinner__ring { animation: spin .9s linear infinite; }
   .icon-btn[data-spinning] svg { animation: spin 1s linear infinite; }
   .toast { animation: rise .35s ease both; }
+
+  /* Page changes (src/useHashView.ts). The browser cross-fades a picture
+     of the old page into a picture of the new one, so glass is never
+     animated live. The sky behind is the same in both pictures, so only
+     the content appears to change. No sliding: the picture includes the
+     sky, and moving it would move the sky too. */
+  ::view-transition-old(root) { animation: page-out .2s cubic-bezier(.4, 0, 1, 1) both; }
+  ::view-transition-new(root) { animation: page-in .3s cubic-bezier(0, 0, .2, 1) both; }
+  /* The active pill's highlight glides to the new pill. */
+  ::view-transition-group(pill-glow) { animation-duration: .38s; animation-timing-function: cubic-bezier(.3, .8, .25, 1); }
+  .pill { transition: color .25s ease, background-color .2s ease; }
 }
 @media (prefers-reduced-motion: reduce) {
   .spinner__ring { border-top-color: rgba(255,255,255,.2); border-color: var(--frost); opacity: .8; }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes page-out { to { opacity: 0; } }
+@keyframes page-in { from { opacity: 0; } }
 @keyframes grow { from { transform: scaleY(0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 

@@ -33,6 +33,9 @@ export function TopNav({ view, source, refreshing, onRefresh }: Props) {
       <nav aria-label="Sections" className="pills">
         {VIEWS.map((v) => (
           <a key={v.id} href={`#${v.id}`} className="pill" aria-current={v.id === view ? 'page' : undefined}>
+            {/* The light highlight behind the active pill. Only one exists at
+                a time, so a page change slides it from pill to pill. */}
+            {v.id === view ? <span className="pill__glow" aria-hidden="true" /> : null}
             <Icon name={v.icon} size={16} />
             <span className="pill__label">{v.label}</span>
           </a>

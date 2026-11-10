@@ -1,17 +1,14 @@
 import type { Snapshot } from '../types'
 import { greeting, uptime } from '../lib/format'
 import { StatCard } from '../components/StatCard'
-import { RequestsChart } from '../components/RequestsChart'
 import { Timeline } from '../components/Timeline'
-import { ActivityList } from '../components/ActivityList'
-import { ServicesPanel } from '../components/ServicesPanel'
-import { ModelCard } from '../components/ModelCard'
 import { JarvisPanel } from '../components/JarvisPanel'
-import { CalendarPanel, ClaudeThreadsPanel } from '../components/CloudPanels'
+import { ClaudeThreadsPanel } from '../components/CloudPanels'
 
-// The home view: greeting, four stat cards, the Ask Jarvis box, the
-// requests chart, today's schedule, recent activity, services and the
-// Gemma card.
+// The home view, kept to a glance: the greeting with what needs you, the
+// Ask Jarvis box, the four stat cards, and what's next today next to the
+// Claude threads. Everything else has its own page: the requests chart,
+// calendar and activity on Schedule; services and Gemma on Services.
 
 /** Claude threads waiting on Dylan, from the cloud digest (0 without one). */
 function threadsWaiting(s: Snapshot): number {
@@ -44,7 +41,7 @@ function AttentionLine({ count, toClaude }: { count: number; toClaude: boolean }
 }
 
 /** The overview page. */
-export function Overview({ data, now, onToast }: { data: Snapshot; now: Date; onToast: (m: string) => void }) {
+export function Overview({ data, now }: { data: Snapshot; now: Date }) {
   const needs = attentionCount(data)
   return (
     <>
@@ -56,26 +53,15 @@ export function Overview({ data, now, onToast }: { data: Snapshot; now: Date; on
         </p>
       </section>
 
+      <JarvisPanel />
+
       <div className="grid grid--stats">
         {data.metrics.map((m) => <StatCard key={m.id} metric={m} />)}
       </div>
 
-      <JarvisPanel />
-
-      <div className="grid grid--main">
-        <RequestsChart days={data.requests} />
-        <Timeline items={data.today} now={now} limit={4} />
-      </div>
-
       <div className="grid grid--split">
+        <Timeline items={data.today} now={now} limit={3} />
         <ClaudeThreadsPanel cloud={data.cloud} now={now} compact />
-        <CalendarPanel cloud={data.cloud} now={now} />
-      </div>
-
-      <div className="grid grid--lower">
-        <ActivityList items={data.activity} now={now} />
-        <ServicesPanel services={data.services} />
-        <ModelCard model={data.model} onDone={onToast} />
       </div>
     </>
   )

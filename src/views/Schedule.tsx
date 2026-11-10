@@ -1,10 +1,11 @@
 import type { Snapshot } from '../types'
+import { RequestsChart } from '../components/RequestsChart'
 import { Timeline } from '../components/Timeline'
 import { ActivityList } from '../components/ActivityList'
 import { CalendarPanel, EmailPanel } from '../components/CloudPanels'
 
 // The Schedule page: today's runs on jarvis and your calendar, then email
-// needing you and recent activity.
+// needing you and recent activity, then Jarvis's requests this week.
 
 /** The schedule page. */
 export function Schedule({ data, now }: { data: Snapshot; now: Date }) {
@@ -19,6 +20,7 @@ export function Schedule({ data, now }: { data: Snapshot; now: Date }) {
         <EmailPanel cloud={data.cloud} now={now} />
         <ActivityList items={data.activity} now={now} />
       </div>
+      <RequestsChart days={data.requests} />
     </>
   )
 }
