@@ -349,8 +349,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
      A bold arrival, about 1.8 s, then out of the way for good: the sky
      comes up from dark, the sun swells and rises, the ridge lifts, the top
      bar slides in from both sides, the title rises out of a blur, and each
-     panel frosts over (clear glass to frosted, edge lighting up, a shine
-     sweeping across) as its contents rise in, row by row.
+     panel frosts over (clear glass to frosted, its edge lighting up) as its contents rise in, row by row.
      The glass rule still holds: the panels themselves only animate their own
      blur, tint, edge and glow, never opacity or transform, and nothing that
      holds a panel moves. Everything that moves is outside the glass (sky,
@@ -371,12 +370,6 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .shell[data-landing] .hero__sub { animation: land-rise .8s cubic-bezier(.2, .8, .2, 1) 620ms both; }
   .shell[data-landing] .main .glass {
     animation: land-frost 1.1s cubic-bezier(.3, .7, .2, 1) calc(480ms + var(--row, 0ms) + var(--col, 0ms)) both;
-  }
-  .shell[data-landing] .main .glass::after {
-    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-    background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.28) 50%, transparent 65%) no-repeat;
-    background-size: 300% 100%;
-    animation: land-shine 1.2s cubic-bezier(.4, 0, .2, 1) calc(620ms + var(--row, 0ms) + var(--col, 0ms)) both;
   }
   .shell[data-landing] .main .glass > * {
     animation: land-rise .9s cubic-bezier(.2, .8, .2, 1) calc(640ms + var(--row, 0ms) + var(--col, 0ms)) both;
@@ -410,7 +403,6 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   from { -webkit-backdrop-filter: blur(0) saturate(100%); backdrop-filter: blur(0) saturate(100%); background: transparent; border-color: transparent; box-shadow: none; }
   55% { border-color: rgba(255,255,255,.5); box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 0 40px -6px rgba(255,255,255,.35); }
 }
-@keyframes land-shine { from { background-position: 120% 0; } to { background-position: -20% 0; } }
 
 /* ---------- Narrow screens ---------- */
 @media (max-width: 1080px) {
