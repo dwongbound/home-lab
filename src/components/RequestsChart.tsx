@@ -5,28 +5,20 @@ import type { DayCount } from '../types'
 // one lit in blue, like the highlighted bar in the reference design.
 // Bars are plain divs sized with a CSS variable: no chart library needed.
 
-// The bars grow in only the first time the chart appears. Replaying it on
-// every visit to the page made switching tabs stutter: a running animation
-// inside a frosted panel forces the blur to be redrawn every frame.
+// The bars grow once, the first time the chart appears in a visit. Growing
+// them again on every return to Overview made the page stutter: each frame
+// of it repaints the frosted panel's blur.
 let hasGrown = false
-
-/** Whether this mount should play the grow-in, and marks it played. */
-function growOnce(): boolean {
-  if (hasGrown) return false
-  hasGrown = true
-  return true
-}
 
 /** The chart panel. Shows an empty state until Jarvis reports counts. */
 export const RequestsChart = memo(function RequestsChart({ days }: { days: DayCount[] }) {
-  // Decided once per mount, so a refresh of the numbers doesn't change it.
-  const [grow] = useState(growOnce)
   let max = 0
   let total = 0
   for (const d of days) { if (d.count > max) max = d.count; total += d.count }
   // Round the scale up to the next 10 so the gridlines land on round numbers.
   const top = Math.max(10, Math.ceil(max / 10) * 10)
   const ticks = [top, top / 2, 0]
+  const [grow] = useState(() => { const first = !hasGrown; hasGrown = true; return first })
 
   return (
     <section className="glass panel chart" aria-labelledby="chart-title" data-grow={grow || undefined}>

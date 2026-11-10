@@ -30,6 +30,9 @@
 - Anything waiting on the network shows a blocking indicator with a label.
 - Motion degrades to the plain page; animations only inside the
   no-preference media block. Glass falls back to solid without backdrop-filter.
+- Page changes go through a view transition (useHashView) and the sliding pill
+  light (TopNav). Never animate glass or its ancestors; don't replay animations
+  inside glass on every visit (frame rate halves).
 - Logs newest first. Fixed-size dialogs. 44 px touch targets on phones.
 - Keep the page light: jarvis has 16 GB and Gemma uses most of it. No UI
   framework, chart or icon library without a good reason.
