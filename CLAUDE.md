@@ -31,7 +31,7 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 - **Cloud digest:** `server/sources/digest.mjs` reads `digest.json` from the private
   `DIGEST_REPO` with `DIGEST_TOKEN` (2 min cache; written every 15 min); shape `CloudDigest` in `src/types.ts`;
   panels in `src/components/CloudPanels.tsx`; the scheduled task's prompt + setup in `docs/digest.md`.
-- **Views:** `src/views/{Overview,Claude,Services,Schedule,Settings}.tsx`, chosen by
+- **Views:** `src/views/{Overview,Claude,Money,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,

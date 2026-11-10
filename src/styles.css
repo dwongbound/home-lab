@@ -246,6 +246,20 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .segmented__opt { height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.06); color: var(--frost-dim); font: 500 14px var(--font-body); cursor: pointer; }
 .segmented__opt[aria-checked='true'] { background: var(--frost); color: var(--basalt); border-color: transparent; }
 
+/* ---------- Money ---------- */
+.money__hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.grid--money { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.money__total .panel__sub { margin: 0 0 6px; }
+.money__big { font-family: var(--font-display); font-size: clamp(26px, 3vw, 34px); font-weight: 500; letter-spacing: -0.02em; }
+.money__amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.money__owed { color: #f6d3a6; }
+.money__in { color: #a8e6b8; }
+.money__line { display: flex; justify-content: space-between; gap: 12px; width: 100%; }
+.money__meter { display: block; width: 100%; height: 6px; margin-top: 8px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+.money__meter > span { display: block; height: 100%; width: calc(var(--fill) * 100%); border-radius: inherit; background: var(--glacier); }
+.money__meter > span[data-over] { background: #f6d3a6; }
+.money__cats { margin-top: 18px; }
+
 /* ---------- Ask Jarvis ---------- */
 .jarvis { display: grid; gap: 14px; }
 .jarvis .panel__head { margin-bottom: 0; }
@@ -333,6 +347,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 @media (max-width: 820px) {
   .grid--main, .grid--split { grid-template-columns: minmax(0, 1fr); }
+  .grid--money { grid-template-columns: minmax(0, 1fr); }
   /* Icons only, but the label stays for screen readers. */
   .pill__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pill { padding: 0 12px; height: 40px; }

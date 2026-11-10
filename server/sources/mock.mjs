@@ -84,6 +84,32 @@ function mockDigest(t, minutesAgo) {
       { repo: 'home-lab', number: 2, title: "Match the live source to what's really on jarvis", ci: 'passing', url: 'https://github.com/dwongbound/home-lab/pull/2' },
       { repo: 'worship-scheduler', number: 228, title: 'Calendar picker to staging', ci: 'passing', url: 'https://github.com/dwongbound/worship-scheduler/pull/228' },
     ],
+    // Made-up numbers in the shape the digest task writes from Copilot.
+    money: {
+      netWorth: 48210,
+      accounts: [
+        { id: 'm1', name: 'Checking', institution: 'Example Bank', kind: 'cash', balance: 6420.55 },
+        { id: 'm2', name: 'Savings', institution: 'Example Bank', kind: 'cash', balance: 18250 },
+        { id: 'm3', name: 'Sapphire', institution: 'Example Card Co', kind: 'credit', balance: 1284.19 },
+        { id: 'm4', name: 'Brokerage', institution: 'Example Invest', kind: 'investment', balance: 24823.64 },
+      ],
+      spending: { thisMonth: 1862.4, lastMonthToDate: 2104.75, budget: 4000 },
+      categories: [
+        { name: 'Food & drink', spent: 512.3, budget: 700 },
+        { name: 'Shopping', spent: 388.12, budget: 400 },
+        { name: 'Transport', spent: 214.6, budget: 300 },
+        { name: 'Subscriptions', spent: 96.97, budget: 120 },
+      ],
+      recent: [
+        { id: 'x1', date: minutesAgo(200), merchant: 'Trader Joe’s', category: 'Food & drink', amount: 64.18 },
+        { id: 'x2', date: minutesAgo(1500), merchant: 'Shell', category: 'Transport', amount: 48.02 },
+        { id: 'x3', date: minutesAgo(2900), merchant: 'Payroll', category: 'Income', amount: -3450 },
+        { id: 'x4', date: minutesAgo(4300), merchant: 'Spotify', category: 'Subscriptions', amount: 11.99 },
+      ],
+      flags: [
+        { id: 'f1', text: 'Shopping is at 97% of its budget with 20 days to go' },
+      ],
+    },
   }
 }
 

@@ -6,6 +6,7 @@ import { Spinner } from './components/Spinner'
 import { Overview } from './views/Overview'
 import { Services } from './views/Services'
 import { Claude } from './views/Claude'
+import { Money } from './views/Money'
 import { Schedule } from './views/Schedule'
 import { Settings, type SkyChoice } from './views/Settings'
 import { useHashView } from './useHashView'
@@ -48,6 +49,8 @@ export function App() {
     body = <section className="state state--loading"><Spinner label="Reading jarvis…" /></section>
   } else if (view === 'claude') {
     body = <Claude data={data} now={now} />
+  } else if (view === 'money') {
+    body = <Money data={data} now={now} />
   } else if (view === 'services') {
     body = <Services data={data} onToast={setToast} />
   } else if (view === 'schedule') {

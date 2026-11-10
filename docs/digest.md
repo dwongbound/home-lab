@@ -49,7 +49,15 @@ the token on the PC can read only that repo.
   ],
   "email": [ { "id": "…", "from": "Google Cloud", "subject": "…", "why": "Waiting on your scope declaration" } ],
   "deploys": [ { "project": "tapworship.com", "state": "ready", "at": "…", "url": "https://tapworship.com" } ],
-  "pullRequests": [ { "repo": "home-lab", "number": 2, "title": "…", "ci": "passing", "url": "…" } ]
+  "pullRequests": [ { "repo": "home-lab", "number": 2, "title": "…", "ci": "passing", "url": "…" } ],
+  "money": {
+    "netWorth": 48210,
+    "accounts": [ { "id": "…", "name": "Checking", "institution": "…", "kind": "cash", "balance": 6420.55 } ],
+    "spending": { "thisMonth": 1862.40, "lastMonthToDate": 2104.75, "budget": 4000 },
+    "categories": [ { "name": "Food & drink", "spent": 512.30, "budget": 700 } ],
+    "recent": [ { "id": "…", "date": "2026-11-10T16:40:00Z", "merchant": "Trader Joe's", "category": "Food & drink", "amount": 64.18 } ],
+    "flags": [ { "id": "…", "text": "Shopping is at 97% of its budget with 20 days to go" } ]
+  }
 }
 ```
 
@@ -60,6 +68,16 @@ the token on the PC can read only that repo.
   Never message bodies.
 - `deploys` are the latest production deploys of tapworship.com and vardafreeflyers.com.
 - `pullRequests` are his open PRs on worship-scheduler, vff-app and home-lab.
+- `money` comes from Dylan's **Copilot** connector (shape: `MoneyDigest` in
+  `src/types.ts`), in US dollars. `kind` is `cash`, `credit`, `investment`,
+  `loan` or `other`; a credit or loan `balance` is what's owed, as a positive
+  number. `netWorth` and the budgets may be `null` if Copilot doesn't say.
+  `categories` is this month's top six by spend; `recent` the last 10
+  transactions, newest first, with money coming in as a negative `amount`;
+  `flags` at most three things worth a look (a big or unusual charge, a new
+  subscription, a budget nearly spent, a low cash balance). Never account
+  numbers. Leave `money` out entirely if Copilot fails, and the page says
+  it isn't connected.
 
 ## The scheduled task's prompt
 
@@ -75,6 +93,10 @@ Kept here so it's reviewed like code. If it changes, update the task too.
 > last 2 days that need Dylan's reply or action; subject, sender and a few
 > words on why, never bodies), Vercel (latest production deploy of
 > tapworship.com and vardafreeflyers.com), and GitHub (Dylan's open PRs on
-> dwongbound/worship-scheduler, vff-app and home-lab, with CI state). If a
+> dwongbound/worship-scheduler, vff-app and home-lab, with CI state), and
+> Copilot (balances by account, net worth, this month's spending against
+> the same point last month and the budget, the top six categories, the
+> last 10 transactions, and up to three things worth a look; never account
+> numbers) as `money`. If a
 > source fails, leave its list empty and carry on. Don't post, message, email
 > or change anything else. When the commit is pushed, resolve this thread.

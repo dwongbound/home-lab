@@ -40,3 +40,11 @@ export function share(value: number | null, total: number | null): number | null
   if (value == null || total == null || total <= 0) return null
   return Math.min(1, Math.max(0, value / total))
 }
+
+const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+const USD_CENTS = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
+/** Dollars for the page: whole dollars for balances, cents when asked. */
+export function dollars(n: number, cents = false): string {
+  return (cents ? USD_CENTS : USD).format(n)
+}

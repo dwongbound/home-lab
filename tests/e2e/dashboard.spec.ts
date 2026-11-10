@@ -57,7 +57,7 @@ test('changing page cross-fades and slides the pill light, and never with reduce
 test('pill navigation reaches every page and keeps the back button working', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: 'Sections' })
-  for (const name of ['Services', 'Schedule', 'Settings']) {
+  for (const name of ['Money', 'Services', 'Schedule', 'Settings']) {
     await nav.getByRole('link', { name }).click()
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
     await expect(nav.getByRole('link', { name })).toHaveAttribute('aria-current', 'page')
