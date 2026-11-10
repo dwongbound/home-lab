@@ -294,13 +294,27 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
      so the sky behind never dims. The top bar is left out of it and shown
      live, so the light under the pills slides instead of fading. */
   ::view-transition-old(root),
-  ::view-transition-new(root) { animation-duration: 260ms; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
+  ::view-transition-new(root) { animation-duration: 560ms; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
   ::view-transition-group(topbar) { animation: none; }
   ::view-transition-old(topbar) { display: none; }
   ::view-transition-new(topbar) { animation: none; }
   /* The light and its dark copy share one curve, so they stay aligned. */
-  .pills__light { transition: transform 320ms cubic-bezier(.3, .7, .2, 1), width 320ms cubic-bezier(.3, .7, .2, 1); }
-  .pills__ink { transition: transform 320ms cubic-bezier(.3, .7, .2, 1); }
+  .pills__light { transition: transform 460ms cubic-bezier(.3, .7, .2, 1), width 460ms cubic-bezier(.3, .7, .2, 1); }
+  .pills__ink { transition: transform 460ms cubic-bezier(.3, .7, .2, 1); }
+
+  /* Panels reveal as they scroll into view. What fades is what's inside a
+     glass panel, never the panel itself: fading the glass (or anything
+     holding it) breaks its blur. The frame is there; its contents rise in.
+     Driven by scroll position, not a timer, so scrolling back up and down
+     is smooth and nothing runs while the page sits still. Browsers without
+     scroll-driven animations just show everything. */
+  @supports (animation-timeline: view()) {
+    .main .glass > * {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 80%;
+    }
+  }
   .pill { transition: color 220ms ease, background-color 220ms ease; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -308,6 +322,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
 @keyframes grow { from { transform: scaleY(0); } }
+@keyframes reveal { from { opacity: 0; transform: translateY(12px); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- Narrow screens ---------- */

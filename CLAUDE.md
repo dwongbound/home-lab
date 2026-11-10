@@ -29,7 +29,7 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 - **Page data:** `src/api/client.ts` `useSnapshot()` (SWR, 15 s), `runAction()`.
   `VITE_DATA=static` swaps in the in-browser mock via dynamic import.
 - **Cloud digest:** `server/sources/digest.mjs` reads `digest.json` from the private
-  `DIGEST_REPO` with `DIGEST_TOKEN` (5 min cache); shape `CloudDigest` in `src/types.ts`;
+  `DIGEST_REPO` with `DIGEST_TOKEN` (2 min cache; written every 15 min); shape `CloudDigest` in `src/types.ts`;
   panels in `src/components/CloudPanels.tsx`; the scheduled task's prompt + setup in `docs/digest.md`.
 - **Views:** `src/views/{Overview,Claude,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).

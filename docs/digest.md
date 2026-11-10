@@ -2,15 +2,15 @@
 
 The PC can't see claude.ai or Dylan's claude.ai connectors (Calendar, Gmail,
 GitHub, Vercel, Neon). A scheduled Claude task in the **Home AI Lab** project
-can, so once an hour from 7 am to 11 pm Pacific it collects them into one
+can, so every 15 minutes from 7 am to midnight Pacific it collects them into one
 file and commits it to a **private** repo. The page's server reads that file
 with a read-only token (`server/sources/digest.mjs`) and shows it on the
 Claude, Overview and Schedule pages.
 
 ```
- claude.ai project ── scheduled task (hourly) ──▶ private repo: digest.json
+ claude.ai project ── scheduled task (every 15 min) ──▶ private repo: digest.json
                                                         │  read-only token,
-                                                        ▼  cached 5 min
+                                                        ▼  cached 2 min
                                              jarvis: home-lab server ──▶ page
 ```
 

@@ -1,6 +1,6 @@
 // Panels fed by the cloud digest (docs/digest.md): Claude threads, today's
 // calendar, email needing Dylan, and what's shipping (deploys and PRs).
-// Each says how old the digest is, since it's written once an hour.
+// Each says how old the digest is, since it's written every 15 minutes.
 import { memo } from 'react'
 import type { CalendarEvent, ClaudeThread, CloudDigest, Deploy, EmailItem, PullRequest, ThreadState } from '../types'
 import { ago, clock } from '../lib/format'
@@ -21,7 +21,7 @@ function UpdatedLine({ cloud, now }: { cloud: CloudDigest; now: Date }) {
 
 /** What a cloud panel shows before the digest is set up. */
 function NotSetUp({ what }: { what: string }) {
-  return <p className="empty">{what} will show here once the hourly digest is set up. The README's “Cloud digest” section has the steps.</p>
+  return <p className="empty">{what} will show here once the Claude digest is set up. The README's “Cloud digest” section has the steps.</p>
 }
 
 /** One thread row: state dot, title linking to the thread, last activity. */

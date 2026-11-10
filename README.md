@@ -190,9 +190,9 @@ minutes.
 
 Claude project threads, today's calendar, email needing you, deploys and
 open PRs can't be read from the PC: they live in claude.ai and its
-connectors. A scheduled Claude task collects them hourly from 7 am to 11 pm
+connectors. A scheduled Claude task collects them every 15 minutes from 7 am to midnight
 into `digest.json` in a private repo, and the server reads it with a
-read-only token (cached 5 minutes, last good copy kept if GitHub is down).
+read-only token (cached 2 minutes, last good copy kept if GitHub is down).
 Each panel says how old the digest is.
 
 Setup, the file's shape and the task's prompt are in

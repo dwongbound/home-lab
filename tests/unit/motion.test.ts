@@ -26,4 +26,11 @@ describe('motion', () => {
     const outside = css.replace(block, '')
     expect(outside).not.toMatch(/\banimation\s*:/)
   })
+
+  it('reveals what is inside glass panels on scroll, never the glass itself', () => {
+    const block = motionBlock(css)
+    // Fading a glass panel, or anything holding one, breaks its blur.
+    expect(block).toMatch(/\.main \.glass > \*\s*\{[^}]*animation-timeline:\s*view\(\)/)
+    expect(block).not.toMatch(/\.glass\s*\{[^}]*animation/)
+  })
 })
