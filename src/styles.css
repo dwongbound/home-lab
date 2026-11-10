@@ -75,6 +75,22 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
   .glass { background: rgba(28, 38, 50, 0.9); }
 }
 
+/* Under the bright day sky, white-tinted glass washes out its faint text
+   and icons, so the glass takes a dark tint and the dim text steps up.
+   Only tokens change; nothing here animates. */
+.shell[data-sky='day'] {
+  --glass: rgba(12, 24, 36, 0.26);
+  --glass-strong: rgba(12, 24, 36, 0.18);
+  --glass-edge: rgba(255, 255, 255, 0.22);
+  --frost-dim: rgba(242, 239, 233, 0.86);
+  --frost-faint: rgba(242, 239, 233, 0.72);
+}
+.shell[data-sky='day'] .stat__icon,
+.shell[data-sky='day'] .icon-btn,
+.shell[data-sky='day'] .badge,
+.shell[data-sky='day'] .btn:not(.btn--primary) { background: rgba(12, 24, 36, 0.3); }
+.shell[data-sky='day'] .timeline__card { background: rgba(12, 24, 36, 0.16); }
+
 /* ---------- Shell ---------- */
 .shell { position: relative; z-index: 1; min-height: 100vh; overflow-x: clip; /* the landing slides things in from the sides; never a sideways scroll */ padding: 14px var(--gutter) 48px; max-width: 1440px; margin: 0 auto; }
 .main { display: grid; gap: var(--gap); }

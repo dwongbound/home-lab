@@ -15,6 +15,7 @@ import { Settings, type SkyChoice } from './views/Settings'
 import { useHashView } from './useHashView'
 import { useNow } from './useNow'
 import { readSky, writeSky } from './lib/prefs'
+import { shownPhase } from './lib/sky'
 
 // The whole page: backdrop, top bar, and whichever view the hash names.
 // It owns the three page-level states: waiting for the first snapshot
@@ -87,7 +88,8 @@ export function App() {
     <>
       <Backdrop now={now} override={sky} landing={landing} />
       {/* data-landing waits for the data, so the arrival plays on the real page, not the spinner. */}
-      <div className="shell" data-landing={landing && hasData ? '' : undefined}>
+      {/* data-sky lets the glass darken its tint under the bright day sky (styles.css). */}
+      <div className="shell" data-sky={shownPhase(now, sky)} data-landing={landing && hasData ? '' : undefined}>
         <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} />
         <DigestRefreshing.Provider value={digestRefreshing}>
           <main className="main" key={data ? 'ready' : 'waiting'}>{body}</main>

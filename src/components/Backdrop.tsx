@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { skyPhase } from '../lib/sky'
+import { shownPhase } from '../lib/sky'
 
 // A painted view out of a window: sky, a low sun and a far ridge line.
 // Pure CSS and one static SVG, so it costs nothing to keep on screen.
@@ -16,7 +16,7 @@ const Ridge = (
  * follows the clock. `landing` plays the first-load arrival (styles.css).
  */
 export const Backdrop = memo(function Backdrop({ now, override, landing = false }: { now: Date; override?: string | null; landing?: boolean }) {
-  const phase = override && override !== 'auto' ? override : skyPhase(now)
+  const phase = shownPhase(now, override)
   return (
     <div className="backdrop" data-phase={phase} data-landing={landing ? '' : undefined} aria-hidden="true">
       <div className="backdrop__sky" />

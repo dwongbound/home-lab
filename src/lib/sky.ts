@@ -10,3 +10,9 @@ export function skyPhase(date: Date): SkyPhase {
   if (h < 16.5) return 'day'
   return 'dusk'
 }
+
+/** The sky on screen: the Settings choice, or the clock's when it's "auto" or unset. */
+export function shownPhase(date: Date, override?: string | null): SkyPhase {
+  if (override && override !== 'auto') return override as SkyPhase
+  return skyPhase(date)
+}
