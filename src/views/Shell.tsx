@@ -18,9 +18,9 @@ export function Shell() {
         <h1 className="hero__title">Shell</h1>
         <p className="hero__sub">A terminal on jarvis as dwong. It keeps running when you leave.</p>
       </section>
-      <section className="glass panel shell" aria-labelledby="shell-title">
+      <section className="glass panel terminal" aria-labelledby="terminal-title">
         <header className="panel__head">
-          <h2 id="shell-title" className="panel__title">Terminal</h2>
+          <h2 id="terminal-title" className="panel__title">Terminal</h2>
           {IS_STATIC_BUILD ? null : (
             <a className="icon-btn shell__open" href={SHELL_URL} target="_blank" rel="noreferrer" aria-label="Open the terminal full screen">
               <Icon name="external" size={16} />

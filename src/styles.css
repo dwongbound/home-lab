@@ -224,10 +224,10 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .cloud__meta[data-ci='failing'] { color: #ffc2c8; }
 
 /* ---------- Shell (src/views/Shell.tsx) ---------- */
-.shell .panel__head { margin-bottom: 12px; }
+.terminal .panel__head { margin-bottom: 12px; }
 .shell__open { width: 44px; height: 44px; }
 /* A fixed height, so typing never makes the page jump; the terminal scrolls inside. */
-.shell__frame { display: block; width: 100%; height: clamp(360px, calc(100dvh - 300px), 900px); border: 0; border-radius: var(--r-inner); background: #16212c; }
+.shell__frame { display: block; width: 100%; height: clamp(420px, calc(100dvh - 260px), 1100px); border: 0; border-radius: var(--r-inner); background: #16212c; }
 
 /* ---------- Model ---------- */
 .model { display: grid; align-content: start; gap: 16px; }
