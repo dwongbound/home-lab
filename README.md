@@ -232,7 +232,9 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `DIGEST_REPO` | `dwongbound/home-lab-digest` | Private repo holding the cloud digest. |
 | `DIGEST_BRANCH` | `main` | Its branch. |
 | `DIGEST_PATH` | `digest.json` | The file in it. |
-| `DIGEST_TOKEN` | *(empty)* | Fine-grained GitHub token, **Contents: Read-only on that one repo**. **Secret.** Empty turns the cloud panels off. |
+| `DIGEST_TOKEN` | *(empty)* | Fine-grained GitHub token, **Contents: Read-only on that one repo**. **Secret.** Empty (and no `DIGEST_FILE`) turns the cloud panels off. |
+| `DIGEST_FILE` | *(empty)* | Read the digest from this file on the PC instead of GitHub (for a digest Jarvis writes locally). No token needed. |
+| `SKIP_CALENDARS` | `Wong Fam` | Calendars never shown, comma-separated. Wong Fam is shared with family and holds their plans. |
 | `WINDOWS_DRIVE` | `/mnt/c` | Where WSL mounts C:. |
 | `HOME_LAB_ENV_FILE` | `.env` | Which env file to load. |
 | `VITE_DATA` | *(unset)* | Build-time only. `static` builds the serverless preview (below). |
