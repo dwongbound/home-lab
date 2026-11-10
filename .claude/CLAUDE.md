@@ -3,6 +3,8 @@
 ## Workflow
 
 - Every change lands as a PR against **`dev`**. `dev` → `main` is Dylan's.
+- CI merges a PR into `dev` by itself once tests pass (rebase, branch deleted).
+  Open a PR as a **draft** to hold it; mark it ready when it should merge.
 - Tests with every change, passing before merge, on any machine (not just CI).
   Unit tests for small pieces; Playwright end-to-end for user stories on
   **desktop and phone**.

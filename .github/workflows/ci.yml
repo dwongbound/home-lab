@@ -1,5 +1,6 @@
 # Typecheck, unit tests and end-to-end tests (desktop + phone) on every
-# push and pull request.
+# push and pull request. A pull request into dev that passes is merged
+# straight away by the `merge` job below; main is never merged here.
 name: CI
 
 on:
@@ -21,3 +22,27 @@ jobs:
       - run: npm run test:unit
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+
+  # Merges a passing pull request into dev with a rebase, then deletes its
+  # branch. Skipped for drafts (mark a PR as draft to hold it), for PRs into
+  # any other branch, and for PRs from forks, whose token can't write anyway.
+  merge:
+    needs: test
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'dev' &&
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge into dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          # Only merge the commit the tests just passed on, so a push made
+          # while CI ran can't slip in untested.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge "$PR_URL" --rebase --delete-branch --match-head-commit "$HEAD_SHA"

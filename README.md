@@ -290,6 +290,13 @@ Everything passes on any machine with Node 20.12+; nothing depends on the
 PC. CI (`.github/workflows/ci.yml`) runs the same commands on every push
 and pull request.
 
+**Auto-merge into dev.** When a pull request into `dev` passes, CI's
+`merge` job merges it straight away with a rebase and deletes its branch.
+It only merges the exact commit that passed, so a push made while tests run
+waits for its own run. To hold a PR back, open it as a draft (or convert
+it), and mark it ready when you want it in. Nothing merges into `main` this
+way: `dev` → `main` stays a pull request you merge yourself.
+
 ## Design
 
 The look follows the reference screenshot: frosted panels over a blurred
