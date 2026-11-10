@@ -7,7 +7,7 @@ live in `.claude/CLAUDE.md`. The README is the human-facing guide.
 
 React **19** · TypeScript **5.9** · Vite **6** · SWR **2** · plain CSS ·
 Node server on `node:http` (no framework) · Vitest **3** + jsdom ·
-Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
+Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+**.
 
 ## Commands
 
@@ -37,6 +37,12 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 - **Cloud digest:** `server/sources/digest.mjs` reads `digest.json` from the private
   `DIGEST_REPO` with `DIGEST_TOKEN` (2 min cache; written every 15 min); shape `CloudDigest` in `src/types.ts`;
   panels in `src/components/CloudPanels.tsx`; the scheduled task's prompt + setup in `docs/digest.md`.
+- **Details:** rows link to `#<view>/<kind>/<id>` (`useHashDetail`, `detailHref`, `closeDetail` in
+  `src/useHashView.ts`); `src/components/DetailDialog.tsx` is the fixed-size pop-up. Money's are in
+  `src/views/Money.tsx` (`t`, `a`, `c`, `sort`; rules in `src/lib/money.ts`), agenda ones in
+  `src/components/AgendaDetail.tsx` (`j`, `e`, `m`).
+- **Always-on iPad:** `src/useWakeLock.ts` + Settings switch (`home-lab:v1:awake` in `prefs.ts`);
+  `public/manifest.webmanifest` + Apple meta tags in `index.html`.
 - **Views:** `src/views/{Overview,Home,Claude,Money,Shell,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,

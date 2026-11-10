@@ -1,5 +1,6 @@
 import type { Snapshot } from '../types'
 import type { SkyPhase } from '../lib/sky'
+import type { WakeState } from '../useWakeLock'
 
 // The Settings page: the sky choice (per browser) and where the data comes from.
 
@@ -12,8 +13,25 @@ const CHOICES: { id: SkyChoice; label: string }[] = [
   { id: 'night', label: 'Night' },
 ]
 
+/** The line under the keep-awake switch, saying what's actually happening. */
+function awakeNote(awake: boolean, state: WakeState): string {
+  if (!awake) return 'Off. The screen sleeps as usual.'
+  if (state === 'unsupported') return 'This browser can’t keep the screen on. On an iPad, set Settings › Display & Brightness › Auto-Lock to Never instead.'
+  if (state === 'on') return 'On. The screen stays on while this page is showing.'
+  return 'On. Waiting for the page to be showing.'
+}
+
+interface SettingsProps {
+  data: Snapshot
+  sky: SkyChoice
+  onSky: (s: SkyChoice) => void
+  awake: boolean
+  wake: WakeState
+  onAwake: (on: boolean) => void
+}
+
 /** The settings page. */
-export function Settings({ data, sky, onSky }: { data: Snapshot; sky: SkyChoice; onSky: (s: SkyChoice) => void }) {
+export function Settings({ data, sky, onSky, awake, wake, onAwake }: SettingsProps) {
   return (
     <>
       <section className="hero hero--small"><h1 className="hero__title">Settings</h1></section>
@@ -28,6 +46,15 @@ export function Settings({ data, sky, onSky }: { data: Snapshot; sky: SkyChoice;
               </button>
             ))}
           </div>
+        </section>
+        <section className="glass panel">
+          <h2 className="panel__title">Keep this screen on</h2>
+          <p className="panel__sub">For an iPad left up as a display. Saved in this browser only.</p>
+          <button type="button" role="switch" aria-checked={awake} className="switch" onClick={() => onAwake(!awake)}>
+            <span className="switch__track" aria-hidden="true"><span className="switch__knob" /></span>
+            <span>Keep the screen on</span>
+          </button>
+          <p className="cloud__foot" role="status">{awakeNote(awake, wake)}</p>
         </section>
         <section className="glass panel note">
           <h2 className="panel__title">Data</h2>

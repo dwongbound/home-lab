@@ -41,6 +41,32 @@ describe('Money', () => {
     expect(screen.getByText(/Shopping is at 97%/)).toBeInTheDocument()
   })
 
+  it('flags purchases in Other, tidies names, and tucks away empty accounts', async () => {
+    const user = userEvent.setup()
+    render(<Money data={await snapshot()} now={now} />)
+    expect(screen.getByRole('link', { name: /One purchase needs a category/ })).toHaveAttribute('href', '#money/sort')
+    const venmo = screen.getByRole('link', { name: /Venmo Alex/ })
+    expect(venmo).toHaveAttribute('href', '#money/t/x5')
+    expect(venmo).toHaveClass('row-link--attention')
+    expect(venmo).not.toHaveTextContent('undefined')
+    expect(screen.queryByText('Old Checking')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Show 1 empty account' }))
+    expect(screen.getByText('Old Checking')).toBeInTheDocument()
+  })
+
+  it('opens a transaction from the hash and closes it again', async () => {
+    window.location.hash = '#money/t/x5'
+    const user = userEvent.setup()
+    render(<Money data={await snapshot()} now={now} />)
+    const dialog = screen.getByRole('dialog', { name: 'Venmo Alex' })
+    expect(dialog).toHaveTextContent('Needs a category')
+    expect(dialog).toHaveTextContent('Checking')
+    expect(dialog).toHaveTextContent('Lesson')
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(window.location.hash).toBe('#money')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('says the digest needs setting up when there is no digest', async () => {
     render(<Money data={{ ...(await snapshot()), cloud: null }} now={now} />)
     expect(screen.getByText(/once the Claude digest is set up/)).toBeInTheDocument()

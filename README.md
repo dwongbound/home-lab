@@ -67,7 +67,7 @@ Eight pages, picked from the pill bar at the top. Each is a plain link to a
 | **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. **Ask Jarvis**, a box for talking to Jarvis (below). A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The Gemma card. |
 | **Home** (`#home`) | Every light, switch, fan, speaker or TV, scene and script in Home Assistant, each with the controls that suit it: on/off, brightness, play/pause, volume, or Run. The weather and the next sunrise or sunset. New devices appear as they're added to Home Assistant; a speaker's own settings switches, locks, alarms and garage doors don't. Controlling needs the page opened through Tailscale. |
 | **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
-| **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. |
+| **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. Purchases still in **Other** (or with no category) get a yellow outline and "!", and **Worth a look** counts them, so you know what to sort in the Copilot app. Accounts are grouped with subtotals, and $0 ones wait behind **Show empty accounts**. |
 | **Services** (`#services`) | Every service with its status, response time and a link to open it, the Gemma card, and how to restart Jarvis (it needs your password, so the page can't). |
 | **Shell** (`#shell`) | A terminal on jarvis (tmux through ttyd), so you can run commands from your phone. Only your Tailscale login gets in. See [The Shell page](#the-shell-page). |
 | **Schedule** (`#schedule`) | Today's runs on jarvis next to your calendar for the day, then email that needs you and recent activity. Calendar and email come from the [cloud digest](#cloud-digest). |
@@ -114,6 +114,25 @@ passes on the `Tailscale-User-Login` header that `tailscale serve` adds,
 and Jarvis checks it against `JARVIS_TAILSCALE_USERS`. So Ask Jarvis only
 works when the page is opened through Tailscale (see [Reaching it](#reaching-it-from-your-phone-or-mac));
 opened at `http://127.0.0.1` it says so instead of answering.
+
+### Tap anything for more
+
+Money rows (transactions, accounts, categories), Today rows on the
+Overview, and the Jarvis, calendar and email rows on Schedule are links.
+Each opens a fixed-size pop-up with more detail and, where the digest has
+them, **Open in Calendar** or **Open in Gmail**. The pop-up lives in the
+address (`#money/t/<id>`, `#schedule/e/<id>`), so it can be bookmarked,
+and **Close**, Esc or Back dismiss it.
+
+### The iPad as an always-on display
+
+Open the page in Safari, then Share › **Add to Home Screen**: it opens full
+screen like an app. In **Settings › Keep this screen on**, turn the switch
+on and the screen stays awake while the page is showing (the Screen Wake
+Lock API, Safari 16.4 and up; the choice is saved in that browser). If the
+browser can't, the page says so; set the iPad's Auto-Lock to Never instead.
+Layouts are checked at desktop, iPad Pro 11 landscape and phone sizes, with
+44 px touch targets on touch screens.
 
 ### States every page handles
 
@@ -391,7 +410,7 @@ could then send a made-up Tailscale login header and talk to Jarvis.
 ```bash
 npm run typecheck     # tsc, no emit
 npm run test:unit     # Vitest + jsdom, ~2 s
-npm run test:e2e      # Playwright: builds, starts the real server, tests desktop + phone
+npm run test:e2e      # Playwright: builds, starts the real server, tests desktop, phone + iPad
 npm test              # unit, then end-to-end
 ```
 
@@ -408,10 +427,11 @@ state, the Unload flow with its blocking indicator, Close, hash routing),
 and a check that every CSS animation sits inside the reduced-motion guard.
 
 **End-to-end tests** (`tests/e2e/`) run each user story on a desktop
-browser and a Pixel 7-sized phone against the production server on sample
+browser, a Pixel 7-sized phone and an iPad Pro 11 in landscape against the production server on sample
 data: the overview, moving between pages with the back button, unloading
 and reloading Gemma, Close and Esc, the remembered sky, no animation with
-reduced motion, and no sideways scrolling.
+reduced motion, no sideways scrolling, detail pop-ups and purchases to sort
+on Money, and keeping the screen on.
 
 Everything passes on any machine with Node 20.12+; nothing depends on the
 PC. CI (`.github/workflows/ci.yml`) runs the same commands on every push
@@ -518,7 +538,7 @@ src/
   styles.css           all styles; tokens at the top
 tests/
   unit/                Vitest
-  e2e/                 Playwright (desktop + phone)
+  e2e/                 Playwright (desktop, phone, iPad)
 deploy/home-lab.service  systemd unit for jarvis
 Dockerfile, docker-compose.yml  the Docker setup
 ```

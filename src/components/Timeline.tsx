@@ -25,6 +25,8 @@ interface TimelineProps {
   empty?: string
   /** A short status after the date, like "Updating from Jarvis…". */
   note?: string
+  /** Where tapping a row goes (its detail pop-up); rows aren't links without it. */
+  linkTo?: (item: TimelineItem) => string
 }
 
 /** The time column: the clock time, or "All day". */
@@ -33,8 +35,22 @@ function RowTime({ item }: { item: TimelineItem }) {
   return <time className="timeline__time" dateTime={item.at}>{clock(item.at)}</time>
 }
 
+/** A row's card, as a link to its detail when there is one. */
+function RowCard({ item, href }: { item: TimelineItem; href?: string }) {
+  const inside = (
+    <>
+      <span className="timeline__title">{item.title}</span>
+      <span className="timeline__detail">{item.detail}</span>
+      {item.source ? <span className="timeline__source">{SOURCE[item.source]}</span> : null}
+      <span className="badge" data-status={item.status}>{STATUS[item.status]}</span>
+    </>
+  )
+  if (href) return <a className="timeline__card timeline__card--link" href={href}>{inside}</a>
+  return <div className="timeline__card">{inside}</div>
+}
+
 /** The timeline panel. */
-export const Timeline = memo(function Timeline({ items, now, title = 'Today', limit, upcoming = false, presorted = false, empty = 'Nothing scheduled on jarvis today.', note }: TimelineProps) {
+export const Timeline = memo(function Timeline({ items, now, title = 'Today', limit, upcoming = false, presorted = false, empty = 'Nothing scheduled on jarvis today.', note, linkTo }: TimelineProps) {
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(now)
   let rows = items
   if (!presorted) rows = items.toSorted((a, b) => a.at.localeCompare(b.at))
@@ -58,12 +74,7 @@ export const Timeline = memo(function Timeline({ items, now, title = 'Today', li
           {shown.map((it) => (
             <li key={it.id} className="timeline__item" data-status={it.status} data-source={it.source}>
               <RowTime item={it} />
-              <div className="timeline__card">
-                <p className="timeline__title">{it.title}</p>
-                <p className="timeline__detail">{it.detail}</p>
-                {it.source ? <span className="timeline__source">{SOURCE[it.source]}</span> : null}
-                <span className="badge" data-status={it.status}>{STATUS[it.status]}</span>
-              </div>
+              <RowCard item={it} href={linkTo?.(it)} />
             </li>
           ))}
         </ol>

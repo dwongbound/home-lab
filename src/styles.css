@@ -93,6 +93,16 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 
 /* ---------- Shell ---------- */
 .shell { position: relative; z-index: 1; min-height: 100vh; overflow-x: clip; /* the landing slides things in from the sides; never a sideways scroll */ padding: 14px var(--gutter) 48px; max-width: 1440px; margin: 0 auto; }
+/* Opened from the Home Screen, the page runs under the status bar and
+   around the rounded corners (viewport-fit=cover), so keep clear of them. */
+@supports (padding: max(0px)) {
+  .shell {
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-left: max(var(--gutter), env(safe-area-inset-left));
+    padding-right: max(var(--gutter), env(safe-area-inset-right));
+    padding-bottom: max(48px, env(safe-area-inset-bottom));
+  }
+}
 .main { display: grid; gap: var(--gap); }
 
 .topbar { view-transition-name: topbar; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: clamp(18px, 3vw, 34px); }
@@ -314,7 +324,8 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jarvis__input::placeholder { color: var(--frost-faint); }
 
 /* ---------- Dialog, blocking, toast ---------- */
-.dialog { width: min(440px, calc(100vw - 32px)); height: 252px; border-radius: var(--r-panel); color: var(--frost); padding: 22px; margin: auto; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; overflow: hidden; }
+/* Fixed and centred in the window: .glass sets position: relative, which in the top layer would pin the dialog to the top of the page instead of the screen. */
+.dialog { position: fixed; inset: 0; width: min(440px, calc(100vw - 32px)); height: 252px; border-radius: var(--r-panel); color: var(--frost); padding: 22px; margin: auto; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; overflow: hidden; }
 .dialog:not([open]) { display: none; }
 .dialog::backdrop { background: rgba(8, 12, 18, 0.5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
 .dialog__title { font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
@@ -331,6 +342,50 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .stale { margin-top: 14px; font-size: 13px; color: #f6d3a6; }
 .toast { position: fixed; z-index: 5; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 999px; background: var(--frost); color: var(--basalt); font-weight: 600; box-shadow: 0 10px 30px -10px rgba(0,0,0,.5); }
+
+/* ---------- Tappable rows and detail pop-ups ---------- */
+/* A column of panels inside a two-column grid, so each side fills on its own. */
+.stack { display: grid; gap: var(--gap); align-content: start; min-width: 0; }
+/* A whole row as a link: same look as the plain row, a soft highlight on hover. */
+.row-link { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; min-height: 36px; margin: -4px -8px; padding: 4px 8px; border-radius: 10px; color: inherit; text-decoration: none; }
+.row-link:hover { background: rgba(255,255,255,.07); }
+.row-link--stack { flex-direction: column; align-items: stretch; gap: 2px; }
+/* Something to sort out: a yellow outline and a "!". */
+.row-link--attention { box-shadow: inset 0 0 0 1px rgba(242, 201, 76, .7); background: rgba(242, 201, 76, .08); margin: 0; }
+.attention__mark { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #f2c94c; color: var(--basalt); font-size: 13px; font-weight: 800; }
+.money__empties { margin-top: 10px; padding: 0 12px; color: var(--frost-dim); }
+.timeline__card--link { color: inherit; text-decoration: none; }
+.timeline__card--link:hover { background: rgba(255,255,255,.12); }
+.timeline__card > span { display: block; }
+.timeline__card > .badge { display: inline-block; }
+
+/* The detail pop-up: one fixed size, so it never jumps; the middle scrolls. */
+.dialog--detail { width: min(520px, calc(100vw - 32px)); height: min(560px, calc(100dvh - 32px)); grid-template-rows: auto minmax(0, 1fr) auto; }
+.detail__body { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding-right: 2px; }
+.detail__facts { display: grid; gap: 0; margin: 4px 0 14px; }
+.detail__fact { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.detail__fact:first-child { border-top: 0; }
+.detail__fact dt { color: var(--frost-faint); font-size: 14px; }
+.detail__fact dd { margin: 0; text-align: right; font-weight: 500; overflow-wrap: anywhere; }
+.detail__hint { font-size: 13.5px; color: var(--frost-dim); margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: rgba(242, 201, 76, .08); border: 1px solid rgba(242, 201, 76, .35); }
+.detail__list { margin-top: 4px; }
+.detail__link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+
+/* An on/off switch (Settings). */
+.switch { display: flex; align-items: center; gap: 12px; min-height: 44px; margin-top: 14px; padding: 0; border: 0; background: none; color: var(--frost); font: 500 14.5px var(--font-body); cursor: pointer; }
+.switch__track { position: relative; width: 48px; height: 28px; border-radius: 999px; background: rgba(255,255,255,.16); border: 1px solid var(--glass-edge); flex: none; }
+.switch__knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--frost); }
+.switch[aria-checked='true'] .switch__track { background: var(--glacier); }
+.switch[aria-checked='true'] .switch__knob { left: 23px; background: #fff; }
+
+/* Fingers, not a mouse (iPad, iPhone): every control and row at least 44 px. */
+@media (pointer: coarse) {
+  .row-link { min-height: 44px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .segmented__opt { height: 44px; }
+  .row-link:hover, .timeline__card--link:hover { background: none; }
+  .row-link--attention:hover { background: rgba(242, 201, 76, .08); }
+}
 
 /* ---------- Motion: only when wanted ---------- */
 @media (prefers-reduced-motion: no-preference) {
@@ -370,6 +425,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
     }
   }
   .pill { transition: color 220ms ease, background-color 220ms ease; }
+  .switch__knob { transition: left 180ms ease; }
 
   /* ---------- Landing: the first load only (App sets data-landing) ----------
      A bold arrival, about 1.8 s, then out of the way for good: the sky
@@ -445,7 +501,6 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 @media (max-width: 820px) {
   .grid--main, .grid--split { grid-template-columns: minmax(0, 1fr); }
-  .grid--money { grid-template-columns: minmax(0, 1fr); }
   /* Icons only, but the label stays for screen readers. */
   .pill__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pill { padding: 0 12px; height: 40px; }
@@ -462,4 +517,10 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .stat__value { font-size: 26px; }
   .timeline__item { grid-template-columns: 54px 1fr; }
   .dialog__actions .btn { flex: 1; }
+  /* The three totals as short rows, label left and number right, so they
+     don't fill the whole first screen on a phone. */
+  .grid--money { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .money__total { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; }
+  .money__total .panel__sub { margin: 0; }
+  .money__total .money__big { font-size: 24px; }
 }

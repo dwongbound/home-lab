@@ -1,5 +1,5 @@
 // End-to-end tests against the real production server (built page + API,
-// mock data), on a desktop and a phone-sized browser.
+// mock data), on a desktop, a phone and an iPad-sized browser.
 import { defineConfig, devices } from '@playwright/test'
 
 const PORT = 4181
@@ -19,6 +19,9 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
     { name: 'phone', use: { ...devices['Pixel 7'] } },
+    // Dylan's iPad as an always-on display. Run in Chromium (the browser
+    // installed everywhere these tests run) with the iPad's size and touch.
+    { name: 'ipad', use: { ...devices['iPad Pro 11 landscape'], browserName: 'chromium' } },
   ],
   webServer: {
     command: `npm run build && PORT=${PORT} DATA_SOURCE=mock node server/index.mjs`,

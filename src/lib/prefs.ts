@@ -11,3 +11,14 @@ export function readSky(): string {
 export function writeSky(v: string): void {
   try { localStorage.setItem(KEY, v) } catch { /* not saved; fine */ }
 }
+
+const AWAKE_KEY = 'home-lab:v1:awake'
+
+/** Whether this browser should keep its screen on (the iPad as a wall display). Off unless saved on. */
+export function readAwake(): boolean {
+  try { return localStorage.getItem(AWAKE_KEY) === 'on' } catch { return false }
+}
+/** Saves the keep-awake choice. Silently does nothing if storage is blocked. */
+export function writeAwake(on: boolean): void {
+  try { localStorage.setItem(AWAKE_KEY, on ? 'on' : 'off') } catch { /* not saved; fine */ }
+}

@@ -14,7 +14,8 @@ import { Schedule } from './views/Schedule'
 import { Settings, type SkyChoice } from './views/Settings'
 import { useHashView } from './useHashView'
 import { useNow } from './useNow'
-import { readSky, writeSky } from './lib/prefs'
+import { readAwake, readSky, writeAwake, writeSky } from './lib/prefs'
+import { useWakeLock } from './useWakeLock'
 import { shownPhase } from './lib/sky'
 
 // The whole page: backdrop, top bar, and whichever view the hash names.
@@ -32,6 +33,9 @@ export function App() {
   const now = useNow()
   const [sky, setSky] = useState<SkyChoice>(() => readSky() as SkyChoice)
   const [toast, setToast] = useState<string | null>(null)
+  // Keep the screen on (Settings), for the iPad as an always-on display.
+  const [awake, setAwake] = useState(readAwake)
+  const wake = useWakeLock(awake)
 
   // Toasts clear themselves after 4 seconds.
   useEffect(() => {
@@ -51,6 +55,7 @@ export function App() {
   }, [hasData])
 
   const chooseSky = useCallback((s: SkyChoice) => { setSky(s); writeSky(s) }, [])
+  const chooseAwake = useCallback((on: boolean) => { setAwake(on); writeAwake(on) }, [])
   const refresh = useCallback(() => { void mutate() }, [mutate])
   // Opening the page asks Jarvis for a fresh digest; panels say so meanwhile.
   const digestRefreshing = useDigestRefresh(data?.cloud?.updatedAt ?? null, refresh)
@@ -79,7 +84,7 @@ export function App() {
   } else if (view === 'schedule') {
     body = <Schedule data={data} now={now} />
   } else if (view === 'preferences') {
-    body = <Settings data={data} sky={sky} onSky={chooseSky} />
+    body = <Settings data={data} sky={sky} onSky={chooseSky} awake={awake} wake={wake} onAwake={chooseAwake} />
   } else {
     body = <Overview data={data} now={now} />
   }
