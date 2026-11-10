@@ -258,7 +258,7 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `DIGEST_TOKEN` | *(empty)* | Fine-grained GitHub token, **Contents: Read-only on that one repo**. **Secret.** Empty (and no `DIGEST_FILE`) turns the cloud panels off. |
 | `SHELL_USERS` | *(empty)* | Tailscale logins allowed to use the Shell page, comma-separated. Empty turns the shell off. |
 | `SHELL_URL` | `http://127.0.0.1:7681` | Where ttyd listens (`deploy/ttyd.service`). |
-| `DIGEST_FILE` | *(empty)* | Read the digest from this file on the PC instead of GitHub (for a digest Jarvis writes locally). No token needed. |
+| `DIGEST_FILE` | *(empty)* | Read the digest from this file on the PC instead of GitHub (for a digest Jarvis writes locally). No token needed. `docker-compose.yml` sets it to `/digest/digest.json`, mounted read-only from `~/.local/share/home-lab-digest/out`, where Jarvis's `home_lab_digest` job writes every 15 minutes, 7 am to midnight. |
 | `SKIP_CALENDARS` | `Wong Fam` | Calendars never shown, comma-separated. Wong Fam is shared with family and holds their plans. |
 | `WINDOWS_DRIVE` | `/mnt/c` | Where WSL mounts C:. |
 | `HOME_LAB_ENV_FILE` | `.env` | Which env file to load. |

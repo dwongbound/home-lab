@@ -20,11 +20,17 @@ services:
       PORT: "4180"
       # nvidia-smi finds the driver's libnvidia-ml.so here, as it does in WSL.
       LD_LIBRARY_PATH: /usr/lib/wsl/lib
+      # The calendar, email and money digest that Jarvis's home_lab_digest job
+      # writes every 15 minutes (mounted below).
+      DIGEST_FILE: /digest/digest.json
     volumes:
       # Free space on C:, read-only.
       - /mnt/c:/mnt/c:ro
       # WSL's nvidia-smi and the driver libraries it needs, read-only.
       - /usr/lib/wsl:/usr/lib/wsl:ro
+      # Jarvis's digest, read-only. The folder, not the file: Jarvis replaces
+      # the file by renaming a new one over it, which a file mount wouldn't see.
+      - ${HOME}/.local/share/home-lab-digest/out:/digest:ro
     devices:
       # The GPU as WSL exposes it, so nvidia-smi can read memory use.
       - /dev/dxg
