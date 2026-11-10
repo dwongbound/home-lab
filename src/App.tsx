@@ -12,7 +12,8 @@ import { Home } from './views/Home'
 import { Shell } from './views/Shell'
 import { Schedule } from './views/Schedule'
 import { Settings, type SkyChoice } from './views/Settings'
-import { useHashView } from './useHashView'
+import { goToView, useHashView } from './useHashView'
+import { useSwipeNav } from './useSwipeNav'
 import { useNow } from './useNow'
 import { readAwake, readSky, writeAwake, writeSky } from './lib/prefs'
 import { useWakeLock } from './useWakeLock'
@@ -54,6 +55,9 @@ export function App() {
     return () => clearTimeout(id)
   }, [hasData])
 
+  // Swiping sideways changes tab, on touch screens.
+  useSwipeNav(view, goToView)
+
   const chooseSky = useCallback((s: SkyChoice) => { setSky(s); writeSky(s) }, [])
   const chooseAwake = useCallback((on: boolean) => { setAwake(on); writeAwake(on) }, [])
   const refresh = useCallback(() => { void mutate() }, [mutate])
@@ -94,7 +98,8 @@ export function App() {
       <Backdrop now={now} override={sky} landing={landing} />
       {/* data-landing waits for the data, so the arrival plays on the real page, not the spinner. */}
       {/* data-sky lets the glass darken its tint under the bright day sky (styles.css). */}
-      <div className="shell" data-sky={shownPhase(now, sky)} data-landing={landing && hasData ? '' : undefined}>
+      {/* data-view lets the Overview fill exactly one screen on a display-sized window. */}
+      <div className="shell" data-view={view} data-sky={shownPhase(now, sky)} data-landing={landing && hasData ? '' : undefined}>
         <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} />
         <DigestRefreshing.Provider value={digestRefreshing}>
           <main className="main" key={data ? 'ready' : 'waiting'}>{body}</main>

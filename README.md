@@ -132,7 +132,15 @@ on and the screen stays awake while the page is showing (the Screen Wake
 Lock API, Safari 16.4 and up; the choice is saved in that browser). If the
 browser can't, the page says so; set the iPad's Auto-Lock to Never instead.
 Layouts are checked at desktop, iPad Pro 11 landscape and phone sizes, with
-44 px touch targets on touch screens.
+44 px touch targets on touch screens. On an iPad-sized screen (or a desktop
+window at least 1000 × 600) the Overview fills exactly one screen and never
+scrolls; a busy Today scrolls inside its panel, with "+N more today" linking
+to Schedule. On touch screens, swipe left or right to change tab.
+
+Safari (every browser on iPad and iPhone) leaves the frosted blur out of
+view-transition snapshots, so there tabs change without one: the page swaps
+at once and the panels' contents slide in from the side, keeping the glass
+frosted the whole time. Chrome keeps the crossfade.
 
 ### States every page handles
 

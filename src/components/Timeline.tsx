@@ -27,6 +27,8 @@ interface TimelineProps {
   note?: string
   /** Where tapping a row goes (its detail pop-up); rows aren't links without it. */
   linkTo?: (item: TimelineItem) => string
+  /** Where "+N more" goes when the limit leaves rows out. */
+  moreHref?: string
 }
 
 /** The time column: the clock time, or "All day". */
@@ -50,7 +52,7 @@ function RowCard({ item, href }: { item: TimelineItem; href?: string }) {
 }
 
 /** The timeline panel. */
-export const Timeline = memo(function Timeline({ items, now, title = 'Today', limit, upcoming = false, presorted = false, empty = 'Nothing scheduled on jarvis today.', note, linkTo }: TimelineProps) {
+export const Timeline = memo(function Timeline({ items, now, title = 'Today', limit, upcoming = false, presorted = false, empty = 'Nothing scheduled on jarvis today.', note, linkTo, moreHref }: TimelineProps) {
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(now)
   let rows = items
   if (!presorted) rows = items.toSorted((a, b) => a.at.localeCompare(b.at))
@@ -79,6 +81,9 @@ export const Timeline = memo(function Timeline({ items, now, title = 'Today', li
           ))}
         </ol>
       )}
+      {moreHref && rows.length > shown.length ? (
+        <a className="timeline__more" href={moreHref}>+{rows.length - shown.length} more today</a>
+      ) : null}
     </section>
   )
 })

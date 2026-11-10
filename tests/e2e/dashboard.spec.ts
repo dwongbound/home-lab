@@ -6,7 +6,9 @@
 //   - The first load lands with a show; with reduced motion on, nothing moves.
 //   - I tap any money row, Today row, event or email for a pop-up with more, and links out.
 //   - Purchases still in "Other" stand out so I know to sort them.
-//   - The iPad can stay on as a wall display.
+//   - The iPad can stay on as a wall display, with the whole Overview on one screen.
+//   - I swipe sideways to change tab.
+//   - In Safari, changing tab never shows the panels dark before they frost.
 import { expect, test } from '@playwright/test'
 
 test('overview shows the PC at a glance', async ({ page }) => {
@@ -66,7 +68,9 @@ test('changing page cross-fades and slides the pill light, and never with reduce
     await nav.getByRole('link', { name: 'Services' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Services' })).toBeVisible()
     const transitions = await page.evaluate(() => (window as unknown as { transitions: number }).transitions)
-    expect(transitions).toBe(reducedMotion === 'reduce' ? 0 : 1)
+    // Safari (the iPad) changes page without one; it slides the contents instead.
+    const safari = await page.evaluate(() => /AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent))
+    expect(transitions).toBe(reducedMotion === 'reduce' || safari ? 0 : 1)
     // One light, sitting under the current pill once it settles.
     await expect(nav.locator('.pills__light')).toHaveCount(1)
     const current = await nav.getByRole('link', { name: 'Services' }).boundingBox()
@@ -263,4 +267,85 @@ test('every page fits without sideways scrolling, and tappable rows are finger-s
   await page.goto('/#money')
   const heights = await page.locator('.row-link').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
   expect(Math.min(...heights)).toBeGreaterThanOrEqual(44)
+})
+
+/** Swipes across the page with one finger, from (x1, y) to (x2, y). */
+async function swipe(page: import('@playwright/test').Page, x1: number, x2: number, y: number) {
+  await page.evaluate(([a, b, yy]) => {
+    const target = document.elementFromPoint(a, yy) ?? document.body
+    const touch = (x: number) => new Touch({ identifier: 1, target, clientX: x, clientY: yy })
+    target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [touch(a)], changedTouches: [touch(a)] }))
+    target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [], changedTouches: [touch(b)] }))
+  }, [x1, x2, y])
+}
+
+test('on the iPad the whole Overview fits the screen with no scrolling', async ({ page }, info) => {
+  test.skip(info.project.name === 'phone', 'A phone scrolls the Overview')
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+  const extra = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)
+  expect(extra).toBeLessThanOrEqual(0)
+  // Today and the Claude threads are on screen, not pushed below it.
+  for (const name of ['Today', 'Claude threads']) {
+    const box = (await page.getByRole('heading', { name, exact: true }).boundingBox())!
+    expect(box.y + box.height).toBeLessThan(page.viewportSize()!.height)
+  }
+})
+
+test('the iPad held upright fits the Overview too', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 834, height: 1194 }, hasTouch: true, isMobile: true })
+  const page = await context.newPage()
+  await page.goto(test.info().project.use.baseURL + '/')
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+  const extra = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)
+  expect(extra).toBeLessThanOrEqual(0)
+  await context.close()
+})
+
+test('swiping sideways changes tab, and not inside a text box', async ({ page }, info) => {
+  test.skip(info.project.name === 'desktop', 'Swiping is for touch screens')
+  await page.goto('/#home')
+  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
+  const { width, height } = page.viewportSize()!
+  const y = Math.round(height * 0.6)
+  // Finger moving left: the next tab.
+  await swipe(page, Math.round(width * 0.7), Math.round(width * 0.25), y)
+  await expect(page.getByRole('heading', { level: 1, name: 'Claude' })).toBeVisible()
+  // Moving right: back again.
+  await swipe(page, Math.round(width * 0.25), Math.round(width * 0.7), y)
+  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
+  // A short nudge isn't a swipe.
+  await swipe(page, Math.round(width * 0.5), Math.round(width * 0.5) - 30, y)
+  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
+  // Nor is a drag in the Ask Jarvis box.
+  await page.goto('/')
+  const input = (await page.getByRole('textbox', { name: 'Question for Jarvis' }).boundingBox())!
+  await swipe(page, input.x + input.width * 0.8, input.x + 10, input.y + input.height / 2)
+  await expect(page.getByRole('heading', { level: 1, name: /Dylan/ })).toBeVisible()
+})
+
+test('in Safari, changing tab keeps the glass frosted and slides the contents in', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 1194, height: 834 },
+    userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1',
+  })
+  const page = await context.newPage()
+  await page.goto(test.info().project.use.baseURL + '/')
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+  await expect(page.locator('.shell[data-landing]')).toHaveCount(0, { timeout: 5000 })
+  await page.evaluate(() => {
+    const w = window as unknown as { transitions: number }
+    w.transitions = 0
+    const start = document.startViewTransition.bind(document)
+    document.startViewTransition = ((cb?: () => void) => { w.transitions++; return start(cb) }) as typeof document.startViewTransition
+  })
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Money' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Money' })).toBeVisible()
+  // No snapshot crossfade; the live glass is there, frosted, from the first frame.
+  expect(await page.evaluate(() => (window as unknown as { transitions: number }).transitions)).toBe(0)
+  expect(await page.evaluate(() => document.documentElement.dataset.enter)).toBe('next')
+  const blur = await page.locator('.main .glass').first().evaluate((el) => getComputedStyle(el).backdropFilter)
+  expect(blur).toContain('blur(26px)')
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.enter ?? 'done')).toBe('done')
+  await context.close()
 })
