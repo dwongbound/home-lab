@@ -7,6 +7,8 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+    # ready_for_review so marking a draft ready runs the tests and merges it.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   test:
