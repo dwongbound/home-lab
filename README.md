@@ -256,7 +256,7 @@ sudo systemctl enable --now home-lab
 systemctl status home-lab
 ```
 
-### In Docker, on port 80
+### In Docker
 
 The other way to run it, with nothing installed on Ubuntu but Docker
 (which jarvis already has for Home Assistant and Open WebUI):
@@ -265,11 +265,11 @@ The other way to run it, with nothing installed on Ubuntu but Docker
 cd ~/home-lab
 cp .env.example .env        # then edit .env (see "Going live")
 docker compose up -d --build
-curl -s http://127.0.0.1/api/snapshot | head -c 300
+curl -s http://127.0.0.1:4180/api/snapshot | head -c 300
 ```
 
 `docker-compose.yml` sets `DATA_SOURCE=live`, `HOST=127.0.0.1` and
-`PORT=80`, whatever `.env` says. It uses host networking, so Ollama, Jarvis
+`PORT=4180`, whatever `.env` says. It uses host networking, so Ollama, Jarvis
 and Home Assistant answer at the same addresses as outside the container,
 and mounts `/mnt/c` and WSL's `nvidia-smi` read-only for the disk and GPU
 cards. `restart: unless-stopped` brings it back after a reboot, once
@@ -286,19 +286,26 @@ By default the server only listens on `127.0.0.1`, which is the PC itself.
 The way to open it from other devices is `tailscale serve`, the same way
 Jarvis and Open WebUI are published. It works for both the Docker and the
 systemd setup, and it's what makes Ask Jarvis work, because it tells the
-page (and so Jarvis) who you are. From Ubuntu, with the Docker setup on
-port 80:
+page (and so Jarvis) who you are. From Ubuntu:
 
 ```bash
-"/mnt/c/Program Files/Tailscale/tailscale.exe" serve --bg --http=80 http://127.0.0.1:80
+"/mnt/c/Program Files/Tailscale/tailscale.exe" serve --bg --https=8080 http://127.0.0.1:4180
 ```
 
-Then open `http://jarvis.snakebird-ph.ts.net` on the phone or Mac with
-Tailscale on. (Plain `http` is fine here: Tailscale encrypts the traffic
-between your devices. For the systemd setup on 4180, use
-`--https=4180 http://127.0.0.1:4180` and `https://jarvis.snakebird-ph.ts.net:4180`.)
-`tailscale.exe serve status` lists what's published; `serve --http=80 off`
-takes it down.
+Then open `https://jarvis.snakebird-ph.ts.net:8080` on the phone or Mac
+with Tailscale on. `tailscale.exe serve status` lists what's published;
+`serve --https=8080 off` takes it down.
+
+Two things that don't work on jarvis, so you don't have to find out:
+
+- **Publishing on the same port the page listens on.** WSL's mirrored
+  networking shares ports between Ubuntu and Windows, and `serve --http=80`
+  in front of a page on `127.0.0.1:80` never answered (connection refused).
+  Every service here uses two numbers (Open WebUI 3000 → 443, Jarvis
+  8765 → 8443); keep to that.
+- **Plain `http://jarvis.snakebird-ph.ts.net` on port 80.** Open WebUI
+  already answers `https://` on that name, and browsers try `https://`
+  first, so they land on Open WebUI. Use an `https://` port.
 
 **Without `tailscale serve`**, for the page only (Ask Jarvis won't work):
 
@@ -459,7 +466,7 @@ tests/
   unit/                Vitest
   e2e/                 Playwright (desktop + phone)
 deploy/home-lab.service  systemd unit for jarvis
-Dockerfile, docker-compose.yml  the Docker setup on port 80
+Dockerfile, docker-compose.yml  the Docker setup
 ```
 
 ## Working on it

@@ -1,10 +1,11 @@
-# The page on jarvis, on port 80: `docker compose up -d --build`.
+# The page on jarvis, in Docker: `docker compose up -d --build`.
 #
 # Host networking, so 127.0.0.1 inside the container is the PC itself and
 # Ollama, Jarvis (127.0.0.1:8765) and Home Assistant answer at the same
-# addresses as outside it. It listens on 127.0.0.1:80 only; `tailscale
+# addresses as outside it. It listens on 127.0.0.1:4180 only; `tailscale
 # serve` on Windows is what puts it on your phone and Mac (README,
-# "Reaching it"). Never set HOST=0.0.0.0 here: the page passes on the
+# "Reaching it"). Publish it on a different port than 4180: WSL's
+# mirrored networking shares ports between Ubuntu and Windows. Never set HOST=0.0.0.0 here: the page passes on the
 # Tailscale login header to Jarvis, so it must only hear from Tailscale.
 services:
   home-lab:
@@ -16,7 +17,7 @@ services:
     environment:
       DATA_SOURCE: live
       HOST: 127.0.0.1
-      PORT: "80"
+      PORT: "4180"
       # nvidia-smi finds the driver's libnvidia-ml.so here, as it does in WSL.
       LD_LIBRARY_PATH: /usr/lib/wsl/lib
     volumes:
