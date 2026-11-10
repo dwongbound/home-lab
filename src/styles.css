@@ -199,6 +199,7 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 .timeline__item[data-status='scheduled'] { --status: rgba(242,239,233,.35); }
 .timeline__item[data-status='done'] .timeline__card { opacity: .78; }
 .updating { color: var(--glacier); }
+.timeline__more { display: block; margin-top: 10px; font-size: 13px; color: var(--frost-dim); text-underline-offset: 3px; }
 .timeline__source { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--frost-faint); margin-top: 2px; }
 /* Calendar rows get the sky-blue edge while they're later, so they stand apart from Jarvis's. */
 .timeline__item[data-source='calendar'][data-status='scheduled'] { --status: var(--glacier); }
@@ -427,6 +428,17 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .pill { transition: color 220ms ease, background-color 220ms ease; }
   .switch__knob { transition: left 180ms ease; }
 
+  /* Changing page without a view transition (Safari, src/useHashView.ts):
+     what's inside each panel slides in from the side the new page came
+     from. The glass panels themselves don't move or fade, so their blur
+     is never lost. */
+  html[data-enter='next'] .main .glass > *,
+  html[data-enter='next'] .main .hero { animation: enter-from-right 420ms cubic-bezier(.2, .8, .2, 1) both; }
+  html[data-enter='prev'] .main .glass > *,
+  html[data-enter='prev'] .main .hero { animation: enter-from-left 420ms cubic-bezier(.2, .8, .2, 1) both; }
+  /* Time-based, not tied to scrolling like the reveal above. */
+  html[data-enter] .main .glass > * { animation-timeline: auto; }
+
   /* ---------- Landing: the first load only (App sets data-landing) ----------
      A bold arrival, about 1.8 s, then out of the way for good: the sky
      comes up from dark, the sun swells and rises, the ridge lifts, the top
@@ -473,6 +485,8 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 @keyframes grow { from { transform: scaleY(0); } }
 @keyframes reveal { from { opacity: 0; transform: translateY(12px); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes enter-from-right { from { opacity: 0; transform: translateX(28px); } }
+@keyframes enter-from-left { from { opacity: 0; transform: translateX(-28px); } }
 @keyframes land-sky { from { filter: brightness(.15) saturate(.4); } }
 @keyframes land-sun { from { opacity: 0; transform: translate(-50%, -10%) scale(.35); } }
 @keyframes land-ridge { from { transform: translateY(70%); } }
@@ -523,4 +537,63 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .money__total { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; }
   .money__total .panel__sub { margin: 0; }
   .money__total .money__big { font-size: 24px; }
+}
+
+/* ---------- Overview fits one screen (the iPad as a wall display) ----------
+   On a screen big enough to be a display, the Overview fills exactly the
+   window and never scrolls: the shell is the window's height, and the page
+   is a grid whose last row (Today) takes what's left, its list scrolling
+   inside the panel if a busy day overflows. App sets data-view on .shell. */
+@media (min-width: 1000px) and (min-height: 600px) {
+  .shell[data-view='overview'] { height: 100dvh; min-height: 0; display: flex; flex-direction: column; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .shell[data-view='overview'] .topbar { margin-bottom: 16px; }
+  .shell[data-view='overview'] .main {
+    flex: 1; min-height: 0;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+  }
+  /* Today and the Claude threads join the page grid directly. */
+  .shell[data-view='overview'] .main > .grid--split { display: contents; }
+  .shell[data-view='overview'] .main > .hero { grid-column: 1; grid-row: 1; padding-top: 0; }
+  .shell[data-view='overview'] .main > .jarvis { grid-column: 1; grid-row: 2; }
+  .shell[data-view='overview'] .main > .grid--stats { grid-column: 1; grid-row: 3; }
+  .shell[data-view='overview'] .main .timeline { grid-column: 1; grid-row: 4; }
+  .shell[data-view='overview'] .main > .grid--split > :last-child { grid-column: 2; grid-row: 1 / 5; }
+  .shell[data-view='overview'] .hero__title { font-size: clamp(34px, 3.6vw, 48px); }
+  .shell[data-view='overview'] .hero__sub { margin-top: 6px; }
+  /* Ask Jarvis on one line: its title beside the box, answers below. */
+  .shell[data-view='overview'] .jarvis { grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 18px; padding-block: 14px; }
+  .shell[data-view='overview'] .jarvis__turns { grid-column: 1 / -1; grid-row: 2; }
+  .shell[data-view='overview'] .jarvis .spinner { grid-column: 1 / -1; }
+  .shell[data-view='overview'] .jarvis__form { grid-column: 2; grid-row: 1; }
+}
+/* An iPad held upright: everything stacked, still one screen tall. */
+@media (min-width: 700px) and (max-width: 999.98px) and (min-height: 900px) {
+  .shell[data-view='overview'] { height: 100dvh; min-height: 0; display: flex; flex-direction: column; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .shell[data-view='overview'] .topbar { margin-bottom: 16px; }
+  .shell[data-view='overview'] .main { flex: 1; min-height: 0; grid-template-rows: auto auto auto minmax(0, 1fr); }
+  .shell[data-view='overview'] .main > .grid--split { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); min-height: 0; align-items: stretch; }
+  .shell[data-view='overview'] .grid--stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .shell[data-view='overview'] .stat__of { white-space: normal; }
+}
+/* What both share: compact cards, and panels that fill their cell and
+   scroll inside rather than pushing the page. */
+@media (min-width: 1000px) and (min-height: 600px), (min-width: 700px) and (min-height: 900px) {
+  .shell[data-view='overview'] .jarvis { gap: 10px; }
+  .shell[data-view='overview'] .jarvis .panel__sub { display: none; }
+  .shell[data-view='overview'] .jarvis__turns { max-height: 132px; }
+  .shell[data-view='overview'] .stat { padding: 12px 14px 14px; gap: 6px; }
+  .shell[data-view='overview'] .stat__value { font-size: clamp(24px, 2.2vw, 30px); }
+  .shell[data-view='overview'] .main .timeline,
+  .shell[data-view='overview'] .main > .grid--split > :last-child { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .shell[data-view='overview'] .main > .grid--split > :last-child > :not(.panel__head),
+  .shell[data-view='overview'] .timeline__list { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+  .shell[data-view='overview'] .main .timeline .panel__head { margin-bottom: 10px; }
+  .shell[data-view='overview'] .timeline__list { gap: 8px; flex: 1; align-content: start; }
+  /* One line for the detail and where it came from. */
+  .shell[data-view='overview'] .timeline__card { display: block; padding-block: 8px; }
+  .shell[data-view='overview'] .timeline__card > .timeline__title { display: block; }
+  .shell[data-view='overview'] .timeline__card > .timeline__detail { display: inline; }
+  .shell[data-view='overview'] .timeline__card > .timeline__source { display: inline; margin-left: 8px; }
+  .shell[data-view='overview'] .timeline__time { padding-top: 9px; }
 }

@@ -26,10 +26,55 @@ function hashParts(): [string, string] {
 
 const read = (): View => { const page = hashParts()[0]; return (ids.has(page) ? page : 'overview') as View }
 
-/** True when the browser can run a view transition and motion is wanted. */
+/** True when motion is wanted (no reduce-motion setting). */
+function motionWanted(): boolean {
+  return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+}
+
+/**
+ * True in Safari and every other WebKit browser (all of them on iPad and
+ * iPhone). WebKit's view-transition snapshots leave out backdrop-filter, so
+ * the crossfaded panels show dark, untinted glass and then "pop" frosted
+ * when the live page returns. There's no feature test for that, so it's
+ * read from the user agent: WebKit without Chrome's or Firefox's own engine.
+ */
+function snapshotsDropGlass(): boolean {
+  const ua = navigator.userAgent
+  return /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg\/|Android/.test(ua)
+}
+
+/** True when the browser can run a view transition that keeps the glass. */
 function canTransition(): boolean {
   if (typeof document.startViewTransition !== 'function') return false
-  return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (snapshotsDropGlass()) return false
+  return motionWanted()
+}
+
+// How long the contents take to slide in where there's no view transition
+// (matches the enter animation in styles.css).
+const ENTER_MS = 420
+let enterTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * Without a view transition (WebKit), the page swaps at once and only the
+ * contents of each panel slide in, from the side the new page came from.
+ * The glass itself never fades or moves, so it stays frosted throughout.
+ */
+function playEnter(direction: 'next' | 'prev'): void {
+  if (!motionWanted()) return
+  const root = document.documentElement
+  // Remove and re-add, so a quick second change restarts the animation.
+  delete root.dataset.enter
+  void root.offsetWidth
+  root.dataset.enter = direction
+  clearTimeout(enterTimer)
+  enterTimer = setTimeout(() => { delete root.dataset.enter }, ENTER_MS)
+}
+
+/** Which way a page change goes, by the pills' order: to the right is "next". */
+function directionOf(from: View, to: View): 'next' | 'prev' {
+  const order = VIEWS.map((v) => v.id as View)
+  return order.indexOf(to) >= order.indexOf(from) ? 'next' : 'prev'
 }
 
 const subscribe = (cb: () => void) => {
@@ -37,14 +82,24 @@ const subscribe = (cb: () => void) => {
   const onHashChange = () => {
     const next = read()
     if (next === shown) return cb()
+    const direction = directionOf(shown, next)
     shown = next
     // A new page starts at the top, like any other page would.
     const swap = () => { flushSync(cb); window.scrollTo(0, 0) }
-    if (canTransition()) document.startViewTransition(swap)
-    else swap()
+    if (canTransition()) {
+      document.startViewTransition(swap)
+      return
+    }
+    swap()
+    playEnter(direction)
   }
   window.addEventListener('hashchange', onHashChange)
   return () => window.removeEventListener('hashchange', onHashChange)
+}
+
+/** Goes to another page (a swipe does this), the same as tapping its pill. */
+export function goToView(view: View): void {
+  window.location.hash = view
 }
 
 /** The current page. Unknown hashes fall back to the overview. */

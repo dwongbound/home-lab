@@ -70,7 +70,7 @@ export function Overview({ data, now }: { data: Snapshot; now: Date }) {
       </div>
 
       <div className="grid grid--split">
-        <Timeline items={todayAgenda(data, now)} now={now} limit={5} upcoming presorted empty="Nothing else today." note={note} linkTo={todayLink} />
+        <Timeline items={todayAgenda(data, now)} now={now} limit={5} upcoming presorted empty="Nothing else today." note={note} linkTo={todayLink} moreHref="#schedule" />
         <ClaudeThreadsPanel cloud={data.cloud} now={now} compact />
       </div>
       <AgendaDetail data={data} now={now} />

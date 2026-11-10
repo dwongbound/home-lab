@@ -42,7 +42,9 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `src/views/Money.tsx` (`t`, `a`, `c`, `sort`; rules in `src/lib/money.ts`), agenda ones in
   `src/components/AgendaDetail.tsx` (`j`, `e`, `m`).
 - **Always-on iPad:** `src/useWakeLock.ts` + Settings switch (`home-lab:v1:awake` in `prefs.ts`);
-  `public/manifest.webmanifest` + Apple meta tags in `index.html`.
+  `public/manifest.webmanifest` + Apple meta tags in `index.html`. Overview one-screen layout keys off
+  `.shell[data-view='overview']` (end of `styles.css`). Swipe tabs: `src/useSwipeNav.ts`. WebKit skips
+  view transitions (its snapshots drop backdrop-filter) and uses `html[data-enter]` content slides (`useHashView.ts`).
 - **Views:** `src/views/{Overview,Home,Claude,Money,Shell,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
