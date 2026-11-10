@@ -11,6 +11,7 @@ const STATES = [
   { entity_id: 'light.lamp', state: 'on', attributes: { friendly_name: 'Lamp', brightness: 153 } },
   { entity_id: 'media_player.tv', state: 'playing', attributes: { friendly_name: 'TV', volume_level: 0.3, media_title: 'News' } },
   { entity_id: 'lock.front_door', state: 'locked', attributes: { friendly_name: 'Front door' } },
+  { entity_id: 'switch.speaker_loudness', state: 'on', attributes: { friendly_name: 'Speaker Loudness' } },
   { entity_id: 'sensor.sun_next_setting', state: '2026-11-11T00:52:58+00:00', attributes: {} },
   { entity_id: 'weather.home', state: 'sunny', attributes: { temperature: 61, temperature_unit: '°F' } },
 ]
@@ -19,13 +20,15 @@ const STATES = [
 function readerWith() {
   const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
     if (url.endsWith('/api/states')) return Response.json(STATES)
+    // Home Assistant's template answer: the speaker's own settings switch.
+    if (url.endsWith('/api/template')) return new Response('["switch.speaker_loudness"]')
     return Response.json([])
   })
   return { reader: createHomeReader(config, { fetch }), fetch }
 }
 
 describe('home reader', () => {
-  it('shows lights and media, not locks, with brightness and volume as 0-1', async () => {
+  it("shows lights and media, not locks or a speaker's settings, with brightness and volume as 0-1", async () => {
     const home: any = await readerWith().reader.read()
     expect(home.devices.map((d: { id: string }) => d.id)).toEqual(['light.lamp', 'media_player.tv'])
     expect(home.devices[0].brightness).toBe(0.6)

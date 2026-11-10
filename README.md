@@ -59,12 +59,13 @@ Nothing else is needed for sample data: no `.env`, no token, no PC.
 
 ## What's on the page
 
-Six pages, picked from the pill bar at the top. Each is a plain link to a
+Seven pages, picked from the pill bar at the top. Each is a plain link to a
 `#hash`, so the back button, bookmarks and the keyboard all work.
 
 | Page | What it shows |
 | --- | --- |
 | **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. **Ask Jarvis**, a box for talking to Jarvis (below). A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The Gemma card. |
+| **Home** (`#home`) | Every light, switch, fan, speaker or TV, scene and script in Home Assistant, each with the controls that suit it: on/off, brightness, play/pause, volume, or Run. The weather and the next sunrise or sunset. New devices appear as they're added to Home Assistant; a speaker's own settings switches, locks, alarms and garage doors don't. Controlling needs the page opened through Tailscale. |
 | **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
 | **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. |
 | **Services** (`#services`) | Every service with its status, response time and a link to open it, the Gemma card, and how to restart Jarvis (it needs your password, so the page can't). |
@@ -135,7 +136,14 @@ opened at `http://127.0.0.1` it says so instead of answering.
 - **Secrets stay on the server.** The Home Assistant token is read from
   the environment by `server/config.mjs`, sent only to Home Assistant, and
   never included in a response. A unit test checks this.
-- **Actions need a header.** `POST /api/actions/*` and `POST /api/jarvis/ask` are refused without
+- **Home control is a short list.** `POST /api/home/control` takes one
+  entity and one of `toggle`, `brightness`, `power`, `playpause`, `volume`
+  or `run`, for lights, switches, fans, media players, scenes and scripts
+  only, and makes the one Home Assistant service call it stands for
+  (`server/sources/home.mjs`). The page can never name a service, and
+  locks, alarms and covers are out of reach. Like Ask Jarvis it needs the
+  Tailscale login that `tailscale serve` adds.
+- **Actions need a header.** `POST /api/actions/*`, `POST /api/jarvis/ask` and `POST /api/home/control` are refused without
   `x-home-lab: 1`. A cross-site form can't set a custom header, so another
   web page can't trigger actions on the PC.
 
