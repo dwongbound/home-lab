@@ -6,10 +6,12 @@ import { Timeline } from '../components/Timeline'
 import { ActivityList } from '../components/ActivityList'
 import { ServicesPanel } from '../components/ServicesPanel'
 import { ModelCard } from '../components/ModelCard'
+import { JarvisPanel } from '../components/JarvisPanel'
 import { CalendarPanel, ClaudeThreadsPanel } from '../components/CloudPanels'
 
-// The home view: greeting, four stat cards, the requests chart, today's
-// schedule, recent activity, services and the Gemma card.
+// The home view: greeting, four stat cards, the Ask Jarvis box, the
+// requests chart, today's schedule, recent activity, services and the
+// Gemma card.
 
 /** Claude threads waiting on Dylan, from the cloud digest (0 without one). */
 function threadsWaiting(s: Snapshot): number {
@@ -57,6 +59,8 @@ export function Overview({ data, now, onToast }: { data: Snapshot; now: Date; on
       <div className="grid grid--stats">
         {data.metrics.map((m) => <StatCard key={m.id} metric={m} />)}
       </div>
+
+      <JarvisPanel />
 
       <div className="grid grid--main">
         <RequestsChart days={data.requests} />

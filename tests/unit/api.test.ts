@@ -45,6 +45,27 @@ describe('POST /api/actions/:name', () => {
   })
 })
 
+describe('POST /api/jarvis/ask', () => {
+  it('refuses requests without the page header', async () => {
+    const res = await callApi(createApi(createMockSource()), 'POST', '/api/jarvis/ask', {}, '{"text":"hi"}')
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('needs some text', async () => {
+    const api = createApi(createMockSource())
+    expect((await callApi(api, 'POST', '/api/jarvis/ask', ACTION_HEADER, '{"text":"  "}')).statusCode).toBe(400)
+    expect((await callApi(api, 'POST', '/api/jarvis/ask', ACTION_HEADER, 'not json')).statusCode).toBe(400)
+  })
+
+  it("passes the caller's Tailscale login to the source", async () => {
+    let seen: unknown = null
+    const source = { ...createMockSource(), ask: async (text: string, caller: unknown) => { seen = { text, caller }; return { ok: true, message: 'hello' } } }
+    const res = await callApi(createApi(source), 'POST', '/api/jarvis/ask', { ...ACTION_HEADER, 'tailscale-user-login': 'dylan@example.com' }, '{"text":"hi"}')
+    expect(res.json()).toEqual({ ok: true, message: 'hello' })
+    expect(seen).toEqual({ text: 'hi', caller: { login: 'dylan@example.com' } })
+  })
+})
+
 describe('secrets', () => {
   it('never puts the Home Assistant token in a snapshot', async () => {
     const token = 'super-secret-long-lived-token'

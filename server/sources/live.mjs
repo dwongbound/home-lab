@@ -14,6 +14,8 @@ import { createDigestReader } from './digest.mjs'
 
 const realExecFile = promisify(execFileCallback)
 const PROBE_TIMEOUT_MS = 2500
+// Jarvis can take a while: Claude thinking, or Gemma loading first.
+const ASK_TIMEOUT_MS = 180_000
 const HISTORY_POINTS = 24
 const GB = 1024 ** 3
 
@@ -122,11 +124,7 @@ export function createLiveSource(config, deps = {}) {
     }
   }
 
-  /**
-   * For a web page (Open WebUI, Jarvis): any answer below 500 means the
-   * server is up. Jarvis answers 404 at "/" because it only serves its API
-   * routes, and that is still a healthy server.
-   */
+  /** For a web page (Open WebUI): any answer below 500 means the server is up. */
   function webStatus(probe) {
     if (probe !== null && probe.res.status < 500) return 'up'
     return 'down'
@@ -147,15 +145,32 @@ export function createLiveSource(config, deps = {}) {
     return 'Token set'
   }
 
+  /** Jarvis's /health answer, {"ok": true, "brain": "claude"}, or null. */
+  async function readJarvisHealth(probe) {
+    if (probe === null || !probe.ok) return null
+    try {
+      return await probe.res.json()
+    } catch {
+      return null
+    }
+  }
+
   /**
-   * Jarvis is "up" when systemd says active AND its web port answers,
-   * "degraded" when systemd says active but the port doesn't answer,
-   * and "down" otherwise.
+   * Jarvis is "up" when its /health answers. When it doesn't, it's
+   * "degraded" if systemd still says active (running but stuck) and
+   * "down" otherwise. In Docker there's no systemctl, so /health decides.
    */
-  function jarvisStatus(unitState, probe) {
-    if (unitState !== 'active') return 'down'
-    if (webStatus(probe) === 'up') return 'up'
-    return 'degraded'
+  function jarvisStatus(unitState, health) {
+    if (health !== null) return 'up'
+    if (unitState === 'active') return 'degraded'
+    return 'down'
+  }
+
+  /** The words after Jarvis's status: which brain it's using, or why it's quiet. */
+  function jarvisDetail(unitState, health) {
+    if (health !== null) return health.brain ? `Thinking with ${health.brain}` : 'Answering'
+    if (unitState !== 'unknown') return `systemd says ${unitState}`
+    return 'Not answering'
   }
 
   /** "up" with a model loaded, "idle" when Ollama runs with nothing loaded, else "down". */
@@ -179,7 +194,7 @@ export function createLiveSource(config, deps = {}) {
         probeHttp(`${config.haUrl}/api/`, haHeaders),
         probeHttp(`${config.ollamaUrl}/api/ps`),
         probeHttp(config.openWebUiUrl),
-        probeHttp(config.jarvisUrl),
+        probeHttp(`${config.jarvisApiUrl}/health`),
         readUnitState(),
         digest.read(),
       ])
@@ -194,6 +209,7 @@ export function createLiveSource(config, deps = {}) {
       remember('disk', disk === null ? null : disk.freeGb)
 
       const models = await readLoadedModels(ollama)
+      const jarvisHealth = await readJarvisHealth(jarvisHttp)
       const model = models.find((m) => m.name === config.ollamaModel) ?? models[0]
 
       return {
@@ -215,7 +231,7 @@ export function createLiveSource(config, deps = {}) {
           { id: 'ha', name: 'Home Assistant', detail: haDetail(ha), status: haStatus(ha), latencyMs: ha?.ms, url: config.haUrl },
           { id: 'ollama', name: 'Ollama', detail: model ? `${model.name} loaded` : 'No model loaded', status: ollamaStatus(ollama, model), latencyMs: ollama?.ms },
           { id: 'webui', name: 'Open WebUI', detail: 'Chat with Gemma', status: webStatus(webui), latencyMs: webui?.ms, url: config.openWebUiUrl },
-          { id: 'jarvis', name: 'Jarvis', detail: `systemd says ${unitState}`, status: jarvisStatus(unitState, jarvisHttp), latencyMs: jarvisHttp?.ms, url: config.jarvisUrl },
+          { id: 'jarvis', name: 'Jarvis', detail: jarvisDetail(unitState, jarvisHealth), status: jarvisStatus(unitState, jarvisHealth), latencyMs: jarvisHttp?.ms, url: config.jarvisUrl },
         ],
         model: {
           name: model?.name ?? config.ollamaModel,
@@ -246,6 +262,32 @@ export function createLiveSource(config, deps = {}) {
       })
       if (!res.ok) return { ok: false, message: `Ollama answered ${res.status}` }
       return { ok: true, message: unloading ? 'Gemma unloaded' : 'Gemma loaded' }
+    },
+
+    /**
+     * Asks Jarvis through its /ask endpoint, the same one the Siri Shortcut
+     * uses. `caller.login` is the Tailscale login of whoever opened the
+     * page; Jarvis refuses anyone not on its own list.
+     */
+    async ask(text, caller = {}) {
+      if (!caller.login) {
+        return { ok: false, message: 'Open this page through Tailscale to talk to Jarvis' }
+      }
+      let res
+      try {
+        res = await fetchFn(`${config.jarvisApiUrl}/ask`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify({ text }),
+          signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
+        })
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+      if (res.status === 401) return { ok: false, message: `Jarvis doesn't know ${caller.login}` }
+      if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+      const body = await res.json().catch(() => ({}))
+      return { ok: true, message: String(body.reply ?? '') }
     },
   }
 }

@@ -17,13 +17,16 @@ interface Fakes {
 }
 
 /** A live source whose fetch/execFile/statfs answer as described. */
-function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 404, haStatusCode = 200, unitState = 'active', gpuFails = false }: Fakes) {
+function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 200, haStatusCode = 200, unitState = 'active', gpuFails = false }: Fakes) {
   const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
     if (url.endsWith('/api/ps')) return new Response(JSON.stringify({ models: ollamaModels }))
-    if (url === config.jarvisUrl) {
+    if (url === `${config.jarvisApiUrl}/health`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
-      // The real Jarvis answers 404 at "/".
-      return new Response('not found', { status: jarvisStatusCode })
+      return new Response(JSON.stringify({ ok: true, brain: 'claude' }), { status: jarvisStatusCode })
+    }
+    if (url === `${config.jarvisApiUrl}/ask`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      return new Response(JSON.stringify({ reply: 'Lamp is off.' }), { status: jarvisStatusCode })
     }
     if (url.endsWith('/api/') && url.startsWith(config.haUrl)) return new Response('{}', { status: haStatusCode })
     return new Response('ok')
@@ -34,6 +37,8 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       return { stdout: '10342, 12288\n' }
     }
     if (unitState === 'active') return { stdout: 'active\n' }
+    // No systemctl at all, as in Docker.
+    if (unitState === '') throw Object.assign(new Error('spawn systemctl ENOENT'), { code: 'ENOENT' })
     // systemctl exits non-zero for anything but active.
     throw Object.assign(new Error('exit 3'), { stdout: `${unitState}\n` })
   })
@@ -61,12 +66,21 @@ describe('live snapshot', () => {
     expect(snap.metrics.find((m: { id: string }) => m.id === 'gpu')!.value).toBeNull()
   })
 
-  it('Jarvis: up, degraded when the port is silent, down when systemd says so', async () => {
-    expect(service(await liveWith({}).source.snapshot(), 'jarvis').status).toBe('up')
+  it('Jarvis: up with its brain when /health answers, degraded when only systemd says active, else down', async () => {
+    const up = service(await liveWith({}).source.snapshot(), 'jarvis')
+    expect(up.status).toBe('up')
+    expect(up.detail).toBe('Thinking with claude')
     expect(service(await liveWith({ jarvisAnswers: false }).source.snapshot(), 'jarvis').status).toBe('degraded')
-    const down = service(await liveWith({ unitState: 'failed' }).source.snapshot(), 'jarvis')
+    const down = service(await liveWith({ jarvisAnswers: false, unitState: 'failed' }).source.snapshot(), 'jarvis')
     expect(down.status).toBe('down')
     expect(down.detail).toBe('systemd says failed')
+  })
+
+  it('Jarvis in Docker (no systemctl): /health alone decides', async () => {
+    const { source } = liveWith({ jarvisAnswers: false, unitState: '' })
+    const jarvis = service(await source.snapshot(), 'jarvis')
+    expect(jarvis.status).toBe('down')
+    expect(jarvis.detail).toBe('Not answering')
   })
 
   it('Ollama: idle with nothing loaded, up with Gemma loaded', async () => {
@@ -85,8 +99,7 @@ describe('live snapshot', () => {
 })
 
 describe('live status rules', () => {
-  it('Jarvis answering 404 at / is up, a 502 is degraded', async () => {
-    expect(service(await liveWith({ jarvisStatusCode: 404 }).source.snapshot(), 'jarvis').status).toBe('up')
+  it('Jarvis /health answering 502 while systemd says active is degraded', async () => {
     expect(service(await liveWith({ jarvisStatusCode: 502 }).source.snapshot(), 'jarvis').status).toBe('degraded')
   })
 
@@ -112,6 +125,31 @@ describe('live actions', () => {
     const [url, init] = fetch.mock.calls.at(-1)!
     expect(url).toBe('http://127.0.0.1:11434/api/generate')
     expect(JSON.parse(String(init!.body))).toEqual({ model: 'gemma4:12b', keep_alive: 0 })
+  })
+})
+
+describe('live ask', () => {
+  it('forwards the question and the Tailscale login to Jarvis /ask', async () => {
+    const { source, fetch } = liveWith({})
+    const result = await source.ask('lamp off', { login: 'dylan@example.com' })
+    expect(result).toEqual({ ok: true, message: 'Lamp is off.' })
+    const [url, init] = fetch.mock.calls.at(-1)!
+    expect(url).toBe('http://127.0.0.1:8765/ask')
+    expect(JSON.parse(String(init!.body))).toEqual({ text: 'lamp off' })
+    expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
+  })
+
+  it("doesn't call Jarvis without a Tailscale login", async () => {
+    const { source, fetch } = liveWith({})
+    const result = await source.ask('lamp off', {})
+    expect(result.ok).toBe(false)
+    expect(result.message).toBe('Open this page through Tailscale to talk to Jarvis')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('says who Jarvis refused, and when it is down', async () => {
+    expect((await liveWith({ jarvisStatusCode: 401 }).source.ask('hi', { login: 'x@y.z' })).message).toBe("Jarvis doesn't know x@y.z")
+    expect((await liveWith({ jarvisAnswers: false }).source.ask('hi', { login: 'x@y.z' })).message).toBe('Jarvis is not answering')
   })
 })
 

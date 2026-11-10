@@ -58,4 +58,6 @@ export interface DataSource {
   kind: 'mock' | 'live'
   snapshot(): Promise<Snapshot>
   action(name: ActionName): Promise<ActionResult>
+  /** Asks Jarvis. On success `message` is Jarvis's reply. */
+  ask(text: string, caller?: { login?: string }): Promise<ActionResult>
 }
