@@ -117,7 +117,18 @@ function mockDigest(t, minutesAgo) {
  * Creates a mock source. `now` is injectable so tests can pin the clock.
  */
 export function createMockSource({ now = () => new Date() } = {}) {
-  const state = { modelLoaded: true }
+  const state = {
+    modelLoaded: true,
+    // Sample devices for the Home page. Its buttons change these.
+    home: [
+      { id: 'light.living_room_lamp', name: 'Living room lamp', kind: 'light', state: 'on', available: true, brightness: 0.6 },
+      { id: 'switch.porch_lights', name: 'Porch lights', kind: 'switch', state: 'off', available: true },
+      { id: 'media_player.bedroom', name: 'Bedroom speaker', kind: 'media', state: 'playing', available: true, volume: 0.25, detail: 'Hillsong UNITED · Oceans' },
+      { id: 'media_player.apple_tv', name: 'Apple TV', kind: 'media', state: 'off', available: true },
+      { id: 'media_player.tv', name: 'TV', kind: 'media', state: 'unavailable', available: false },
+      { id: 'scene.movie_night', name: 'Movie night', kind: 'scene', state: 'scening', available: true },
+    ],
+  }
 
   return {
     kind: 'mock',
@@ -170,6 +181,11 @@ export function createMockSource({ now = () => new Date() } = {}) {
         ],
         model: { name: 'Gemma 12B', loaded, vramGb: loaded ? 10.1 : 0, loadSeconds: 168 },
         cloud: mockDigest(t, minutesAgo),
+        home: {
+          devices: state.home.map((d) => ({ ...d })),
+          weather: { condition: 'partlycloudy', temperature: 61, unit: '°F' },
+          sun: { rising: atPacificTime(t, 6, 41), setting: atPacificTime(t, 16, 52) },
+        },
       }
     },
 
@@ -186,6 +202,21 @@ export function createMockSource({ now = () => new Date() } = {}) {
         return { ok: true, message: 'Gemma loaded' }
       }
       return { ok: false, message: `Unknown action: ${name}` }
+    },
+
+    /** Pretends to control a device, so the Home page's buttons visibly work. */
+    async control(entityId, command, value) {
+      const device = state.home.find((d) => d.id === entityId)
+      if (!device) return { ok: false, message: 'Not a device' }
+      if (!device.available) return { ok: false, message: `${device.name} is unavailable` }
+      await delay(400)
+      if (command === 'toggle') device.state = device.state === 'on' ? 'off' : 'on'
+      else if (command === 'power') device.state = device.state === 'off' ? 'idle' : 'off'
+      else if (command === 'playpause') device.state = device.state === 'playing' ? 'paused' : 'playing'
+      else if (command === 'brightness') { device.brightness = value; device.state = value > 0 ? 'on' : 'off' }
+      else if (command === 'volume') device.volume = value
+      else if (command !== 'run') return { ok: false, message: `Can't ${command} that` }
+      return { ok: true, message: 'Done' }
     },
 
     /** Pretends to be Jarvis, so the Ask box works on sample data. */

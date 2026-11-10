@@ -4,6 +4,7 @@
 //   POST /api/actions/ollama-unload free Gemma's ~10 GB of GPU memory
 //   POST /api/actions/ollama-load   load Gemma back (about 3 minutes)
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
+//   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
@@ -94,6 +95,20 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
+  /** Sends one command to one Home Assistant device (server/sources/home.mjs). */
+  async function handleControl(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    if (typeof body?.entity !== 'string' || typeof body?.command !== 'string') {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"entity": "light.lamp", "command": "toggle"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.control(body.entity, body.command, body.value, { login })
+    return sendJson(res, result.ok ? 200 : 502, result)
+  }
+
   return async function api(req, res, next) {
     const { pathname } = new URL(req.url ?? '/', 'http://localhost')
     if (!pathname.startsWith('/api/')) {
@@ -111,6 +126,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/ask') {
         return await handleAsk(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/home/control') {
+        return await handleControl(req, res)
       }
       return sendJson(res, 404, { error: 'Not found' })
     } catch (err) {

@@ -66,6 +66,22 @@ describe('POST /api/jarvis/ask', () => {
   })
 })
 
+describe('POST /api/home/control', () => {
+  it('refuses requests without the page header, and bodies without entity and command', async () => {
+    const api = createApi(createMockSource())
+    expect((await callApi(api, 'POST', '/api/home/control', {}, '{"entity":"light.x","command":"toggle"}')).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/home/control', ACTION_HEADER, '{"entity":"light.x"}')).statusCode).toBe(400)
+  })
+
+  it("passes the command and the caller's Tailscale login to the source", async () => {
+    let seen: unknown = null
+    const source = { ...createMockSource(), control: async (...args: unknown[]) => { seen = args; return { ok: true, message: 'Done' } } }
+    const res = await callApi(createApi(source), 'POST', '/api/home/control', { ...ACTION_HEADER, 'tailscale-user-login': 'd@example.com' }, '{"entity":"light.lamp","command":"brightness","value":0.5}')
+    expect(res.statusCode).toBe(200)
+    expect(seen).toEqual(['light.lamp', 'brightness', 0.5, { login: 'd@example.com' }])
+  })
+})
+
 describe('secrets', () => {
   it('never puts the Home Assistant token in a snapshot', async () => {
     const token = 'super-secret-long-lived-token'
