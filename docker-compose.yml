@@ -1,0 +1,30 @@
+# Runs the home-lab page on jarvis: `docker compose up -d --build`.
+# Settings come from .env (copy .env.example); the lines below override the
+# few that differ inside a container.
+services:
+  home-lab:
+    build: .
+    image: home-lab
+    container_name: home-lab
+    restart: unless-stopped
+    # Host networking so the page reaches Ollama, Jarvis and Home Assistant
+    # exactly as it would outside Docker (127.0.0.1:11434 is the PC's
+    # Ollama, not the container's). It also means PORT is the PC's port.
+    network_mode: host
+    env_file: .env
+    environment:
+      PORT: "80"
+      # The PC's localhost only. Tailscale serve publishes it to your
+      # devices (README, "Running it in Docker"); nothing else can reach it.
+      HOST: "127.0.0.1"
+      JARVIS_UNIT: ""
+    # GPU memory: WSL exposes the RTX 3060 through /dev/dxg and the
+    # libraries in /usr/lib/wsl. Read-only; nvidia-smi only reads.
+    devices:
+      - /dev/dxg:/dev/dxg
+    volumes:
+      - /usr/lib/wsl:/usr/lib/wsl:ro
+      # Free space on C:. Read-only.
+      - /mnt/c:/mnt/c:ro
+    # Jarvis has 16 GB and Gemma uses most of it; the server needs ~60 MB.
+    mem_limit: 256m

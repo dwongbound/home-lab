@@ -16,6 +16,8 @@ const realExecFile = promisify(execFileCallback)
 const PROBE_TIMEOUT_MS = 2500
 const HISTORY_POINTS = 24
 const GB = 1024 ** 3
+// What readUnitState answers when JARVIS_UNIT is empty (no systemd to ask).
+const NOT_CHECKED = 'not checked'
 
 /** Rounds to one decimal place, which is all the cards show. */
 function round1(n) {
@@ -98,8 +100,13 @@ export function createLiveSource(config, deps = {}) {
     return { freeGb: (s.bavail * s.bsize) / GB, totalGb: (s.blocks * s.bsize) / GB }
   }
 
-  /** `systemctl is-active jarvis`: "active", "inactive", "failed"... */
+  /**
+   * `systemctl is-active jarvis`: "active", "inactive", "failed"...
+   * Inside the Docker container there is no systemd to ask, so JARVIS_UNIT
+   * is set empty there and this answers "not checked" without running anything.
+   */
   async function readUnitState() {
+    if (!config.jarvisUnit) return NOT_CHECKED
     try {
       const { stdout } = await execFile('systemctl', ['is-active', config.jarvisUnit], { timeout: PROBE_TIMEOUT_MS })
       return stdout.trim()
@@ -150,12 +157,20 @@ export function createLiveSource(config, deps = {}) {
   /**
    * Jarvis is "up" when systemd says active AND its web port answers,
    * "degraded" when systemd says active but the port doesn't answer,
-   * and "down" otherwise.
+   * and "down" otherwise. With systemd not checked, the port decides alone.
    */
   function jarvisStatus(unitState, probe) {
+    if (unitState === NOT_CHECKED) return webStatus(probe)
     if (unitState !== 'active') return 'down'
     if (webStatus(probe) === 'up') return 'up'
     return 'degraded'
+  }
+
+  /** The words after the status for Jarvis: what systemd says, or the port. */
+  function jarvisDetail(unitState, probe) {
+    if (unitState !== NOT_CHECKED) return `systemd says ${unitState}`
+    if (webStatus(probe) === 'up') return 'Answering on its port'
+    return 'Not answering on its port'
   }
 
   /** "up" with a model loaded, "idle" when Ollama runs with nothing loaded, else "down". */
@@ -215,7 +230,7 @@ export function createLiveSource(config, deps = {}) {
           { id: 'ha', name: 'Home Assistant', detail: haDetail(ha), status: haStatus(ha), latencyMs: ha?.ms, url: config.haUrl },
           { id: 'ollama', name: 'Ollama', detail: model ? `${model.name} loaded` : 'No model loaded', status: ollamaStatus(ollama, model), latencyMs: ollama?.ms },
           { id: 'webui', name: 'Open WebUI', detail: 'Chat with Gemma', status: webStatus(webui), latencyMs: webui?.ms, url: config.openWebUiUrl },
-          { id: 'jarvis', name: 'Jarvis', detail: `systemd says ${unitState}`, status: jarvisStatus(unitState, jarvisHttp), latencyMs: jarvisHttp?.ms, url: config.jarvisUrl },
+          { id: 'jarvis', name: 'Jarvis', detail: jarvisDetail(unitState, jarvisHttp), status: jarvisStatus(unitState, jarvisHttp), latencyMs: jarvisHttp?.ms, url: config.jarvisUrl },
         ],
         model: {
           name: model?.name ?? config.ollamaModel,

@@ -69,6 +69,23 @@ describe('live snapshot', () => {
     expect(down.detail).toBe('systemd says failed')
   })
 
+  it('Jarvis in Docker (JARVIS_UNIT empty): never runs systemctl, the port decides', async () => {
+    const dockerConfig = loadConfig({ DATA_SOURCE: 'live', JARVIS_UNIT: '' })
+    const execFile = vi.fn(async (cmd: string) => {
+      if (cmd === 'systemctl') throw new Error('systemctl: not found')
+      return { stdout: '10342, 12288\n' }
+    })
+    const statfs = async () => ({ bavail: GB, bsize: 1, blocks: GB })
+    const answering = vi.fn(async () => new Response('not found', { status: 404 }))
+    const up = service(await createLiveSource(dockerConfig, { fetch: answering, execFile, statfs }).snapshot(), 'jarvis')
+    expect(up).toMatchObject({ status: 'up', detail: 'Answering on its port' })
+    expect(execFile).not.toHaveBeenCalledWith('systemctl', expect.anything(), expect.anything())
+
+    const silent = vi.fn(async () => { throw new Error('connect ECONNREFUSED') })
+    const down = service(await createLiveSource(dockerConfig, { fetch: silent, execFile, statfs }).snapshot(), 'jarvis')
+    expect(down).toMatchObject({ status: 'down', detail: 'Not answering on its port' })
+  })
+
   it('Ollama: idle with nothing loaded, up with Gemma loaded', async () => {
     expect(service(await liveWith({}).source.snapshot(), 'ollama').status).toBe('idle')
     const snap = await liveWith({ ollamaModels: [{ name: 'gemma4:12b', size_vram: 10 * GB }] }).source.snapshot()

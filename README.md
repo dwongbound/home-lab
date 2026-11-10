@@ -27,6 +27,7 @@ Playwright (end-to-end, desktop and phone)
 - [How it fits together](#how-it-fits-together)
 - [The data layer](#the-data-layer)
 - [Environment variables](#environment-variables)
+- [Running it in Docker](#running-it-in-docker)
 - [Running it on jarvis](#running-it-on-jarvis)
 - [Reaching it from your phone or Mac](#reaching-it-from-your-phone-or-mac)
 - [Going live](#going-live)
@@ -204,7 +205,7 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `NVIDIA_SMI` | `/usr/lib/wsl/lib/nvidia-smi` | WSL's nvidia-smi, which isn't on PATH. |
 | `OPEN_WEBUI_URL` | `https://jarvis.snakebird-ph.ts.net` | Open WebUI, for its status and link. |
 | `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's web port, for its status and link. |
-| `JARVIS_UNIT` | `jarvis` | The systemd unit to ask about. |
+| `JARVIS_UNIT` | `jarvis` | The systemd unit to ask about. Empty skips systemd and goes by Jarvis's port alone (Docker sets this). |
 | `DIGEST_REPO` | `dwongbound/home-lab-digest` | Private repo holding the cloud digest. |
 | `DIGEST_BRANCH` | `main` | Its branch. |
 | `DIGEST_PATH` | `digest.json` | The file in it. |
@@ -219,9 +220,56 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 runs the mock source inside the browser, so it can be opened from any
 static host with no server. The normal build never includes the mock data.
 
+## Running it in Docker
+
+This is the easy way on jarvis. `dwong` is in the `docker` group, so it
+needs no password, and Docker brings the container back after a reboot the
+same way it does Home Assistant.
+
+```bash
+# In Ubuntu on jarvis, as dwong:
+git clone https://github.com/dwongbound/home-lab ~/home-lab
+cd ~/home-lab
+cp .env.example .env        # then edit .env (see "Going live")
+docker compose up -d --build
+curl -s http://127.0.0.1/api/snapshot | head -c 200   # check it answers
+```
+
+What `docker-compose.yml` sets up, and why:
+
+- **Port 80 on the PC's localhost.** The container uses host networking,
+  so the page reaches Ollama (`127.0.0.1:11434`), Jarvis and Home Assistant
+  exactly as it would outside Docker, and `PORT=80` is the PC's own port 80.
+  `HOST` stays `127.0.0.1`, so nothing off the PC can reach it except through
+  Tailscale (below).
+- **Jarvis's status comes from its port.** There's no systemd inside a
+  container, so `JARVIS_UNIT` is empty and Jarvis shows up when its port
+  answers and down when it doesn't.
+- **GPU memory** works through WSL's `/dev/dxg` and `/usr/lib/wsl`, mounted
+  read-only. If the GPU card says "Not reporting", that mount is the thing to check.
+- **Free space on C:** comes from `/mnt/c`, mounted read-only.
+- **256 MB memory cap.** The server needs about 60 MB, and Gemma needs the rest.
+- **A health check** asks `/api/snapshot` every 30 s. `docker ps` shows
+  `healthy` or `unhealthy`.
+
+**Reaching it from your phone or Mac:** in PowerShell on Windows (Tailscale
+runs on the Windows side), once:
+
+```powershell
+tailscale serve --bg --https=8444 http://127.0.0.1:80
+```
+
+Then open **https://jarvis.snakebird-ph.ts.net:8444** on any device signed
+in to your tailnet. Only your tailnet can open it, and it gets real HTTPS
+like Open WebUI.
+
+**Updating:** `cd ~/home-lab && git pull && docker compose up -d --build`.
+
+**Logs:** `docker logs -f home-lab`.
+
 ## Running it on jarvis
 
-The PC runs Ubuntu 24.04 in WSL 2 with systemd on, and Ubuntu is started at
+Without Docker, as a systemd service. The PC runs Ubuntu 24.04 in WSL 2 with systemd on, and Ubuntu is started at
 boot by the "Start Ubuntu (WSL)" task, so a systemd service is enough to
 keep the page up across reboots.
 

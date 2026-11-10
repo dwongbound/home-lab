@@ -26,11 +26,26 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
 
+  # Builds the Docker image and checks the page and API answer from it.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t home-lab .
+      - run: docker run -d --name home-lab -e DATA_SOURCE=mock -e HOST=0.0.0.0 -p 8080:80 home-lab
+      - name: Page and API answer
+        run: |
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:8080/api/snapshot > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8080/api/snapshot | grep -q '"source":"mock"'
+          curl -sf http://127.0.0.1:8080/ | grep -q '<div id="root">'
+      - if: failure()
+        run: docker logs home-lab
+
   # Merges a passing pull request into dev with a rebase, then deletes its
   # branch. Skipped for drafts (mark a PR as draft to hold it), for PRs into
   # any other branch, and for PRs from forks, whose token can't write anyway.
   merge:
-    needs: test
+    needs: [test, docker]
     if: >-
       github.event_name == 'pull_request' &&
       github.base_ref == 'dev' &&
@@ -62,7 +77,7 @@ jobs:
   # A push to dev made by a person (merging a PR by hand, or pushing
   # directly) moves main up to that commit once its tests pass.
   promote:
-    needs: test
+    needs: [test, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     permissions:
