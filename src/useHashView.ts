@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import { VIEWS, type View } from './components/TopNav'
+import { clearSwipe, motionWanted } from './swipeMotion'
 
 // Which page is showing, read from the URL hash (#services and so on), and
 // which detail is open on it (#money/t/x1: transaction x1 on Money). Details
@@ -26,11 +27,6 @@ function hashParts(): [string, string] {
 
 const read = (): View => { const page = hashParts()[0]; return (ids.has(page) ? page : 'overview') as View }
 
-/** True when motion is wanted (no reduce-motion setting). */
-function motionWanted(): boolean {
-  return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-}
-
 /**
  * True in Safari and every other WebKit browser (all of them on iPad and
  * iPhone). WebKit's view-transition snapshots leave out backdrop-filter, so
@@ -52,7 +48,7 @@ function canTransition(): boolean {
 
 // How long the contents take to slide in where there's no view transition
 // (matches the enter animation in styles.css).
-const ENTER_MS = 420
+const ENTER_MS = 620
 let enterTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
@@ -61,6 +57,8 @@ let enterTimer: ReturnType<typeof setTimeout> | undefined
  * The glass itself never fades or moves, so it stays frosted throughout.
  */
 function playEnter(direction: 'next' | 'prev'): void {
+  // A swipe's glide-out ends here, in the same frame the new page slides in.
+  clearSwipe()
   if (!motionWanted()) return
   const root = document.documentElement
   // Remove and re-add, so a quick second change restarts the animation.
@@ -77,6 +75,10 @@ function directionOf(from: View, to: View): 'next' | 'prev' {
   return order.indexOf(to) >= order.indexOf(from) ? 'next' : 'prev'
 }
 
+// Set by swipeToView: the next page change slides the way the finger went
+// rather than crossfading, everywhere, so it carries on from the swipe.
+let swiping = false
+
 const subscribe = (cb: () => void) => {
   let shown = read()
   const onHashChange = () => {
@@ -86,7 +88,9 @@ const subscribe = (cb: () => void) => {
     shown = next
     // A new page starts at the top, like any other page would.
     const swap = () => { flushSync(cb); window.scrollTo(0, 0) }
-    if (canTransition()) {
+    const swiped = swiping
+    swiping = false
+    if (!swiped && canTransition()) {
       document.startViewTransition(swap)
       return
     }
@@ -97,8 +101,9 @@ const subscribe = (cb: () => void) => {
   return () => window.removeEventListener('hashchange', onHashChange)
 }
 
-/** Goes to another page (a swipe does this), the same as tapping its pill. */
-export function goToView(view: View): void {
+/** Goes to another page after a swipe: the new page slides in from the side. */
+export function swipeToView(view: View): void {
+  swiping = true
   window.location.hash = view
 }
 

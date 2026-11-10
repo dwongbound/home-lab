@@ -135,7 +135,7 @@ Layouts are checked at desktop, iPad Pro 11 landscape and phone sizes, with
 44 px touch targets on touch screens. On an iPad-sized screen (or a desktop
 window at least 1000 × 600) the Overview fills exactly one screen and never
 scrolls; a busy Today scrolls inside its panel, with "+N more today" linking
-to Schedule. On touch screens, swipe left or right to change tab.
+to Schedule. On touch screens, swipe left or right to change tab: the page follows your finger, glides on to the next tab, or springs back from a short swipe.
 
 Safari (every browser on iPad and iPhone) leaves the frosted blur out of
 view-transition snapshots, so there tabs change without one: the page swaps

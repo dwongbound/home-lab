@@ -14,7 +14,7 @@ import { Home } from './views/Home'
 import { Shell } from './views/Shell'
 import { Schedule } from './views/Schedule'
 import { Settings, type SkyChoice } from './views/Settings'
-import { goToView, useHashView } from './useHashView'
+import { swipeToView, useHashView } from './useHashView'
 import { useSwipeNav } from './useSwipeNav'
 import { useNow } from './useNow'
 import { readAwake, readSky, writeAwake, writeSky } from './lib/prefs'
@@ -58,7 +58,7 @@ export function App() {
   }, [hasData])
 
   // Swiping sideways changes tab, on touch screens.
-  useSwipeNav(view, goToView)
+  useSwipeNav(view, swipeToView)
 
   const chooseSky = useCallback((s: SkyChoice) => { setSky(s); writeSky(s) }, [])
   const chooseAwake = useCallback((on: boolean) => { setAwake(on); writeAwake(on) }, [])

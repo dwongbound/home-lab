@@ -285,6 +285,56 @@ async function swipe(page: import('@playwright/test').Page, x1: number, x2: numb
   }, [x1, x2, y])
 }
 
+/** Puts one finger down at (x1, y) and drags it to (x2, y) without lifting it. */
+async function dragFinger(page: import('@playwright/test').Page, x1: number, x2: number, y: number) {
+  await page.evaluate(([a, b, yy]) => {
+    const target = document.elementFromPoint(a, yy) ?? document.body
+    const touch = (x: number) => new Touch({ identifier: 1, target, clientX: x, clientY: yy })
+    target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [touch(a)], changedTouches: [touch(a)] }))
+    for (let i = 1; i <= 8; i++) {
+      const x = a + ((b - a) * i) / 8
+      target.dispatchEvent(new TouchEvent('touchmove', { bubbles: true, touches: [touch(x)], changedTouches: [touch(x)] }))
+    }
+  }, [x1, x2, y])
+}
+
+/** Lifts the finger at (x, y). */
+async function liftFinger(page: import('@playwright/test').Page, x: number, y: number) {
+  await page.evaluate(([xx, yy]) => {
+    const target = document.elementFromPoint(xx, yy) ?? document.body
+    const touch = new Touch({ identifier: 1, target, clientX: xx, clientY: yy })
+    target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [], changedTouches: [touch] }))
+  }, [x, y])
+}
+
+test('while swiping, the page follows the finger, and springs back from a short swipe', async ({ page }, info) => {
+  test.skip(info.project.name === 'desktop', 'Swiping is for touch screens')
+  await page.goto('/#home')
+  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
+  await expect(page.locator('.shell[data-landing]')).toHaveCount(0, { timeout: 5000 })
+  const { width, height } = page.viewportSize()!
+  const y = Math.round(height * 0.6)
+  const title = page.locator('.main .hero').first()
+  const shift = () => title.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).m41 + (parseFloat(getComputedStyle(el).translate.split(' ')[0]) || 0))
+  // Finger halfway across a short way: the title moves with it, the glass doesn't.
+  await dragFinger(page, Math.round(width * 0.6), Math.round(width * 0.6) - 50, y)
+  expect(await shift()).toBeLessThan(-10)
+  const panel = page.locator('.main .glass').first()
+  expect(await panel.evaluate((el) => getComputedStyle(el).translate)).toBe('none')
+  // Too short to count: it springs back and stays on Home.
+  await liftFinger(page, Math.round(width * 0.6) - 50, y)
+  await expect.poll(() => page.locator('main.main').getAttribute('data-swipe')).toBeNull()
+  expect(Math.abs(await shift())).toBeLessThan(1)
+  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
+  // A long slow drag counts: the contents glide out and the next tab glides in.
+  await dragFinger(page, Math.round(width * 0.8), Math.round(width * 0.3), y)
+  await liftFinger(page, Math.round(width * 0.3), y)
+  await expect(page.locator('main.main')).toHaveAttribute('data-swipe', 'leave')
+  await expect(page.getByRole('heading', { level: 1, name: 'Claude' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.enter ?? 'done')).toBe('done')
+  expect(await page.locator('main.main').getAttribute('data-swipe')).toBeNull()
+})
+
 test('on the iPad the whole Overview fits the screen with no scrolling', async ({ page }, info) => {
   test.skip(info.project.name === 'phone', 'A phone scrolls the Overview')
   await page.goto('/')

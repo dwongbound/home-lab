@@ -467,16 +467,27 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .pill { transition: color 220ms ease, background-color 220ms ease; }
   .switch__knob { transition: left 180ms ease; }
 
-  /* Changing page without a view transition (Safari, src/useHashView.ts):
-     what's inside each panel slides in from the side the new page came
-     from. The glass panels themselves don't move or fade, so their blur
-     is never lost. */
+  /* Changing page without a view transition (Safari, and every swipe;
+     src/useHashView.ts): what's inside each panel glides in from the side
+     the new page came from, the title first and the panels just after.
+     The glass panels themselves don't move or fade, so their blur is
+     never lost. */
   html[data-enter='next'] .main .glass > *,
-  html[data-enter='next'] .main .hero { animation: enter-from-right 420ms cubic-bezier(.2, .8, .2, 1) both; }
+  html[data-enter='next'] .main .hero { animation: enter-from-right 560ms cubic-bezier(.16, 1, .3, 1) both; }
   html[data-enter='prev'] .main .glass > *,
-  html[data-enter='prev'] .main .hero { animation: enter-from-left 420ms cubic-bezier(.2, .8, .2, 1) both; }
+  html[data-enter='prev'] .main .hero { animation: enter-from-left 560ms cubic-bezier(.16, 1, .3, 1) both; }
   /* Time-based, not tied to scrolling like the reveal above. */
-  html[data-enter] .main .glass > * { animation-timeline: auto; }
+  html[data-enter] .main .glass > * { animation-timeline: auto; animation-delay: 50ms; }
+
+  /* A swipe in progress (src/swipeMotion.ts): the same contents follow the
+     finger and fade a little; once it counts they glide out quickly, and a
+     swipe that's too short springs back with a slight overshoot. */
+  .main[data-swipe] .glass > *,
+  .main[data-swipe] .hero { translate: var(--swipe-x, 0px) 0; opacity: var(--swipe-o, 1); }
+  .main[data-swipe='leave'] .glass > *,
+  .main[data-swipe='leave'] .hero { transition: translate 200ms cubic-bezier(.4, 0, 1, 1), opacity 200ms cubic-bezier(.4, 0, 1, 1); }
+  .main[data-swipe='settle'] .glass > *,
+  .main[data-swipe='settle'] .hero { transition: translate 460ms cubic-bezier(.2, 1.35, .4, 1), opacity 300ms ease-out; }
 
   /* ---------- Landing: the first load only (App sets data-landing) ----------
      A bold arrival, about 1.8 s, then out of the way for good: the sky
@@ -531,8 +542,8 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 @keyframes think-orbit-c { from { transform: rotateX(58deg) rotateY(40deg) rotateZ(0deg); } to { transform: rotateX(58deg) rotateY(40deg) rotateZ(360deg); } }
 @keyframes think-shimmer { from { background-position: 110% 0; } to { background-position: -110% 0; } }
 @keyframes think-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-6px); opacity: 1; } }
-@keyframes enter-from-right { from { opacity: 0; transform: translateX(28px); } }
-@keyframes enter-from-left { from { opacity: 0; transform: translateX(-28px); } }
+@keyframes enter-from-right { from { opacity: 0; transform: translateX(56px); } }
+@keyframes enter-from-left { from { opacity: 0; transform: translateX(-56px); } }
 @keyframes land-sky { from { filter: brightness(.15) saturate(.4); } }
 @keyframes land-sun { from { opacity: 0; transform: translate(-50%, -10%) scale(.35); } }
 @keyframes land-ridge { from { transform: translateY(70%); } }
