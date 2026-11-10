@@ -20,7 +20,8 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 
 - **API:** `server/app.mjs` — `GET /api/snapshot`, `POST /api/actions/:name`
   (`ollama-unload`, `ollama-load`; needs header `x-home-lab: 1`; one at a time, 409 otherwise),
-  `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`).
+  `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`),
+  `POST /api/home` (`{id, command, value?}`, same header; allow list + HA service mapping in `server/home.mjs`).
 - **Sources:** `server/sources/mock.mjs` (default; Pacific-time schedule, remembers
   Gemma loaded/unloaded), `server/sources/live.mjs` (parallel probes, 2.5 s timeouts).
   Picked by `DATA_SOURCE` in `server/app.mjs createSource`.
@@ -31,11 +32,11 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 - **Cloud digest:** `server/sources/digest.mjs` reads `digest.json` from the private
   `DIGEST_REPO` with `DIGEST_TOKEN` (2 min cache; written every 15 min); shape `CloudDigest` in `src/types.ts`;
   panels in `src/components/CloudPanels.tsx`; the scheduled task's prompt + setup in `docs/digest.md`.
-- **Views:** `src/views/{Overview,Claude,Money,Services,Schedule,Settings}.tsx`, chosen by
+- **Views:** `src/views/{Overview,Home,Claude,Money,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,
-  `JarvisPanel` (Ask Jarvis), `Spinner`, `Backdrop`, `Icon`.
+  `JarvisPanel` (Ask Jarvis), `HomeDevices` (Home tiles), `Spinner`, `Backdrop`, `Icon`.
 - **Helpers:** `src/lib/format.ts`, `sky.ts` (phase by hour), `sparkline.ts`,
   `prefs.ts` (localStorage key `home-lab:v1:sky`, guarded).
 - **Styles:** `src/styles.css` — tokens in `:root`, sky phases on `.backdrop[data-phase]`,

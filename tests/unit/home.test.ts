@@ -69,6 +69,23 @@ describe('the allow list', () => {
   })
 })
 
+describe('TVs, speakers and scripts', () => {
+  it('reads players and their volume, and runs scripts like scenes', () => {
+    const [script, speaker, tv] = toDevices([
+      { entity_id: 'media_player.tv', state: 'paused', attributes: { friendly_name: 'TV', volume_level: 0.25 } },
+      { entity_id: 'media_player.sonos', state: 'unavailable', attributes: { friendly_name: 'Sonos' } },
+      { entity_id: 'script.bedtime', state: 'off', attributes: { friendly_name: 'Bedtime' } },
+    ])
+    expect(script).toMatchObject({ kind: 'scene', name: 'Bedtime' })
+    expect(tv).toMatchObject({ kind: 'media', on: true, volume: 25 })
+    expect(speaker).toMatchObject({ kind: 'media', on: false, unavailable: true })
+    expect(serviceCall({ id: 'script.bedtime', command: 'activate' }).domain).toBe('script')
+    expect(serviceCall({ id: 'media_player.tv', command: 'volume', value: 40 })).toEqual({ domain: 'media_player', service: 'volume_set', data: { entity_id: 'media_player.tv', volume_level: 0.4 } })
+    expect(serviceCall({ id: 'media_player.tv', command: 'play_pause' }).service).toBe('media_play_pause')
+    expect(parseHomeRequest({ id: 'media_player.tv', command: 'volume', value: 101 }).error).toBe('Volume is 0 to 100')
+  })
+})
+
 describe('serviceCall', () => {
   it('maps each command to the HA service', () => {
     expect(serviceCall({ id: 'cover.garage', command: 'open' })).toEqual({ domain: 'cover', service: 'open_cover', data: { entity_id: 'cover.garage' } })

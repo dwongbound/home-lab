@@ -19,6 +19,9 @@ const PATHS = {
   thermo: 'M8 4.5a2 2 0 0 1 4 0v7.2a3.5 3.5 0 1 1-4 0zM10 8v6',
   lock: 'M5 9h10v8H5zM7 9V6.5a3 3 0 0 1 6 0V9M10 12.5v1.5',
   garage: 'M3 17V7.5L10 3l7 4.5V17M6 17v-7h8v7M6 12.5h8M6 15h8',
+  speaker: 'M6 2.5h8v15H6zM10 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM10 5.5h.01',
+  play: 'M7 4.5v11l9-5.5z',
+  pause: 'M7 4.5v11M13 4.5v11',
   sparkle: 'M10 3v4M10 13v4M3 10h4M13 10h4M5.5 5.5l2 2M12.5 12.5l2 2M5.5 14.5l2-2M12.5 7.5l2-2',
 } as const
 

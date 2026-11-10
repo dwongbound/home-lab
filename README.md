@@ -59,12 +59,13 @@ Nothing else is needed for sample data: no `.env`, no token, no PC.
 
 ## What's on the page
 
-Six pages, picked from the pill bar at the top. Each is a plain link to a
+Seven pages, picked from the pill bar at the top. Each is a plain link to a
 `#hash`, so the back button, bookmarks and the keyboard all work.
 
 | Page | What it shows |
 | --- | --- |
 | **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. **Ask Jarvis**, a box for talking to Jarvis (below). A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The Gemma card. |
+| **Home** (`#home`) | Control the house through Home Assistant: scenes and scripts, lights (tap to switch, slide to dim), the thermostat, doors and locks, TVs and speakers (play/pause, volume), plugs and fans. See [The Home page](#the-home-page). |
 | **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
 | **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. |
 | **Services** (`#services`) | Every service with its status, response time and a link to open it, the Gemma card, and how to restart Jarvis (it needs your password, so the page can't). |
@@ -80,6 +81,30 @@ what's happening. When it's done the dialog closes and a toast says
 "Gemma unloaded". **Load Gemma** brings it back (about 3 minutes).
 
 Only one action runs at a time: the server answers `409` to a second one.
+
+### The Home page
+
+Every device Home Assistant knows in these domains becomes a tile:
+`light`, `switch`, `input_boolean`, `fan`, `climate`, `lock`, `cover`,
+`media_player`, `scene` and `script`. Add a device to HA and it shows up on
+the next refresh; there's no list to keep here.
+
+- One tap switches a light, plug, fan or TV. Dimmers and volume send the
+  level when you let go, not on every step.
+- **Unlock** and **Open** (garage doors, blinds) ask first, with **Close**.
+  Locking and closing don't.
+- While HA works, the tile is blocked with a spinner that says what's
+  happening. The tile never guesses: it shows what the next snapshot says.
+- The page can only ask for those few things. `server/home.mjs` checks the
+  entity id and that the command fits the device (a light can't unlock)
+  before Home Assistant hears about it, and the HA token never leaves the server.
+
+**Alexa devices.** Alexa doesn't hand its devices to other apps, so each
+brand goes into Home Assistant with its own integration (HA → Settings →
+Devices & services → Add integration: TP-Link Kasa, Philips Hue, Govee,
+Ring, ecobee and so on). Echo speakers can be added with the community
+Alexa Media Player integration if you want announcements. Jarvis reaches
+the same devices through Home Assistant.
 
 ### Ask Jarvis
 
@@ -166,7 +191,8 @@ interface DataSource {
 | GPU memory | `nvidia-smi --query-gpu=memory.used,memory.total` (WSL's copy at `/usr/lib/wsl/lib/nvidia-smi`) |
 | Processor | `os.cpus()` busy time since the last refresh |
 | Free on C: | `statfs('/mnt/c')` |
-| Home Assistant | `GET $HA_URL/api/` with `Authorization: Bearer $HA_TOKEN`. A 401 shows as "Needs attention. Token rejected". |
+| Home Assistant, and the Home page's devices | `GET $HA_URL/api/states` with `Authorization: Bearer $HA_TOKEN`: one call says HA is up and lists the devices. A 401 shows as "Needs attention. Token rejected". |
+| Home page controls | `POST $HA_URL/api/services/<domain>/<service>` (for example `light/turn_on` with `brightness_pct`), only after `server/home.mjs` has checked it. |
 | Ollama and Gemma | `GET $OLLAMA_URL/api/ps` (which models are in memory) |
 | Open WebUI | `GET $OPEN_WEBUI_URL`. Any answer below 500 counts as up. |
 | Jarvis | `GET $JARVIS_API_URL/health`, which says which brain Jarvis is using ("Thinking with claude"), plus `systemctl is-active jarvis` where there is a systemctl. Answering is "Running"; silent while systemd says active is "Needs attention"; anything else is "Not responding". In Docker there's no systemctl, so `/health` alone decides. |

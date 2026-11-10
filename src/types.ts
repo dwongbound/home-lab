@@ -60,13 +60,13 @@ export interface CloudDigest {
 
 // Home Assistant devices the Home page can control. The server turns HA's
 // entities into this smaller shape; the HA token never reaches the page.
-export type DeviceKind = 'light' | 'switch' | 'fan' | 'climate' | 'lock' | 'cover' | 'scene'
+export type DeviceKind = 'light' | 'switch' | 'fan' | 'climate' | 'lock' | 'cover' | 'media' | 'scene'
 export interface HomeDevice {
   /** Home Assistant's entity id, like "light.living_room_lamp". */
   id: string
   name: string
   kind: DeviceKind
-  /** On for lights, switches and fans; locked for locks; open for covers; not "off" for climate. */
+  /** On for lights, switches and fans; locked for locks; open for covers; not "off" for climate and TVs/speakers. */
   on: boolean
   /** HA's own state, in words: "on", "locked", "heat", "unavailable"... */
   state: string
@@ -76,10 +76,12 @@ export interface HomeDevice {
   /** Climate only: the room now and the set point, in HA's unit. */
   temperature: number | null
   target: number | null
+  /** TVs and speakers that report it: 0 to 100. */
+  volume: number | null
 }
 
 /** What the Home page can ask Home Assistant to do. */
-export type HomeCommand = 'turn_on' | 'turn_off' | 'brightness' | 'temperature' | 'lock' | 'unlock' | 'open' | 'close' | 'activate'
+export type HomeCommand = 'turn_on' | 'turn_off' | 'brightness' | 'temperature' | 'lock' | 'unlock' | 'open' | 'close' | 'play_pause' | 'volume' | 'activate'
 export interface HomeRequest { id: string; command: HomeCommand; value?: number }
 
 export interface Snapshot {

@@ -13,11 +13,14 @@ const KIND_BY_DOMAIN = {
   climate: 'climate',
   lock: 'lock',
   cover: 'cover',
+  media_player: 'media',
   scene: 'scene',
+  // Scripts are run with one tap, just like scenes.
+  script: 'scene',
 }
 
 /** The order tiles are listed in, so the page is the same every refresh. */
-const KIND_ORDER = ['scene', 'light', 'climate', 'lock', 'cover', 'fan', 'switch']
+const KIND_ORDER = ['scene', 'light', 'climate', 'lock', 'cover', 'media', 'fan', 'switch']
 
 /** Which commands each kind of device accepts. */
 const COMMANDS_BY_KIND = {
@@ -27,6 +30,7 @@ const COMMANDS_BY_KIND = {
   climate: ['turn_on', 'turn_off', 'temperature'],
   lock: ['lock', 'unlock'],
   cover: ['open', 'close'],
+  media: ['turn_on', 'turn_off', 'play_pause', 'volume'],
   scene: ['activate'],
 }
 
@@ -63,6 +67,7 @@ function isOn(kind, state) {
   if (kind === 'lock') return state === 'locked'
   if (kind === 'cover') return state === 'open' || state === 'opening'
   if (kind === 'climate') return state !== 'off' && state !== 'unavailable'
+  if (kind === 'media') return ['on', 'playing', 'paused', 'idle', 'buffering'].includes(state)
   if (kind === 'scene') return false
   return state === 'on'
 }
@@ -99,6 +104,10 @@ function toDevice(entity) {
     target = numberOrNull(attributes.temperature)
   }
 
+  // HA reports volume as 0-1, and only for players that are on.
+  let volume = null
+  if (kind === 'media' && typeof attributes.volume_level === 'number') volume = Math.round(attributes.volume_level * 100)
+
   return {
     id: entity.entity_id,
     name: String(attributes.friendly_name ?? entity.entity_id),
@@ -109,6 +118,7 @@ function toDevice(entity) {
     brightness,
     temperature,
     target,
+    volume,
   }
 }
 
@@ -143,6 +153,11 @@ export function parseHomeRequest(body) {
     if (typeof value !== 'number' || value < 1 || value > 100) return { error: 'Brightness is 1 to 100' }
     return { request: { id, command, value: Math.round(value) } }
   }
+  if (command === 'volume') {
+    const value = body.value
+    if (typeof value !== 'number' || value < 0 || value > 100) return { error: 'Volume is 0 to 100' }
+    return { request: { id, command, value: Math.round(value) } }
+  }
   if (command === 'temperature') {
     const value = body.value
     const [low, high] = TEMPERATURE_RANGE
@@ -165,8 +180,13 @@ export function serviceCall(request) {
   if (request.command === 'temperature') {
     return { domain, service: 'set_temperature', data: { ...data, temperature: request.value } }
   }
+  if (request.command === 'volume') {
+    return { domain, service: 'volume_set', data: { ...data, volume_level: request.value / 100 } }
+  }
+  if (request.command === 'play_pause') return { domain, service: 'media_play_pause', data }
   if (request.command === 'open') return { domain, service: 'open_cover', data }
   if (request.command === 'close') return { domain, service: 'close_cover', data }
+  // scene.turn_on and script.turn_on both run it.
   if (request.command === 'activate') return { domain, service: 'turn_on', data }
   // turn_on, turn_off, lock and unlock are HA's own service names.
   return { domain, service: request.command, data }
@@ -186,6 +206,8 @@ export function doneMessage(request) {
     unlock: 'unlocked',
     open: 'opening',
     close: 'closing',
+    play_pause: 'played or paused',
+    volume: `volume ${request.value}%`,
     activate: 'started',
   }
   return words[request.command]

@@ -6,7 +6,7 @@ import { BUSY_LABEL, DeviceGroup, SceneRow } from '../components/HomeDevices'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 
 // The Home page: control the house through Home Assistant. Scenes first,
-// then lights, climate, doors, and plugs and fans. Unlocking a door or
+// then lights, climate, doors, TVs and speakers, and plugs and fans. Unlocking a door or
 // opening a cover asks first; everything else happens on one tap.
 
 /** Commands that open the house up, so they get a confirm dialog. */
@@ -128,6 +128,7 @@ export function Home({ data, onToast }: { data: Snapshot; onToast: (m: string) =
           <DeviceGroup title="Doors" devices={doors} busy={busy} onSend={send} />
         </>
       )}
+      <DeviceGroup title="TV and speakers" devices={ofKind('media')} busy={busy} onSend={send} />
       <DeviceGroup title="Plugs and fans" devices={ofKind('switch', 'fan')} busy={busy} onSend={send} />
       {pending !== null ? (
         <ConfirmDialog

@@ -130,10 +130,19 @@ function mockEntities() {
     { entity_id: 'climate.thermostat', state: 'heat', attributes: { friendly_name: 'Thermostat', current_temperature: 68, temperature: 70 } },
     { entity_id: 'lock.front_door', state: 'locked', attributes: { friendly_name: 'Front door' } },
     { entity_id: 'cover.garage_door', state: 'closed', attributes: { friendly_name: 'Garage door' } },
+    { entity_id: 'media_player.living_room_apple_tv', state: 'playing', attributes: { friendly_name: 'Living room Apple TV', volume_level: 0.3 } },
+    { entity_id: 'media_player.bedroom_speaker', state: 'off', attributes: { friendly_name: 'Bedroom speaker' } },
     { entity_id: 'fan.bedroom_fan', state: 'off', attributes: { friendly_name: 'Bedroom fan' } },
     { entity_id: 'switch.desk_plug', state: 'on', attributes: { friendly_name: 'Desk plug' } },
     { entity_id: 'switch.christmas_tree', state: 'unavailable', attributes: { friendly_name: 'Christmas tree' } },
   ]
+}
+
+/** What a device reads once turned on: thermostats heat, players sit idle, the rest are "on". */
+function turnedOnState(id) {
+  if (id.startsWith('climate.')) return 'heat'
+  if (id.startsWith('media_player.')) return 'idle'
+  return 'on'
 }
 
 /**
@@ -142,7 +151,7 @@ function mockEntities() {
  */
 function applyToEntity(entity, request) {
   const { command, value } = request
-  if (command === 'turn_on') entity.state = entity.entity_id.startsWith('climate.') ? 'heat' : 'on'
+  if (command === 'turn_on') entity.state = turnedOnState(entity.entity_id)
   if (command === 'turn_off') entity.state = 'off'
   if (command === 'brightness') { entity.state = 'on'; entity.attributes.brightness = Math.round((value / 100) * 255) }
   if (command === 'temperature') entity.attributes.temperature = value
@@ -150,6 +159,8 @@ function applyToEntity(entity, request) {
   if (command === 'unlock') entity.state = 'unlocked'
   if (command === 'open') entity.state = 'open'
   if (command === 'close') entity.state = 'closed'
+  if (command === 'play_pause') entity.state = entity.state === 'playing' ? 'paused' : 'playing'
+  if (command === 'volume') entity.attributes.volume_level = value / 100
 }
 
 /**

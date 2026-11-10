@@ -12,7 +12,7 @@ import { Spinner } from './Spinner'
 // says, so the page can't drift from the real house.
 
 const ICON: Record<HomeDevice['kind'], IconName> = {
-  light: 'bulb', switch: 'plug', fan: 'fan', climate: 'thermo', lock: 'lock', cover: 'garage', scene: 'sparkle',
+  light: 'bulb', switch: 'plug', fan: 'fan', climate: 'thermo', lock: 'lock', cover: 'garage', media: 'speaker', scene: 'sparkle',
 }
 
 /** The label on a tile's spinner while a command runs. */
@@ -25,6 +25,8 @@ export const BUSY_LABEL: Record<HomeCommand, string> = {
   unlock: 'Unlocking…',
   open: 'Opening…',
   close: 'Closing…',
+  play_pause: 'Sending…',
+  volume: 'Setting volume…',
   activate: 'Starting…',
 }
 
@@ -38,6 +40,11 @@ function stateText(device: HomeDevice): string {
     let text = `${capitalize(device.state)}`
     if (device.target !== null) text += ` to ${device.target}°`
     return text
+  }
+  if (device.kind === 'media') {
+    if (!device.on) return 'Off'
+    if (device.state === 'on') return 'On'
+    return capitalize(device.state)
   }
   if (!device.on) return 'Off'
   if (device.brightness !== null) return `On, ${device.brightness}%`
@@ -76,16 +83,26 @@ interface TileProps {
   onSend: (device: HomeDevice, request: HomeRequest) => void
 }
 
-/** A brightness slider that only tells HA when you let go, not on every step. */
-function BrightnessSlider({ device, onSend }: { device: HomeDevice; onSend: TileProps['onSend'] }) {
+/**
+ * A level slider (a light's brightness, a speaker's volume) that only tells
+ * HA when you let go, not on every step.
+ */
+function LevelSlider({ device, command, level, label, min, onSend }: {
+  device: HomeDevice
+  command: 'brightness' | 'volume'
+  level: number
+  label: string
+  min: number
+  onSend: TileProps['onSend']
+}) {
   // While dragging, the slider shows where your finger is, not the snapshot.
   const [dragging, setDragging] = useState<number | null>(null)
-  const shown = dragging ?? (device.brightness || 1)
+  const shown = dragging ?? Math.max(min, level)
 
   /** Sends the value you let go at, if it changed. */
   function commit() {
     if (dragging === null) return
-    if (dragging !== device.brightness) onSend(device, { id: device.id, command: 'brightness', value: dragging })
+    if (dragging !== level) onSend(device, { id: device.id, command, value: dragging })
     setDragging(null)
   }
 
@@ -93,16 +110,30 @@ function BrightnessSlider({ device, onSend }: { device: HomeDevice; onSend: Tile
     <input
       type="range"
       className="device__range"
-      min={1}
+      min={min}
       max={100}
       value={shown}
-      aria-label={`${device.name} brightness`}
+      aria-label={label}
       disabled={device.unavailable}
       onChange={(e) => setDragging(Number(e.target.value))}
       onPointerUp={commit}
       onKeyUp={commit}
       onBlur={commit}
     />
+  )
+}
+
+/** Play/pause and volume for a TV or speaker that's on. */
+function MediaControls({ device, onSend }: { device: HomeDevice; onSend: TileProps['onSend'] }) {
+  if (!device.on) return null
+  const playing = device.state === 'playing'
+  return (
+    <div className="device__media">
+      <button type="button" className="icon-btn device__step" aria-label={`${playing ? 'Pause' : 'Play'} ${device.name}`} onClick={() => onSend(device, { id: device.id, command: 'play_pause' })} disabled={device.unavailable}>
+        <Icon name={playing ? 'pause' : 'play'} size={18} />
+      </button>
+      {device.volume !== null ? <LevelSlider device={device} command="volume" level={device.volume} label={`${device.name} volume`} min={0} onSend={onSend} /> : null}
+    </div>
   )
 }
 
@@ -139,7 +170,10 @@ export const DeviceTile = memo(function DeviceTile({ device, busy, onSend }: Til
           <span className="device__state">{stateText(device)}</span>
         </span>
       </button>
-      {device.kind === 'light' && device.brightness !== null ? <BrightnessSlider device={device} onSend={onSend} /> : null}
+      {device.kind === 'light' && device.brightness !== null ? (
+        <LevelSlider device={device} command="brightness" level={device.brightness} label={`${device.name} brightness`} min={1} onSend={onSend} />
+      ) : null}
+      {device.kind === 'media' ? <MediaControls device={device} onSend={onSend} /> : null}
       {device.kind === 'climate' ? <TemperatureSteps device={device} onSend={onSend} /> : null}
       {busy !== null ? <div className="device__block"><Spinner label={busy} /></div> : null}
     </li>
