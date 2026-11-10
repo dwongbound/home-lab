@@ -30,6 +30,13 @@ const COMMANDS = {
   script: { run: 'turn_on' },
 }
 
+// Switches that belong to a speaker or TV (a Sonos's "Loudness" or
+// "Crossfade") are its settings, not things in the house. The states API
+// doesn't say which device an entity is on, so a template asks.
+const SETTINGS_TEMPLATE = "{% set ns = namespace(out=[]) %}{% for s in states.switch %}{% set d = device_id(s.entity_id) %}" +
+  "{% if d and device_entities(d) | select('match', 'media_player[.]') | list | count > 0 %}{% set ns.out = ns.out + [s.entity_id] %}{% endif %}" +
+  '{% endfor %}{{ ns.out | tojson }}'
+
 /** Rounds a 0-1 share to two places. */
 const share = (n) => Math.round(n * 100) / 100
 
@@ -61,12 +68,28 @@ export function createHomeReader(config, deps = {}) {
   const fetchFn = deps.fetch ?? globalThis.fetch
   const headers = { Authorization: `Bearer ${config.haToken}`, 'content-type': 'application/json' }
 
+  /** Entity ids of switches that are a speaker's or TV's settings; none if the template fails. */
+  async function settingsSwitches() {
+    try {
+      const res = await fetchFn(`${config.haUrl}/api/template`, {
+        method: 'POST', headers, body: JSON.stringify({ template: SETTINGS_TEMPLATE }), signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      if (!res.ok) return new Set()
+      return new Set(JSON.parse(await res.text()))
+    } catch {
+      return new Set()
+    }
+  }
+
   return {
     /** Devices, weather and sun times, or null without a token or when HA is down. */
     async read() {
       if (!config.haToken) return null
       try {
-        const res = await fetchFn(`${config.haUrl}/api/states`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) })
+        const [res, hidden] = await Promise.all([
+          fetchFn(`${config.haUrl}/api/states`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) }),
+          settingsSwitches(),
+        ])
         if (!res.ok) return null
         const states = await res.json()
         const devices = []
@@ -74,7 +97,7 @@ export function createHomeReader(config, deps = {}) {
         const sun = { rising: null, setting: null }
         for (const e of states) {
           const device = toDevice(e)
-          if (device) devices.push(device)
+          if (device && !hidden.has(device.id)) devices.push(device)
           if (weather === null && e.entity_id.startsWith('weather.')) {
             weather = { condition: e.state, temperature: e.attributes?.temperature ?? null, unit: e.attributes?.temperature_unit ?? '' }
           }
