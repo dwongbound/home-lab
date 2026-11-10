@@ -27,6 +27,26 @@ export interface EmailItem { id: string; from: string; subject: string; why: str
 export interface Deploy { project: string; state: 'ready' | 'building' | 'error'; at: string; url: string }
 export interface PullRequest { repo: string; number: number; title: string; ci: 'passing' | 'failing' | 'running' | 'none'; url: string }
 
+// Money, from Dylan's Copilot connector by way of the digest. Amounts are
+// US dollars. A balance is what the account holds, except for credit and
+// loan accounts, where it's what's owed (positive either way).
+export type AccountKind = 'cash' | 'credit' | 'investment' | 'loan' | 'other'
+export interface MoneyAccount { id: string; name: string; institution: string; kind: AccountKind; balance: number }
+export interface SpendCategory { name: string; spent: number; budget: number | null }
+export interface MoneyTransaction { id: string; date: string; merchant: string; category: string; amount: number }
+export interface MoneyFlag { id: string; text: string }
+export interface MoneyDigest {
+  netWorth: number | null
+  accounts: MoneyAccount[]
+  /** Spent so far this month, and by the same day last month. */
+  spending: { thisMonth: number; lastMonthToDate: number | null; budget: number | null }
+  categories: SpendCategory[]
+  /** Newest first. A negative amount is money coming in (a refund, pay). */
+  recent: MoneyTransaction[]
+  /** Anything worth a look: a big charge, a new subscription, a low balance. */
+  flags: MoneyFlag[]
+}
+
 export interface CloudDigest {
   updatedAt: string
   threads: ClaudeThread[]
@@ -34,6 +54,8 @@ export interface CloudDigest {
   email: EmailItem[]
   deploys: Deploy[]
   pullRequests: PullRequest[]
+  /** Missing until the digest task reads Copilot. */
+  money?: MoneyDigest | null
 }
 
 export interface Snapshot {
