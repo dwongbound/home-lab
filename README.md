@@ -162,7 +162,10 @@ opened at `http://127.0.0.1` it says so instead of answering.
   only, and makes the one Home Assistant service call it stands for
   (`server/sources/home.mjs`). The page can never name a service, and
   locks, alarms and covers are out of reach. Like Ask Jarvis it needs the
-  Tailscale login that `tailscale serve` adds.
+  Tailscale login that `tailscale serve` adds. When on/off goes through but
+  Home Assistant reports nothing changed (a device asleep or disconnected,
+  like an Apple TV that has lost its connection), the tile says so instead
+  of looking like it worked.
 - **Actions need a header.** `POST /api/actions/*`, `POST /api/jarvis/ask` and `POST /api/home/control` are refused without
   `x-home-lab: 1`. A cross-site form can't set a custom header, so another
   web page can't trigger actions on the PC.

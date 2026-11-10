@@ -64,6 +64,24 @@ export function toDevice(entity) {
 }
 
 /** Creates the reader. `deps.fetch` is swappable for tests. */
+// What the page says when HA took a power command but nothing switched.
+const NO_RESPONSE = 'Home Assistant sent it, but the device didn’t respond. It may be asleep or disconnected from Home Assistant.'
+
+/**
+ * HA answers a service call with the states it changed. An empty list after
+ * on/off means the device ignored it, which HA itself doesn't report as an
+ * error (an Apple TV that has lost its connection, for one). Only on/off is
+ * checked: setting a volume it already has also changes nothing, and that's fine.
+ */
+async function nothingChanged(res) {
+  try {
+    const changed = await res.json()
+    return Array.isArray(changed) && changed.length === 0
+  } catch {
+    return false
+  }
+}
+
 export function createHomeReader(config, deps = {}) {
   const fetchFn = deps.fetch ?? globalThis.fetch
   const headers = { Authorization: `Bearer ${config.haToken}`, 'content-type': 'application/json' }
@@ -139,6 +157,9 @@ export function createHomeReader(config, deps = {}) {
           method: 'POST', headers, body: JSON.stringify(data), signal: AbortSignal.timeout(10_000),
         })
         if (!res.ok) return { ok: false, message: `Home Assistant answered ${res.status}` }
+        if (command === 'power' || command === 'toggle') {
+          if (await nothingChanged(res)) return { ok: false, message: NO_RESPONSE }
+        }
         return { ok: true, message: 'Done' }
       } catch {
         return { ok: false, message: 'Home Assistant is not answering' }
