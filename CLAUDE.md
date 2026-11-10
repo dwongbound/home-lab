@@ -43,7 +43,7 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 - **Tests:** `tests/unit/*` (Vitest), `tests/e2e/dashboard.spec.ts` (Playwright).
   `tests/unit/helpers.ts callApi` drives the handler without a port.
 - **Deploy:** `deploy/home-lab.service` (systemd on jarvis) or `Dockerfile` +
-  `docker-compose.yml` (host network, 127.0.0.1:4180, published by `tailscale serve` as https :8080), CI in `.github/workflows/ci.yml`
+  `docker-compose.yml` (host network, 127.0.0.1:4180, published by `tailscale serve` on https 443), CI in `.github/workflows/ci.yml`
   (its `merge` job rebase-merges a passing non-draft PR into `dev`, then it and
   `promote` fast-forward `main` to `dev`).
 
@@ -52,7 +52,7 @@ Playwright **1.63** (desktop + Pixel 7) · Node **20.12+**.
 jarvis: Windows 11 + Ubuntu 24.04 in WSL 2 (user `dwong`, systemd on, mirrored
 networking), 16 GB RAM (WSL capped at 10), RTX 3060 12 GB. Home Assistant in
 Docker at 192.168.68.94:8123. Ollama with Gemma ~12B (~10 GB VRAM, ~3 min load).
-Open WebUI at https://jarvis.snakebird-ph.ts.net, Jarvis agent at :8443
+This page at https://jarvis.snakebird-ph.ts.net, Open WebUI at :8081, Jarvis agent at :8443
 (systemd unit `jarvis`; restarting needs Dylan's sudo password).
 
 **Never** open, read or print `~/jarvis/data/memory.md` or
