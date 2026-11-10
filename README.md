@@ -148,14 +148,14 @@ interface DataSource {
 | On the page | Where it comes from |
 | --- | --- |
 | Memory | `os.totalmem()` / `os.freemem()` (this is WSL's memory, capped at 10 GB in `.wslconfig`) |
-| GPU memory | `nvidia-smi --query-gpu=memory.used,memory.total` |
+| GPU memory | `nvidia-smi --query-gpu=memory.used,memory.total` (WSL's copy at `/usr/lib/wsl/lib/nvidia-smi`) |
 | Processor | `os.cpus()` busy time since the last refresh |
 | Free on C: | `statfs('/mnt/c')` |
-| Home Assistant | `GET $HA_URL/api/` with `Authorization: Bearer $HA_TOKEN` |
+| Home Assistant | `GET $HA_URL/api/` with `Authorization: Bearer $HA_TOKEN`. A 401 shows as "Needs attention. Token rejected". |
 | Ollama and Gemma | `GET $OLLAMA_URL/api/ps` (which models are in memory) |
-| Open WebUI | `GET $OPEN_WEBUI_URL` |
-| Jarvis | `systemctl is-active jarvis` plus `GET $JARVIS_URL`. Active and answering is "Running"; active but silent is "Needs attention"; anything else is "Not responding". |
-| Unload / load Gemma | `POST $OLLAMA_URL/api/generate` with `keep_alive: 0` (unload now) or `"30m"` (load and keep for 30 minutes). Ollama has no separate unload call. |
+| Open WebUI | `GET $OPEN_WEBUI_URL`. Any answer below 500 counts as up. |
+| Jarvis | `systemctl is-active jarvis` plus `GET $JARVIS_URL` (Jarvis answers 404 at `/`, which counts as answering). Active and answering is "Running"; active but silent is "Needs attention"; anything else is "Not responding". |
+| Unload / load Gemma | `POST $OLLAMA_URL/api/generate` with `keep_alive: 0` (unload now) or `OLLAMA_KEEP_ALIVE` (load; `-1`, the default, keeps it loaded forever, which is how jarvis runs Gemma). Ollama has no separate unload call. |
 | Requests chart, Today, Recent activity | **Not available yet.** Jarvis doesn't publish these, so the live source returns empty lists and the page shows its empty states. Adding a small `/stats` endpoint to Jarvis is the next step. |
 
 Sparkline history is kept in the server's memory (the last 24 samples, one
@@ -185,7 +185,9 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `HA_URL` | `http://192.168.68.94:8123` | Home Assistant. |
 | `HA_TOKEN` | *(empty)* | Home Assistant long-lived access token. **Secret.** Server-side only. |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama's API. |
-| `OLLAMA_MODEL` | `gemma3:12b` | The model the Gemma card loads and unloads. Check the exact name with `ollama list`. |
+| `OLLAMA_MODEL` | `gemma4:12b` | The model the Gemma card loads and unloads. Check the exact name with `ollama list`. |
+| `OLLAMA_KEEP_ALIVE` | `-1` | How long Load keeps Gemma. `-1` = forever, a number = seconds, or `30m` style. |
+| `NVIDIA_SMI` | `/usr/lib/wsl/lib/nvidia-smi` | WSL's nvidia-smi, which isn't on PATH. |
 | `OPEN_WEBUI_URL` | `https://jarvis.snakebird-ph.ts.net` | Open WebUI, for its status and link. |
 | `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's web port, for its status and link. |
 | `JARVIS_UNIT` | `jarvis` | The systemd unit to ask about. |
