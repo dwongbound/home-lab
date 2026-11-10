@@ -132,6 +132,16 @@ describe('App', () => {
     expect(within(screen.getByRole('region', { name: 'Movie night' })).getByRole('button', { name: 'Run' })).toBeEnabled()
   })
 
+  it('lands once: data-landing goes on <html> when the first snapshot arrives, numbering the panels', async () => {
+    vi.stubGlobal('fetch', fakeServer())
+    renderApp()
+    await screen.findByRole('heading', { level: 1 })
+    expect(document.documentElement).toHaveAttribute('data-landing')
+    const panels = document.querySelectorAll<HTMLElement>('.main .glass')
+    expect(panels[0].style.getPropertyValue('--i')).toBe('0')
+    expect(panels[2].style.getPropertyValue('--i')).toBe('2')
+  })
+
   it('switches pages from the hash', async () => {
     vi.stubGlobal('fetch', fakeServer())
     window.location.hash = '#services'

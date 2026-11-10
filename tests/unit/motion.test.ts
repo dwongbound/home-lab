@@ -31,6 +31,11 @@ describe('motion', () => {
     const block = motionBlock(css)
     // Fading a glass panel, or anything holding one, breaks its blur.
     expect(block).toMatch(/\.main \.glass > \*\s*\{[^}]*animation-timeline:\s*view\(\)/)
-    expect(block).not.toMatch(/\.glass\s*\{[^}]*animation/)
+    // The one exception is the landing, which only clips the glass.
+    for (const rule of block.match(/[^{}]*\.glass\s*\{[^}]*animation[^}]*\}/g) ?? []) {
+      const name = rule.match(/animation:\s*([\w-]+)/)![1]
+      const keyframes = css.match(new RegExp(`@keyframes ${name}\\s*\\{(.*)\\}\\s*$`, 'm'))![1]
+      expect(keyframes.replace(/clip-path:[^;]*;?/g, '').replace(/\b(from|to)\b|[{}\s]/g, '')).toBe('')
+    }
   })
 })

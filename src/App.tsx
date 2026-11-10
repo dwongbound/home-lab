@@ -12,6 +12,7 @@ import { Schedule } from './views/Schedule'
 import { Settings, type SkyChoice } from './views/Settings'
 import { useHashView } from './useHashView'
 import { useNow } from './useNow'
+import { useLanding } from './useLanding'
 import { readSky, writeSky } from './lib/prefs'
 
 // The whole page: backdrop, top bar, and whichever view the hash names.
@@ -26,6 +27,7 @@ export function App() {
   const now = useNow()
   const [sky, setSky] = useState<SkyChoice>(() => readSky() as SkyChoice)
   const [toast, setToast] = useState<string | null>(null)
+  useLanding(Boolean(data))
 
   // Toasts clear themselves after 4 seconds.
   useEffect(() => {
