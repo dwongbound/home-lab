@@ -47,7 +47,7 @@ describe('App', () => {
   it('shows a blocking spinner until the first snapshot arrives, then the overview', async () => {
     vi.stubGlobal('fetch', fakeServer())
     renderApp()
-    expect(screen.getByRole('status')).toHaveTextContent('Reading jarvis…')
+    expect(screen.getByRole('status')).toHaveTextContent('Jarvis is thinking')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(/, Dylan$/)
     expect(screen.getByText('Sample data')).toBeInTheDocument()
     // The overview is a glance: no chart, services list or Gemma card.
