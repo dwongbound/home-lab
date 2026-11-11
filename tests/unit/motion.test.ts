@@ -27,6 +27,13 @@ describe('motion', () => {
     expect(outside).not.toMatch(/\banimation\s*:/)
   })
 
+  it('fades one sky into the next slowly, only inside the no-preference block', () => {
+    const block = motionBlock(css)
+    expect(css).toMatch(/@property --sky-top \{ syntax: '<color>'/)
+    expect(block).toMatch(/\.backdrop \{[^}]*transition-property: --sky-top[^}]*transition-duration: 120s/)
+    expect(css.replace(block, '')).not.toMatch(/\.backdrop[^{]*\{[^}]*transition/)
+  })
+
   it('reveals what is inside glass panels on scroll, never the glass itself', () => {
     const block = motionBlock(css)
     // Fading a glass panel, or anything holding one, breaks its blur.

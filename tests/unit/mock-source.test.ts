@@ -38,13 +38,14 @@ describe('createMockSource', () => {
     expect(times).toEqual([...times].sort().reverse())
   })
 
-  it('unloading Gemma frees the GPU and marks Ollama idle', async () => {
+  it('unloading Gemma frees its GPU memory and Jarvis\'s watch model takes its place', async () => {
     const source = createMockSource({ now })
     const result = await source.action('ollama-unload')
     expect(result.ok).toBe(true)
     const snap = await source.snapshot()
     expect(snap.model.loaded).toBe(false)
-    expect(snap.services.find((s: { id: string }) => s.id === 'ollama')!.status).toBe('idle')
+    expect(snap.services.find((s: { id: string }) => s.id === 'ollama')!.detail).toBe('qwen3.5:9b loaded')
+    expect(snap.models.map((m: { name: string; role: string }) => [m.name, m.role])).toEqual([['qwen3.5:9b', 'watch']])
   })
 
   it('answers Ask Jarvis with a sample reply', async () => {

@@ -17,8 +17,10 @@ const Ridge = (
  */
 export const Backdrop = memo(function Backdrop({ now, override, landing = false }: { now: Date; override?: string | null; landing?: boolean }) {
   const phase = shownPhase(now, override)
+  // A sky picked in Settings fades in quickly; the clock's changes fade slowly (styles.css).
+  const picked = Boolean(override) && override !== 'auto'
   return (
-    <div className="backdrop" data-phase={phase} data-landing={landing ? '' : undefined} aria-hidden="true">
+    <div className="backdrop" data-phase={phase} data-picked={picked ? '' : undefined} data-landing={landing ? '' : undefined} aria-hidden="true">
       <div className="backdrop__sky" />
       <div className="backdrop__sun" />
       {Ridge}

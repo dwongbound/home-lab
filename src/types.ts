@@ -138,13 +138,30 @@ export interface Snapshot {
   today: TimelineItem[]
   activity: ActivityItem[]
   services: Service[]
+  /** Gemma (OLLAMA_MODEL), the model the Load/Unload button acts on, whether or not it's loaded. */
   model: { name: string; loaded: boolean; vramGb: number; loadSeconds: number | null }
+  /** Every model Ollama has in memory right now, with what it's there for. */
+  models: LoadedModel[]
   /** null until the digest is set up (no token) or before its first read. */
   cloud: CloudDigest | null
   /** null without a Home Assistant token, or when it doesn't answer. */
   home: HomeState | null
   /** Money page category picks waiting to be applied in Copilot. */
   moneyPicks: MoneyPicks
+}
+
+/** One model Ollama has loaded (GET /api/ps), and its job on jarvis. */
+export interface LoadedModel {
+  name: string
+  /** What it's for: chat (Gemma), watch (Jarvis's background triage), or other. */
+  role: 'chat' | 'watch' | 'other'
+  vramGb: number
+  /** When Ollama will unload it if nothing uses it, or null when it stays. */
+  until: string | null
+  /** From Ollama's details, when it gives them: "9.7B", "Q4_K_M", 8192. */
+  parameters: string | null
+  quantization: string | null
+  contextLength: number | null
 }
 
 export interface ActionResult { ok: boolean; message: string }

@@ -119,6 +119,20 @@ describe('live snapshot', () => {
     expect(snap.model).toMatchObject({ loaded: true, vramGb: 10 })
   })
 
+  it('keeps the Gemma card on Gemma and lists every loaded model with its job', async () => {
+    const soon = new Date(Date.now() + 52 * 60_000).toISOString()
+    const snap = await liveWith({ ollamaModels: [
+      { name: 'qwen3.5:9b', size_vram: 5.3 * GB, expires_at: soon, context_length: 8192, details: { parameter_size: '9.7B', quantization_level: 'Q4_K_M' } },
+      { name: 'llama3:8b', size_vram: 4 * GB, expires_at: '2318-01-01T00:00:00Z' },
+    ] }).source.snapshot()
+    expect(snap.model).toMatchObject({ name: 'gemma4:12b', loaded: false, vramGb: 0 })
+    expect(service(snap, 'ollama')).toMatchObject({ status: 'up', detail: 'qwen3.5:9b and llama3:8b loaded' })
+    expect(snap.models).toEqual([
+      { name: 'qwen3.5:9b', role: 'watch', vramGb: 5.3, until: soon, parameters: '9.7B', quantization: 'Q4_K_M', contextLength: 8192 },
+      { name: 'llama3:8b', role: 'other', vramGb: 4, until: null, parameters: null, quantization: null, contextLength: null },
+    ])
+  })
+
   it('sends the HA token as a bearer header', async () => {
     const { source, fetch } = liveWith({})
     await source.snapshot()

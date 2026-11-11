@@ -41,8 +41,8 @@ export function ModelCard({ model, onDone }: { model: Snapshot['model']; onDone:
     <section className="glass panel model" aria-labelledby="model-title">
       <header className="panel__head">
         <div>
-          <h2 id="model-title" className="panel__title">{model.name}</h2>
-          <p className="panel__sub">Local model in Ollama</p>
+          <h2 id="model-title" className="panel__title">Gemma</h2>
+          <p className="panel__sub">{model.name} · Jarvis’s chat brain in Ollama</p>
         </div>
       </header>
       <div className="model__ring" style={{ '--fill': model.loaded ? Math.min(1, model.vramGb / 12) : 0 } as React.CSSProperties}>

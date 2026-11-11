@@ -86,7 +86,7 @@ export function App() {
   } else if (view === 'money') {
     body = <Money data={data} now={now} />
   } else if (view === 'services') {
-    body = <Services data={data} onToast={setToast} />
+    body = <Services data={data} now={now} onToast={setToast} />
   } else if (view === 'schedule') {
     body = <Schedule data={data} now={now} />
   } else if (view === 'preferences') {

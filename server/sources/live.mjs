@@ -139,6 +139,33 @@ export function createLiveSource(config, deps = {}) {
     }
   }
 
+  /** Whether Ollama's expires_at is far off (keep_alive -1 shows as a date centuries away). */
+  function untilOrNull(expiresAt) {
+    const t = Date.parse(expiresAt ?? '')
+    if (Number.isNaN(t)) return null
+    // More than a year out means "stays loaded".
+    if (t - Date.now() > 365 * 86400_000) return null
+    return new Date(t).toISOString()
+  }
+
+  /** Ollama's /api/ps entries as the page's LoadedModel, each with its job on jarvis. */
+  function describeModels(models) {
+    return models.map((m) => {
+      let role = 'other'
+      if (m.name === config.ollamaModel) role = 'chat'
+      if (m.name === config.ollamaWatchModel) role = 'watch'
+      return {
+        name: m.name,
+        role,
+        vramGb: round1((m.size_vram ?? 0) / GB),
+        until: untilOrNull(m.expires_at),
+        parameters: m.details?.parameter_size ?? null,
+        quantization: m.details?.quantization_level ?? null,
+        contextLength: typeof m.context_length === 'number' ? m.context_length : null,
+      }
+    })
+  }
+
   /** For a web page (Open WebUI): any answer below 500 means the server is up. */
   function webStatus(probe) {
     if (probe !== null && probe.res.status < 500) return 'up'
@@ -189,10 +216,16 @@ export function createLiveSource(config, deps = {}) {
   }
 
   /** "up" with a model loaded, "idle" when Ollama runs with nothing loaded, else "down". */
-  function ollamaStatus(probe, model) {
+  function ollamaStatus(probe, models) {
     if (probe === null || !probe.ok) return 'down'
-    if (model) return 'up'
+    if (models.length > 0) return 'up'
     return 'idle'
+  }
+
+  /** "gemma4:12b and qwen3.5:9b loaded", or "No model loaded". */
+  function ollamaDetail(models) {
+    if (models.length === 0) return 'No model loaded'
+    return `${models.map((m) => m.name).join(' and ')} loaded`
   }
 
   /**
@@ -249,7 +282,9 @@ export function createLiveSource(config, deps = {}) {
 
       const models = await readLoadedModels(ollama)
       const jarvisHealth = await readJarvisHealth(jarvisHttp)
-      const model = models.find((m) => m.name === config.ollamaModel) ?? models[0]
+      // The Gemma card is only ever about Gemma; anything else loaded (like
+      // Jarvis's watch model) is listed on its own.
+      const model = models.find((m) => m.name === config.ollamaModel)
 
       return {
         generatedAt: new Date().toISOString(),
@@ -268,16 +303,17 @@ export function createLiveSource(config, deps = {}) {
         activity: [],
         services: [
           { id: 'ha', name: 'Home Assistant', detail: haDetail(ha), status: haStatus(ha), latencyMs: ha?.ms, url: config.haUrl },
-          { id: 'ollama', name: 'Ollama', detail: model ? `${model.name} loaded` : 'No model loaded', status: ollamaStatus(ollama, model), latencyMs: ollama?.ms },
+          { id: 'ollama', name: 'Ollama', detail: ollamaDetail(models), status: ollamaStatus(ollama, models), latencyMs: ollama?.ms },
           { id: 'webui', name: 'Open WebUI', detail: 'Chat with Gemma', status: webStatus(webui), latencyMs: webui?.ms, url: config.openWebUiUrl },
           { id: 'jarvis', name: 'Jarvis', detail: jarvisDetail(unitState, jarvisHealth), status: jarvisStatus(unitState, jarvisHealth), latencyMs: jarvisHttp?.ms, url: config.jarvisUrl },
         ],
         model: {
-          name: model?.name ?? config.ollamaModel,
+          name: config.ollamaModel,
           loaded: Boolean(model),
           vramGb: model ? round1((model.size_vram ?? 0) / GB) : 0,
           loadSeconds: null,
         },
+        models: describeModels(models),
         cloud,
         home: homeState,
         moneyPicks: await picks.read(cloud?.money?.recent ?? []),
