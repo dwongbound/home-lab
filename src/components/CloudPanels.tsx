@@ -63,6 +63,9 @@ export const ClaudeThreadsPanel = memo(function ClaudeThreadsPanel({ cloud, now,
 
   let doneCount = 0
   for (const t of cloud.threads) if (t.state === 'done') doneCount++
+  // The overview counts finished threads; the Claude page lists them.
+  let footer: React.ReactNode = <FinishedThreads threads={cloud.threads} now={now} />
+  if (compact) footer = cloud.threads.length > 0 ? <p className="cloud__foot">{doneCount} finished</p> : null
 
   return (
     <section className="glass panel" aria-labelledby="claude-title">
@@ -73,6 +76,7 @@ export const ClaudeThreadsPanel = memo(function ClaudeThreadsPanel({ cloud, now,
         </div>
         {compact ? <a className="icon-btn" href="#claude" aria-label="All Claude threads"><Icon name="claude" size={16} /></a> : null}
       </header>
+      {cloud.threads.length === 0 ? <NoThreads /> : null}
       {STATE_GROUPS.map((group) => {
         const threads = cloud.threads.filter((t) => t.state === group.state)
         if (threads.length === 0) return null
@@ -85,14 +89,19 @@ export const ClaudeThreadsPanel = memo(function ClaudeThreadsPanel({ cloud, now,
           </div>
         )
       })}
-      {compact ? (
-        <p className="cloud__foot">{doneCount} finished</p>
-      ) : (
-        <FinishedThreads threads={cloud.threads} now={now} />
-      )}
+      {footer}
     </section>
   )
 })
+
+/**
+ * No threads in the digest. Jarvis writes the digest on the PC and can't
+ * see claude.ai, so until something on the cloud side sends the threads
+ * this is the usual case, not "nothing happened".
+ */
+function NoThreads() {
+  return <p className="empty">Your Claude threads aren’t connected to this page yet. Jarvis can’t see claude.ai; they need to come from Claude in the project.</p>
+}
 
 /** The finished threads, newest first, on the full Claude page. */
 function FinishedThreads({ threads, now }: { threads: ClaudeThread[]; now: Date }) {
