@@ -40,14 +40,20 @@ describe('motion', () => {
     expect(css).toMatch(/@keyframes land-fade \{ from \{ opacity: 0; \} \}/)
   })
 
-  it('reveals what is inside glass panels on scroll, never the glass itself', () => {
+  it('fades panels in as they scroll into view, never fading the glass itself', () => {
     const block = motionBlock(css)
-    // Fading a glass panel, or anything holding one, breaks its blur.
-    expect(block).toMatch(/\.main \.glass > \*\s*\{[^}]*animation-timeline:\s*view\(\)/)
-    // Glass may run only the landing's frost (no opacity or transform,
-    // checked below) or slide itself in when the page changes (translate
-    // only, checked below).
-    const glassAnimations = [...block.matchAll(/\.glass\s*\{([^}]*)\}/g)].map((m) => m[1]).filter((rule) => /animation/.test(rule))
+    // useReveal sets data-reveal; the glass only frosts, its contents fade up,
+    // and a waiting panel holds at the first frame until it is reached.
+    expect(block).toMatch(/\.glass\[data-reveal='in'\] \{ animation: land-frost /)
+    expect(block).toMatch(/\.glass\[data-reveal='in'\] > \* \{ animation: reveal /)
+    expect(block).toMatch(/\.glass\[data-reveal='wait'\] > \* \{ animation-play-state: paused; \}/)
+    // No scroll-driven timeline: Safari skipped it, and in Chromium it took
+    // over from the landing ~3 s after load and shook the lower panels.
+    expect(css).not.toMatch(/animation-timeline/)
+    // Fading a glass panel, or anything holding one, breaks its blur. Glass
+    // may only frost (no opacity or transform, checked below) or slide itself
+    // in when the page changes (translate only, checked below).
+    const glassAnimations = [...block.matchAll(/\.glass(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)].map((m) => m[1]).filter((rule) => /animation:/.test(rule))
     for (const rule of glassAnimations) expect(rule).toMatch(/animation:\s*(land-frost|enter-glass-from-(right|left))\b/)
   })
 

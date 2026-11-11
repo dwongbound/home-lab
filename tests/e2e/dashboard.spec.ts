@@ -1,6 +1,7 @@
 // User stories, on desktop and phone:
 //   - I open the page and see how jarvis is doing.
 //   - Once it has loaded, nothing on it shifts (no shake as data and fonts arrive).
+//   - Panels below the screen fade in as I scroll down to them, and nothing replays once it has landed.
 //   - I move between Overview, Services, Schedule and Settings, and it glides.
 //   - I unload the local model before gaming, and see it working until it's done.
 //   - I pick a sky in Settings and it's remembered.
@@ -51,6 +52,33 @@ test('nothing on the Overview shifts after it loads, even when the chat history 
   await page.waitForTimeout(2500)
   const shifts = await page.evaluate(() => (window as unknown as { shifts: number }).shifts)
   expect(shifts).toBeLessThan(0.005)
+})
+
+test('once the page has landed nothing animates again, and lower panels fade in as I scroll to them', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { late: string[] }
+    w.late = []
+    // Anything starting after the landing (~2.6 s) while the page sits still
+    // is the "shake" that used to drop the lower panels back down.
+    document.addEventListener('animationstart', (e) => {
+      if (performance.now() > 2000) w.late.push(`${e.animationName} on ${(e.target as Element).className}`)
+    }, true)
+  })
+  // A short window, so Services runs past the bottom on every device.
+  await page.setViewportSize({ width: page.viewportSize()!.width, height: 560 })
+  await page.goto('/#services')
+  await page.waitForTimeout(3500)
+  expect(await page.evaluate(() => (window as unknown as { late: string[] }).late)).toEqual([])
+
+  // Its last panel waits, hidden, until reached.
+  const last = page.locator('.main .glass').last()
+  await expect(last).toHaveAttribute('data-reveal', 'wait')
+  await expect.poll(() => last.evaluate((el) => getComputedStyle(el.firstElementChild!).opacity)).toBe('0')
+  await last.scrollIntoViewIfNeeded()
+  await expect(last).toHaveAttribute('data-reveal', 'in')
+  await expect.poll(() => last.evaluate((el) => getComputedStyle(el.firstElementChild!).opacity)).toBe('1')
+  // Panels on screen at load were never hidden.
+  await expect(page.locator('.main .glass').first()).toHaveAttribute('data-reveal', 'shown')
 })
 
 test('an alert is a banner across the top, not a row in Today, and Close hides it', async ({ page }) => {

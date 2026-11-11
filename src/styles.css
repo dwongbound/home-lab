@@ -641,19 +641,6 @@ html[data-modal] { overflow: hidden; }
   .pills__light { transition: transform 460ms cubic-bezier(.3, .7, .2, 1), width 460ms cubic-bezier(.3, .7, .2, 1); }
   .pills__ink { transition: transform 460ms cubic-bezier(.3, .7, .2, 1); }
 
-  /* Panels reveal as they scroll into view. What fades is what's inside a
-     glass panel, never the panel itself: fading the glass (or anything
-     holding it) breaks its blur. The frame is there; its contents rise in.
-     Driven by scroll position, not a timer, so scrolling back up and down
-     is smooth and nothing runs while the page sits still. Browsers without
-     scroll-driven animations just show everything. */
-  @supports (animation-timeline: view()) {
-    .main .glass > * {
-      animation: reveal linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 80%;
-    }
-  }
   .pill { transition: color 220ms ease, background-color 220ms ease; }
   .switch__knob { transition: left 180ms ease; }
 
@@ -668,8 +655,7 @@ html[data-modal] { overflow: hidden; }
   html[data-enter='prev'] .main .hero { animation: enter-from-left 560ms cubic-bezier(.16, 1, .3, 1) both; }
   html[data-enter='next'] .main .glass { animation: enter-glass-from-right 560ms cubic-bezier(.16, 1, .3, 1) 50ms both; }
   html[data-enter='prev'] .main .glass { animation: enter-glass-from-left 560ms cubic-bezier(.16, 1, .3, 1) 50ms both; }
-  /* Time-based, not tied to scrolling like the reveal above. */
-  html[data-enter] .main .glass > * { animation: enter-fade 460ms ease-out 50ms both; animation-timeline: auto; }
+  html[data-enter] .main .glass > * { animation: enter-fade 460ms ease-out 50ms both; }
 
   /* A swipe in progress (src/swipeMotion.ts): the title and whole panels
      follow the finger while their contents fade a little; once it counts
@@ -726,13 +712,27 @@ html[data-modal] { overflow: hidden; }
   .main .grid > :nth-child(2) { --col: 70ms; }
   .main .grid > :nth-child(3) { --col: 140ms; }
   .main .grid > :nth-child(4) { --col: 210ms; }
+
+  /* Panels that start below the screen fade in as they first scroll into
+     view (src/useReveal.ts sets data-reveal). Waiting, the glass is clear
+     and its contents hidden, both held at the first frame; scrolled to, the
+     same animations simply play: the glass frosts over (blur, tint, edge
+     only) and its contents fade up. Time-based, so Safari plays it too.
+     These come after the landing and outrank the page-change slides, so a
+     waiting panel stays hidden until it is reached. */
+  .shell .main .glass[data-reveal='wait'],
+  .shell .main .glass[data-reveal='in'] { animation: land-frost .9s cubic-bezier(.3, .7, .2, 1) both; }
+  .shell .main .glass[data-reveal='wait'] > *,
+  .shell .main .glass[data-reveal='in'] > * { animation: reveal .7s cubic-bezier(.2, .8, .2, 1) 120ms both; }
+  .shell .main .glass[data-reveal='wait'],
+  .shell .main .glass[data-reveal='wait'] > * { animation-play-state: paused; }
 }
 @media (prefers-reduced-motion: reduce) {
   .spinner__ring { border-top-color: rgba(255,255,255,.2); border-color: var(--frost); opacity: .8; }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
 @keyframes grow { from { transform: scaleY(0); } }
-@keyframes reveal { from { opacity: 0; transform: translateY(12px); } }
+@keyframes reveal { from { opacity: 0; transform: translateY(10px); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes orb-breathe { 0%, 100% { transform: scale(.94); } 50% { transform: scale(1.05); } }
 @keyframes orb-halo { 0%, 100% { opacity: .5; transform: scale(.92); } 55% { opacity: .95; transform: scale(1.08); } }
