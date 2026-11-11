@@ -105,8 +105,8 @@ ttyd listens on 127.0.0.1 only and runs as a user service
 (`deploy/ttyd.service`; setup steps are at the top of that file). It isn't
 proxied in `npm run dev`; use `npm start` to try it.
 
-**The Talk page** is the same chat on its own, filling the screen with no
-tabs or panels: `https://jarvis.snakebird-ph.ts.net/talk` (or `#talk` on a
+**The Talk page** is the same chat on its own, as the whole screen (edge
+to edge, not a pop-up: no card, corners or margin) with no tabs or panels: `https://jarvis.snakebird-ph.ts.net/talk` (or `#talk` on a
 build served from a folder, like the preview). Tap **Talk** to start, since
 iOS only opens the microphone after a tap; **Close** goes back to the
 dashboard. It keeps the screen on while open, because Safari drops the

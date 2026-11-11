@@ -482,7 +482,8 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
   return (
     <dialog
       ref={ref}
-      className="dialog dialog--chat glass"
+      // On /talk it isn't a card at all: no glass, it's the page itself.
+      className={page ? 'dialog dialog--chat' : 'dialog dialog--chat glass'}
       tabIndex={-1}
       // Talk mode takes the whole screen (Dylan, 2026-11-11), with a bigger orb.
       // The /talk page always does, even before Talk is tapped.
