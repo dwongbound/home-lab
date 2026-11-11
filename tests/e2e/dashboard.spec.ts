@@ -9,6 +9,7 @@
 //   - The iPad can stay on as a wall display, with the whole Overview on one screen.
 //   - I swipe sideways to change tab.
 //   - In Safari, changing tab never shows the panels dark before they frost.
+//   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
 import { expect, test } from '@playwright/test'
 
 test('overview shows the PC at a glance', async ({ page }) => {
@@ -507,4 +508,23 @@ test('while the first snapshot is on its way, a full-page "Jarvis is thinking" l
     await expect(loader).toHaveCount(0)
     await context.close()
   }
+})
+
+test('asking Jarvis opens the chat, and Talk goes hands-free until Stop talking', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Is the garage open?')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  // The sample server keeps the chat across tests, so look at the newest reply.
+  await expect(chat.getByText('Jarvis would answer "Is the garage open?" here.', { exact: false }).last()).toBeVisible({ timeout: 10_000 })
+  await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk')
+
+  // Sample data has no Jarvis to talk to, so Talk plays the demo turn.
+  await chat.getByRole('button', { name: 'Talk', exact: true }).click()
+  await expect(chat.getByRole('status')).toHaveText('Listening… just talk')
+  await expect(chat.getByText(/you have volleyball at 7:30/).last()).toBeVisible({ timeout: 15_000 })
+  await chat.getByRole('button', { name: 'Stop talking' }).click()
+  await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })
+  await chat.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(chat).toHaveCount(0)
 })

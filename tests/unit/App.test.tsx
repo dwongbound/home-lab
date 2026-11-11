@@ -17,10 +17,14 @@ function renderApp() {
 }
 
 /** Answers /api/* from a real mock source, the way the server would. */
-function fakeServer(options: { actionGate?: Promise<void> } = {}) {
+function fakeServer(options: { actionGate?: Promise<void>; live?: boolean } = {}) {
   const source = createMockSource()
   return vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === '/api/snapshot') return Response.json(await source.snapshot())
+    if (url === '/api/snapshot') {
+      // live: pretend the snapshot came from the PC, so Talk opens the real voice line.
+      const snap = await source.snapshot()
+      return Response.json(options.live ? { ...snap, source: 'live' } : snap)
+    }
     if (url.startsWith('/api/actions/') && init?.method === 'POST') {
       if (options.actionGate) await options.actionGate
       return Response.json(await source.action(url.split('/').pop()))
@@ -136,7 +140,7 @@ describe('App', () => {
     expect(within(await screen.findByRole('dialog', { name: 'Jarvis' })).getByText('Is the garage open?')).toBeInTheDocument()
   })
 
-  it('Talk without a microphone plays the demo turn hands-free until Stop talking', async () => {
+  it('Talk with sample data plays the demo turn hands-free until Stop talking', async () => {
     vi.stubGlobal('fetch', fakeServer())
     const user = userEvent.setup()
     renderApp()
@@ -149,6 +153,19 @@ describe('App', () => {
     await user.click(within(chat).getByRole('button', { name: 'Stop talking' }))
     expect(await within(chat).findByRole('button', { name: 'Talk' }, { timeout: 4000 })).toBeInTheDocument()
   }, 15_000)
+
+  it("Talk with live data opens the voice line, and says why when it can't", async () => {
+    // jsdom has no microphone, so the line refuses and the chat says so.
+    vi.stubGlobal('fetch', fakeServer({ live: true }))
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Talk' }))
+    const chat = await screen.findByRole('dialog', { name: 'Jarvis' })
+    expect(await within(chat).findByRole('status')).toHaveTextContent('This browser can’t send your voice to Jarvis')
+    expect(within(chat).getByRole('button', { name: 'Talk' })).toBeEnabled()
+    expect(within(chat).queryByRole('button', { name: 'Stop talking' })).not.toBeInTheDocument()
+  })
 
   it('Home: turning a switch on, and a scene with no on/off', async () => {
     vi.stubGlobal('fetch', fakeServer())
