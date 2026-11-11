@@ -706,7 +706,9 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 @keyframes land-right { from { opacity: 0; transform: translateX(40px); } }
 @keyframes land-fade { from { opacity: 0; } }
 @keyframes land-rise { from { opacity: 0; transform: translateY(26px); filter: blur(6px); } }
-@keyframes land-title { from { opacity: 0; transform: translateY(56px) scale(1.06); filter: blur(18px); letter-spacing: .06em; } }
+/* No letter-spacing here: animating it re-wraps the title every frame, which
+   nudged the text beside and below it while the page landed. */
+@keyframes land-title { from { opacity: 0; transform: translateY(56px) scale(1.06); filter: blur(18px); } }
 /* Glass only ever animates these: its blur, tint, edge and glow. */
 @keyframes land-frost {
   from { -webkit-backdrop-filter: blur(0) saturate(100%); backdrop-filter: blur(0) saturate(100%); background: transparent; border-color: transparent; box-shadow: none; }

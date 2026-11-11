@@ -1,5 +1,6 @@
 // User stories, on desktop and phone:
 //   - I open the page and see how jarvis is doing.
+//   - Once it has loaded, nothing on it shifts (no shake as data and fonts arrive).
 //   - I move between Overview, Services, Schedule and Settings, and it glides.
 //   - I unload the local model before gaming, and see it working until it's done.
 //   - I pick a sky in Settings and it's remembered.
@@ -25,6 +26,28 @@ test('overview shows the PC at a glance', async ({ page }) => {
   // Kept to a glance: the chart, services and the model live on their own pages.
   await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Unload local model' })).toHaveCount(0)
+})
+
+test('nothing on the Overview shifts after it loads, even when the chat history is slow', async ({ page, browserName }) => {
+  // Only Chromium reports layout shifts.
+  test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only')
+  await page.addInitScript(() => {
+    const w = window as unknown as { shifts: number }
+    w.shifts = 0
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) w.shifts += (entry as unknown as { value: number }).value
+    }).observe({ type: 'layout-shift', buffered: true })
+  })
+  // The history arriving late is what used to push every panel down.
+  await page.route('**/api/jarvis/history', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    await route.continue()
+  })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+  await page.waitForTimeout(2500)
+  const shifts = await page.evaluate(() => (window as unknown as { shifts: number }).shifts)
+  expect(shifts).toBeLessThan(0.005)
 })
 
 test('an alert is a banner across the top, not a row in Today, and Close hides it', async ({ page }) => {

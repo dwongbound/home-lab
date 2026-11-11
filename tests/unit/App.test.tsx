@@ -146,6 +146,14 @@ describe('App', () => {
     expect(within(await screen.findByRole('dialog', { name: 'Jarvis' })).getByText('Is the garage open?')).toBeInTheDocument()
   })
 
+  it('keeps the row under the Ask Jarvis bar from the first paint, so nothing below it jumps', async () => {
+    vi.stubGlobal('fetch', fakeServer())
+    renderApp()
+    // The bar and its row arrive together, before the chat history has.
+    await screen.findByLabelText('Question for Jarvis')
+    expect(screen.getByRole('button', { name: /Open chat/ })).toBeInTheDocument()
+  })
+
   it('Talk with sample data plays the demo turn hands-free until Stop talking', async () => {
     vi.stubGlobal('fetch', fakeServer())
     const user = userEvent.setup()
