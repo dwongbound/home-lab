@@ -28,6 +28,17 @@ function statusText(state: OrbState, notice = ''): string {
   return 'Type below, or tap Talk'
 }
 
+/**
+ * What the row under the bar says: his last reply, or the status while one
+ * is coming, or a nudge to start once we know there's no chat yet. Blank
+ * (but still taking its space) until the history has been checked.
+ */
+function lastLine(last: Turn | null, historyChecked: boolean, state: OrbState, notice: string): string {
+  if (last) return last.answer || statusText(state, notice)
+  if (historyChecked) return 'No chat yet. Ask anything, or tap Talk'
+  return '\u00a0'
+}
+
 // With sample data there's no Jarvis to talk to, so Talk plays these turns
 // and the whole hands-free loop can still be seen (the preview, and tests).
 const DEMO_QUESTIONS = ["What's on my schedule today?", 'Is the living room lamp on?', "How's the weather for flying tomorrow?"]
@@ -60,6 +71,8 @@ export function JarvisPanel({ live }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<OrbState>('idle')
   const [turns, setTurnsState] = useState<Turn[]>(savedTurns)
+  // Whether the saved chat has been fetched (or wasn't needed), for the row under the bar.
+  const [historyChecked, setHistoryChecked] = useState(savedTurns.length > 0)
   const [open, setOpen] = useState(false)
   const [talkingOn, setTalkingOn] = useState(false)
   const [heard, setHeard] = useState('')
@@ -224,7 +237,9 @@ export function JarvisPanel({ live }: Props) {
     if (savedTurns.length > 0) return
     let live = true
     void loadChatHistory().then((lines) => {
-      if (live && savedTurns.length === 0 && lines.length > 0) setTurns(() => toTurns(lines))
+      if (!live) return
+      if (savedTurns.length === 0 && lines.length > 0) setTurns(() => toTurns(lines))
+      setHistoryChecked(true)
     })
     return () => { live = false }
   }, [])
@@ -239,6 +254,7 @@ export function JarvisPanel({ live }: Props) {
   useEffect(() => () => stopTalk(), [])
 
   const last = turns.length > 0 ? turns[turns.length - 1] : null
+  const lastText = lastLine(last, historyChecked, state, notice)
 
   return (
     <section className="glass panel jarvis" aria-labelledby="jarvis-title">
@@ -263,13 +279,13 @@ export function JarvisPanel({ live }: Props) {
           <button type="button" className="btn" disabled={busy || open} onClick={() => void startTalk()}>Talk</button>
         )}
       </form>
-      {last && !open ? (
-        <button type="button" className="jarvis__last" onClick={() => setOpen(true)}>
-          <span className="jarvis__last-label">Jarvis</span>
-          <span className="jarvis__last-text">{last.answer || statusText(state, notice)}</span>
-          <span className="jarvis__last-open">Open chat</span>
-        </button>
-      ) : null}
+      {/* Always there, even before the history arrives, so the panels below
+          don't jump down when it does (Dylan, 2026-11-11: "a little shake"). */}
+      <button type="button" className="jarvis__last" onClick={() => setOpen(true)}>
+        <span className="jarvis__last-label">Jarvis</span>
+        <span className="jarvis__last-text">{lastText}</span>
+        <span className="jarvis__last-open">Open chat</span>
+      </button>
       {open ? (
         <ChatSheet
           turns={turns}

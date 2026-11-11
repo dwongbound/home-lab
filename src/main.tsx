@@ -7,8 +7,30 @@ import '@fontsource-variable/figtree'
 import './styles.css'
 import { App } from './App'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// The longest the page waits for its fonts before drawing anyway.
+const FONT_WAIT_MS = 700
+
+/**
+ * Loads the two page fonts before the first paint, so text doesn't swap
+ * from the fallback font a moment later and nudge the top bar and panels
+ * (Dylan, 2026-11-11). Gives up after FONT_WAIT_MS, or right away in
+ * browsers without the font loading API (tests).
+ */
+function fontsLoaded(): Promise<unknown> {
+  if (typeof document.fonts?.load !== 'function') return Promise.resolve()
+  const fonts = Promise.all([
+    document.fonts.load('600 17px "Bricolage Grotesque Variable"'),
+    document.fonts.load('400 15px "Figtree Variable"'),
+    document.fonts.load('600 15px "Figtree Variable"'),
+  ]).catch(() => undefined)
+  const timeout = new Promise((resolve) => setTimeout(resolve, FONT_WAIT_MS))
+  return Promise.race([fonts, timeout])
+}
+
+void fontsLoaded().then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+})
