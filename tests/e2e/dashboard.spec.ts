@@ -59,7 +59,7 @@ test('Schedule has the requests chart; Services has every service, the model car
   await expect(page.getByRole('link', { name: 'Open Home Assistant' })).toHaveAttribute('href', 'http://192.168.68.94:8123')
   await expect(page.getByRole('button', { name: 'Unload local model' })).toBeVisible()
   const loaded = page.getByRole('region', { name: 'In GPU memory' })
-  await expect(loaded).toContainText('qwen3.5:9b')
+  await expect(loaded).toContainText('ornith-1.5:9b')
   await expect(loaded).toContainText('answers when Claude can’t be reached')
   // The terminal replaced the "Restarting Jarvis" note.
   await expect(page.locator('iframe[title="Terminal on jarvis"]')).toBeVisible()

@@ -72,7 +72,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
 
 jarvis: Windows 11 + Ubuntu 24.04 in WSL 2 (user `dwong`, systemd on, mirrored
 networking), 16 GB RAM (WSL capped at 10), RTX 3060 12 GB. Home Assistant in
-Docker at 192.168.68.94:8123. Ollama with qwen3.5:9b as Jarvis's local model (~6 GB VRAM, 10-min idle unload; Gemma dropped 2026-11-11).
+Docker at 192.168.68.94:8123. Ollama with ornith-1.5:9b as Jarvis's local model (~6.5 GB VRAM, 20-min keep-alive while he's awake; picked over Qwen 3.5 9B by a 40-item watch benchmark, 2026-11-11).
 This page at https://jarvis.snakebird-ph.ts.net, Jarvis agent at :8443 (Open WebUI removed 2026-11-11)
 (systemd unit `jarvis`; `sudo -n systemctl restart jarvis` works without a password).
 

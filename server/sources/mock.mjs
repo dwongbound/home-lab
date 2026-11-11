@@ -205,19 +205,19 @@ export function createMockSource({ now = () => new Date() } = {}) {
         activity: [
           { id: 'a1', at: minutesAgo(4), kind: 'jarvis', text: 'Jarvis answered "what time is sunset" on Telegram' },
           { id: 'a2', at: minutesAgo(38), kind: 'ha', text: 'Living room lamp turned off by the bedtime scene' },
-          { id: 'a3', at: minutesAgo(95), kind: 'ollama', text: 'qwen3.5:9b loaded in 41 s' },
+          { id: 'a3', at: minutesAgo(95), kind: 'ollama', text: 'ornith-1.5:9b loaded in 41 s' },
           { id: 'a4', at: minutesAgo(240), kind: 'system', text: 'Ubuntu started by the "Start Ubuntu (WSL)" task' },
           { id: 'a5', at: minutesAgo(610), kind: 'jarvis', text: 'Fantasy pickup run failed with an import error' },
         ],
         services: [
           { id: 'ha', name: 'Home Assistant', detail: '2026.10.2 in Docker', status: 'up', latencyMs: 14, url: 'http://192.168.68.94:8123' },
-          { id: 'ollama', name: 'Ollama', detail: loaded ? 'qwen3.5:9b loaded' : 'No model loaded', status: 'up', latencyMs: 3 },
+          { id: 'ollama', name: 'Ollama', detail: loaded ? 'ornith-1.5:9b loaded' : 'No model loaded', status: 'up', latencyMs: 3 },
           { id: 'jarvis', name: 'Jarvis', detail: 'Running, code changed since start', status: 'degraded', latencyMs: 22, url: 'https://jarvis.snakebird-ph.ts.net:8443' },
         ],
-        model: { name: 'qwen3.5:9b', loaded, vramGb: loaded ? 5.7 : 0, loadSeconds: 41 },
+        model: { name: 'ornith-1.5:9b', loaded, vramGb: loaded ? 5.7 : 0, loadSeconds: 41 },
         // Like jarvis: the one local model, unloading after 10 idle minutes.
         models: loaded
-          ? [{ name: 'qwen3.5:9b', role: 'watch', vramGb: 5.7, until: new Date(t.getTime() + 8 * 60_000).toISOString(), parameters: '9.7B', quantization: 'Q4_K_M', contextLength: 8192 }]
+          ? [{ name: 'ornith-1.5:9b', role: 'watch', vramGb: 5.7, until: new Date(t.getTime() + 8 * 60_000).toISOString(), parameters: '9.7B', quantization: 'Q4_K_M', contextLength: 8192 }]
           : [],
         cloud,
         home: {

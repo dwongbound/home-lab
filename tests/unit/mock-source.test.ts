@@ -45,11 +45,11 @@ describe('createMockSource', () => {
 
   it('unloading the local model frees its GPU memory and leaves nothing loaded', async () => {
     const source = createMockSource({ now })
-    expect((await source.snapshot()).models.map((m: { name: string; role: string }) => [m.name, m.role])).toEqual([['qwen3.5:9b', 'watch']])
+    expect((await source.snapshot()).models.map((m: { name: string; role: string }) => [m.name, m.role])).toEqual([['ornith-1.5:9b', 'watch']])
     const result = await source.action('ollama-unload')
     expect(result).toEqual({ ok: true, message: 'Local model unloaded' })
     const snap = await source.snapshot()
-    expect(snap.model).toMatchObject({ name: 'qwen3.5:9b', loaded: false })
+    expect(snap.model).toMatchObject({ name: 'ornith-1.5:9b', loaded: false })
     expect(snap.services.find((s: { id: string }) => s.id === 'ollama')!.detail).toBe('No model loaded')
     expect(snap.models).toEqual([])
   })
