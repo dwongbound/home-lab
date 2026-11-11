@@ -1,8 +1,9 @@
 {
+  "id": "./talk",
   "name": "Talk to Jarvis",
   "short_name": "Talk",
   "start_url": "./talk",
-  "scope": "./",
+  "scope": "./talk",
   "display": "standalone",
   "background_color": "#16212c",
   "theme_color": "#16212c",

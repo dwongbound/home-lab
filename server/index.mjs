@@ -9,6 +9,7 @@ import { loadConfig, loadEnvFile } from './config.mjs'
 import { createApi, createSource } from './app.mjs'
 import { createShellProxy, isShellPath } from './shell.mjs'
 import { createTalkProxy, isTalkPath } from './talk.mjs'
+import { isTalkPagePath, talkHead } from './talk-head.mjs'
 
 loadEnvFile()
 const config = loadConfig()
@@ -56,7 +57,9 @@ async function serveStatic(req, res) {
     return res.end()
   }
   try {
-    const body = await readFile(file)
+    let body = await readFile(file)
+    // /talk is its own home-screen app, so its head says so before any script runs.
+    if (file === indexHtml && isTalkPagePath(pathname)) body = talkHead(body.toString('utf8'))
     res.setHeader('content-type', CONTENT_TYPES[extname(file)] ?? 'application/octet-stream')
     if (file.includes(`${sep}assets${sep}`)) {
       res.setHeader('cache-control', 'public, max-age=31536000, immutable')
