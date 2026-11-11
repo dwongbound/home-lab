@@ -2,8 +2,8 @@
 
 A glassy admin page for **jarvis**, the home lab PC: how much memory, GPU
 and disk it's using, whether Home Assistant, Ollama and the
-Jarvis agent are running, what ran today, and a button to unload Gemma
-before gaming.
+Jarvis agent are running, what ran today, a chat (and hands-free voice)
+with Jarvis, and a button to unload the local model before gaming.
 
 It runs on the PC itself as one small Node process and is reached in a
 browser on the PC, a phone or the Mac.
@@ -64,22 +64,26 @@ Eight pages, picked from the pill bar at the top. Each is a plain link to a
 
 | Page | What it shows |
 | --- | --- |
-| **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. **Ask Jarvis**, a box for talking to Jarvis (below). A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The Gemma card. |
+| **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. **Ask Jarvis**: the orb, a box and **Talk** (below). A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The local model card. |
 | **Home** (`#home`) | The thermostat first (room temperature, − and + for the target, mode buttons), then every light, switch, fan, speaker or TV, scene and script in Home Assistant, each with the controls that suit it: on/off, brightness, play/pause, volume, or Run. The weather and the next sunrise or sunset. New devices appear as they're added to Home Assistant; a speaker's own settings switches, locks, alarms and garage doors don't. Controlling needs the page opened through Tailscale. |
 | **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
 | **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. Purchases still in **Other** (or with no category) get a yellow outline and "!", and **Worth a look** counts them. Tap one to pick its category (Copilot's own, or type another): Copilot's connector is read-only, so picks are saved on the PC (`MONEY_PICKS_FILE`) in **Ready for Copilot**, grouped by category, to apply in the Copilot app in one sitting and mark **Done**. The first pick sets a reminder for tomorrow at 8 PM (move it to tonight or in 3 days); when it comes, the banner says how many are waiting. Picks clear by themselves once Copilot shows the purchase sorted. Recent sits on the right, as tall as the left column, scrolling inside. Accounts are grouped with subtotals, and $0 ones wait behind **Show empty accounts**. |
-| **Services** (`#services`) | Every service with its status, response time and a link to open it; the Gemma card (always about Gemma, `OLLAMA_MODEL`); **In GPU memory**, listing each model Ollama has loaded with its job (Gemma = chat brain, `OLLAMA_WATCH_MODEL` = Jarvis's background watch), GPU memory, size and when it unloads; and a terminal on jarvis (the Shell tab's tmux session), e.g. for `sudo systemctl restart jarvis`. |
+| **Services** (`#services`) | Every service with its status, response time and a link to open it; the local model card (always about `OLLAMA_MODEL`); **In GPU memory**, listing each model Ollama has loaded with its job (`OLLAMA_WATCH_MODEL` = Jarvis's local brain: background watch and offline backup), GPU memory, size and when it unloads; and a terminal on jarvis (the Shell tab's tmux session), e.g. for `sudo systemctl restart jarvis`. |
 | **Shell** (`#shell`) | A terminal on jarvis (tmux through ttyd), so you can run commands from your phone. Only your Tailscale login gets in. See [The Shell page](#the-shell-page). |
 | **Schedule** (`#schedule`) | Today's runs on jarvis next to your calendar for the day, then email that needs you and recent activity. Calendar and email come from the [cloud digest](#cloud-digest). |
 | **Settings** (`#preferences`) | The sky behind the page (follow the clock, or pin dawn, day, dusk or night; saved in that browser only) and where the data is coming from. |
 
-### The Gemma button
+### The local model button
 
-Gemma holds about 10 of the GPU's 12 GB. **Unload Gemma** asks first, in a
+Gemma was dropped on 2026-11-11. Jarvis's only local model is now
+`qwen3.5:9b` (about 6 GB of the GPU's 12): its background watch and its
+offline backup brain when Claude can't be reached. Jarvis asks Ollama to
+keep it only 10 idle minutes. **Unload local model** asks first, in a
 dialog with **Close** and **Unload**. While Ollama works, the dialog is
 blocked: both buttons are disabled, Esc does nothing and a spinner says
 what's happening. When it's done the dialog closes and a toast says
-"Gemma unloaded". **Load Gemma** brings it back (about 3 minutes).
+"Local model unloaded". **Load local model** brings it back for 10 idle
+minutes (`OLLAMA_KEEP_ALIVE`).
 
 Only one action runs at a time: the server answers `409` to a second one.
 
@@ -211,7 +215,7 @@ The page and the server agree on one shape, `Snapshot`, defined in
 
 | Source | File | When | What it does |
 | --- | --- | --- | --- |
-| Mock | `server/sources/mock.mjs` | `DATA_SOURCE` unset or `mock` (default) | Believable numbers for jarvis. Times are on the PC's Pacific clock. Remembers whether Gemma is loaded so the buttons visibly work. |
+| Mock | `server/sources/mock.mjs` | `DATA_SOURCE` unset or `mock` (default) | Believable numbers for jarvis. Times are on the PC's Pacific clock. Remembers whether the local model is loaded so the buttons visibly work. |
 | Live | `server/sources/live.mjs` | `DATA_SOURCE=live` | Reads the real PC. Each probe runs in parallel with a 2.5 s timeout; one that fails shows as "Not responding" or "Not reporting" instead of failing the page. |
 
 A source is two functions:
@@ -232,10 +236,10 @@ interface DataSource {
 | Processor | `os.cpus()` busy time since the last refresh |
 | Free on C: | `statfs('/mnt/c')` |
 | Home Assistant | `GET $HA_URL/api/` with `Authorization: Bearer $HA_TOKEN`. A 401 shows as "Needs attention. Token rejected". |
-| Ollama and Gemma | `GET $OLLAMA_URL/api/ps` (which models are in memory) |
+| Ollama and the local model | `GET $OLLAMA_URL/api/ps` (which models are in memory) |
 | Jarvis | `GET $JARVIS_API_URL/health`, which says which brain Jarvis is using ("Thinking with claude"), plus `systemctl is-active jarvis` where there is a systemctl. Answering is "Running"; silent while systemd says active is "Needs attention"; anything else is "Not responding". In Docker there's no systemctl, so `/health` alone decides. |
-| Ask Jarvis | `POST $JARVIS_API_URL/ask` with `{"text": ...}` and the caller's `Tailscale-User-Login`, waiting up to 3 minutes. |
-| Unload / load Gemma | `POST $OLLAMA_URL/api/generate` with `keep_alive: 0` (unload now) or `OLLAMA_KEEP_ALIVE` (load; `-1`, the default, keeps it loaded forever, which is how jarvis runs Gemma). Ollama has no separate unload call. |
+| Ask Jarvis (chat) | `POST $JARVIS_API_URL/chat/stream` with `{"text": ...}` and the caller's `Tailscale-User-Login`. Jarvis answers one JSON event per line (`delta`, then `done` or `error`), which the server passes straight on from `POST /api/jarvis/chat`, so the reply types out as Claude writes it. `GET /api/jarvis/history` reads `$JARVIS_API_URL/chat/history?limit=50`, so a reload (or another device) shows the same conversation. `POST /api/jarvis/ask` (`/ask`, one piece) is still there for other callers. |
+| Unload / load the local model | `POST $OLLAMA_URL/api/generate` with `keep_alive: 0` (unload now) or `OLLAMA_KEEP_ALIVE` (load; `10m` by default, matching what Jarvis asks for). Ollama has no separate unload call. |
 | Today (Jarvis's part) | `GET $JARVIS_API_URL/schedule/today`: Jarvis's reminders, nags and daily runs for today in Pacific time, past ones included and shown as done. An older Jarvis without it (404) just adds nothing. The Overview's Today merges these with today's calendar from the digest (`src/lib/agenda.ts`). A service that needs you isn't a row there: it's an amber banner across the top of every page (`AlertBanner`), linking to Services, with **Close** to hide it until the alerts change. |
 | Fresh digest on open | `POST $JARVIS_API_URL/digest/refresh` with the caller's `Tailscale-User-Login`, sent when the page opens or comes back after 2 minutes away. Jarvis skips it if a run is going or its last write is recent. The page keeps showing the last digest, with "Updating from Jarvis…" on its panels, and checks every 5 seconds until the new one lands (giving up after 3 minutes). |
 | Requests chart, Recent activity | **Not available yet.** Jarvis doesn't publish these, so the live source returns empty lists and the page shows its empty states. |
@@ -290,8 +294,8 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `HA_URL` | `http://192.168.68.94:8123` | Home Assistant. |
 | `HA_TOKEN` | *(empty)* | Home Assistant long-lived access token. **Secret.** Server-side only. |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama's API. |
-| `OLLAMA_MODEL` | `gemma4:12b` | The model the Gemma card loads and unloads. Check the exact name with `ollama list`. |
-| `OLLAMA_KEEP_ALIVE` | `-1` | How long Load keeps Gemma. `-1` = forever, a number = seconds, or `30m` style. |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | The model the local model card loads and unloads (Jarvis's local brain). Check the exact name with `ollama list`. |
+| `OLLAMA_KEEP_ALIVE` | `10m` | How long Load keeps it. `-1` = forever, a number = seconds, or `30m` style. |
 | `OLLAMA_WATCH_MODEL` | `qwen3.5:9b` | Jarvis's background watch model (its `JARVIS_TRIAGE_MODEL`), so Services can say what it's doing when loaded. |
 | `NVIDIA_SMI` | `/usr/lib/wsl/lib/nvidia-smi` | WSL's nvidia-smi, which isn't on PATH. |
 | `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's address on the tailnet, for the link on its row. |
@@ -358,8 +362,8 @@ and mounts `/mnt/c` and WSL's `nvidia-smi` read-only for the disk and GPU
 cards. `restart: unless-stopped` brings it back after a reboot, once
 Docker is up. **Updating:** `git pull && docker compose up -d --build`.
 
-The unit caps the process at 200 MB (`MemoryMax`), since Gemma needs the
-RAM more. It typically uses well under 100 MB.
+The unit caps the process at 200 MB (`MemoryMax`), since the local model and
+Jarvis's voice need the RAM more. It typically uses well under 100 MB.
 
 **Updating:** `cd ~/home-lab && git pull && npm ci && npm run build && sudo systemctl restart home-lab`.
 
@@ -448,7 +452,7 @@ and a check that every CSS animation sits inside the reduced-motion guard.
 **End-to-end tests** (`tests/e2e/`) run each user story on a desktop
 browser, a Pixel 7-sized phone and an iPad Pro 11 in landscape against the production server on sample
 data: the overview, moving between pages with the back button, unloading
-and reloading Gemma, Close and Esc, the remembered sky, no animation with
+and reloading the local model, Close and Esc, the remembered sky, no animation with
 reduced motion, no sideways scrolling, detail pop-ups and purchases to sort
 on Money, and keeping the screen on.
 
@@ -485,7 +489,7 @@ in front of it stays quiet.
 | `--basalt` | `#16212c` | The room: page base, the glass fallback, dark text on light buttons |
 | `--frost` | `#f2efe9` | Text and primary buttons |
 | `--glacier` | `#8ec5ea` | The data accent: today's bar, focus rings, Jarvis |
-| `--ember` | `#e8b06a` | The sun; warnings, "needs attention", Gemma's ring |
+| `--ember` | `#e8b06a` | The sun; warnings, "needs attention", the local model's ring |
 | `--moss` | `#93d6ae` | Running, done |
 | `--rose` | `#f0919a` | Failed, not responding |
 

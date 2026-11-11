@@ -12,7 +12,7 @@ import { detailHref } from '../useHashView'
 // The home view, kept to a glance: the greeting with what needs you, the
 // Ask Jarvis box, the four stat cards, and what's left today (calendar,
 // Jarvis's reminders and jobs, alerts) next to the Claude threads. Everything else has its own page: the requests chart,
-// calendar and activity on Schedule; services and Gemma on Services.
+// calendar and activity on Schedule; services and the local model on Services.
 
 /** Claude threads waiting on Dylan, from the cloud digest (0 without one). */
 function threadsWaiting(s: Snapshot): number {

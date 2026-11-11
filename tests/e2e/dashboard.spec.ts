@@ -1,7 +1,7 @@
 // User stories, on desktop and phone:
 //   - I open the page and see how jarvis is doing.
 //   - I move between Overview, Services, Schedule and Settings, and it glides.
-//   - I unload Gemma before gaming, and see it working until it's done.
+//   - I unload the local model before gaming, and see it working until it's done.
 //   - I pick a sky in Settings and it's remembered.
 //   - The first load lands with a show; with reduced motion on, nothing moves.
 //   - I tap any money row, Today row, event or email for a pop-up with more, and links out.
@@ -19,9 +19,9 @@ test('overview shows the PC at a glance', async ({ page }) => {
   }
   await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible()
-  // Kept to a glance: the chart, services and Gemma live on their own pages.
+  // Kept to a glance: the chart, services and the model live on their own pages.
   await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Unload Gemma' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Unload local model' })).toHaveCount(0)
 })
 
 test('an alert is a banner across the top, not a row in Today, and Close hides it', async ({ page }) => {
@@ -49,15 +49,15 @@ test('opening the page asks Jarvis for a fresh digest, showing the last one mean
   await expect(calendar.getByText('Updated just now')).toBeVisible()
 })
 
-test('Schedule has the requests chart; Services has every service, the Gemma card, what is loaded and a terminal', async ({ page }) => {
+test('Schedule has the requests chart; Services has every service, the model card, what is loaded and a terminal', async ({ page }) => {
   await page.goto('/#schedule')
   await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toBeVisible()
   await page.goto('/#services')
   await expect(page.getByRole('link', { name: 'Open Home Assistant' })).toHaveAttribute('href', 'http://192.168.68.94:8123')
-  await expect(page.getByRole('button', { name: 'Unload Gemma' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Unload local model' })).toBeVisible()
   const loaded = page.getByRole('region', { name: 'In GPU memory' })
-  await expect(loaded).toContainText('gemma4:12b')
-  await expect(loaded).toContainText('Chat brain')
+  await expect(loaded).toContainText('qwen3.5:9b')
+  await expect(loaded).toContainText('answers when Claude can’t be reached')
   // The terminal replaced the "Restarting Jarvis" note.
   await expect(page.locator('iframe[title="Terminal on jarvis"]')).toBeVisible()
   await expect(page.getByText('Restarting Jarvis')).toHaveCount(0)
@@ -104,34 +104,34 @@ test('pill navigation reaches every page and keeps the back button working', asy
   await expect(page.getByRole('heading', { level: 1, name: 'Schedule' })).toBeVisible()
 })
 
-test('unloading Gemma blocks the dialog until it finishes, then loading it back works', async ({ page }) => {
+test('unloading the local model blocks the dialog until it finishes, then loading it back works', async ({ page }) => {
   await page.goto('/#services')
-  await page.getByRole('button', { name: 'Unload Gemma' }).click()
+  await page.getByRole('button', { name: 'Unload local model' }).click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('Unload Gemma?')
+  await expect(dialog).toContainText('Unload the local model?')
   await expect(dialog.getByRole('button', { name: 'Close' })).toBeVisible()
 
   await dialog.getByRole('button', { name: 'Unload', exact: true }).click()
-  await expect(dialog.getByText('Unloading Gemma…')).toBeVisible()
+  await expect(dialog.getByText('Unloading the local model…')).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Close' })).toBeDisabled()
 
-  await expect(page.getByRole('status').filter({ hasText: 'Gemma unloaded' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Local model unloaded' })).toBeVisible()
   await expect(page.getByText('Unloaded', { exact: true })).toBeVisible()
-  // With Gemma gone, Jarvis's watch model shows in its place, with its job.
-  await expect(page.getByRole('region', { name: 'In GPU memory' })).toContainText('background watch')
+  // Nothing is left in GPU memory, and the list says how it comes back.
+  await expect(page.getByRole('region', { name: 'In GPU memory' })).toContainText('No model is loaded')
 
   // Put it back so the next test starts from the same state.
-  await page.getByRole('button', { name: 'Load Gemma' }).click()
+  await page.getByRole('button', { name: 'Load local model' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Load', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Unload Gemma' })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('button', { name: 'Unload local model' })).toBeVisible({ timeout: 10_000 })
 })
 
 test('Close dismisses the dialog with Esc or the button', async ({ page }) => {
   await page.goto('/#services')
-  await page.getByRole('button', { name: 'Unload Gemma' }).click()
+  await page.getByRole('button', { name: 'Unload local model' }).click()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Unload Gemma' }).click()
+  await page.getByRole('button', { name: 'Unload local model' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })

@@ -129,20 +129,20 @@ describe('live snapshot', () => {
     expect(jarvis.detail).toBe('Not answering')
   })
 
-  it('Ollama: idle with nothing loaded, up with Gemma loaded', async () => {
+  it('Ollama: idle with nothing loaded, up with the local model loaded', async () => {
     expect(service(await liveWith({}).source.snapshot(), 'ollama').status).toBe('idle')
-    const snap = await liveWith({ ollamaModels: [{ name: 'gemma4:12b', size_vram: 10 * GB }] }).source.snapshot()
+    const snap = await liveWith({ ollamaModels: [{ name: 'qwen3.5:9b', size_vram: 6 * GB }] }).source.snapshot()
     expect(service(snap, 'ollama').status).toBe('up')
-    expect(snap.model).toMatchObject({ loaded: true, vramGb: 10 })
+    expect(snap.model).toMatchObject({ name: 'qwen3.5:9b', loaded: true, vramGb: 6 })
   })
 
-  it('keeps the Gemma card on Gemma and lists every loaded model with its job', async () => {
+  it('keeps the model card on OLLAMA_MODEL and lists every loaded model with its job', async () => {
     const soon = new Date(Date.now() + 52 * 60_000).toISOString()
     const snap = await liveWith({ ollamaModels: [
       { name: 'qwen3.5:9b', size_vram: 5.3 * GB, expires_at: soon, context_length: 8192, details: { parameter_size: '9.7B', quantization_level: 'Q4_K_M' } },
       { name: 'llama3:8b', size_vram: 4 * GB, expires_at: '2318-01-01T00:00:00Z' },
     ] }).source.snapshot()
-    expect(snap.model).toMatchObject({ name: 'gemma4:12b', loaded: false, vramGb: 0 })
+    expect(snap.model).toMatchObject({ name: 'qwen3.5:9b', loaded: true, vramGb: 5.3 })
     expect(service(snap, 'ollama')).toMatchObject({ status: 'up', detail: 'qwen3.5:9b and llama3:8b loaded' })
     expect(snap.models).toEqual([
       { name: 'qwen3.5:9b', role: 'watch', vramGb: 5.3, until: soon, parameters: '9.7B', quantization: 'Q4_K_M', contextLength: 8192 },
@@ -171,11 +171,11 @@ describe('live status rules', () => {
 })
 
 describe('live actions', () => {
-  it('loads with keep_alive -1 by default, so Gemma stays loaded like it normally does', async () => {
+  it('loads the local model for 10 idle minutes by default, like Jarvis does', async () => {
     const { source, fetch } = liveWith({})
     await source.action('ollama-load')
     const [, init] = fetch.mock.calls.at(-1)!
-    expect(JSON.parse(String(init!.body))).toEqual({ model: 'gemma4:12b', keep_alive: -1 })
+    expect(JSON.parse(String(init!.body))).toEqual({ model: 'qwen3.5:9b', keep_alive: '10m' })
   })
 
   it('unloads with keep_alive 0', async () => {
@@ -184,7 +184,7 @@ describe('live actions', () => {
     expect(result.ok).toBe(true)
     const [url, init] = fetch.mock.calls.at(-1)!
     expect(url).toBe('http://127.0.0.1:11434/api/generate')
-    expect(JSON.parse(String(init!.body))).toEqual({ model: 'gemma4:12b', keep_alive: 0 })
+    expect(JSON.parse(String(init!.body))).toEqual({ model: 'qwen3.5:9b', keep_alive: 0 })
   })
 })
 

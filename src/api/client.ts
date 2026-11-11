@@ -54,7 +54,7 @@ export function useSnapshot() {
 }
 
 /**
- * Runs a server action (load or unload Gemma). The caller refetches the
+ * Runs a server action (load or unload the local model). The caller refetches the
  * snapshot afterwards, through its own SWR cache.
  */
 export async function runAction(name: ActionName): Promise<ActionResult> {
