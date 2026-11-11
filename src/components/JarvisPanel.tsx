@@ -29,11 +29,13 @@ interface ApprovalView extends Approval {
 let savedTurns: Turn[] = []
 
 /** What the orb's status line says in each state; when idle, why Talk ended (if it ended by itself). */
-function statusText(state: OrbState, notice = ''): string {
+function statusText(state: OrbState, notice = '', page = false): string {
   if (state === 'idle' && notice) return notice
   if (state === 'thinking') return 'Jarvis is thinking…'
   if (state === 'speaking') return 'Jarvis is answering'
   if (state === 'listening') return 'Listening… just talk'
+  // /talk has nothing to type in, so it only points at Talk.
+  if (page) return 'Tap Talk to start'
   return 'Type below, or tap Talk'
 }
 
@@ -500,7 +502,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
       <header className="chat__head">
         <JarvisOrb ref={orbRef} state={state} size={64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
-        <p className="chat__status" role="status">{waiting ? 'Waiting for your OK' : statusText(state, notice)}</p>
+        <p className="chat__status" role="status">{waiting ? 'Waiting for your OK' : statusText(state, notice, page)}</p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
         {turns.map((t, i) => (
