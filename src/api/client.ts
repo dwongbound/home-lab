@@ -95,7 +95,7 @@ export async function askJarvis(text: string): Promise<ActionResult> {
 }
 
 /** Sends one command to one Home Assistant device. */
-export async function controlDevice(entity: string, command: HomeCommand, value?: number): Promise<ActionResult> {
+export async function controlDevice(entity: string, command: HomeCommand, value?: number | string): Promise<ActionResult> {
   if (IS_STATIC_BUILD) {
     const source = await getStaticSource()
     return source.control(entity, command, value)

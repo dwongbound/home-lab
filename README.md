@@ -65,7 +65,7 @@ Eight pages, picked from the pill bar at the top. Each is a plain link to a
 | Page | What it shows |
 | --- | --- |
 | **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. **Ask Jarvis**, a box for talking to Jarvis (below). A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The Gemma card. |
-| **Home** (`#home`) | Every light, switch, fan, speaker or TV, scene and script in Home Assistant, each with the controls that suit it: on/off, brightness, play/pause, volume, or Run. The weather and the next sunrise or sunset. New devices appear as they're added to Home Assistant; a speaker's own settings switches, locks, alarms and garage doors don't. Controlling needs the page opened through Tailscale. |
+| **Home** (`#home`) | The thermostat first (room temperature, − and + for the target, mode buttons), then every light, switch, fan, speaker or TV, scene and script in Home Assistant, each with the controls that suit it: on/off, brightness, play/pause, volume, or Run. The weather and the next sunrise or sunset. New devices appear as they're added to Home Assistant; a speaker's own settings switches, locks, alarms and garage doors don't. Controlling needs the page opened through Tailscale. |
 | **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
 | **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. Purchases still in **Other** (or with no category) get a yellow outline and "!", and **Worth a look** counts them, so you know what to sort in the Copilot app. Accounts are grouped with subtotals, and $0 ones wait behind **Show empty accounts**. |
 | **Services** (`#services`) | Every service with its status, response time and a link to open it, the Gemma card, and how to restart Jarvis (it needs your password, so the page can't). |
@@ -184,8 +184,9 @@ frosted the whole time. Chrome keeps the crossfade.
   the environment by `server/config.mjs`, sent only to Home Assistant, and
   never included in a response. A unit test checks this.
 - **Home control is a short list.** `POST /api/home/control` takes one
-  entity and one of `toggle`, `brightness`, `power`, `playpause`, `volume`
-  or `run`, for lights, switches, fans, media players, scenes and scripts
+  entity and one of `toggle`, `brightness`, `power`, `playpause`, `volume`,
+  `run`, `target` (a temperature) or `mode` (a known HVAC mode), for
+  thermostats, lights, switches, fans, media players, scenes and scripts
   only, and makes the one Home Assistant service call it stands for
   (`server/sources/home.mjs`). The page can never name a service, and
   locks, alarms and covers are out of reach. Like Ask Jarvis it needs the
@@ -193,6 +194,12 @@ frosted the whole time. Chrome keeps the crossfade.
   Home Assistant reports nothing changed (a device asleep or disconnected,
   like an Apple TV that has lost its connection), the tile says so instead
   of looking like it worked.
+- **The Amazon Smart Thermostat** has no official Home Assistant
+  integration. It comes in through the community
+  [Alexa Thermostat](https://github.com/nikolmedo/AlexaThermostat)
+  integration (copied into HA's `custom_components`, signed in to Amazon
+  in HA's UI), which makes it an ordinary `climate` entity. Amazon doesn't
+  report whether it's heating right now, and it updates once a minute.
 - **Actions need a header.** `POST /api/actions/*`, `POST /api/jarvis/ask`, `POST /api/home/control` and `POST /api/digest/refresh` are refused without
   `x-home-lab: 1`. A cross-site form can't set a custom header, so another
   web page can't trigger actions on the PC.

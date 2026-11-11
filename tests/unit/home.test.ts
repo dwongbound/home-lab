@@ -75,6 +75,39 @@ describe('home reader', () => {
     expect((await readerWith().reader.act('light.lamp', 'toggle')).ok).toBe(true)
   })
 
+  it('reads a thermostat: room and target temperature, limits, step and the modes it offers', () => {
+    const d = toDevice({
+      entity_id: 'climate.thermostat', state: 'heat',
+      attributes: { friendly_name: 'Thermostat', current_temperature: 68, temperature: 70, min_temp: 50, max_temp: 90, hvac_modes: ['off', 'heat', 'cool', 'weird'], hvac_action: 'heating' },
+    })
+    expect(d).toEqual({
+      id: 'climate.thermostat', name: 'Thermostat', kind: 'climate', state: 'heat', available: true,
+      current: 68, target: 70, min: 50, max: 90, step: 1, modes: ['off', 'heat', 'cool'], detail: 'heating',
+    })
+    // In Heat/Cool HA gives a range instead of one target: no target, not 0.
+    const range: any = toDevice({ entity_id: 'climate.t', state: 'heat_cool', attributes: { current_temperature: 68, temperature: null } })
+    expect(range.target).toBeUndefined()
+  })
+
+  it('sets a thermostat temperature and mode, and refuses anything else', async () => {
+    const { reader, fetch } = readerWith()
+    await reader.act('climate.thermostat', 'target', 71)
+    let [url, init] = fetch.mock.calls.at(-1)!
+    expect(url).toMatch(/climate\/set_temperature$/)
+    expect(JSON.parse(String(init!.body))).toEqual({ entity_id: 'climate.thermostat', temperature: 71 })
+    await reader.act('climate.thermostat', 'mode', 'cool')
+    ;[url, init] = fetch.mock.calls.at(-1)!
+    expect(url).toMatch(/climate\/set_hvac_mode$/)
+    expect(JSON.parse(String(init!.body))).toEqual({ entity_id: 'climate.thermostat', hvac_mode: 'cool' })
+    const calls = fetch.mock.calls.length
+    expect((await reader.act('climate.thermostat', 'target', '71')).ok).toBe(false)
+    expect((await reader.act('climate.thermostat', 'target', 500)).ok).toBe(false)
+    expect((await reader.act('climate.thermostat', 'mode', 'emergency_heat')).ok).toBe(false)
+    expect((await reader.act('climate.thermostat', 'toggle')).ok).toBe(false)
+    expect((await reader.act('light.lamp', 'target', 70)).ok).toBe(false)
+    expect(fetch.mock.calls.length).toBe(calls)
+  })
+
   it('leaves out anything that is not a device', () => {
     expect(toDevice({ entity_id: 'sensor.x', state: '1', attributes: {} })).toBeNull()
   })
