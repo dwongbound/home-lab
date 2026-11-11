@@ -119,6 +119,50 @@ function loudness(analyser: AnalyserNode, samples: Float32Array<ArrayBuffer>): n
   return Math.min(1, Math.sqrt(sum / samples.length) * 9)
 }
 
+/** How far ahead his first sentence is scheduled, so later ones arrive in time (seconds). */
+const PLAYBACK_CUSHION_S = 0.15
+/** Each sentence fades in and out over this long, so its edges don't click (seconds). */
+const EDGE_FADE_S = 0.004
+
+/**
+ * Fades the first and last few milliseconds of a sentence in place. Each
+ * sentence is made on its own, so it can start or stop mid-wave; a hard
+ * edge there is the "pop" you hear between sentences.
+ */
+export function softenEdges(floats: Float32Array, rate: number): void {
+  const n = Math.min(Math.floor(rate * EDGE_FADE_S), Math.floor(floats.length / 2))
+  for (let i = 0; i < n; i++) {
+    const gain = i / n
+    floats[i] *= gain
+    floats[floats.length - 1 - i] *= gain
+  }
+}
+
+/**
+ * Sends his voice to the speaker through an <audio> element rather than
+ * straight out of the audio graph. Browsers' echo cancellation listens to
+ * what media elements play, but not always to Web Audio output, so this is
+ * what stops the microphone hearing him as you. Falls back to the plain
+ * graph where a browser can't do it. Returns the element to pause on hang-up.
+ */
+function routeToSpeaker(ctx: AudioContext, voice: AudioNode): HTMLAudioElement | null {
+  if (typeof ctx.createMediaStreamDestination !== 'function' || typeof Audio !== 'function') {
+    voice.connect(ctx.destination)
+    return null
+  }
+  const out = ctx.createMediaStreamDestination()
+  voice.connect(out)
+  const element = new Audio()
+  element.srcObject = out.stream
+  element.autoplay = true
+  // Talk was a tap, so this is allowed; if not, fall back to the graph.
+  Promise.resolve(element.play()).catch(() => {
+    voice.disconnect(out)
+    voice.connect(ctx.destination)
+  })
+  return element
+}
+
 /**
  * Opens the microphone and the line to Jarvis. Resolves once both are up,
  * or throws an Error whose message can be shown as is (no microphone, or
@@ -161,7 +205,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   const voiceLevel = ctx.createAnalyser()
   voiceLevel.fftSize = 512
   voice.connect(voiceLevel)
-  voice.connect(ctx.destination)
+  const speaker = routeToSpeaker(ctx, voice)
 
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
@@ -193,13 +237,15 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   function play(bytes: ArrayBuffer) {
     const floats = pcm16ToFloat(bytes)
     if (floats.length === 0) return
+    softenEdges(floats, rate)
     const buffer = ctx.createBuffer(1, floats.length, rate)
     buffer.copyToChannel(floats, 0)
     const source = ctx.createBufferSource()
     source.buffer = buffer
     source.connect(voice)
-    // A small lead keeps the first sentence from clipping its first syllable.
-    playAt = Math.max(playAt, ctx.currentTime + 0.05)
+    // A short cushion before the first sentence (or after running dry) so the
+    // next one is usually here before this one ends: no gaps, no pops.
+    if (playAt < ctx.currentTime + 0.02) playAt = ctx.currentTime + PLAYBACK_CUSHION_S
     source.start(playAt)
     playAt += buffer.duration
     playing.push(source)
@@ -248,6 +294,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     silence()
     capture.port.onmessage = null
     for (const t of stream.getTracks()) t.stop()
+    speaker?.pause()
     void ctx.close().catch(() => {})
     if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close()
     if (message !== null) on.onClosed(message)
