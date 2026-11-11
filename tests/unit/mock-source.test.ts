@@ -1,4 +1,4 @@
-// The mock source: Pacific times, the week's bars, and the Gemma toggle.
+// The mock source: Pacific times, the week's bars, and the local model toggle.
 import { describe, expect, it } from 'vitest'
 import { atPacificTime, createMockSource } from '../../server/sources/mock.mjs'
 
