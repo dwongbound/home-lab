@@ -42,6 +42,14 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url.startsWith(`${config.jarvisApiUrl}/memory/search?`)) {
       return Response.json({ hits: [{ chat: 'voice', role: 'assistant', text: 'Lamp is off.', at: 'b' }, { chat: 'x' }] })
     }
+    if (url === `${config.jarvisApiUrl}/voice`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      if (init?.method === 'POST') return Response.json({ ok: true, message: 'Saved' }, { status: jarvisStatusCode })
+      return Response.json({ voice: 'bm_george', speed: 1.1, blend: null, voices: [{ id: 'bm_george', name: 'George', accent: 'gb', gender: 'm' }, { id: 'af_heart' }, { name: 'broken' }] }, { status: jarvisStatusCode })
+    }
+    if (url.startsWith(`${config.jarvisApiUrl}/voice/sample?`)) {
+      return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })
+    }
     if (url === `${config.jarvisApiUrl}/chat/warm`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ ok: true }, { status: jarvisStatusCode })
@@ -276,6 +284,24 @@ describe('live chat with Jarvis', () => {
     const turns = await liveWith({}).source.history({ login: 'dylan@example.com' })
     expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b' }])
     expect(await liveWith({}).source.history({})).toEqual([])
+  })
+
+  it("reads and saves Jarvis's voice and fetches samples as the caller", async () => {
+    const { source, fetch } = liveWith({})
+    const login = { login: 'dylan@example.com' }
+    expect(await source.voice(login)).toEqual({
+      voice: 'bm_george', speed: 1.1, blend: null,
+      voices: [{ id: 'bm_george', name: 'George', accent: 'gb', gender: 'm' }, { id: 'af_heart', name: 'af_heart', accent: 'us', gender: 'm' }],
+    })
+    const choice = { voice: 'bm_lewis', speed: 1, blend: { voice2: 'bm_george', mix: 0.3 } }
+    expect(await source.setVoice(choice, login)).toEqual({ ok: true, message: 'Saved' })
+    const sample = await source.voiceSample(choice, login)
+    expect(Array.from(sample.audio ?? [])).toEqual([82, 73, 70, 70])
+    expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/voice/sample?voice=bm_lewis&speed=1&voice2=bm_george&mix=0.3'))).toBe(true)
+    expect(await source.voice({})).toBeNull()
+    expect((await source.setVoice(choice, {})).ok).toBe(false)
+    expect((await source.voiceSample(choice, {})).ok).toBe(false)
+    expect(await liveWith({ jarvisAnswers: false }).source.voice(login)).toBeNull()
   })
 
   it("reads, searches and changes Jarvis's memory as the caller, dropping broken rows", async () => {

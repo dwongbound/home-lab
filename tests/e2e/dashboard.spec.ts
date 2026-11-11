@@ -10,6 +10,7 @@
 //   - I swipe sideways to change tab.
 //   - In Safari, changing tab never shows the panels dark before they frost.
 //   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
+//   - In Settings, under Voice, I play a sample, pick a voice, speed and blend, and save it.
 //   - In Settings, under Memory, I see what Jarvis remembers, teach him something, forget it, and search past chats.
 import { expect, test } from '@playwright/test'
 
@@ -550,4 +551,31 @@ test('Settings Memory shows what Jarvis remembers; I teach him something, forget
   await panel.getByRole('searchbox', { name: 'Search past conversations' }).fill('big light')
   await panel.getByRole('button', { name: 'Search', exact: true }).click()
   await expect(panel.getByRole('list', { name: 'Search results' }).getByText('The big light is on at 60 percent.')).toBeVisible()
+})
+
+test('Settings Voice plays a sample, and saves a voice, speed and blend', async ({ page }) => {
+  await page.goto('/#preferences')
+  const panel = page.getByRole('region', { name: 'Voice' })
+  const voices = panel.getByRole('list', { name: 'Voices' })
+  // Other runs may have saved an American voice, which opens that list.
+  const accent = panel.getByRole('radiogroup', { name: 'Accent' })
+  await accent.getByRole('radio', { name: 'British' }).click()
+  await expect(voices.getByRole('radio', { name: /George/ })).toBeVisible()
+
+  await panel.getByRole('button', { name: 'Play Lewis' }).click()
+  await expect(panel.getByRole('button', { name: /Play Lewis|Stop Lewis/ })).toBeVisible()
+
+  // The sample server is shared, so flip between two voices to always make a change.
+  await accent.getByRole('radio', { name: 'American' }).click()
+  const bella = voices.getByRole('radio', { name: /Bella/ })
+  const pick = (await bella.isChecked()) ? 'Heart' : 'Bella'
+  await voices.getByRole('radio', { name: new RegExp(pick) }).check()
+  await panel.getByRole('slider', { name: /Speed/ }).fill('115')
+  await expect(panel.getByText('1.15×', { exact: true })).toBeVisible()
+  const blend = panel.getByRole('switch', { name: 'Blend in a second voice' })
+  if ((await blend.getAttribute('aria-checked')) !== 'true') await blend.click()
+  await expect(panel.getByText(new RegExp(`% ${pick} · \\d+% `))).toBeVisible()
+  await panel.getByRole('button', { name: 'Save' }).click()
+  await expect(panel.getByText(/^Saved\. /)).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Save' })).toBeDisabled()
 })

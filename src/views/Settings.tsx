@@ -2,9 +2,11 @@ import type { Snapshot } from '../types'
 import type { SkyPhase } from '../lib/sky'
 import type { WakeState } from '../useWakeLock'
 import { MemoryPanel } from '../components/MemoryPanel'
+import { VoicePanel } from '../components/VoicePanel'
 
 // The Settings page: the sky choice and keep-awake (per browser), where the
-// data comes from, and Memory (what Jarvis remembers) at the bottom.
+// data comes from, then Voice (how Jarvis sounds) and Memory (what he
+// remembers) at the bottom.
 
 export type SkyChoice = SkyPhase | 'auto'
 const CHOICES: { id: SkyChoice; label: string }[] = [
@@ -67,6 +69,7 @@ export function Settings({ data, now, sky, onSky, awake, wake, onAwake }: Settin
             <p>Reading live from {data.host.name} every 15 seconds.</p>
           )}
         </section>
+        <VoicePanel />
         <MemoryPanel now={now} />
       </div>
     </>

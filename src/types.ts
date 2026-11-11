@@ -197,6 +197,33 @@ export interface MemoryHit { chat: string; role: 'user' | 'jarvis'; text: string
 /** Adding or forgetting one fact. */
 export type MemoryChange = { op: 'remember'; text: string } | { op: 'forget'; id: string }
 
+/** One of the voices Jarvis can speak in (Kokoro's built-in set). */
+export interface VoiceOption {
+  /** Kokoro's id, e.g. "bm_george". */
+  id: string
+  /** A friendly name, e.g. "George". */
+  name: string
+  accent: 'us' | 'gb'
+  gender: 'f' | 'm'
+}
+
+/** Mixing in a second voice: mix is how much of voice2 (0 to 1). */
+export interface VoiceBlend { voice2: string; mix: number }
+
+/** How Jarvis sounds: the chosen voice, speed and blend. */
+export interface VoiceChoice {
+  voice: string
+  /** 1 is normal; 0.7 to 1.4. */
+  speed: number
+  blend: VoiceBlend | null
+}
+
+/** His voice settings, plus every voice there is to pick from. */
+export interface VoiceSettings extends VoiceChoice { voices: VoiceOption[] }
+
+/** A sample of a voice: WAV bytes on success. */
+export type VoiceSample = { ok: true; audio: Uint8Array } | { ok: false; message: string }
+
 /** What both server sources (mock and live) look like from the outside. */
 export interface DataSource {
   kind: 'mock' | 'live'
@@ -214,6 +241,12 @@ export interface DataSource {
   searchMemory(query: string, caller?: { login?: string }): Promise<MemoryHit[]>
   /** Adds or forgets one fact. */
   changeMemory(change: MemoryChange, caller?: { login?: string }): Promise<ActionResult>
+  /** How Jarvis sounds, or null when he can't be asked. */
+  voice(caller?: { login?: string }): Promise<VoiceSettings | null>
+  /** Saves how Jarvis sounds; used from his next reply. */
+  setVoice(choice: VoiceChoice, caller?: { login?: string }): Promise<ActionResult>
+  /** A short spoken sample of a voice choice. */
+  voiceSample(choice: VoiceChoice, caller?: { login?: string }): Promise<VoiceSample>
   /** Starts Jarvis's web-chat engine early; true when he said yes. */
   warm(caller?: { login?: string }): Promise<boolean>
   /** Sends one command to one Home Assistant device. */

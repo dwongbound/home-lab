@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, Snapshot } from '../types'
+import type { ActionName, ActionResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -190,6 +190,71 @@ export async function changeMemory(change: MemoryChange): Promise<ActionResult> 
       body: JSON.stringify(change),
     })
     return await res.json()
+  } catch {
+    return { ok: false, message: 'The page couldn’t reach the server' }
+  }
+}
+
+export const VOICE_KEY = '/api/jarvis/voice'
+
+/** Fetches how Jarvis sounds (null when he can't be asked). */
+async function fetchVoice(): Promise<VoiceSettings | null> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.voice()
+  }
+  const res = await fetch(VOICE_KEY)
+  if (!res.ok) throw new Error(`The server answered ${res.status}`)
+  const body = await res.json()
+  return body?.voice ?? null
+}
+
+/** How Jarvis sounds, for the Settings page. Fetched when that page opens. */
+export function useVoice() {
+  return useSWR<VoiceSettings | null>(VOICE_KEY, fetchVoice, { revalidateOnFocus: false })
+}
+
+/** Saves how Jarvis sounds. */
+export async function saveVoice(choice: VoiceChoice): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.setVoice(choice)
+  }
+  try {
+    const res = await fetch(VOICE_KEY, {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify(choice),
+    })
+    return await res.json()
+  } catch {
+    return { ok: false, message: 'The page couldn’t reach the server' }
+  }
+}
+
+/** The sample URL for one voice choice (?voice=&speed=&voice2=&mix=). */
+export function voiceSampleUrl(choice: VoiceChoice): string {
+  const params = new URLSearchParams({ voice: choice.voice, speed: String(choice.speed) })
+  if (choice.blend) {
+    params.set('voice2', choice.blend.voice2)
+    params.set('mix', String(choice.blend.mix))
+  }
+  return `/api/jarvis/voice/sample?${params}`
+}
+
+/** Fetches a spoken sample of a voice choice as WAV bytes. Never throws. */
+export async function fetchVoiceSample(choice: VoiceChoice): Promise<VoiceSample> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.voiceSample(choice)
+  }
+  try {
+    const res = await fetch(voiceSampleUrl(choice))
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      return { ok: false, message: body?.message ?? `The server answered ${res.status}` }
+    }
+    return { ok: true, audio: new Uint8Array(await res.arrayBuffer()) }
   } catch {
     return { ok: false, message: 'The page couldn’t reach the server' }
   }

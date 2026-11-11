@@ -1,5 +1,6 @@
 // src/lib/talk.ts: the voice line's address, its audio conversions, and
-// that it refuses plainly when there's no microphone.
+// that it refuses plainly when there's no microphone, and which of
+// Jarvis's events reach which handler.
 import { describe, expect, it, vi } from 'vitest'
 import { makeResampler, openTalkLine, pcm16ToFloat, talkUrl } from '../../src/lib/talk'
 
@@ -37,7 +38,58 @@ describe('the voice line', () => {
   })
 
   it('refuses in words when the browser has no microphone', async () => {
-    const on = { onState: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn() }
+    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn() }
     await expect(openTalkLine('ws://x/api/jarvis/talk', on)).rejects.toThrow('This browser can’t send your voice to Jarvis')
+  })
+
+  it('hands your words over while you talk, then the whole turn, then his reply', async () => {
+    // Just enough of a browser's audio and WebSocket for the line to open.
+    const node = () => ({ connect: (next: unknown) => next, gain: { value: 1 }, fftSize: 0, getFloatTimeDomainData: () => {} })
+    class FakeContext {
+      state = 'running'
+      destination = node()
+      currentTime = 0
+      audioWorklet = { addModule: async () => {} }
+      createMediaStreamSource = node
+      createAnalyser = node
+      createGain = node
+      close = async () => {}
+    }
+    class FakeWorklet { port: { onmessage: unknown } = { onmessage: null }; connect = (next: unknown) => next }
+    let socket: { onopen?: () => void; onmessage?: (e: { data: string }) => void; readyState: number; send: () => void; close: () => void } | null = null
+    class FakeSocket {
+      static OPEN = 1
+      static CONNECTING = 0
+      readyState = 1
+      binaryType = ''
+      onopen?: () => void
+      send = vi.fn()
+      close = vi.fn()
+      constructor() { socket = this as never }
+    }
+    vi.stubGlobal('AudioContext', FakeContext)
+    vi.stubGlobal('AudioWorkletNode', FakeWorklet)
+    vi.stubGlobal('WebSocket', FakeSocket)
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } })
+    vi.stubGlobal('requestAnimationFrame', () => 0)
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+    URL.createObjectURL = () => 'blob:x'
+    URL.revokeObjectURL = () => {}
+
+    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn() }
+    const opening = openTalkLine('ws://x/api/jarvis/talk', on)
+    await vi.waitFor(() => expect(socket).not.toBeNull())
+    socket!.onopen!()
+    const line = await opening
+    const say = (event: object) => socket!.onmessage!({ data: JSON.stringify(event) })
+    say({ type: 'partial', text: 'turn the' })
+    say({ type: 'partial', text: 'turn the big light' })
+    say({ type: 'transcript', text: 'Turn the big light off.' })
+    say({ type: 'reply', text: 'Done.' })
+    expect(on.onHearing.mock.calls).toEqual([['turn the'], ['turn the big light']])
+    expect(on.onHeard).toHaveBeenCalledWith('Turn the big light off.')
+    expect(on.onReply).toHaveBeenCalledWith('Done.')
+    line.close()
+    vi.unstubAllGlobals()
   })
 })

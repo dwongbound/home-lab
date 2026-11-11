@@ -14,6 +14,8 @@ export type TalkState = 'listening' | 'thinking' | 'speaking'
 export interface TalkHandlers {
   /** Jarvis's side of the line changed state. */
   onState: (state: TalkState) => void
+  /** What Whisper has heard so far while you're still talking (replaced by each newer guess). */
+  onHearing: (text: string) => void
   /** What Whisper heard you say (one whole turn). */
   onHeard: (text: string) => void
   /** More of Jarvis's reply text. */
@@ -225,7 +227,8 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     else if (event.type === 'state' && (event.state === 'listening' || event.state === 'thinking' || event.state === 'speaking')) {
       state = event.state
       on.onState(event.state)
-    } else if (event.type === 'transcript' && event.text) on.onHeard(event.text)
+    } else if (event.type === 'partial' && event.text) on.onHearing(event.text)
+    else if (event.type === 'transcript' && event.text) on.onHeard(event.text)
     else if (event.type === 'reply' && event.text) on.onReply(event.text)
     else if (event.type === 'done') {
       replyDone = true
