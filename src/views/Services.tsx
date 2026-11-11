@@ -2,7 +2,7 @@ import type { Snapshot } from '../types'
 import { ServicesPanel } from '../components/ServicesPanel'
 import { ModelCard } from '../components/ModelCard'
 import { LoadedModels } from '../components/LoadedModels'
-import { TerminalPanel } from './Shell'
+import { TerminalPanel } from '../components/TerminalPanel'
 
 // The Services page: every service with response times, the local model card,
 // what's in GPU memory and why, and a terminal on jarvis (the same tmux
@@ -20,7 +20,7 @@ export function Services({ data, now, onToast }: { data: Snapshot; now: Date; on
         </div>
         <ModelCard model={data.model} onDone={onToast} />
       </div>
-      <TerminalPanel compact />
+      <TerminalPanel />
     </>
   )
 }

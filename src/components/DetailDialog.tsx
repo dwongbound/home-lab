@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Icon } from './Icon'
+import { useScrollLock } from '../useScrollLock'
 
 // The pop-up behind every tappable row: a title, a few labelled facts,
 // optional links out (Gmail, Calendar, GitHub) and any extra content. Native
@@ -22,6 +23,7 @@ interface Props {
 /** The detail dialog. Mount it to open it; unmount it to close it. */
 export function DetailDialog({ title, sub, facts = [], links = [], children, onClose }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
+  useScrollLock()
 
   // Open as a modal on mount. jsdom (the unit test DOM) has no showModal,
   // so there it's just marked open.

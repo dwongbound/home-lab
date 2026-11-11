@@ -45,18 +45,18 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `DIGEST_REPO` with `DIGEST_TOKEN` (2 min cache; written every 15 min); shape `CloudDigest` in `src/types.ts`;
   panels in `src/components/CloudPanels.tsx`; the scheduled task's prompt + setup in `docs/digest.md`.
 - **Details:** rows link to `#<view>/<kind>/<id>` (`useHashDetail`, `detailHref`, `closeDetail` in
-  `src/useHashView.ts`); `src/components/DetailDialog.tsx` is the fixed-size pop-up. Money's are in
+  `src/useHashView.ts`); `src/components/DetailDialog.tsx` is the fixed-size pop-up. Every pop-up calls `useScrollLock` (page behind stays put) and sits inside the iPhone safe area (`.dialog` insets, `--safe-h`). Money's are in
   `src/views/Money.tsx` (`t`, `a`, `c`, `sort`; rules in `src/lib/money.ts`), agenda ones in
   `src/components/AgendaDetail.tsx` (`j`, `e`, `m`).
 - **Always-on iPad:** `src/useWakeLock.ts` + Settings switch (`home-lab:v1:awake` in `prefs.ts`);
   `public/manifest.webmanifest` + Apple meta tags in `index.html`. Overview one-screen layout keys off
   `.shell[data-view='overview']` (end of `styles.css`). Swipe tabs: `src/useSwipeNav.ts` (finger-follow + glide in `src/swipeMotion.ts`, `main[data-swipe]`; swipes always slide via `swipeToView`). WebKit skips
   view transitions (its snapshots drop backdrop-filter) and uses `html[data-enter]` panel slides (translate only) (`useHashView.ts`).
-- **Views:** `src/views/{Overview,Home,Claude,Money,Shell,Services,Schedule,Settings}.tsx`, chosen by
+- **Views:** `src/views/{Overview,Home,Claude,Money,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,
-  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/{speech,talk}.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (in `views/Shell.tsx`, also on Services), `MemoryPanel` (Settings: Jarvis's facts + search), `VoicePanel` (Settings: Kokoro voice, speed, blend), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
+  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/talk.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (Services only; the Shell tab was removed 2026-11-11), `MemoryPanel` (Settings: Jarvis's facts + search), `VoicePanel` (Settings: Kokoro voice, speed, blend), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
 - **Helpers:** `src/lib/format.ts`, `sky.ts` (phase by hour), `sparkline.ts`,
   `prefs.ts` (localStorage key `home-lab:v1:sky`, guarded).
 - **Styles:** `src/styles.css` — tokens in `:root`, sky phases on `.backdrop[data-phase]` (colours are `@property`-registered so phases fade over 120 s; `data-picked` = 1.5 s),
