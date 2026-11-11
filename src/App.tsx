@@ -104,7 +104,7 @@ export function App() {
       <div className="shell" data-view={view} data-sky={shownPhase(now, sky)} data-landing={landing && hasData ? '' : undefined}>
         <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} />
         {/* Anything needing him right now sits above every page, not inside Today. */}
-        {data ? <AlertBanner alerts={activeAlerts(data)} /> : null}
+        {data ? <AlertBanner alerts={activeAlerts(data, now)} /> : null}
         <DigestRefreshing.Provider value={digestRefreshing}>
           <main className="main" key={data ? 'ready' : 'waiting'}>{body}</main>
         </DigestRefreshing.Provider>

@@ -69,6 +69,23 @@ export interface MoneyDigest {
   flags: MoneyFlag[]
 }
 
+/**
+ * A category Dylan picked on the page for a purchase Copilot left unsorted.
+ * Copilot's connector is read-only, so these wait on the PC until he
+ * applies them all in Copilot and marks them done (server/money-picks.mjs).
+ */
+export interface MoneyPick { id: string; category: string; merchant: string; date: string; amount: number; pickedAt: string }
+export interface MoneyPicks {
+  picks: MoneyPick[]
+  /** When the page starts reminding him to apply them, or null with none waiting. */
+  remindAt: string | null
+}
+/** One change to the picks, as POST /api/money/picks takes it. */
+export type MoneyPickChange =
+  | { op: 'pick'; id: string; category: string; merchant: string; date: string; amount: number; remindAt?: string }
+  | { op: 'clear'; ids: string[] }
+  | { op: 'remind'; at: string }
+
 export interface CloudDigest {
   updatedAt: string
   threads: ClaudeThread[]
@@ -126,6 +143,8 @@ export interface Snapshot {
   cloud: CloudDigest | null
   /** null without a Home Assistant token, or when it doesn't answer. */
   home: HomeState | null
+  /** Money page category picks waiting to be applied in Copilot. */
+  moneyPicks: MoneyPicks
 }
 
 export interface ActionResult { ok: boolean; message: string }
@@ -142,6 +161,8 @@ export interface DataSource {
   control(entity: string, command: HomeCommand, value?: number | string, caller?: { login?: string }): Promise<ActionResult>
   /** Asks Jarvis to rewrite the digest now (calendar, email, money). */
   refreshDigest(caller?: { login?: string }): Promise<DigestRefresh>
+  /** Saves, clears or re-times Money page category picks. */
+  money(change: MoneyPickChange): Promise<ActionResult>
 }
 
 /** Whether Jarvis is rewriting the digest, and when it last wrote one. */

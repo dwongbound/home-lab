@@ -12,6 +12,8 @@ import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createDigestReader } from './digest.mjs'
 import { createHomeReader } from './home.mjs'
+import { createPickStore } from '../money-picks.mjs'
+import { createPickFile } from '../money-picks-file.mjs'
 
 const realExecFile = promisify(execFileCallback)
 const PROBE_TIMEOUT_MS = 2500
@@ -60,6 +62,8 @@ export function createLiveSource(config, deps = {}) {
   const statfsFn = deps.statfs ?? statfs
   const digest = createDigestReader(config, { fetch: fetchFn })
   const home = createHomeReader(config, { fetch: fetchFn })
+  // Categories picked on the Money page, kept in a file on the PC.
+  const picks = deps.picks ?? createPickStore({ storage: createPickFile(config.moneyPicksFile) })
 
   // The sparklines need a little history. The server keeps the last 24
   // samples in memory; one sample is taken per snapshot request.
@@ -276,7 +280,13 @@ export function createLiveSource(config, deps = {}) {
         },
         cloud,
         home: homeState,
+        moneyPicks: await picks.read(cloud?.money?.recent ?? []),
       }
+    },
+
+    /** Saves, clears or re-times categories picked on the Money page (server/money-picks.mjs). */
+    async money(change) {
+      return picks.change(change)
     },
 
     /**

@@ -1,7 +1,8 @@
-import type { MoneyAccount, MoneyTransaction } from '../types'
+import type { MoneyAccount, MoneyPick, MoneyPicks, MoneyTransaction } from '../types'
 
 // Small rules for the Money page: tidying names Copilot sends, spotting
-// purchases that still need a category, and grouping accounts.
+// purchases that still need a category, and grouping accounts, and the categories picked on the page
+// until they're applied in Copilot.
 
 /** Copilot sometimes sends the words "undefined" or "null" inside a name (from Venmo notes). */
 export function cleanText(text: string): string {
@@ -53,4 +54,79 @@ export function groupAccounts(accounts: MoneyAccount[]): AccountGroup[] {
 /** The transactions on one account, matched by id when the digest has it, else by name. */
 export function onAccount(recent: MoneyTransaction[], account: MoneyAccount): MoneyTransaction[] {
   return recent.filter((t) => t.accountId === account.id || (t.accountId === undefined && t.account === account.name))
+}
+
+/** The picks keyed by purchase id. */
+export function picksById(picks: MoneyPick[]): Map<string, MoneyPick> {
+  return new Map(picks.map((p) => [p.id, p]))
+}
+
+/** Purchases still needing a category that haven't been given one on the page yet. */
+export function stillToPick(recent: MoneyTransaction[], picks: MoneyPick[]): MoneyTransaction[] {
+  const picked = picksById(picks)
+  return recent.filter((t) => needsCategory(t) && !picked.has(t.id))
+}
+
+export interface PickGroup { category: string; picks: MoneyPick[] }
+
+/** Picks grouped by category (A to Z), newest purchase first in each, for one sitting in Copilot. */
+export function groupPicks(picks: MoneyPick[]): PickGroup[] {
+  const groups = new Map<string, MoneyPick[]>()
+  for (const p of picks) {
+    const list = groups.get(p.category) ?? []
+    list.push(p)
+    groups.set(p.category, list)
+  }
+  const names = [...groups.keys()].toSorted((a, b) => a.localeCompare(b))
+  return names.map((category) => ({
+    category,
+    picks: (groups.get(category) ?? []).toSorted((a, b) => b.date.localeCompare(a.date)),
+  }))
+}
+
+/** Categories to offer when picking: Copilot's from the digest, then ones used before. */
+export function categoryChoices(digestCategories: string[], picks: MoneyPick[]): string[] {
+  const seen = new Set<string>()
+  const choices: string[] = []
+  for (const name of [...digestCategories, ...picks.map((p) => p.category)]) {
+    const key = name.trim().toLowerCase()
+    if (key === '' || UNSORTED.has(key) || seen.has(key)) continue
+    seen.add(key)
+    choices.push(name.trim())
+  }
+  return choices
+}
+
+// Reminders go off in the evening, after work.
+const REMIND_HOUR = 20
+
+/** `days` from now at 8 PM local time. */
+function eveningIn(now: Date, days: number): Date {
+  const at = new Date(now)
+  at.setDate(at.getDate() + days)
+  at.setHours(REMIND_HOUR, 0, 0, 0)
+  return at
+}
+
+export interface ReminderChoice { label: string; at: Date }
+
+/** When the reminder can go off: tonight (while it's still before 8 PM), tomorrow, or in 3 days. */
+export function reminderChoices(now: Date): ReminderChoice[] {
+  const choices: ReminderChoice[] = []
+  const tonight = eveningIn(now, 0)
+  if (tonight.getTime() > now.getTime()) choices.push({ label: 'Tonight', at: tonight })
+  choices.push({ label: 'Tomorrow', at: eveningIn(now, 1) })
+  choices.push({ label: 'In 3 days', at: eveningIn(now, 3) })
+  return choices
+}
+
+/** The reminder a first pick sets: tomorrow evening. */
+export function defaultReminder(now: Date): Date {
+  return eveningIn(now, 1)
+}
+
+/** True once there are picks waiting and their reminder time has come. */
+export function pickReminderDue(picks: MoneyPicks, now: Date): boolean {
+  if (picks.picks.length === 0 || picks.remindAt === null) return false
+  return Date.parse(picks.remindAt) <= now.getTime()
 }

@@ -226,7 +226,7 @@ test('Money flags purchases to sort, and every row opens a detail that Close and
   // $0 accounts wait behind a button.
   await expect(page.getByText('Old Checking')).toHaveCount(0)
 
-  await page.getByRole('link', { name: /One purchase needs a category/ }).click()
+  await page.getByRole('link', { name: /2 purchases need a category/ }).click()
   const dialog = page.getByRole('dialog', { name: 'Needs a category' })
   await expect(dialog).toBeVisible()
   // From the list, straight into the purchase.
@@ -242,6 +242,54 @@ test('Money flags purchases to sort, and every row opens a detail that Close and
   await page.goBack()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('heading', { level: 1, name: 'Money' })).toBeVisible()
+})
+
+test('Money: pick categories for unsorted purchases, then clear them from Ready for Copilot', async ({ page }) => {
+  await page.goto('/#money/t/x6')
+  const amazon = page.getByRole('dialog', { name: 'Amazon' })
+  await amazon.getByRole('button', { name: 'Shopping' }).click()
+  await expect(amazon.getByRole('button', { name: 'Shopping' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(amazon).toContainText('Saved as Shopping')
+  await amazon.getByRole('button', { name: 'Close' }).click()
+
+  // A category of his own, typed in.
+  await page.goto('/#money/t/x5')
+  const venmo = page.getByRole('dialog', { name: 'Venmo Alex' })
+  await venmo.getByRole('textbox', { name: 'Another category' }).fill('Golf lessons')
+  await venmo.getByRole('button', { name: 'Save' }).click()
+  await expect(venmo).toContainText('Saved as Golf lessons')
+  await venmo.getByRole('button', { name: 'Close' }).click()
+
+  await page.getByRole('link', { name: /2 purchases ready for Copilot/ }).click()
+  const ready = page.getByRole('dialog', { name: 'Ready for Copilot' })
+  await expect(ready.getByRole('heading', { name: /Golf lessons/ })).toBeVisible()
+  await expect(ready.getByRole('heading', { name: /Shopping/ })).toBeVisible()
+  await expect(ready).toContainText('Reminding you')
+  await ready.getByRole('button', { name: 'Done: Amazon' }).click()
+  await expect(ready.getByRole('button', { name: 'Done: Amazon' })).toHaveCount(0)
+  await ready.getByRole('button', { name: 'All done in Copilot' }).click()
+  await expect(ready).toContainText('Nothing waiting')
+})
+
+test('Money: Recent is as tall as the left column and scrolls inside', async ({ page }, testInfo) => {
+  await page.goto('/#money')
+  const recent = page.locator('.money__recent')
+  await expect(recent).toBeVisible()
+  const box = await recent.boundingBox()
+  const left = await page.locator('.money__split > .stack').boundingBox()
+  if (!box || !left) throw new Error('no layout')
+  if (testInfo.project.name === 'phone') {
+    // One column: Recent comes after the left column, capped at 60% of the screen.
+    expect(box.y).toBeGreaterThan(left.y + left.height - 1)
+    const cap = await page.evaluate(() => window.innerHeight * 0.6)
+    const list = await page.locator('.money__scroll').boundingBox()
+    expect(list!.height).toBeLessThanOrEqual(cap + 1)
+  } else {
+    expect(Math.abs(box.height - left.height)).toBeLessThanOrEqual(2)
+    expect(Math.abs(box.y - left.y)).toBeLessThanOrEqual(2)
+  }
+  const overflow = await page.locator('.money__scroll').evaluate((el) => getComputedStyle(el).overflowY)
+  expect(overflow).toBe('auto')
 })
 
 test('the detail pop-up fits the screen and stays one size', async ({ page }) => {
