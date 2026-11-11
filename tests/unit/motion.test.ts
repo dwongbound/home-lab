@@ -34,6 +34,14 @@ describe('motion', () => {
     expect(css.replace(block, '')).not.toMatch(/\.backdrop[^{]*\{[^}]*transition/)
   })
 
+  it('appears without moving: reveals are pure fades, nothing behind the glass moves, layers stay put', () => {
+    const block = motionBlock(css)
+    expect(css).toMatch(/@keyframes reveal \{ from \{ opacity: 0; \} \}/)
+    expect(css).toMatch(/@keyframes land-sun \{ from \{ opacity: 0; \} \}/)
+    expect(css).not.toMatch(/land-ridge/)
+    expect(block).toMatch(/\.main \.glass > \* \{ will-change: opacity; \}/)
+  })
+
   it('leaves the top bar alone on landing: it is already showing over the loader', () => {
     expect(motionBlock(css)).not.toMatch(/data-landing\][^{]*(topbar|pill)/)
   })
