@@ -435,6 +435,68 @@ export function createLiveSource(config, deps = {}) {
     },
 
     /**
+     * What Jarvis remembers (GET /memory/facts): his notes file as a list,
+     * never memory.md. Null when there's no login or he doesn't answer.
+     */
+    async memory(caller = {}) {
+      if (!caller.login) return null
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/memory/facts`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        const body = await res.json()
+        const facts = Array.isArray(body?.facts) ? body.facts.filter((f) => typeof f?.id === 'string' && typeof f?.text === 'string') : []
+        return {
+          facts: facts.map((f) => ({ id: f.id, text: f.text, learned: String(f.learned ?? ''), from: f.from === 'you' ? 'you' : 'nightly' })),
+          turns: Number(body?.turns) || 0,
+          lastDistill: typeof body?.lastDistill === 'string' ? body.lastDistill : null,
+        }
+      } catch {
+        return null
+      }
+    },
+
+    /** Searches past conversations (GET /memory/search); empty when unreachable. */
+    async searchMemory(query, caller = {}) {
+      if (!caller.login || !query.trim()) return []
+      try {
+        const url = `${config.jarvisApiUrl}/memory/search?q=${encodeURIComponent(query.trim())}&limit=8`
+        const res = await fetchFn(url, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return []
+        const body = await res.json()
+        const hits = Array.isArray(body?.hits) ? body.hits : []
+        return hits
+          .filter((h) => typeof h?.text === 'string')
+          .map((h) => ({ chat: String(h.chat ?? ''), role: h.role === 'user' ? 'user' : 'jarvis', text: h.text, at: String(h.at ?? '') }))
+      } catch {
+        return []
+      }
+    },
+
+    /** Remembers or forgets one fact (POST /memory/facts). */
+    async changeMemory(change, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to change what Jarvis remembers' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/memory/facts`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login, 'content-type': 'application/json' },
+          body: JSON.stringify(change),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) return { ok: false, message: body?.message ?? `Jarvis answered ${res.status}` }
+        return { ok: true, message: body?.message ?? 'Done' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
      * Asks Jarvis to start the web chat's Claude engine now (POST
      * /chat/warm, no model call), so the first question doesn't pay for
      * starting it. True when Jarvis said yes.

@@ -1,8 +1,10 @@
 import type { Snapshot } from '../types'
 import type { SkyPhase } from '../lib/sky'
 import type { WakeState } from '../useWakeLock'
+import { MemoryPanel } from '../components/MemoryPanel'
 
-// The Settings page: the sky choice (per browser) and where the data comes from.
+// The Settings page: what Jarvis remembers, the sky choice and keep-awake
+// (per browser), and where the data comes from.
 
 export type SkyChoice = SkyPhase | 'auto'
 const CHOICES: { id: SkyChoice; label: string }[] = [
@@ -23,6 +25,7 @@ function awakeNote(awake: boolean, state: WakeState): string {
 
 interface SettingsProps {
   data: Snapshot
+  now: Date
   sky: SkyChoice
   onSky: (s: SkyChoice) => void
   awake: boolean
@@ -31,11 +34,12 @@ interface SettingsProps {
 }
 
 /** The settings page. */
-export function Settings({ data, sky, onSky, awake, wake, onAwake }: SettingsProps) {
+export function Settings({ data, now, sky, onSky, awake, wake, onAwake }: SettingsProps) {
   return (
     <>
       <section className="hero hero--small"><h1 className="hero__title">Settings</h1></section>
       <div className="grid grid--split">
+        <MemoryPanel now={now} />
         <section className="glass panel">
           <h2 className="panel__title">Sky</h2>
           <p className="panel__sub">The window behind the page. Saved in this browser only.</p>

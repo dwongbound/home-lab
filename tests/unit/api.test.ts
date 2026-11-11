@@ -66,6 +66,44 @@ describe('POST /api/jarvis/ask', () => {
   })
 })
 
+describe('Jarvis memory', () => {
+  it('lists facts, searches, remembers and forgets (sample data)', async () => {
+    const api = createApi(createMockSource())
+    const memory = (await callApi(api, 'GET', '/api/jarvis/memory')).json().memory
+    expect(memory.facts.length).toBeGreaterThan(2)
+    expect(memory.turns).toBeGreaterThan(0)
+    const hits = (await callApi(api, 'GET', '/api/jarvis/memory/search?q=big%20light')).json().hits
+    expect(hits.length).toBeGreaterThan(0)
+    expect(hits.every((h: { text: string }) => /big|light/i.test(h.text))).toBe(true)
+
+    expect((await callApi(api, 'POST', '/api/jarvis/memory', {}, '{"op":"remember","text":"x"}')).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/jarvis/memory', ACTION_HEADER, '{"op":"remember","text":"  "}')).statusCode).toBe(400)
+    expect((await callApi(api, 'POST', '/api/jarvis/memory', ACTION_HEADER, '{"op":"remember","text":"Likes oat milk"}')).json().ok).toBe(true)
+    const after = (await callApi(api, 'GET', '/api/jarvis/memory')).json().memory.facts
+    const added = after.find((f: { text: string }) => f.text === 'Likes oat milk')
+    expect(added.from).toBe('you')
+    expect((await callApi(api, 'POST', '/api/jarvis/memory', ACTION_HEADER, JSON.stringify({ op: 'forget', id: added.id }))).json().ok).toBe(true)
+    const gone = (await callApi(api, 'GET', '/api/jarvis/memory')).json().memory.facts
+    expect(gone.some((f: { id: string }) => f.id === added.id)).toBe(false)
+  })
+
+  it("passes the caller's login on to every memory call", async () => {
+    const seen: unknown[] = []
+    const source = {
+      ...createMockSource(),
+      memory: async (caller: unknown) => { seen.push(caller); return null },
+      searchMemory: async (_q: string, caller: unknown) => { seen.push(caller); return [] },
+      changeMemory: async (_c: unknown, caller: unknown) => { seen.push(caller); return { ok: true, message: 'ok' } },
+    }
+    const api = createApi(source)
+    const login = { 'tailscale-user-login': 'dylan@example.com' }
+    await callApi(api, 'GET', '/api/jarvis/memory', login)
+    await callApi(api, 'GET', '/api/jarvis/memory/search?q=a', login)
+    await callApi(api, 'POST', '/api/jarvis/memory', { ...ACTION_HEADER, ...login }, '{"op":"forget","id":"f1"}')
+    expect(seen).toEqual([{ login: 'dylan@example.com' }, { login: 'dylan@example.com' }, { login: 'dylan@example.com' }])
+  })
+})
+
 describe('POST /api/jarvis/warm', () => {
   it('needs the page header, and passes the login on', async () => {
     let seen: unknown = null

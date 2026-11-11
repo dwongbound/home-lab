@@ -45,6 +45,9 @@ function fakeServer(options: { actionGate?: Promise<void>; live?: boolean } = {}
       return new Response(body, { headers: { 'content-type': 'application/x-ndjson' } })
     }
     if (url === '/api/jarvis/history') return Response.json({ turns: await source.history() })
+    if (url === '/api/jarvis/memory' && init?.method === 'POST') return Response.json(await source.changeMemory(JSON.parse(String(init.body))))
+    if (url === '/api/jarvis/memory') return Response.json({ memory: await source.memory() })
+    if (url.startsWith('/api/jarvis/memory/search?q=')) return Response.json({ hits: await source.searchMemory(decodeURIComponent(url.split('q=')[1])) })
     return new Response('not found', { status: 404 })
   })
 }
@@ -165,6 +168,32 @@ describe('App', () => {
     expect(await within(chat).findByRole('status')).toHaveTextContent('This browser can’t send your voice to Jarvis')
     expect(within(chat).getByRole('button', { name: 'Talk' })).toBeEnabled()
     expect(within(chat).queryByRole('button', { name: 'Stop talking' })).not.toBeInTheDocument()
+  })
+
+  it('Settings: what Jarvis remembers, forgetting one after a confirm, adding one, and searching', async () => {
+    vi.stubGlobal('fetch', fakeServer())
+    window.location.hash = '#preferences'
+    const user = userEvent.setup()
+    renderApp()
+
+    const panel = await screen.findByRole('region', { name: 'What Jarvis remembers' })
+    const facts = await within(panel).findByRole('list', { name: 'Things Jarvis remembers' })
+    expect(within(facts).getByText('Wants weather in °F and wind in knots.')).toBeInTheDocument()
+
+    await user.click(within(panel).getByRole('button', { name: 'Forget: Wants weather in °F and wind in knots.' }))
+    const confirm = await screen.findByRole('dialog', { hidden: true })
+    expect(confirm).toHaveTextContent('Forget this?')
+    await user.click(within(confirm).getByRole('button', { name: 'Forget', hidden: true }))
+    await waitFor(() => expect(within(panel).queryByText('Wants weather in °F and wind in knots.')).not.toBeInTheDocument())
+
+    await user.type(within(panel).getByRole('textbox', { name: 'Something for Jarvis to remember' }), 'Likes oat milk')
+    await user.click(within(panel).getByRole('button', { name: 'Remember' }))
+    expect(await within(panel).findByText('Likes oat milk')).toBeInTheDocument()
+
+    await user.type(within(panel).getByRole('searchbox', { name: 'Search past conversations' }), 'volleyball')
+    await user.click(within(panel).getByRole('button', { name: 'Search' }))
+    const results = await within(panel).findByRole('list', { name: 'Search results' })
+    expect(within(results).getByText(/check the weather before volleyball/)).toBeInTheDocument()
   })
 
   it('Home: turning a switch on, and a scene with no on/off', async () => {

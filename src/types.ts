@@ -172,6 +172,31 @@ export type ChatEvent = { type: 'delta'; text: string } | { type: 'done'; ok: tr
 export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string }
 export type ActionName = 'ollama-unload' | 'ollama-load'
 
+/** One thing Jarvis keeps in mind in every conversation (his notes file, never memory.md). */
+export interface MemoryFact {
+  id: string
+  text: string
+  /** When he learned it (ISO). */
+  learned: string
+  /** "nightly" when the 3:30 am pass picked it up from a chat, "you" when Dylan told him. */
+  from: 'nightly' | 'you'
+}
+
+/** What Jarvis remembers: his facts, plus how much past conversation he can search. */
+export interface JarvisMemory {
+  facts: MemoryFact[]
+  /** Conversation turns saved for search. */
+  turns: number
+  /** When the nightly pass last ran (ISO), if it has. */
+  lastDistill: string | null
+}
+
+/** One past moment a memory search found. */
+export interface MemoryHit { chat: string; role: 'user' | 'jarvis'; text: string; at: string }
+
+/** Adding or forgetting one fact. */
+export type MemoryChange = { op: 'remember'; text: string } | { op: 'forget'; id: string }
+
 /** What both server sources (mock and live) look like from the outside. */
 export interface DataSource {
   kind: 'mock' | 'live'
@@ -183,6 +208,12 @@ export interface DataSource {
   chat(text: string, caller: { login?: string }, onEvent: (event: ChatEvent) => void): Promise<void>
   /** The web chat with Jarvis so far, oldest first. */
   history(caller?: { login?: string }): Promise<ChatTurn[]>
+  /** What Jarvis remembers, or null when he can't be asked. */
+  memory(caller?: { login?: string }): Promise<JarvisMemory | null>
+  /** Searches past conversations (newest and best matches first). */
+  searchMemory(query: string, caller?: { login?: string }): Promise<MemoryHit[]>
+  /** Adds or forgets one fact. */
+  changeMemory(change: MemoryChange, caller?: { login?: string }): Promise<ActionResult>
   /** Starts Jarvis's web-chat engine early; true when he said yes. */
   warm(caller?: { login?: string }): Promise<boolean>
   /** Sends one command to one Home Assistant device. */

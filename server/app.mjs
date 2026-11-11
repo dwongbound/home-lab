@@ -6,6 +6,9 @@
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
 //   POST /api/jarvis/chat           {"text": "..."} -> Jarvis's reply, streamed as NDJSON
 //   GET  /api/jarvis/history        the web chat so far
+//   GET  /api/jarvis/memory         what Jarvis remembers ({memory})
+//   GET  /api/jarvis/memory/search?q=  past conversations matching q ({hits})
+//   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
 //   POST /api/jarvis/warm           starts Jarvis's web-chat engine early (the chat sheet opened)
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
@@ -125,6 +128,36 @@ export function createApi(source) {
     return sendJson(res, 200, { turns: await source.history({ login }) })
   }
 
+  /** What Jarvis remembers. */
+  async function handleMemory(req, res) {
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { memory: await source.memory({ login }) })
+  }
+
+  /** Searches Jarvis's past conversations. */
+  async function handleMemorySearch(req, res, query) {
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { hits: await source.searchMemory(query, { login }) })
+  }
+
+  /** Adds or forgets one fact. */
+  async function handleMemoryChange(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    const remember = body?.op === 'remember' && typeof body.text === 'string' && body.text.trim() !== ''
+    const forget = body?.op === 'forget' && typeof body.id === 'string'
+    if (!remember && !forget) {
+      return sendJson(res, 400, { ok: false, message: 'Send {"op": "remember", "text": "..."} or {"op": "forget", "id": "..."}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    let change = { op: 'forget', id: body.id }
+    if (remember) change = { op: 'remember', text: body.text.trim().slice(0, 500) }
+    const result = await source.changeMemory(change, { login })
+    return sendJson(res, result.ok ? 200 : 502, result)
+  }
+
   /** Gets Jarvis's web-chat engine started before the first question, so it answers sooner. */
   async function handleWarm(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -196,6 +229,16 @@ export function createApi(source) {
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/history') {
         return await handleHistory(req, res)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/memory') {
+        return await handleMemory(req, res)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/memory/search') {
+        const query = new URL(req.url ?? '/', 'http://localhost').searchParams.get('q') ?? ''
+        return await handleMemorySearch(req, res, query.slice(0, 200))
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/memory') {
+        return await handleMemoryChange(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/warm') {
         return await handleWarm(req, res)

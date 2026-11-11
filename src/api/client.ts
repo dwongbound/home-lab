@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, MoneyPickChange, Snapshot } from '../types'
+import type { ActionName, ActionResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, Snapshot } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -140,6 +140,58 @@ export async function loadChatHistory(): Promise<ChatTurn[]> {
     return Array.isArray(body?.turns) ? body.turns : []
   } catch {
     return []
+  }
+}
+
+export const MEMORY_KEY = '/api/jarvis/memory'
+
+/** Fetches what Jarvis remembers (null when he can't be asked). */
+async function fetchMemory(): Promise<JarvisMemory | null> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.memory()
+  }
+  const res = await fetch(MEMORY_KEY)
+  if (!res.ok) throw new Error(`The server answered ${res.status}`)
+  const body = await res.json()
+  return body?.memory ?? null
+}
+
+/** What Jarvis remembers, for the Settings page. Fetched when that page opens, not every refresh. */
+export function useMemory() {
+  return useSWR<JarvisMemory | null>(MEMORY_KEY, fetchMemory, { revalidateOnFocus: false })
+}
+
+/** Searches Jarvis's past conversations. Never throws: trouble reads as no results. */
+export async function searchMemory(query: string): Promise<MemoryHit[]> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.searchMemory(query)
+  }
+  try {
+    const res = await fetch(`/api/jarvis/memory/search?q=${encodeURIComponent(query)}`)
+    const body = await res.json()
+    return Array.isArray(body?.hits) ? body.hits : []
+  } catch {
+    return []
+  }
+}
+
+/** Tells Jarvis to remember something, or to forget one fact. */
+export async function changeMemory(change: MemoryChange): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.changeMemory(change)
+  }
+  try {
+    const res = await fetch(MEMORY_KEY, {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify(change),
+    })
+    return await res.json()
+  } catch {
+    return { ok: false, message: 'The page couldn’t reach the server' }
   }
 }
 

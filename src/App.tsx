@@ -90,7 +90,7 @@ export function App() {
   } else if (view === 'schedule') {
     body = <Schedule data={data} now={now} />
   } else if (view === 'preferences') {
-    body = <Settings data={data} sky={sky} onSky={chooseSky} awake={awake} wake={wake} onAwake={chooseAwake} />
+    body = <Settings data={data} now={now} sky={sky} onSky={chooseSky} awake={awake} wake={wake} onAwake={chooseAwake} />
   } else {
     body = <Overview data={data} now={now} />
   }
