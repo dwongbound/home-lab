@@ -1,0 +1,13 @@
+{
+  "name": "Talk to Jarvis",
+  "short_name": "Talk",
+  "start_url": "./talk",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#16212c",
+  "theme_color": "#16212c",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -6,6 +6,8 @@ import '@fontsource-variable/bricolage-grotesque'
 import '@fontsource-variable/figtree'
 import './styles.css'
 import { App } from './App'
+import { TalkPage } from './views/TalkPage'
+import { isTalkPage } from './lib/talkPage'
 
 // The longest the page waits for its fonts before drawing anyway.
 const FONT_WAIT_MS = 700
@@ -30,7 +32,8 @@ function fontsLoaded(): Promise<unknown> {
 void fontsLoaded().then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      {/* /talk is its own full-screen page; everything else is the dashboard. */}
+      {isTalkPage(window.location) ? <TalkPage /> : <App />}
     </StrictMode>,
   )
 })

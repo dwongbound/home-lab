@@ -11,6 +11,7 @@
 //   - I swipe sideways to change tab.
 //   - In Safari, changing tab never shows the panels dark before they frost.
 //   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
+//   - /talk is just the chat, full screen: one tap on Talk and I'm talking; Close goes to the dashboard.
 //   - Before Jarvis writes a file or runs a command, the chat asks me, and I tap Approve or Deny.
 //   - While the chat is open the page behind it stays put, and reading back up isn't interrupted by new words.
 //   - In Settings, under Voice, I play a sample, pick a voice, speed and blend, and save it.
@@ -689,4 +690,33 @@ test('Settings Voice plays a sample, and saves a voice, speed and blend', async 
   await panel.getByRole('button', { name: 'Save' }).click()
   await expect(panel.getByText(/^Saved\. /)).toBeVisible()
   await expect(panel.getByRole('button', { name: 'Save' })).toBeDisabled()
+})
+
+test('/talk is only the chat, filling the screen: Talk starts it, Close goes to the dashboard', async ({ page }) => {
+  await page.goto('/talk')
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  await expect(chat).toBeVisible()
+  // No dashboard around it: no tabs, no Ask Jarvis bar.
+  await expect(page.getByRole('navigation')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toHaveCount(0)
+  const viewport = page.viewportSize()!
+  const box = (await chat.boundingBox())!
+  expect(box.width).toBeGreaterThan(viewport.width - 40)
+  expect(box.height).toBeGreaterThan(viewport.height - 40)
+  // Saved to the home screen it opens straight here.
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', './talk.webmanifest')
+  const manifest = await (await page.request.get('/talk.webmanifest')).json()
+  expect(manifest.start_url).toBe('./talk')
+
+  // iOS needs a tap before the microphone, so Talk waits for one (sample data plays the demo).
+  await chat.getByRole('button', { name: 'Talk', exact: true }).click()
+  await expect(chat.getByRole('status')).toHaveText('Listening… just talk')
+  await chat.getByRole('button', { name: 'Stop talking' }).click()
+  await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })
+  // Still full screen after talking stops.
+  expect((await chat.boundingBox())!.width).toBeGreaterThan(viewport.width - 40)
+
+  await chat.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
 })
