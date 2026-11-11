@@ -445,7 +445,17 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .chat__voice { min-width: min(100%, 280px); min-height: 64px; font-size: 1.2rem; border-radius: 999px; }
 /* Nothing scrolls on /talk, so don't hold room for a scroll bar down the right edge. */
 html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
-.dialog--chat[data-page] .chat__close { top: max(14px, env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); }
+/* /talk keeps the orb and title small and high so the conversation gets the room. */
+.dialog--chat[data-page] .chat__head { padding-top: 0; gap: 2px; }
+.dialog--chat[data-page] .chat__head .orb { margin-bottom: 8px; }
+/* Words fade out as they scroll up under the orb rather than being cut off. */
+.dialog--chat[data-page] .chat__turns {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+  padding-top: 40px;
+}
+/* Before the first tap on iOS, the whole screen is the Talk button. */
+.chat__tapstart { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; border: 0; padding: 0; background: transparent; cursor: pointer; }
 .chat__status { color: var(--frost-dim); font-size: 14px; }
 .chat__turns { list-style: none; margin: 0; padding: 0 2px 0 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
 .chat__turn { display: grid; gap: 8px; }

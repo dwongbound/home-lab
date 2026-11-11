@@ -190,6 +190,27 @@ function routeToSpeaker(ctx: AudioContext, voice: AudioNode): HTMLAudioElement |
 }
 
 /**
+ * Whether Talk can start with no tap: the microphone is already allowed for
+ * this page and the browser lets sound play. iOS Safari says no until the
+ * first tap; a desktop browser that was allowed before usually says yes.
+ */
+export async function canTalkUnprompted(): Promise<boolean> {
+  try {
+    // 'microphone' isn't in every browser's PermissionName list yet, hence the cast.
+    const mic = await navigator.permissions?.query({ name: 'microphone' as PermissionName })
+    if (mic?.state !== 'granted') return false
+  } catch {
+    return false
+  }
+  if (typeof AudioContext === 'undefined') return false
+  // A context made without a tap starts suspended where sound is blocked.
+  const probe = new AudioContext()
+  const running = probe.state === 'running'
+  void probe.close().catch(() => {})
+  return running
+}
+
+/**
  * Opens the microphone and the line to Jarvis. Resolves once both are up,
  * or throws an Error whose message can be shown as is (no microphone, or
  * Jarvis didn't pick up).

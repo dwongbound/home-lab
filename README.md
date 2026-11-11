@@ -108,10 +108,12 @@ proxied in `npm run dev`; use `npm start` to try it.
 **The Talk page** is the same chat on its own, as the whole screen (edge
 to edge, not a pop-up: no card, corners or margin) with no tabs or panels: `https://jarvis.snakebird-ph.ts.net/talk` (or `#talk` on a
 build served from a folder, like the preview). It is voice only, with no
-box to type in: one big button reads **Talk** to start (iOS only opens the
-microphone after a tap) and **Pause** while talking, which also stops him
-mid-sentence; tap it again to pick back up. **Close** goes back to the
-dashboard. It keeps the screen on while open, because Safari drops the
+box to type in and no Close, and it starts listening as soon as it opens.
+Where the browser wants a tap first (iPhone and iPad Safari only open the
+microphone and play sound after one), the status reads "Tap anywhere to
+start" and the whole screen is the button. After that one big button reads
+**Pause** while talking, which also stops him mid-sentence, and **Talk** to
+pick back up. It keeps the screen on while open, because Safari drops the
 microphone when the screen locks. Add it to the home screen from Safari
 (Share, Add to Home Screen) and the icon, named Talk, opens straight into
 it: the page swaps in `talk.webmanifest`, whose `start_url` is `./talk`.

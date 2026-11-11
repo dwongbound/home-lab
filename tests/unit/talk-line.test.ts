@@ -2,7 +2,7 @@
 // that it refuses plainly when there's no microphone, and which of
 // Jarvis's events reach which handler.
 import { describe, expect, it, vi } from 'vitest'
-import { makeResampler, openTalkLine, pcm16ToFloat, softenEdges, talkUrl } from '../../src/lib/talk'
+import { canTalkUnprompted, makeResampler, openTalkLine, pcm16ToFloat, softenEdges, talkUrl } from '../../src/lib/talk'
 
 describe('the voice line', () => {
   it('uses wss on the https page and ws on plain http', () => {
@@ -120,6 +120,31 @@ describe('the voice line', () => {
     expect(players[0].srcObject).toBe('his voice')
     line.close()
     expect(players[0].paused).toBe(true)
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('starting Talk with no tap (/talk)', () => {
+  /** Stubs the microphone permission and whether a fresh AudioContext may play. */
+  function stub(mic: string | 'throws', audio: 'running' | 'suspended') {
+    const query = mic === 'throws' ? async () => { throw new Error('unsupported') } : async () => ({ state: mic })
+    vi.stubGlobal('navigator', { permissions: { query } })
+    vi.stubGlobal('AudioContext', class { state = audio; close = async () => {} })
+  }
+
+  it('goes ahead when the microphone is allowed and sound can play', async () => {
+    stub('granted', 'running')
+    expect(await canTalkUnprompted()).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('waits for a tap when sound is blocked (iOS), the microphone was never allowed, or the browser can’t say', async () => {
+    stub('granted', 'suspended')
+    expect(await canTalkUnprompted()).toBe(false)
+    stub('prompt', 'running')
+    expect(await canTalkUnprompted()).toBe(false)
+    stub('throws', 'running')
+    expect(await canTalkUnprompted()).toBe(false)
     vi.unstubAllGlobals()
   })
 })
