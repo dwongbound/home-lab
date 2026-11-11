@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent } from '../api/client'
 import type { Approval, ApprovalBy, ChatTurn } from '../types'
-import { openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
+import { canTalkUnprompted, openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
 import { toolLabel } from '../lib/approvals'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
@@ -29,12 +29,13 @@ interface ApprovalView extends Approval {
 let savedTurns: Turn[] = []
 
 /** What the orb's status line says in each state; when idle, why Talk ended (if it ended by itself). */
-function statusText(state: OrbState, notice = '', page = false): string {
+function statusText(state: OrbState, notice = '', page = false, tapToStart = false): string {
   if (state === 'idle' && notice) return notice
   if (state === 'thinking') return 'Jarvis is thinking…'
   if (state === 'speaking') return 'Jarvis is answering'
   if (state === 'listening') return 'Listening… just talk'
-  // /talk has nothing to type in, so it only points at Talk.
+  // /talk has nothing to type in, so it only points at Talk (or anywhere, before the first tap).
+  if (page && tapToStart) return 'Tap anywhere to start'
   if (page) return 'Tap Talk to start'
   return 'Type below, or tap Talk'
 }
@@ -103,6 +104,8 @@ export function JarvisPanel({ live, page = false }: Props) {
   // Whether the saved chat has been fetched (or wasn't needed), for the row under the bar.
   const [historyChecked, setHistoryChecked] = useState(savedTurns.length > 0)
   const [open, setOpen] = useState(page)
+  // /talk only: Talk is waiting for the first tap anywhere on the screen.
+  const [tapToStart, setTapToStart] = useState(false)
   const [talkingOn, setTalkingOn] = useState(false)
   const [heard, setHeard] = useState('')
   // Why Talk ended by itself (no microphone, the line dropped), shown in the status line.
@@ -299,12 +302,32 @@ export function JarvisPanel({ live, page = false }: Props) {
     if (live) setState('idle')
   }
 
-  /** Closes the sheet; talking stops. On /talk, Close goes to the dashboard. */
+  /** Closes the sheet; talking stops. */
   function close() {
     stopTalk()
-    if (page) window.location.assign('./')
-    else setOpen(false)
+    setOpen(false)
   }
+
+  /** The /talk page's first tap, which lets iOS open the microphone and play sound. */
+  function tapStart() {
+    setTapToStart(false)
+    void startTalk()
+  }
+
+  // /talk starts talking as it opens (Dylan, 2026-11-11). Where the browser
+  // wants a tap first (iOS), the whole screen becomes the button instead.
+  useEffect(() => {
+    if (!page) return
+    let gone = false
+    // The demo needs no microphone, so sample data always starts straight away.
+    const ready = live ? canTalkUnprompted() : Promise.resolve(true)
+    void ready.then((ok) => {
+      if (gone) return
+      if (ok) void startTalk()
+      else setTapToStart(true)
+    })
+    return () => { gone = true }
+  }, [])
 
   // First visit: pick up the conversation where Jarvis left it (it lives on
   // the PC, so a reload or another device sees the same chat).
@@ -342,6 +365,8 @@ export function JarvisPanel({ live, page = false }: Props) {
       onSend={send}
       talking={talkingOn}
       page={page}
+      tapToStart={tapToStart}
+      onTapStart={tapStart}
       heard={heard}
       notice={notice}
       onTalk={() => void startTalk()}
@@ -401,6 +426,10 @@ interface SheetProps {
   talking: boolean
   /** The /talk page: the sheet always fills the screen and Talk is the main button. */
   page: boolean
+  /** /talk is waiting for a first tap anywhere before it can talk. */
+  tapToStart: boolean
+  /** That first tap. */
+  onTapStart: () => void
   /** What's being heard right now, while listening. */
   heard: string
   /** Why Talk ended by itself, if it did. */
@@ -417,7 +446,7 @@ interface SheetProps {
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, heard, notice, onTalk, onStopTalk, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tapToStart, onTapStart, heard, notice, onTalk, onStopTalk, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -492,17 +521,21 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
       data-talking={talking || page ? '' : undefined}
       data-page={page ? '' : undefined}
       aria-labelledby="chat-title"
-      onCancel={(e) => { e.preventDefault(); onClose() }}
+      // Esc closes the sheet; /talk is a page of its own with nothing to close.
+      onCancel={(e) => { e.preventDefault(); if (!page) onClose() }}
       // A tap outside the sheet closes it, except on /talk where there's nothing outside.
       onClick={(e) => { if (!page && e.target === e.currentTarget) onClose() }}
     >
-      <button type="button" className="icon-btn chat__close" aria-label="Close" onClick={onClose}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
-      </button>
+      {/* /talk has no Close (Dylan, 2026-11-11): it is the whole page. */}
+      {page ? null : (
+        <button type="button" className="icon-btn chat__close" aria-label="Close" onClick={onClose}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+        </button>
+      )}
       <header className="chat__head">
-        <JarvisOrb ref={orbRef} state={state} size={64} />
+        <JarvisOrb ref={orbRef} state={state} size={page ? 52 : 64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
-        <p className="chat__status" role="status">{waiting ? 'Waiting for your OK' : statusText(state, notice, page)}</p>
+        <p className="chat__status" role="status">{waiting ? 'Waiting for your OK' : statusText(state, notice, page, tapToStart)}</p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
         {turns.map((t, i) => (
@@ -558,6 +591,10 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
           )}
         </form>
       )}
+      {tapToStart ? (
+        // Covers the whole screen so the first tap can land anywhere.
+        <button type="button" className="chat__tapstart" aria-label="Tap anywhere to start" onClick={onTapStart} />
+      ) : null}
     </dialog>
   )
 }
