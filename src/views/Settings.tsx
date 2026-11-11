@@ -3,8 +3,8 @@ import type { SkyPhase } from '../lib/sky'
 import type { WakeState } from '../useWakeLock'
 import { MemoryPanel } from '../components/MemoryPanel'
 
-// The Settings page: what Jarvis remembers, the sky choice and keep-awake
-// (per browser), and where the data comes from.
+// The Settings page: the sky choice and keep-awake (per browser), where the
+// data comes from, and Memory (what Jarvis remembers) at the bottom.
 
 export type SkyChoice = SkyPhase | 'auto'
 const CHOICES: { id: SkyChoice; label: string }[] = [
@@ -39,7 +39,6 @@ export function Settings({ data, now, sky, onSky, awake, wake, onAwake }: Settin
     <>
       <section className="hero hero--small"><h1 className="hero__title">Settings</h1></section>
       <div className="grid grid--split">
-        <MemoryPanel now={now} />
         <section className="glass panel">
           <h2 className="panel__title">Sky</h2>
           <p className="panel__sub">The window behind the page. Saved in this browser only.</p>
@@ -68,6 +67,7 @@ export function Settings({ data, now, sky, onSky, awake, wake, onAwake }: Settin
             <p>Reading live from {data.host.name} every 15 seconds.</p>
           )}
         </section>
+        <MemoryPanel now={now} />
       </div>
     </>
   )

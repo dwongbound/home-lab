@@ -5,7 +5,7 @@ import type { MemoryFact, MemoryHit } from '../types'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Spinner } from './Spinner'
 
-// What Jarvis remembers, on the Settings page. Two parts:
+// Memory on the Settings page: what Jarvis remembers. Two parts:
 //   - Facts: the short notes Jarvis keeps in mind in every conversation,
 //     picked up from chats by the 3:30 am pass or told to him here. Each can
 //     be forgotten (after a confirm), and new ones added.
@@ -130,7 +130,7 @@ export function MemoryPanel({ now }: { now: Date }) {
 
   return (
     <section className="glass panel memory" aria-labelledby="memory-title">
-      <h2 id="memory-title" className="panel__title">What Jarvis remembers</h2>
+      <h2 id="memory-title" className="panel__title">Memory</h2>
       <p className="panel__sub">He keeps these in mind in every conversation. Each night at 3:30 am he adds what he picked up from your chats. Stays on the PC.</p>
       {body}
 

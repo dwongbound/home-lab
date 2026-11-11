@@ -176,7 +176,7 @@ describe('App', () => {
     const user = userEvent.setup()
     renderApp()
 
-    const panel = await screen.findByRole('region', { name: 'What Jarvis remembers' })
+    const panel = await screen.findByRole('region', { name: 'Memory' })
     const facts = await within(panel).findByRole('list', { name: 'Things Jarvis remembers' })
     expect(within(facts).getByText('Wants weather in °F and wind in knots.')).toBeInTheDocument()
 
