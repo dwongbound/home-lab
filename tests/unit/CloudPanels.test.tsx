@@ -39,6 +39,14 @@ describe('ClaudeThreadsPanel', () => {
   })
 })
 
+describe('ClaudeThreadsPanel without threads', () => {
+  it('says the threads are not connected instead of "0 finished"', () => {
+    render(<ClaudeThreadsPanel cloud={{ ...digest(), threads: [] }} now={now} compact />)
+    expect(screen.getByText(/aren’t connected to this page yet/)).toBeInTheDocument()
+    expect(screen.queryByText('0 finished')).not.toBeInTheDocument()
+  })
+})
+
 describe('CalendarPanel', () => {
   it('says the day is free when there are no events', () => {
     render(<CalendarPanel cloud={digest()} now={now} />)
