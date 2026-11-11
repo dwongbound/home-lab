@@ -127,6 +127,8 @@ function mockDigest(t, minutesAgo) {
  */
 // How long a pretend digest refresh takes.
 const MOCK_REFRESH_MS = 4000
+// How long the sample Jarvis waits for an approval, like the real one (10 minutes).
+const APPROVAL_WAIT_MS = 600_000
 
 /** The digest, stamped with the last pretend refresh that has finished. */
 function withRefresh(digest, state) {
@@ -141,6 +143,9 @@ export function createMockSource({ now = () => new Date() } = {}) {
     modelLoaded: true,
     // The pretend web chat with Jarvis, oldest first.
     chat: [],
+    // Approvals the pretend Jarvis is waiting on: id -> {approval, answer(ok)}.
+    approvals: new Map(),
+    nextApproval: 1,
     // Pretend things Jarvis remembers (made up: this repo is public).
     facts: sampleFacts(now()),
     nextFactId: 100,
@@ -287,6 +292,19 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: true, audio: sampleWav(choice) }
     },
 
+    /** Answers a waiting sample approval; unknown ids were already answered. */
+    async answerApproval(id, ok) {
+      const waiting = state.approvals.get(id)
+      if (!waiting) return { ok: false, message: 'That request was already answered or ran out of time' }
+      waiting.answer(ok, 'page')
+      return { ok: true, message: ok ? 'Approved' : 'Denied' }
+    },
+
+    /** Sample approvals still waiting. */
+    async approvals() {
+      return [...state.approvals.values()].map((w) => w.approval)
+    },
+
     /** Sample data has no engine to start. */
     async warm() {
       return true
@@ -321,7 +339,31 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const at = new Date().toISOString()
       state.chat.push({ role: 'user', text, at })
       await delay(700)
-      const reply = sampleReply(text)
+      let reply = sampleReply(text)
+      // Asking him to change a file or run something shows the approval
+      // card, and his reply waits for the answer like the real Jarvis.
+      const action = sampleAction(text)
+      if (action) {
+        const approval = {
+          id: `a${state.nextApproval++}`,
+          tool: action.tool,
+          summary: action.summary,
+          expires: new Date(Date.now() + APPROVAL_WAIT_MS).toISOString(),
+        }
+        const ok = await new Promise((resolve) => {
+          const timer = setTimeout(() => answer(false, 'timeout'), APPROVAL_WAIT_MS)
+          /** Settles this approval once, from the page or the timeout. */
+          function answer(yes, by) {
+            clearTimeout(timer)
+            state.approvals.delete(approval.id)
+            onEvent({ type: 'approval_done', id: approval.id, ok: yes, by })
+            resolve(yes)
+          }
+          state.approvals.set(approval.id, { approval, answer })
+          onEvent({ type: 'approval', approval })
+        })
+        reply = ok ? `Sample data: done. ${action.done}` : 'Sample data: okay, I left it alone.'
+      }
       for (const piece of reply.split(/(?<=\s)/)) {
         onEvent({ type: 'delta', text: piece })
         await delay(45)
@@ -388,6 +430,21 @@ function sampleHits(t) {
     { chat: 'web', role: 'user', text: 'Turn the big light off when I start gaming', at: daysAgo(4.1) },
     { chat: 'siri', role: 'jarvis', text: "Tomorrow looks clear, 68 and light wind, good flying weather.", at: daysAgo(6.2) },
   ]
+}
+
+/**
+ * The sample "write a file" or "run a command" a question asks for, or null.
+ * Real Jarvis decides this himself; here a few words stand in for it.
+ */
+function sampleAction(text) {
+  const q = text.toLowerCase()
+  if (q.includes('run ') || q.includes('restart')) {
+    return { tool: 'Run a command', summary: 'sudo systemctl restart jarvis', done: 'Jarvis restarted.' }
+  }
+  if (q.includes('write') || q.includes('edit') || q.includes('note')) {
+    return { tool: 'Edit a file', summary: '~/notes/todo.md\n+ - Book the rental car for Dallas', done: 'The note is saved.' }
+  }
+  return null
 }
 
 /**

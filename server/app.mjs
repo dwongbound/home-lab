@@ -11,6 +11,8 @@
 //   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
 //   GET  /api/jarvis/voice          how Jarvis sounds + every voice; POST saves {voice, speed, blend}
 //   GET  /api/jarvis/voice/sample   a WAV of ?voice=&speed=&voice2=&mix=
+//   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
+//   GET  /api/jarvis/approvals      what Jarvis is still waiting on you to approve ({pending})
 //   POST /api/jarvis/warm           starts Jarvis's web-chat engine early (the chat sheet opened)
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
@@ -199,6 +201,26 @@ export function createApi(source) {
     return sendJson(res, 200, { ok: await source.warm({ login }) })
   }
 
+  /** Approves or denies one thing Jarvis asked to do (write a file, run a command). */
+  async function handleApprove(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    if (typeof body?.id !== 'string' || body.id.length > 64 || typeof body.ok !== 'boolean') {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"id": "a1", "ok": true}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.answerApproval(body.id, body.ok, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
+  /** What Jarvis is still waiting on an answer for (after a reload, say). */
+  async function handleApprovals(req, res) {
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { pending: await source.approvals({ login }) })
+  }
+
   /** Sends one command to one Home Assistant device (server/sources/home.mjs). */
   async function handleControl(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -280,6 +302,12 @@ export function createApi(source) {
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/voice/sample') {
         return await handleVoiceSample(req, res, new URL(req.url ?? '/', 'http://localhost').searchParams)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/approve') {
+        return await handleApprove(req, res)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/approvals') {
+        return await handleApprovals(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/warm') {
         return await handleWarm(req, res)

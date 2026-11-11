@@ -144,6 +144,34 @@ describe('Jarvis voice', () => {
   })
 })
 
+describe('Jarvis approvals', () => {
+  it('a reply waits on an approval, which the page answers, then carries on (sample data)', async () => {
+    const source = createMockSource()
+    const api = createApi(source)
+    const events: { type: string; approval?: { id: string }; ok?: boolean; by?: string }[] = []
+    let asked: (id: string) => void = () => {}
+    const approvalId = new Promise<string>((resolve) => { asked = resolve })
+    const chatting = source.chat('please restart jarvis', {}, (event: { type: string; approval?: { id: string } }) => {
+      events.push(event)
+      if (event.type === 'approval') asked(event.approval!.id)
+    })
+    const id = await approvalId
+    // A reload would see it waiting.
+    expect((await callApi(api, 'GET', '/api/jarvis/approvals')).json().pending).toMatchObject([{ id, tool: 'Run a command' }])
+    // Needs the page header and a proper body.
+    expect((await callApi(api, 'POST', '/api/jarvis/approve', {}, JSON.stringify({ id, ok: true }))).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/jarvis/approve', ACTION_HEADER, JSON.stringify({ id, ok: 'yes' }))).statusCode).toBe(400)
+    const res = await callApi(api, 'POST', '/api/jarvis/approve', ACTION_HEADER, JSON.stringify({ id, ok: true }))
+    expect(res.json()).toEqual({ ok: true, message: 'Approved' })
+    await chatting
+    expect(events).toContainEqual({ type: 'approval_done', id, ok: true, by: 'page' })
+    expect(events.at(-1)).toEqual({ type: 'done', ok: true })
+    // Answered once; a second answer is refused.
+    expect((await callApi(api, 'POST', '/api/jarvis/approve', ACTION_HEADER, JSON.stringify({ id, ok: false }))).statusCode).toBe(409)
+    expect((await callApi(api, 'GET', '/api/jarvis/approvals')).json().pending).toEqual([])
+  })
+})
+
 describe('POST /api/jarvis/warm', () => {
   it('needs the page header, and passes the login on', async () => {
     let seen: unknown = null

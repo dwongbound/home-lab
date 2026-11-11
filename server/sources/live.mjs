@@ -21,6 +21,25 @@ const SAMPLE_TIMEOUT_MS = 15_000
 const PROBE_TIMEOUT_MS = 2500
 // Jarvis can take a while: Claude thinking, or the local model loading first.
 const ASK_TIMEOUT_MS = 180_000
+// A chat reply can wait on an approval for up to 10 minutes, so its stream gets longer.
+const CHAT_TIMEOUT_MS = 13 * 60_000
+
+/** One approval request from Jarvis, checked and trimmed; null if it's missing a field. */
+function toApproval(raw) {
+  if (typeof raw?.id !== 'string' || typeof raw.summary !== 'string') return null
+  return {
+    id: raw.id.slice(0, 64),
+    tool: String(raw.tool ?? 'action').slice(0, 60),
+    summary: raw.summary.slice(0, 4000),
+    expires: typeof raw.expires === 'string' ? raw.expires : '',
+  }
+}
+
+/** Who answered an approval, as one of the three the page knows. */
+function toApprovalBy(by) {
+  if (by === 'page' || by === 'telegram') return by
+  return 'timeout'
+}
 const HISTORY_POINTS = 24
 const GB = 1024 ** 3
 
@@ -395,7 +414,7 @@ export function createLiveSource(config, deps = {}) {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
           body: JSON.stringify({ text }),
-          signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
+          signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
         })
       } catch {
         onEvent({ type: 'error', message: 'Jarvis is not answering' })
@@ -409,11 +428,52 @@ export function createLiveSource(config, deps = {}) {
           if (event.type === 'delta' && typeof event.text === 'string') onEvent({ type: 'delta', text: event.text })
           else if (event.type === 'done') { ended = true; onEvent({ type: 'done', ok: true }) }
           else if (event.type === 'error') { ended = true; onEvent({ type: 'error', message: String(event.message ?? 'Jarvis hit an error') }) }
+          else if (event.type === 'approval') {
+            const approval = toApproval(event)
+            if (approval) onEvent({ type: 'approval', approval })
+          } else if (event.type === 'approval_done' && typeof event.id === 'string') {
+            onEvent({ type: 'approval_done', id: event.id, ok: event.ok === true, by: toApprovalBy(event.by) })
+          }
         }
       } catch {
         // The connection dropped mid-reply; say so below.
       }
       if (!ended) onEvent({ type: 'error', message: 'Jarvis stopped answering partway' })
+    },
+
+    /** Approves or denies one of Jarvis's waiting requests (POST /approve). */
+    async answerApproval(id, ok, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to answer Jarvis' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/approve`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify({ id, ok }),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (res.status === 404) return { ok: false, message: 'That request was already answered or ran out of time' }
+        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        return { ok: true, message: ok ? 'Approved' : 'Denied' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /** Jarvis's requests still waiting for an answer (GET /approvals); empty if unreachable. */
+    async approvals(caller = {}) {
+      if (!caller.login) return []
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/approvals`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return []
+        const body = await res.json()
+        if (!Array.isArray(body?.pending)) return []
+        return body.pending.map(toApproval).filter(Boolean)
+      } catch {
+        return []
+      }
     },
 
     /** The web chat's recent turns from Jarvis (GET /chat/history), oldest first; empty if unreachable. */

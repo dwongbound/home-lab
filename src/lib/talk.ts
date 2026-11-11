@@ -4,10 +4,12 @@
 //
 // The page sends the microphone as 16 kHz 16-bit mono audio in 20 ms
 // frames, and keeps sending while Jarvis speaks so you can talk over him
-// (he stops). Jarvis sends JSON events (state, transcript, reply, done,
-// stop) and his voice as 16-bit audio at the rate his hello names, one
+// (he stops). Jarvis sends JSON events (state, partial, transcript, reply,
+// done, stop, approval, approval_done) and his voice as 16-bit audio at the rate his hello names, one
 // message per sentence. When his voice has finished playing the page says
 // {"type":"idle"} so he knows the speaker is quiet again.
+
+import type { Approval, ApprovalBy } from '../types'
 
 export type TalkState = 'listening' | 'thinking' | 'speaking'
 
@@ -28,6 +30,30 @@ export interface TalkHandlers {
   onLevel: (level: number) => void
   /** The line dropped. message says why, in words for the page. */
   onClosed: (message: string) => void
+  /** Jarvis wants an OK to write a file or run a command (answer by tap, or say yes or no). */
+  onApproval: (approval: Approval) => void
+  /** An approval was settled: by the page (a tap or a spoken yes/no), Telegram, or the clock. */
+  onApprovalDone: (id: string, ok: boolean, by: ApprovalBy) => void
+}
+
+/** One JSON event from Jarvis's side of the line (fields depend on its type). */
+interface TalkEvent {
+  type?: string
+  state?: string
+  text?: string
+  rate?: number
+  id?: string
+  tool?: string
+  summary?: string
+  expires?: string
+  ok?: boolean
+  by?: string
+}
+
+/** Who settled an approval, as one of the three the page knows. */
+function approvalBy(by: string | undefined): ApprovalBy {
+  if (by === 'page' || by === 'telegram') return by
+  return 'timeout'
 }
 
 export interface TalkLine {
@@ -268,7 +294,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   }
 
   /** Acts on one JSON event from Jarvis. */
-  function handleEvent(event: { type?: string; state?: string; text?: string; rate?: number }) {
+  function handleEvent(event: TalkEvent) {
     if (event.type === 'hello' && typeof event.rate === 'number') rate = event.rate
     else if (event.type === 'state' && (event.state === 'listening' || event.state === 'thinking' || event.state === 'speaking')) {
       state = event.state
@@ -283,6 +309,10 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     } else if (event.type === 'stop') {
       silence()
       on.onInterrupted()
+    } else if (event.type === 'approval' && typeof event.id === 'string' && typeof event.summary === 'string') {
+      on.onApproval({ id: event.id, tool: event.tool ?? 'action', summary: event.summary, expires: event.expires ?? '' })
+    } else if (event.type === 'approval_done' && typeof event.id === 'string') {
+      on.onApprovalDone(event.id, event.ok === true, approvalBy(event.by))
     }
   }
 

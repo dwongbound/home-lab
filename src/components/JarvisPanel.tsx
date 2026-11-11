@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
-import { loadChatHistory, streamJarvis, warmJarvis } from '../api/client'
-import type { ChatTurn } from '../types'
+import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent } from '../api/client'
+import type { Approval, ApprovalBy, ChatTurn } from '../types'
 import { openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
@@ -14,7 +14,14 @@ import { useScrollLock } from '../useScrollLock'
 // over him and he stops). The conversation outlives closing the sheet and
 // changing pages, for this visit.
 
-interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean }
+interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[] }
+/** An approval as the chat shows it: waiting, being sent, or settled (and how). */
+interface ApprovalView extends Approval {
+  outcome?: 'approved' | 'denied'
+  by?: ApprovalBy
+  sending?: boolean
+  error?: string
+}
 
 // Kept outside React so the conversation survives the Overview unmounting
 // when Dylan visits another page and comes back.
@@ -101,6 +108,45 @@ export function JarvisPanel({ live }: Props) {
     setTurnsState((t) => { savedTurns = update(t); return savedTurns })
   }
 
+  /** Shows a new approval under the turn it belongs to (the latest when unsure). */
+  function addApproval(turnId: number, approval: Approval) {
+    setTurns((t) => {
+      const target = t.some((x) => x.id === turnId) ? turnId : t[t.length - 1]?.id
+      return t.map((x) => {
+        if (x.id !== target) return x
+        if (x.approvals?.some((a) => a.id === approval.id)) return x
+        return { ...x, approvals: [...(x.approvals ?? []), approval] }
+      })
+    })
+  }
+
+  /** Changes one approval wherever it is in the chat. */
+  function updateApproval(id: string, change: (a: ApprovalView) => ApprovalView) {
+    setTurns((t) => t.map((x) => {
+      if (!x.approvals?.some((a) => a.id === id)) return x
+      return { ...x, approvals: x.approvals.map((a) => (a.id === id ? change(a) : a)) }
+    }))
+  }
+
+  /** Marks an approval settled: Approved or Denied, and who answered. */
+  function settleApproval(id: string, ok: boolean, by: ApprovalBy) {
+    updateApproval(id, (a) => ({ ...a, outcome: ok ? 'approved' : 'denied', by, sending: false, error: undefined }))
+  }
+
+  /** Hands one approval event from the reply stream to the turn it's for. */
+  function onApprovalEvent(turnId: number, event: ApprovalEvent) {
+    if (event.type === 'approval') addApproval(turnId, event.approval)
+    else settleApproval(event.id, event.ok, event.by)
+  }
+
+  /** Approve or Deny tapped: tells Jarvis, and shows the answer once he has it. */
+  async function answer(id: string, ok: boolean) {
+    updateApproval(id, (a) => ({ ...a, sending: true, error: undefined }))
+    const result = await answerApproval(id, ok)
+    if (result.ok) settleApproval(id, ok, 'page')
+    else updateApproval(id, (a) => ({ ...a, sending: false, error: result.message }))
+  }
+
   /** One beat on both orbs (the bar's is visible behind the sheet's backdrop). */
   function pulse(amount: number) {
     barOrb.current?.pulse(amount)
@@ -124,12 +170,16 @@ export function JarvisPanel({ live }: Props) {
     setTurns((t) => [...t, { id, question, answer: '', ok: true, done: false }])
     let result
     try {
-      result = await streamJarvis(question, (soFar, added) => {
-        setState('speaking')
-        // Longer words land a little harder, so the pulse follows the text.
-        pulse(Math.min(1, 0.45 + added.trim().length / 12))
-        setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer: soFar } : x)))
-      })
+      result = await streamJarvis(
+        question,
+        (soFar, added) => {
+          setState('speaking')
+          // Longer words land a little harder, so the pulse follows the text.
+          pulse(Math.min(1, 0.45 + added.trim().length / 12))
+          setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer: soFar } : x)))
+        },
+        (event) => onApprovalEvent(id, event),
+      )
     } catch (err) {
       result = { ok: false, message: err instanceof Error ? err.message : 'The request failed' }
     }
@@ -178,6 +228,8 @@ export function JarvisPanel({ live }: Props) {
         onInterrupted: () => updateTalkTurn((x) => ({ ...x, done: true })),
         onLevel: pulse,
         onClosed: (message) => endTalk(message),
+        onApproval: (approval) => addApproval(talkTurn.current, approval),
+        onApprovalDone: settleApproval,
       })
     } catch (err) {
       endTalk(err instanceof Error ? err.message : 'Talk didn’t start')
@@ -245,10 +297,14 @@ export function JarvisPanel({ live }: Props) {
   useEffect(() => {
     if (savedTurns.length > 0) return
     let live = true
-    void loadChatHistory().then((lines) => {
+    void loadChatHistory().then(async (lines) => {
       if (!live) return
       if (savedTurns.length === 0 && lines.length > 0) setTurns(() => toTurns(lines))
       setHistoryChecked(true)
+      // Anything Jarvis was still waiting on before a reload comes back as a card.
+      const waiting = await loadApprovals()
+      if (!live) return
+      for (const approval of waiting) addApproval(-1, approval)
     })
     return () => { live = false }
   }, [])
@@ -308,6 +364,7 @@ export function JarvisPanel({ live }: Props) {
           notice={notice}
           onTalk={() => void startTalk()}
           onStopTalk={stopTalk}
+          onAnswer={(id, ok) => void answer(id, ok)}
           onClose={close}
         />
       ) : null}
@@ -330,6 +387,8 @@ interface SheetProps {
   notice: string
   onTalk: () => void
   onStopTalk: () => void
+  /** Approve (true) or Deny (false) tapped on one of Jarvis's requests. */
+  onAnswer: (id: string, ok: boolean) => void
   onClose: () => void
 }
 
@@ -338,12 +397,14 @@ interface SheetProps {
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard, notice, onTalk, onStopTalk, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard, notice, onTalk, onStopTalk, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const busy = state !== 'idle' || talking
+  // Jarvis is waiting on an Approve or Deny somewhere in the chat.
+  const waiting = turns.some((t) => t.approvals?.some((a) => !a.outcome))
 
   // Open as a modal on mount (jsdom has no showModal, so there it's just marked open).
   useEffect(() => {
@@ -412,12 +473,15 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
       <header className="chat__head">
         <JarvisOrb ref={orbRef} state={state} size={64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
-        <p className="chat__status" role="status">{statusText(state, notice)}</p>
+        <p className="chat__status" role="status">{waiting ? 'Waiting for your OK' : statusText(state, notice)}</p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
         {turns.map((t, i) => (
           <li key={t.id} className="chat__turn">
             <p className="chat__q">{t.question}</p>
+            {(t.approvals ?? []).map((a) => (
+              <ApprovalCard key={a.id} approval={a} talking={talking} onAnswer={onAnswer} />
+            ))}
             {t.answer ? (
               <p className={t.ok ? 'chat__a' : 'chat__a chat__a--error'}>
                 {t.answer}
@@ -454,5 +518,37 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
         )}
       </form>
     </dialog>
+  )
+}
+
+/** What a settled approval says: the answer, and who gave it if not this page. */
+function outcomeText(a: ApprovalView): string {
+  if (a.by === 'timeout') return 'No answer in time, so he left it alone'
+  const verb = a.outcome === 'approved' ? 'Approved' : 'Denied'
+  if (a.by === 'telegram') return `${verb} on Telegram`
+  return verb
+}
+
+/**
+ * Jarvis asking before he writes a file or runs a command on the PC: what
+ * he wants to do, exactly, with Approve and Deny. In Talk, saying yes or no
+ * answers it too. Once settled it shrinks to the answer.
+ */
+function ApprovalCard({ approval: a, talking, onAnswer }: { approval: ApprovalView; talking: boolean; onAnswer: (id: string, ok: boolean) => void }) {
+  return (
+    <div className="approval" role="group" aria-label={`Jarvis asks to ${a.tool.toLowerCase()}`} data-outcome={a.outcome}>
+      <p className="approval__tool">{a.tool}</p>
+      <pre className="approval__summary">{a.summary}</pre>
+      {a.outcome ? (
+        <p className="approval__outcome">{outcomeText(a)}</p>
+      ) : (
+        <div className="approval__actions">
+          <button type="button" className="btn" disabled={a.sending} onClick={() => onAnswer(a.id, false)}>Deny</button>
+          <button type="button" className="btn btn--primary" disabled={a.sending} onClick={() => onAnswer(a.id, true)}>Approve</button>
+          {talking ? <span className="approval__hint">or say yes or no</span> : null}
+        </div>
+      )}
+      {a.error ? <p className="approval__error" role="alert">{a.error}</p> : null}
+    </div>
   )
 }
