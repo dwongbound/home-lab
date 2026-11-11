@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { loadChatHistory, streamJarvis, warmJarvis } from '../api/client'
 import type { ChatTurn } from '../types'
-import { readSpeak, writeSpeak } from '../lib/prefs'
-import { canSpeak, speak, stopSpeaking } from '../lib/speech'
 import { openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 
 // Talking to Jarvis from the home page. The Overview keeps a slim bar: the
 // orb, a box, Ask and Talk. Asking opens the chat: a fixed-size sheet with a
-// big orb that thinks while Jarvis works and pulses as the reply types out
-// (and with the voice, when "Speak replies" is on). Talk makes it hands-free:
+// big orb that thinks while Jarvis works and pulses as the reply types out.
+// Talk makes it hands-free (and is the only way he speaks replies aloud):
 // the orb follows your voice while Jarvis listens, he answers out loud in
 // his own voice from the PC, and it listens again until you stop (talk
 // over him and he stops). The conversation outlives closing the sheet and
@@ -63,7 +61,6 @@ export function JarvisPanel({ live }: Props) {
   const [state, setState] = useState<OrbState>('idle')
   const [turns, setTurnsState] = useState<Turn[]>(savedTurns)
   const [open, setOpen] = useState(false)
-  const [speakOn, setSpeakOn] = useState(readSpeak)
   const [talkingOn, setTalkingOn] = useState(false)
   const [heard, setHeard] = useState('')
   // Why Talk ended by itself (no microphone, the line dropped), shown in the status line.
@@ -95,11 +92,11 @@ export function JarvisPanel({ live }: Props) {
     if (!question || busy) return
     setText('')
     setOpen(true)
-    void ask(question, speakOn)
+    void ask(question)
   }
 
-  /** Asks one question, types out the reply, and reads it aloud if asked. */
-  async function ask(question: string, aloud: boolean) {
+  /** Asks one question and types out the reply. */
+  async function ask(question: string) {
     setState('thinking')
     const id = savedTurns.length
     setTurns((t) => [...t, { id, question, answer: '', ok: true, done: false }])
@@ -116,10 +113,6 @@ export function JarvisPanel({ live }: Props) {
     }
     const answer = result.message
     setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer, ok: result.ok, done: true } : x)))
-    if (result.ok && aloud && canSpeak()) {
-      setState('speaking')
-      await speak(answer, () => pulse(0.6 + Math.random() * 0.4))
-    }
     setState('idle')
   }
 
@@ -189,7 +182,7 @@ export function JarvisPanel({ live }: Props) {
       demo++
       setHeard('')
       if (!talking.current || question === null) break
-      await ask(question, true)
+      await ask(question)
     }
     setState('idle')
   }
@@ -215,20 +208,11 @@ export function JarvisPanel({ live }: Props) {
     setHeard('')
     line.current?.close()
     line.current = null
-    stopSpeaking()
     // The demo loop and ask() reset the state themselves; the voice line doesn't.
     if (live) setState('idle')
   }
 
-  /** Turns reading aloud on or off, and remembers it for this browser. */
-  function toggleSpeak() {
-    const next = !speakOn
-    setSpeakOn(next)
-    writeSpeak(next)
-    if (!next) stopSpeaking()
-  }
-
-  /** Closes the sheet; talking and anything being read aloud stop. */
+  /** Closes the sheet; talking stops. */
   function close() {
     stopTalk()
     setOpen(false)
@@ -294,8 +278,6 @@ export function JarvisPanel({ live }: Props) {
           text={text}
           onText={setText}
           onSend={send}
-          speakOn={speakOn}
-          onToggleSpeak={toggleSpeak}
           talking={talkingOn}
           heard={heard}
           notice={notice}
@@ -315,8 +297,6 @@ interface SheetProps {
   text: string
   onText: (v: string) => void
   onSend: (e: FormEvent) => void
-  speakOn: boolean
-  onToggleSpeak: () => void
   /** Hands-free talk is on. */
   talking: boolean
   /** What's being heard right now, while listening. */
@@ -328,11 +308,12 @@ interface SheetProps {
   onClose: () => void
 }
 
-/** The chat itself: a fixed-size native dialog, so focus and Esc come from the browser. */
-/** The sheet's orb in Talk mode: big enough to read from across the room. */
-const TALK_ORB_PX = 132
-
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onToggleSpeak, talking, heard, notice, onTalk, onStopTalk, onClose }: SheetProps) {
+/**
+ * The chat itself: a fixed-size native dialog, so focus and Esc come from
+ * the browser. One line along the bottom: the box, then Send and Talk, or
+ * Stop talking in their place while talking. Close is the × at the top right.
+ */
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard, notice, onTalk, onStopTalk, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const list = useRef<HTMLOListElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -368,8 +349,11 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onTogg
       onCancel={(e) => { e.preventDefault(); onClose() }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
+      <button type="button" className="icon-btn chat__close" aria-label="Close" onClick={onClose}>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+      </button>
       <header className="chat__head">
-        <JarvisOrb ref={orbRef} state={state} size={talking ? TALK_ORB_PX : 64} />
+        <JarvisOrb ref={orbRef} state={state} size={64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
         <p className="chat__status" role="status">{statusText(state, notice)}</p>
       </header>
@@ -400,24 +384,15 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onTogg
           autoComplete="off"
           disabled={busy}
         />
-        <button type="submit" className="btn btn--primary" disabled={busy || !text.trim()}>Send</button>
-      </form>
-      <div className="dialog__actions chat__actions">
-        {canSpeak() ? (
-          <button type="button" role="switch" aria-checked={speakOn} className="switch chat__speak" onClick={onToggleSpeak}>
-            <span className="switch__track" aria-hidden="true"><span className="switch__knob" /></span>
-            Speak replies
-          </button>
-        ) : null}
-        <div className="chat__buttons">
-          {talking ? (
-            <button type="button" className="btn btn--primary" onClick={onStopTalk}>Stop talking</button>
-          ) : (
+        {talking ? (
+          <button type="button" className="btn btn--primary" onClick={onStopTalk}>Stop talking</button>
+        ) : (
+          <>
+            <button type="submit" className="btn btn--primary" disabled={busy || !text.trim()}>Send</button>
             <button type="button" className="btn" disabled={state !== 'idle'} onClick={onTalk}>Talk</button>
-          )}
-          <button type="button" className="btn" onClick={onClose}>Close</button>
-        </div>
-      </div>
+          </>
+        )}
+      </form>
     </dialog>
   )
 }
