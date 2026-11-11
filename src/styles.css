@@ -420,6 +420,13 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .chat__form { display: flex; gap: 8px; }
 .chat__actions { justify-content: space-between; align-items: center; }
 .switch.chat__speak { margin-top: 0; }
+.chat__actions { flex-wrap: wrap; }
+.chat__buttons { display: flex; gap: 8px; margin-left: auto; }
+.chat__buttons .btn, .chat__speak { white-space: nowrap; }
+.chat__q--heard { opacity: .6; border: 1px dashed var(--glass-edge); background: rgba(255,255,255,.06); }
+/* Listening: the orb goes a touch greener so it's clear it's your turn. */
+.orb[data-state='listening'] .orb__core { filter: hue-rotate(-28deg) saturate(1.15); }
+.orb[data-state='listening'] .orb__wave { border-color: rgba(147, 214, 174, .6); }
 
 /* ---------- Dialog, blocking, toast ---------- */
 /* Fixed and centred in the window: .glass sets position: relative, which in the top layer would pin the dialog to the top of the page instead of the screen. */
@@ -553,8 +560,11 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .orb[data-state='thinking'] .orb__orbit--a { animation: orb-orbit-a 1.8s linear infinite; }
   .orb[data-state='thinking'] .orb__orbit--b { animation: orb-orbit-b 2.6s linear infinite reverse; }
   .orb[data-state='speaking'] .orb__core,
-  .orb[data-state='speaking'] .orb__halo { animation: none; }
+  .orb[data-state='speaking'] .orb__halo,
+  .orb[data-state='listening'] .orb__core,
+  .orb[data-state='listening'] .orb__halo { animation: none; }
   .orb[data-state='speaking'] .orb__wave { animation: orb-wave 1.7s ease-out infinite; }
+  .orb[data-state='listening'] .orb__wave { animation: orb-wave 2.4s ease-out infinite reverse; }
   .chat__caret { animation: caret 1s steps(2, jump-none) infinite; }
   .icon-btn[data-spinning] svg { animation: spin 1s linear infinite; }
   .toast { animation: rise .35s ease both; }

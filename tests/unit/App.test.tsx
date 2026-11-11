@@ -107,7 +107,8 @@ describe('App', () => {
     renderApp()
 
     const input = await screen.findByRole('textbox', { name: 'Question for Jarvis' })
-    expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled()
+    // An empty box offers Talk; typing swaps it for Ask.
+    expect(screen.queryByRole('button', { name: 'Ask' })).not.toBeInTheDocument()
     await user.type(input, 'Is the garage open?')
     await user.click(screen.getByRole('button', { name: 'Ask' }))
 
@@ -115,7 +116,7 @@ describe('App', () => {
     const chat = await screen.findByRole('dialog', { name: 'Jarvis' })
     expect(within(chat).getByText('Is the garage open?')).toBeInTheDocument()
     expect(await within(chat).findByText('Sample data: on the PC, Jarvis would answer "Is the garage open?" here.', {}, { timeout: 4000 })).toBeInTheDocument()
-    expect(await within(chat).findByText('Jarvis is listening')).toBeInTheDocument()
+    expect(await within(chat).findByText('Type below, or tap Talk')).toBeInTheDocument()
     const [, init] = fetch.mock.calls.find((c) => c[0] === '/api/jarvis/ask')!
     expect((init!.headers as Record<string, string>)['x-home-lab']).toBe('1')
 
@@ -125,6 +126,20 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /Open chat/ }))
     expect(within(await screen.findByRole('dialog', { name: 'Jarvis' })).getByText('Is the garage open?')).toBeInTheDocument()
   })
+
+  it('Talk without a microphone plays the demo turn hands-free until Stop talking', async () => {
+    vi.stubGlobal('fetch', fakeServer())
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Talk' }))
+    const chat = await screen.findByRole('dialog', { name: 'Jarvis' })
+    expect(within(chat).getByRole('status')).toHaveTextContent('Listening… just talk')
+    // The first demo question is "heard", asked, and answered.
+    expect(await within(chat).findByText(/you have volleyball at 7:30/, {}, { timeout: 8000 })).toBeInTheDocument()
+    await user.click(within(chat).getByRole('button', { name: 'Stop talking' }))
+    expect(await within(chat).findByRole('button', { name: 'Talk' }, { timeout: 4000 })).toBeInTheDocument()
+  }, 15_000)
 
   it('Home: turning a switch on, and a scene with no on/off', async () => {
     vi.stubGlobal('fetch', fakeServer())

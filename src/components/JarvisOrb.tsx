@@ -1,12 +1,13 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, type CSSProperties } from 'react'
 
 // Jarvis's orb: the same glacier-blue ball as the first-load loader, but
-// alive. It breathes slowly when idle, its orbits spin while Jarvis thinks,
-// and while Jarvis talks it swells with each word (pulse()) and lets go.
+// alive. It breathes slowly when idle, follows your voice while listening,
+// its orbits spin while Jarvis thinks, and while Jarvis talks it swells
+// with each word (pulse()) and lets go.
 // Only transform and opacity move, and only inside the reduced-motion
 // no-preference block, so with reduced motion it's a still, glowing orb.
 
-export type OrbState = 'idle' | 'thinking' | 'speaking'
+export type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking'
 
 export interface OrbHandle {
   /** One beat of speech: a word arriving, or a loud moment in the voice. 0..1. */
