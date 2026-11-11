@@ -261,6 +261,11 @@ On jarvis, Jarvis's `home_lab_digest` job writes the digest locally
 again whenever the page is opened (see "Fresh digest on open" above). The
 GitHub route below is the alternative for a PC without Jarvis.
 
+Jarvis can't see claude.ai, so its digest has no Claude threads. Claude in
+the project writes them hourly into `threads.json` in the same folder
+(`THREADS_FILE`, `{"updatedAt", "threads"}` in the digest's thread shape),
+and the server puts them in place of the digest's empty list.
+
 Claude project threads, today's calendar, email needing you, deploys and
 open PRs can't be read from the PC: they live in claude.ai and its
 connectors. A scheduled Claude task collects them every 15 minutes from 7 am to midnight
@@ -299,6 +304,7 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `DIGEST_TOKEN` | *(empty)* | Fine-grained GitHub token, **Contents: Read-only on that one repo**. **Secret.** Empty (and no `DIGEST_FILE`) turns the cloud panels off. |
 | `SHELL_USERS` | *(empty)* | Tailscale logins allowed to use the Shell page, comma-separated. Empty turns the shell off. |
 | `SHELL_URL` | `http://127.0.0.1:7681` | Where ttyd listens (`deploy/ttyd.service`). |
+| `THREADS_FILE` | *(empty)* | Claude threads file whose `threads` replace the digest's. `docker-compose.yml` sets it to `/digest/threads.json`. |
 | `DIGEST_FILE` | *(empty)* | Read the digest from this file on the PC instead of GitHub (for a digest Jarvis writes locally). No token needed. `docker-compose.yml` sets it to `/digest/digest.json`, mounted read-only from `~/.local/share/home-lab-digest/out`, where Jarvis's `home_lab_digest` job writes every 15 minutes, 7 am to midnight. |
 | `SKIP_CALENDARS` | `Wong Fam` | Calendars never shown, comma-separated. Wong Fam is shared with family and holds their plans. |
 | `WINDOWS_DRIVE` | `/mnt/c` | Where WSL mounts C:. |

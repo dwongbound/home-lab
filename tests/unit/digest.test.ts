@@ -60,6 +60,28 @@ describe('digest reader', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('takes the threads from THREADS_FILE when it reads, and keeps the digest without it', async () => {
+    const threads = [{ id: 't1', title: 'Home Lab Page', state: 'working', lastActivityAt: '2026-11-11T00:33:38Z', url: 'https://claude.ai/x' }]
+    const files: Record<string, string> = {
+      '/digest/digest.json': JSON.stringify({ ...SAMPLE, threads: [] }),
+      '/digest/threads.json': JSON.stringify({ updatedAt: '2026-11-11T00:40:00Z', threads }),
+    }
+    const readFile = vi.fn(async (path: string) => {
+      if (!(path in files)) throw new Error('ENOENT')
+      return files[path]
+    })
+    const config = loadConfig({ DIGEST_FILE: '/digest/digest.json', THREADS_FILE: '/digest/threads.json' })
+    const digest: any = await createDigestReader(config, { readFile, now: () => 0 }).read()
+    expect(digest.threads).toEqual(threads)
+    // No threads file yet, or a broken one: the digest's own threads stay.
+    delete files['/digest/threads.json']
+    const without: any = await createDigestReader(config, { readFile, now: () => 0 }).read()
+    expect(without.threads).toEqual([])
+    files['/digest/threads.json'] = '{"threads":'
+    const broken: any = await createDigestReader(config, { readFile, now: () => 0 }).read()
+    expect(broken.threads).toEqual([])
+  })
+
   it('drops events from skipped calendars (Wong Fam by default)', async () => {
     const event = (calendar: string) => ({ id: calendar, title: 'x', start: '', end: '', allDay: false, calendar })
     const digest = { ...SAMPLE, calendar: [event('Personal'), event('Wong Fam'), event('wong fam')] }

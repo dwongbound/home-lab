@@ -9,6 +9,11 @@
 // DIGEST_FILE switches it to a file on this PC instead (for a digest that
 // Jarvis writes locally); then no GitHub token is needed.
 //
+// THREADS_FILE is a second, small file with just Dylan's Claude threads
+// (`{updatedAt, threads}`), which Claude in his project writes onto this PC
+// every hour. Jarvis can't see claude.ai, so its digest has no threads;
+// when this file is there its threads replace the digest's.
+//
 // Calendars named in SKIP_CALENDARS are dropped here, whoever wrote the
 // digest (Dylan's "Wong Fam" calendar is his parents' plans, not his).
 
@@ -44,6 +49,19 @@ export function createDigestReader(config, deps = {}) {
     return { ...digest, calendar }
   }
 
+  /** The digest with the threads from THREADS_FILE in place of its own, when that file reads. */
+  async function withThreads(digest) {
+    if (!config.threadsFile) return digest
+    try {
+      const extra = JSON.parse(await readFileFn(config.threadsFile, 'utf8'))
+      if (!Array.isArray(extra?.threads)) return digest
+      return { ...digest, threads: extra.threads }
+    } catch {
+      // No file yet, or caught mid-write: keep the digest's own threads.
+      return digest
+    }
+  }
+
   /** Downloads (or reads, with DIGEST_FILE) and parses the digest. Throws on any failure. */
   async function download() {
     if (config.digestFile) return JSON.parse(await readFileFn(config.digestFile, 'utf8'))
@@ -67,7 +85,7 @@ export function createDigestReader(config, deps = {}) {
       if (!config.digestToken && !config.digestFile) return null
       if (cached !== null && now() - cachedAt < CACHE_MS) return cached
       try {
-        cached = withoutSkipped(await download())
+        cached = await withThreads(withoutSkipped(await download()))
         cachedAt = now()
       } catch {
         // Keep showing the last good copy; its updatedAt says how old it is.

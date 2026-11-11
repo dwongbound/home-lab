@@ -45,6 +45,9 @@ export function loadConfig(env = process.env) {
     digestToken: env.DIGEST_TOKEN ?? '',
     // Or a digest file on this PC (written by Jarvis); no token needed.
     digestFile: env.DIGEST_FILE ?? '',
+    // Dylan's Claude threads, written onto this PC hourly by Claude in his
+    // project; they replace the digest's (empty) threads.
+    threadsFile: env.THREADS_FILE ?? '',
     // Calendars never shown, comma-separated. "Wong Fam" is shared with
     // Dylan's parents and holds their plans.
     skipCalendars: (env.SKIP_CALENDARS ?? 'Wong Fam').split(',').map((s) => s.trim()).filter(Boolean),
