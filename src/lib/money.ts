@@ -17,9 +17,14 @@ export function cleanText(text: string): string {
 // Categories that mean "not sorted yet".
 const UNSORTED = new Set(['', 'other', 'uncategorized', 'uncategorised'])
 
-/** A purchase Dylan still has to put in a real category in Copilot. Money coming in doesn't count. */
+/**
+ * A purchase Dylan still has to put in a real category in Copilot. Money
+ * coming in doesn't count, and neither does money moved between his own
+ * accounts (Copilot's internal transfers).
+ */
 export function needsCategory(t: MoneyTransaction): boolean {
   if (t.amount <= 0) return false
+  if (t.type === 'transfer') return false
   return UNSORTED.has(t.category.trim().toLowerCase())
 }
 

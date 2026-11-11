@@ -75,7 +75,9 @@ the token on the PC can read only that repo.
   number. `netWorth` and the budgets may be `null` if Copilot doesn't say.
   `categories` is this month's top six by spend; `recent` up to 40
   transactions from the last 30 days, newest first, with money coming in as a negative `amount`
-  and optional `account`, `accountId`, `pending` and `note`. Keep Copilot's own category
+  and optional `account`, `accountId`, `pending`, `note` and `type` (Copilot's `REGULAR`,
+  `INCOME` or `INTERNAL_TRANSFER` as `regular`, `income` or `transfer`; transfers never ask
+  for a category). Keep Copilot's own category
   (the page flags "Other" and empty ones for sorting) and keep $0 accounts (the page tucks them away);
   `flags` at most three things worth a look (a big or unusual charge, a new
   subscription, a budget nearly spent, a low cash balance). Never account
@@ -99,7 +101,7 @@ Kept here so it's reviewed like code. If it changes, update the task too.
 > dwongbound/worship-scheduler, vff-app and home-lab, with CI state), and
 > Copilot (balances by account, net worth, this month's spending against
 > the same point last month and the budget, the top six categories, the
-> last 10 transactions, and up to three things worth a look; never account
+> last 10 transactions with Copilot's type, and up to three things worth a look; never account
 > numbers) as `money`. If a
 > source fails, leave its list empty and carry on. Don't post, message, email
 > or change anything else. When the commit is pushed, resolve this thread.

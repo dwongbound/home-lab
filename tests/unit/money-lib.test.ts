@@ -21,6 +21,8 @@ describe('money rules', () => {
     expect(needsCategory(tx({ category: ' uncategorized ' }))).toBe(true)
     expect(needsCategory(tx({ category: '' }))).toBe(true)
     expect(needsCategory(tx({ category: 'Other', amount: -50 }))).toBe(false)
+    // A move between his own accounts never needs a category.
+    expect(needsCategory(tx({ category: '', type: 'transfer' }))).toBe(false)
     expect(needsCategory(tx({ category: 'Food' }))).toBe(false)
   })
 
