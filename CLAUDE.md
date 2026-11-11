@@ -33,7 +33,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
 - **Today:** live `today` = Jarvis `GET /schedule/today`; Overview merges it with the calendar in `src/lib/agenda.ts`. Service alerts go in `AlertBanner` (every page) via `activeAlerts`.
 - **Talk:** `server/talk.mjs` proxies the `/api/jarvis/talk` WebSocket (wired in `server/index.mjs`) to Jarvis `/talk/ws?chat=web` (Tailscale login + same-origin `Origin`);
   client `src/lib/talk.ts` (worklet resamples mic to 16 kHz PCM16, plays his PCM, sends `idle`; `partial` events = live words while you talk). Mock data → demo loop.
-  Full-screen Talk page at `/talk` (or `#talk`): `src/views/TalkPage.tsx` (picked in `src/main.tsx` via `src/lib/talkPage.ts`), `JarvisPanel page`, own `public/talk.webmanifest`.
+  Full-screen, voice-only Talk page at `/talk` (or `#talk`; one Talk/Pause button, no typing): `src/views/TalkPage.tsx` (picked in `src/main.tsx` via `src/lib/talkPage.ts`), `JarvisPanel page`, own `public/talk.webmanifest`.
 - **Shell:** `server/shell.mjs` proxies `/shell/` (HTTP + WebSocket upgrade, wired in `server/index.mjs`)
   to ttyd on 127.0.0.1:7681 (`deploy/ttyd.service`, tmux) only for `SHELL_USERS` Tailscale logins with a same-origin `Origin`.
 - **Sources:** `server/sources/mock.mjs` (default; Pacific-time schedule, remembers

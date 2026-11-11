@@ -720,7 +720,7 @@ test('Settings Voice plays a sample, and saves a voice, speed and blend', async 
   await expect(panel.getByRole('button', { name: 'Save' })).toBeDisabled()
 })
 
-test('/talk is only the chat, edge to edge with no pop-up look: Talk starts it, Close goes to the dashboard', async ({ page }) => {
+test('/talk is voice only and edge to edge: no typing, one button talks and pauses, Close goes to the dashboard', async ({ page }) => {
   await page.goto('/talk')
   const chat = page.getByRole('dialog', { name: 'Jarvis' })
   await expect(chat).toBeVisible()
@@ -741,10 +741,19 @@ test('/talk is only the chat, edge to edge with no pop-up look: Talk starts it, 
   const manifest = await (await page.request.get('/talk.webmanifest')).json()
   expect(manifest.start_url).toBe('./talk')
 
+  // Voice only: nowhere to type and nothing to send.
+  await expect(chat.getByRole('textbox')).toHaveCount(0)
+  await expect(chat.getByRole('button', { name: 'Send' })).toHaveCount(0)
+
   // iOS needs a tap before the microphone, so Talk waits for one (sample data plays the demo).
   await chat.getByRole('button', { name: 'Talk', exact: true }).click()
   await expect(chat.getByRole('status')).toHaveText('Listening… just talk')
-  await chat.getByRole('button', { name: 'Stop talking' }).click()
+  // The same button pauses, and tapping it again picks back up.
+  await chat.getByRole('button', { name: 'Pause', exact: true }).click()
+  await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })
+  await chat.getByRole('button', { name: 'Talk', exact: true }).click()
+  await expect(chat.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
+  await chat.getByRole('button', { name: 'Pause', exact: true }).click()
   await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })
   // Still the whole screen after talking stops.
   expect((await chat.boundingBox())!.width).toBe(viewport.width)
