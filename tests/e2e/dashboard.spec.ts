@@ -524,6 +524,10 @@ test('asking Jarvis opens the chat, and Talk goes hands-free until Stop talking'
   // Sample data has no Jarvis to talk to, so Talk plays the demo turn.
   await chat.getByRole('button', { name: 'Talk', exact: true }).click()
   await expect(chat.getByRole('status')).toHaveText('Listening… just talk')
+  // Talk mode fills the width of the screen.
+  const viewport = page.viewportSize()!
+  const box = (await chat.boundingBox())!
+  expect(box.width).toBeGreaterThan(viewport.width - 40)
   await expect(chat.getByText(/you have volleyball at 7:30/).last()).toBeVisible({ timeout: 15_000 })
   await chat.getByRole('button', { name: 'Stop talking' }).click()
   await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })

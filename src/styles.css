@@ -412,6 +412,20 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .dialog.dialog--chat { width: min(580px, calc(100vw - 32px)); height: min(680px, calc(100dvh - 32px)); grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 14px; }
 .chat__head { display: grid; justify-items: center; gap: 4px; padding-top: 34px; }
 .chat__head .orb { margin-bottom: 26px; }
+/* Talk mode: the sheet fills the screen (one fixed size, never animated: it's glass)
+   and the orb gets room to swing. */
+.dialog.dialog--chat[data-talking] { width: calc(100vw - 32px); max-width: none; height: calc(100dvh - 32px); max-height: none; }
+.dialog--chat[data-talking] .chat__head { padding-top: 70px; }
+.dialog--chat[data-talking] .chat__head .orb { margin-bottom: 70px; }
+.dialog--chat[data-talking] .chat__turns { width: min(100%, 860px); justify-self: center; }
+/* Phones: less room above and below the orb, so the conversation still fits. */
+@media (max-width: 600px) {
+  .dialog--chat[data-talking] .chat__head { padding-top: 34px; }
+  .dialog--chat[data-talking] .chat__head .orb { --orb: 96px !important; margin-bottom: 40px; }
+}
+/* While he speaks the orb follows his voice hard: the core swells more and the halo blooms. */
+.orb[data-state='speaking'] .orb__core { transform: scale(calc(1 + var(--level) * .45)); }
+.orb[data-state='speaking'] .orb__halo { opacity: calc(.55 + var(--level) * .45); transform: scale(calc(1 + var(--level) * 1.1)); }
 .chat__status { color: var(--frost-dim); font-size: 14px; }
 .chat__turns { list-style: none; margin: 0; padding: 0 2px 0 0; display: grid; align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
 .chat__turn { display: grid; gap: 8px; }
@@ -566,7 +580,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .orb[data-state='speaking'] .orb__halo,
   .orb[data-state='listening'] .orb__core,
   .orb[data-state='listening'] .orb__halo { animation: none; }
-  .orb[data-state='speaking'] .orb__wave { animation: orb-wave 1.7s ease-out infinite; }
+  .orb[data-state='speaking'] .orb__wave { animation: orb-wave-big 1.1s ease-out infinite; }
   .orb[data-state='listening'] .orb__wave { animation: orb-wave 2.4s ease-out infinite reverse; }
   .chat__caret { animation: caret 1s steps(2, jump-none) infinite; }
   .icon-btn[data-spinning] svg { animation: spin 1s linear infinite; }
@@ -682,6 +696,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 @keyframes orb-halo { 0%, 100% { opacity: .5; transform: scale(.92); } 55% { opacity: .95; transform: scale(1.08); } }
 @keyframes orb-orbit-a { from { transform: rotateX(66deg) rotateZ(0deg); } to { transform: rotateX(66deg) rotateZ(360deg); } }
 @keyframes orb-orbit-b { from { transform: rotateY(62deg) rotateZ(30deg); } to { transform: rotateY(62deg) rotateZ(390deg); } }
+@keyframes orb-wave-big { from { opacity: .85; transform: scale(1); } to { opacity: 0; transform: scale(2.9); } }
 @keyframes orb-wave { from { opacity: .7; transform: scale(1); } to { opacity: 0; transform: scale(2.1); } }
 @keyframes caret { from { opacity: 1; } to { opacity: 0; } }
 @keyframes think-breathe { 0%, 100% { transform: scale(.92); } 50% { transform: scale(1.06); } }

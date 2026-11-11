@@ -329,6 +329,9 @@ interface SheetProps {
 }
 
 /** The chat itself: a fixed-size native dialog, so focus and Esc come from the browser. */
+/** The sheet's orb in Talk mode: big enough to read from across the room. */
+const TALK_ORB_PX = 132
+
 function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onToggleSpeak, talking, heard, notice, onTalk, onStopTalk, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const list = useRef<HTMLOListElement>(null)
@@ -359,12 +362,14 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onTogg
     <dialog
       ref={ref}
       className="dialog dialog--chat glass"
+      // Talk mode takes the whole screen (Dylan, 2026-11-11), with a bigger orb.
+      data-talking={talking ? '' : undefined}
       aria-labelledby="chat-title"
       onCancel={(e) => { e.preventDefault(); onClose() }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <header className="chat__head">
-        <JarvisOrb ref={orbRef} state={state} size={64} />
+        <JarvisOrb ref={orbRef} state={state} size={talking ? TALK_ORB_PX : 64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
         <p className="chat__status" role="status">{statusText(state, notice)}</p>
       </header>
