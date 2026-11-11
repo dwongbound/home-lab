@@ -23,6 +23,9 @@ services:
       # The calendar, email and money digest that Jarvis's home_lab_digest job
       # writes every 15 minutes (mounted below).
       DIGEST_FILE: /digest/digest.json
+      # Claude project threads, written into the same folder hourly by
+      # Claude in the project (Jarvis can't see claude.ai).
+      THREADS_FILE: /digest/threads.json
     volumes:
       # Free space on C:, read-only.
       - /mnt/c:/mnt/c:ro
