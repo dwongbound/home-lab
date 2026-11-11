@@ -716,6 +716,7 @@ test('/talk is voice only and edge to edge: no typing, one button talks and paus
   // Voice only: nowhere to type and nothing to send.
   await expect(chat.getByRole('textbox')).toHaveCount(0)
   await expect(chat.getByRole('button', { name: 'Send' })).toHaveCount(0)
+  await expect(chat.getByRole('status')).toHaveText('Tap Talk to start')
 
   // iOS needs a tap before the microphone, so Talk waits for one (sample data plays the demo).
   await chat.getByRole('button', { name: 'Talk', exact: true }).click()
