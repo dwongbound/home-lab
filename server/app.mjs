@@ -6,6 +6,7 @@
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
+//   POST /api/money/picks           {"op": "pick" | "clear" | "remind", ...} -> Money page category picks
 //
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
@@ -119,6 +120,22 @@ export function createApi(source) {
     return sendJson(res, 200, await source.refreshDigest({ login }))
   }
 
+  /**
+   * Saves, clears or re-times a category picked on the Money page. Copilot
+   * is read-only, so these wait on the PC until Dylan applies them there.
+   */
+  async function handleMoneyPicks(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    if (body === null || typeof body !== 'object') {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"op": "pick", "id": "...", "category": "..."}' })
+    }
+    const result = await source.money(body)
+    return sendJson(res, result.ok ? 200 : 400, result)
+  }
+
   return async function api(req, res, next) {
     const { pathname } = new URL(req.url ?? '/', 'http://localhost')
     if (!pathname.startsWith('/api/')) {
@@ -142,6 +159,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/digest/refresh') {
         return await handleDigestRefresh(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/money/picks') {
+        return await handleMoneyPicks(req, res)
       }
       return sendJson(res, 404, { error: 'Not found' })
     } catch (err) {

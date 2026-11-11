@@ -2,9 +2,10 @@ import { useState } from 'react'
 import type { ActiveAlert } from '../lib/agenda'
 
 // A banner across the top of every page while something needs Dylan right
-// now (a service down or not running right). It isn't part of the day's
-// list, so it never pushes his calendar around. Tapping it opens Services;
-// Close hides it until the set of alerts changes.
+// now (a service down, or Money page picks he asked to be reminded about).
+// It isn't part of the day's list, so it never pushes his calendar around.
+// Tapping it opens the first alert's page; Close hides it until the set of
+// alerts changes.
 
 /** The alerts as one key, so a new or different alert brings the banner back. */
 function keyOf(alerts: ActiveAlert[]): string {
@@ -21,7 +22,7 @@ export function AlertBanner({ alerts }: { alerts: ActiveAlert[] }) {
   return (
     <div className="banner" role="alert">
       <span className="attention__mark" aria-hidden="true">!</span>
-      <a className="banner__text" href="#services">
+      <a className="banner__text" href={alerts[0].href}>
         {alerts[0].text}
         {more ? <span className="banner__more">{more}</span> : null}
       </a>

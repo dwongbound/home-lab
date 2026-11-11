@@ -48,6 +48,10 @@ export function loadConfig(env = process.env) {
     // Dylan's Claude threads, written onto this PC hourly by Claude in his
     // project; they replace the digest's (empty) threads.
     threadsFile: env.THREADS_FILE ?? '',
+    // Where the Money page keeps categories Dylan picked for purchases
+    // Copilot left unsorted, until he applies them in Copilot. Empty keeps
+    // them in memory (gone on restart).
+    moneyPicksFile: env.MONEY_PICKS_FILE ?? '',
     // Calendars never shown, comma-separated. "Wong Fam" is shared with
     // Dylan's parents and holds their plans.
     skipCalendars: (env.SKIP_CALENDARS ?? 'Wong Fam').split(',').map((s) => s.trim()).filter(Boolean),

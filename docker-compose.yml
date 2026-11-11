@@ -26,6 +26,9 @@ services:
       # Claude project threads, written into the same folder hourly by
       # Claude in the project (Jarvis can't see claude.ai).
       THREADS_FILE: /digest/threads.json
+      # Categories picked on the Money page, waiting to be applied in
+      # Copilot (mounted read-write below, so they survive rebuilds).
+      MONEY_PICKS_FILE: /data/money-picks.json
     volumes:
       # Free space on C:, read-only.
       - /mnt/c:/mnt/c:ro
@@ -34,6 +37,8 @@ services:
       # Jarvis's digest, read-only. The folder, not the file: Jarvis replaces
       # the file by renaming a new one over it, which a file mount wouldn't see.
       - ${HOME}/.local/share/home-lab-digest/out:/digest:ro
+      # The page's own saved state (Money category picks), read-write.
+      - ${HOME}/.local/share/home-lab/data:/data
     devices:
       # The GPU as WSL exposes it, so nvidia-smi can read memory use.
       - /dev/dxg

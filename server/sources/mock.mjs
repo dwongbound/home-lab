@@ -5,6 +5,8 @@
 // It also keeps a tiny bit of state (is Gemma loaded?) so the Unload and
 // Load buttons visibly do something in the preview.
 
+import { createPickStore } from '../money-picks.mjs'
+
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const REQUESTS_PER_DAY = [14, 22, 9, 31, 26, 7, 4]
 const PC_TIME_ZONE = 'America/Los_Angeles'
@@ -109,6 +111,7 @@ function mockDigest(t, minutesAgo) {
         { id: 'x2', date: minutesAgo(1500), merchant: 'Shell', category: 'Transport', amount: 48.02, account: 'Sapphire', accountId: 'm3', pending: true },
         { id: 'x3', date: minutesAgo(2900), merchant: 'Payroll', category: 'Income', amount: -3450, account: 'Checking', accountId: 'm1' },
         { id: 'x4', date: minutesAgo(4300), merchant: 'Spotify', category: 'Subscriptions', amount: 11.99, account: 'Sapphire', accountId: 'm3' },
+        { id: 'x6', date: minutesAgo(5800), merchant: 'Amazon', category: '', amount: 34.5, account: 'Sapphire', accountId: 'm3' },
       ],
       flags: [
         { id: 'f1', text: 'Shopping is at 97% of its budget with 20 days to go' },
@@ -150,6 +153,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
       { id: 'scene.movie_night', name: 'Movie night', kind: 'scene', state: 'scening', available: true },
     ],
   }
+  // Categories picked on the Money page, in memory.
+  const picks = createPickStore({ now })
 
   return {
     kind: 'mock',
@@ -169,6 +174,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         today: i === todayIndex,
       }))
 
+      const cloud = withRefresh(mockDigest(t, minutesAgo), state)
       return {
         generatedAt: t.toISOString(),
         source: 'mock',
@@ -201,13 +207,19 @@ export function createMockSource({ now = () => new Date() } = {}) {
           { id: 'jarvis', name: 'Jarvis', detail: 'Running, code changed since start', status: 'degraded', latencyMs: 22, url: 'https://jarvis.snakebird-ph.ts.net:8443' },
         ],
         model: { name: 'Gemma 12B', loaded, vramGb: loaded ? 10.1 : 0, loadSeconds: 168 },
-        cloud: withRefresh(mockDigest(t, minutesAgo), state),
+        cloud,
         home: {
           devices: state.home.map((d) => ({ ...d })),
           weather: { condition: 'partlycloudy', temperature: 61, unit: '°F' },
           sun: { rising: atPacificTime(t, 6, 41), setting: atPacificTime(t, 16, 52) },
         },
+        moneyPicks: await picks.read(cloud.money.recent),
       }
+    },
+
+    /** Saves, clears or re-times Money page category picks, in memory. */
+    async money(change) {
+      return picks.change(change)
     },
 
     /** Pretends to load or unload Gemma, taking long enough to see the spinner. */

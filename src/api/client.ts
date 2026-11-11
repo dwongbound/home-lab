@@ -1,12 +1,12 @@
 // The page's only door to data. Components call useSnapshot(), runAction(),
-// askJarvis(), controlDevice() and refreshDigest(); nothing else in src/ knows where the
+// askJarvis(), controlDevice(), refreshDigest() and changeMoneyPicks(); nothing else in src/ knows where the
 // numbers come from.
 //
 // Normally both go to the small Node server on the PC (server/app.mjs).
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, DataSource, DigestRefresh, HomeCommand, Snapshot } from '../types'
+import type { ActionName, ActionResult, DataSource, DigestRefresh, HomeCommand, MoneyPickChange, Snapshot } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -124,5 +124,23 @@ export async function refreshDigest(): Promise<DigestRefresh> {
     return await res.json()
   } catch {
     return { running: false, lastWrite: null }
+  }
+}
+
+/** Saves, clears or re-times a Money page category pick. */
+export async function changeMoneyPicks(change: MoneyPickChange): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.money(change)
+  }
+  try {
+    const res = await fetch('/api/money/picks', {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify(change),
+    })
+    return await res.json()
+  } catch {
+    return { ok: false, message: 'The server is not answering' }
   }
 }

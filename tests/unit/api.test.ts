@@ -107,3 +107,21 @@ describe('POST /api/digest/refresh', () => {
     expect(seen).toEqual({ login: 'dylan@example.com' })
   })
 })
+
+describe('POST /api/money/picks', () => {
+  it('needs the page header, saves a pick, and shows it in the snapshot', async () => {
+    const api = createApi(createMockSource())
+    const body = JSON.stringify({ op: 'pick', id: 'x5', category: 'Lessons', merchant: 'Venmo Alex', date: '2026-11-10T10:00:00Z', amount: 120 })
+    expect((await callApi(api, 'POST', '/api/money/picks', {}, body)).statusCode).toBe(403)
+    const res = await callApi(api, 'POST', '/api/money/picks', ACTION_HEADER, body)
+    expect(res.statusCode).toBe(200)
+    const snap = (await callApi(api, 'GET', '/api/snapshot')).json()
+    expect(snap.moneyPicks.picks.map((p: { category: string }) => p.category)).toEqual(['Lessons'])
+  })
+
+  it('answers 400 to a bad change', async () => {
+    const api = createApi(createMockSource())
+    expect((await callApi(api, 'POST', '/api/money/picks', ACTION_HEADER, 'nope')).statusCode).toBe(400)
+    expect((await callApi(api, 'POST', '/api/money/picks', ACTION_HEADER, '{"op":"pick"}')).statusCode).toBe(400)
+  })
+})

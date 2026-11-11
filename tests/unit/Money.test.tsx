@@ -44,7 +44,7 @@ describe('Money', () => {
   it('flags purchases in Other, tidies names, and tucks away empty accounts', async () => {
     const user = userEvent.setup()
     render(<Money data={await snapshot()} now={now} />)
-    expect(screen.getByRole('link', { name: /One purchase needs a category/ })).toHaveAttribute('href', '#money/sort')
+    expect(screen.getByRole('link', { name: /2 purchases need a category/ })).toHaveAttribute('href', '#money/sort')
     const venmo = screen.getByRole('link', { name: /Venmo Alex/ })
     expect(venmo).toHaveAttribute('href', '#money/t/x5')
     expect(venmo).toHaveClass('row-link--attention')
@@ -77,5 +77,41 @@ describe('Money', () => {
     const data = await snapshot()
     render(<Money data={{ ...data, cloud: { ...data.cloud!, money: undefined } }} now={now} />)
     expect(screen.getByText(/starts reading your Copilot connector/)).toBeInTheDocument()
+  })
+})
+
+describe('Money category picks', () => {
+  const pick = { id: 'x5', category: 'Lessons', merchant: 'Venmo Alex', date: '2026-11-10T08:00:00Z', amount: 120, pickedAt: '2026-11-10T09:00:00Z' }
+
+  it('marks a picked purchase and lists it, by category, in Ready for Copilot', async () => {
+    const data = await snapshot()
+    data.moneyPicks = { picks: [pick], remindAt: '2026-11-11T04:00:00Z' }
+    window.location.hash = '#money'
+    const { unmount } = render(<Money data={data} now={now} />)
+    expect(screen.getByRole('link', { name: /One purchase ready for Copilot/ })).toHaveAttribute('href', '#money/ready')
+    // Only Amazon is left to pick.
+    expect(screen.getByRole('link', { name: /One purchase needs a category/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Venmo Alex/ })).toHaveTextContent('Lessons, to apply in Copilot')
+    unmount()
+
+    window.location.hash = '#money/ready'
+    render(<Money data={data} now={now} />)
+    const dialog = screen.getByRole('dialog', { name: 'Ready for Copilot' })
+    expect(dialog).toHaveTextContent('Lessons')
+    expect(dialog).toHaveTextContent('Venmo Alex')
+    expect(screen.getByRole('button', { name: 'Done: Venmo Alex' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All done in Copilot' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Remind me' })).toHaveTextContent('Tomorrow')
+    window.location.hash = ''
+  })
+
+  it('offers Copilot categories for an unsorted purchase', async () => {
+    window.location.hash = '#money/t/x6'
+    render(<Money data={await snapshot()} now={now} />)
+    const group = screen.getByRole('group', { name: 'Category' })
+    expect(group).toHaveTextContent('Food & drink')
+    expect(group).toHaveTextContent('Subscriptions')
+    expect(screen.getByRole('textbox', { name: 'Another category' })).toBeInTheDocument()
+    window.location.hash = ''
   })
 })

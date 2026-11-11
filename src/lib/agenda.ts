@@ -1,3 +1,4 @@
+import { pickReminderDue } from './money'
 import type { CalendarEvent, RunStatus, Snapshot, TimelineItem } from '../types'
 import { clock } from './format'
 
@@ -22,14 +23,24 @@ function fromEvent(e: CalendarEvent, now: Date): TimelineItem {
   return { id: `cal-${e.id}`, at: e.start, title: e.title, detail, status: eventStatus(e, now), source: 'calendar', allDay: e.allDay }
 }
 
-export interface ActiveAlert { id: string; text: string }
+/** Something for the banner, and where tapping it goes. */
+export interface ActiveAlert { id: string; text: string; href: string }
 
-/** Services not running right, for the banner. */
-export function activeAlerts(s: Snapshot): ActiveAlert[] {
+/**
+ * For the banner: Money page picks whose reminder has come (Dylan asked to
+ * be reminded to apply them in Copilot), then services not running right.
+ */
+export function activeAlerts(s: Snapshot, now: Date = new Date()): ActiveAlert[] {
   const alerts: ActiveAlert[] = []
+  if (pickReminderDue(s.moneyPicks, now)) {
+    const n = s.moneyPicks.picks.length
+    let text = `${n} purchases ready to recategorize in Copilot`
+    if (n === 1) text = 'One purchase ready to recategorize in Copilot'
+    alerts.push({ id: 'money-picks', text, href: '#money/ready' })
+  }
   for (const sv of s.services) {
     if (sv.status !== 'degraded' && sv.status !== 'down') continue
-    alerts.push({ id: sv.id, text: `${sv.name}: ${sv.detail}` })
+    alerts.push({ id: sv.id, text: `${sv.name}: ${sv.detail}`, href: '#services' })
   }
   return alerts
 }
