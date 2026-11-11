@@ -34,6 +34,10 @@ describe('motion', () => {
     expect(css.replace(block, '')).not.toMatch(/\.backdrop[^{]*\{[^}]*transition/)
   })
 
+  it('leaves the top bar alone on landing: it is already showing over the loader', () => {
+    expect(motionBlock(css)).not.toMatch(/data-landing\][^{]*(topbar|pill)/)
+  })
+
   it('fades panel contents in place on landing, without moving them', () => {
     const block = motionBlock(css)
     expect(block).toMatch(/\.shell\[data-landing\] \.main \.glass > \*\s*\{\s*animation: land-fade /)
@@ -68,7 +72,13 @@ describe('motion', () => {
   it('the landing frosts the glass without fading or moving it', () => {
     const frost = css.slice(css.indexOf('@keyframes land-frost'))
     const body = frost.slice(0, frost.indexOf('\n}') + 2)
-    expect(body).toContain('backdrop-filter')
-    expect(body).not.toMatch(/opacity|transform/)
+    // Growing the blur made Safari re-snap the sky behind every frame (a shake).
+    expect(body).not.toMatch(/opacity|transform|backdrop-filter/)
+    // The tint fades through registered colours: `background` can't blend
+    // from a colour to the glass gradient, so it snapped dark mid-landing.
+    expect(body).not.toMatch(/background/)
+    expect(body).toMatch(/--glass: transparent; --glass-strong: transparent/)
+    expect(css).toMatch(/@property --glass \{ syntax: '<color>'/)
+    expect(css).toMatch(/@property --glass-strong \{ syntax: '<color>'/)
   })
 })
