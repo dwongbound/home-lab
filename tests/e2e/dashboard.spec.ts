@@ -10,7 +10,7 @@
 //   - I swipe sideways to change tab.
 //   - In Safari, changing tab never shows the panels dark before they frost.
 //   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
-//   - In Settings I see what Jarvis remembers, teach him something, forget it, and search past chats.
+//   - In Settings, under Memory, I see what Jarvis remembers, teach him something, forget it, and search past chats.
 import { expect, test } from '@playwright/test'
 
 test('overview shows the PC at a glance', async ({ page }) => {
@@ -530,9 +530,9 @@ test('asking Jarvis opens the chat, and Talk goes hands-free until Stop talking'
   await expect(chat).toHaveCount(0)
 })
 
-test('Settings shows what Jarvis remembers; I teach him something, forget it, and search past chats', async ({ page }) => {
+test('Settings Memory shows what Jarvis remembers; I teach him something, forget it, and search past chats', async ({ page }) => {
   await page.goto('/#preferences')
-  const panel = page.getByRole('region', { name: 'What Jarvis remembers' })
+  const panel = page.getByRole('region', { name: 'Memory' })
   await expect(panel.getByRole('list', { name: 'Things Jarvis remembers' })).toBeVisible()
 
   // Teach him something with a name unique to this run (the sample server is shared).
