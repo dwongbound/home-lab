@@ -396,11 +396,13 @@ test('while swiping, the page follows the finger, and springs back from a short 
   const y = Math.round(height * 0.6)
   const title = page.locator('.main .hero').first()
   const shift = () => title.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).m41 + (parseFloat(getComputedStyle(el).translate.split(' ')[0]) || 0))
-  // Finger halfway across a short way: the title moves with it, the glass doesn't.
+  // Finger halfway across a short way: the title and whole panels move with it.
   await dragFinger(page, Math.round(width * 0.6), Math.round(width * 0.6) - 50, y)
   expect(await shift()).toBeLessThan(-10)
   const panel = page.locator('.main .glass').first()
-  expect(await panel.evaluate((el) => getComputedStyle(el).translate)).toBe('none')
+  expect(parseFloat(await panel.evaluate((el) => getComputedStyle(el).translate))).toBeLessThan(-10)
+  // Still frosted while it moves.
+  expect(await panel.evaluate((el) => getComputedStyle(el).backdropFilter)).toContain('blur(')
   // Too short to count: it springs back and stays on Home.
   await liftFinger(page, Math.round(width * 0.6) - 50, y)
   await expect.poll(() => page.locator('main.main').getAttribute('data-swipe')).toBeNull()
@@ -460,7 +462,7 @@ test('swiping sideways changes tab, and not inside a text box', async ({ page },
   await expect(page.getByRole('heading', { level: 1, name: /Dylan/ })).toBeVisible()
 })
 
-test('in Safari, changing tab keeps the glass frosted and slides the contents in', async ({ browser }) => {
+test('in Safari, changing tab keeps the glass frosted and slides the panels in', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 1194, height: 834 },
     userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1',

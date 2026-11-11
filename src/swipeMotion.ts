@@ -1,10 +1,10 @@
 // What a swipe looks like while the finger is down and just after: the
-// page's contents follow the finger and fade a little, then either glide
+// page's panels follow the finger and fade a little, then either glide
 // out the way you swiped (and the new page glides in from the other side,
 // see playEnter in useHashView.ts) or spring back if the swipe was too short.
 //
-// Only what's inside each glass panel moves (and the page title). The
-// panels stay put, so their blur is never lost, Safari included. The
+// Whole panels move (with `translate`, never fading the glass) and so
+// does the page title; what's inside each panel fades a little. The
 // numbers live in two CSS variables on <main>, read by styles.css; the
 // phase is <main data-swipe="drag|leave|settle">.
 

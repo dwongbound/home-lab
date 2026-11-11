@@ -139,8 +139,8 @@ to Schedule. On touch screens, swipe left or right to change tab: the page follo
 
 Safari (every browser on iPad and iPhone) leaves the frosted blur out of
 view-transition snapshots, so there tabs change without one: the page swaps
-at once and the panels' contents slide in from the side, keeping the glass
-frosted the whole time. Chrome keeps the crossfade.
+at once and the panels slide in from the side (moved, never faded), keeping
+the glass frosted the whole time. Chrome keeps the crossfade.
 
 ### States every page handles
 

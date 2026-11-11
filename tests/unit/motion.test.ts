@@ -34,14 +34,29 @@ describe('motion', () => {
     expect(css.replace(block, '')).not.toMatch(/\.backdrop[^{]*\{[^}]*transition/)
   })
 
+  it('fades panel contents in place on landing, without moving them', () => {
+    const block = motionBlock(css)
+    expect(block).toMatch(/\.shell\[data-landing\] \.main \.glass > \*\s*\{\s*animation: land-fade /)
+    expect(css).toMatch(/@keyframes land-fade \{ from \{ opacity: 0; \} \}/)
+  })
+
   it('reveals what is inside glass panels on scroll, never the glass itself', () => {
     const block = motionBlock(css)
     // Fading a glass panel, or anything holding one, breaks its blur.
     expect(block).toMatch(/\.main \.glass > \*\s*\{[^}]*animation-timeline:\s*view\(\)/)
-    // The one animation glass may run is the landing's frost, which never
-    // touches opacity or transform (checked below).
+    // Glass may run only the landing's frost (no opacity or transform,
+    // checked below) or slide itself in when the page changes (translate
+    // only, checked below).
     const glassAnimations = [...block.matchAll(/\.glass\s*\{([^}]*)\}/g)].map((m) => m[1]).filter((rule) => /animation/.test(rule))
-    for (const rule of glassAnimations) expect(rule).toMatch(/animation:\s*land-frost\b/)
+    for (const rule of glassAnimations) expect(rule).toMatch(/animation:\s*(land-frost|enter-glass-from-(right|left))\b/)
+  })
+
+  it('glass slides itself in on a page change, never fading', () => {
+    for (const side of ['right', 'left']) {
+      const rule = css.match(new RegExp(`@keyframes enter-glass-from-${side} \\{([^\n]*)\\}`))
+      expect(rule?.[1]).toMatch(/translate: -?56px 0/)
+      expect(rule?.[1]).not.toMatch(/opacity|transform|filter/)
+    }
   })
 
   it('the landing frosts the glass without fading or moving it', () => {

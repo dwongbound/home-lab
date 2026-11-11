@@ -53,8 +53,8 @@ let enterTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
  * Without a view transition (WebKit), the page swaps at once and only the
- * contents of each panel slide in, from the side the new page came from.
- * The glass itself never fades or moves, so it stays frosted throughout.
+ * panels slide in (translate only) from the side the new page came from
+ * while their contents fade in. The glass never fades, so it stays frosted.
  */
 function playEnter(direction: 'next' | 'prev'): void {
   // A swipe's glide-out ends here, in the same frame the new page slides in.
