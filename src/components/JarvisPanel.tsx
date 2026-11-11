@@ -48,6 +48,11 @@ function lastLine(last: Turn | null, historyChecked: boolean, state: OrbState, n
   return '\u00a0'
 }
 
+/** True on a phone or tablet, where focusing a text box opens the keyboard. */
+function isTouchScreen(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+}
+
 // How close to the bottom (px) still counts as reading the newest line.
 const BOTTOM_SLACK_PX = 48
 
@@ -456,9 +461,10 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
     if (!talking) toLatest()
   }, [turnCount])
 
-  // Back to the box once Jarvis is done, ready for the next question.
+  // Back to the box once Jarvis is done, ready for the next question. Not
+  // on a phone or tablet: there focusing pops the keyboard over the reply.
   useEffect(() => {
-    if (!busy) input.current?.focus()
+    if (!busy && !isTouchScreen()) input.current?.focus()
   }, [busy])
 
   return (

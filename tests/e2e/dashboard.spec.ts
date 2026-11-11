@@ -547,6 +547,8 @@ test('before Jarvis runs a command the chat asks, and Approve or Deny decides it
   await expect(card.getByText('sudo systemctl restart jarvis')).toBeVisible()
   // Opening the chat doesn't put a focus ring on ×.
   await expect(chat.getByRole('button', { name: 'Close', exact: true })).not.toBeFocused()
+  // A focused text box gets a brighter edge, never the blue ring.
+  expect(await chat.getByRole('textbox', { name: 'Message Jarvis' }).evaluate((el) => { el.focus(); return getComputedStyle(el).outlineStyle })).toBe('none')
   await expect(chat.getByRole('status')).toHaveText('Waiting for your OK')
   // Finger-sized buttons.
   const approve = card.getByRole('button', { name: 'Approve' })

@@ -401,6 +401,8 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jarvis__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .jarvis__input { flex: 1; min-width: 0; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.07); color: var(--frost); font: 15px var(--font-body); }
 .jarvis__input::placeholder { color: var(--frost-faint); }
+/* A text box shows focus with a brighter edge, not the blue ring. */
+.jarvis__input:focus, .jarvis__input:focus-visible { outline: none; border-color: rgba(255,255,255,.4); background: rgba(255,255,255,.1); }
 .jarvis__last { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 14px; background: rgba(255,255,255,.06); color: var(--frost-dim); font: 14px var(--font-body); text-align: left; cursor: pointer; }
 .jarvis__last:hover { background: rgba(255,255,255,.11); }
 .jarvis__last-label { color: var(--glacier); font-weight: 600; flex: none; }
