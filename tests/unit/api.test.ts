@@ -104,6 +104,46 @@ describe('Jarvis memory', () => {
   })
 })
 
+describe('Jarvis voice', () => {
+  it('reads the voice, plays a sample, and saves a new one (sample data)', async () => {
+    const api = createApi(createMockSource())
+    const voice = (await callApi(api, 'GET', '/api/jarvis/voice')).json().voice
+    expect(voice.voice).toBe('bm_george')
+    expect(voice.voices.some((v: { id: string; accent: string }) => v.id === 'af_heart' && v.accent === 'us')).toBe(true)
+
+    const sample = await callApi(api, 'GET', '/api/jarvis/voice/sample?voice=bm_lewis&speed=1.1&voice2=bm_george&mix=0.3')
+    expect(sample.statusCode).toBe(200)
+    expect(sample.headers['content-type']).toBe('audio/wav')
+    expect(sample.body.startsWith('RIFF')).toBe(true)
+    expect((await callApi(api, 'GET', '/api/jarvis/voice/sample?voice=bm_lewis&speed=3')).statusCode).toBe(400)
+
+    const choice = JSON.stringify({ voice: 'bm_lewis', speed: 1.1, blend: { voice2: 'bm_george', mix: 0.3 } })
+    expect((await callApi(api, 'POST', '/api/jarvis/voice', {}, choice)).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/jarvis/voice', ACTION_HEADER, '{"voice":"bm_lewis","speed":2}')).statusCode).toBe(400)
+    expect((await callApi(api, 'POST', '/api/jarvis/voice', ACTION_HEADER, '{"voice":"bm_lewis","blend":{"voice2":"bm_george","mix":1}}')).statusCode).toBe(400)
+    expect((await callApi(api, 'POST', '/api/jarvis/voice', ACTION_HEADER, '{"voice":"zz_nobody"}')).statusCode).toBe(502)
+    expect((await callApi(api, 'POST', '/api/jarvis/voice', ACTION_HEADER, choice)).json().ok).toBe(true)
+    const after = (await callApi(api, 'GET', '/api/jarvis/voice')).json().voice
+    expect(after).toMatchObject({ voice: 'bm_lewis', speed: 1.1, blend: { voice2: 'bm_george', mix: 0.3 } })
+  })
+
+  it("passes the caller's login on to every voice call", async () => {
+    const seen: unknown[] = []
+    const source = {
+      ...createMockSource(),
+      voice: async (caller: unknown) => { seen.push(caller); return null },
+      setVoice: async (_c: unknown, caller: unknown) => { seen.push(caller); return { ok: true, message: 'ok' } },
+      voiceSample: async (_c: unknown, caller: unknown) => { seen.push(caller); return { ok: false as const, message: 'no' } },
+    }
+    const api = createApi(source)
+    const login = { 'tailscale-user-login': 'dylan@example.com' }
+    expect((await callApi(api, 'GET', '/api/jarvis/voice', login)).json()).toEqual({ voice: null })
+    await callApi(api, 'POST', '/api/jarvis/voice', { ...ACTION_HEADER, ...login }, '{"voice":"bm_george","speed":1}')
+    expect((await callApi(api, 'GET', '/api/jarvis/voice/sample?voice=bm_george', login)).statusCode).toBe(502)
+    expect(seen).toEqual([{ login: 'dylan@example.com' }, { login: 'dylan@example.com' }, { login: 'dylan@example.com' }])
+  })
+})
+
 describe('POST /api/jarvis/warm', () => {
   it('needs the page header, and passes the login on', async () => {
     let seen: unknown = null

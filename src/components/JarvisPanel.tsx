@@ -150,7 +150,10 @@ export function JarvisPanel({ live }: Props) {
     try {
       line.current = await openTalkLine(talkUrl(window.location), {
         onState: (s) => { if (talking.current) setState(s) },
+        // Your words as Whisper hears them, shown while you're still talking.
+        onHearing: (sofar) => { if (talking.current) setHeard(sofar) },
         onHeard: (question) => {
+          setHeard('')
           const id = savedTurns.length
           talkTurn.current = id
           setTurns((t) => [...t, { id, question, answer: '', ok: true, done: false }])
@@ -366,13 +369,14 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onTogg
         <p className="chat__status" role="status">{statusText(state, notice)}</p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite">
-        {turns.map((t) => (
+        {turns.map((t, i) => (
           <li key={t.id} className="chat__turn">
             <p className="chat__q">{t.question}</p>
             {t.answer ? (
               <p className={t.ok ? 'chat__a' : 'chat__a chat__a--error'}>
                 {t.answer}
-                {!t.done ? <span className="chat__caret" aria-hidden="true" /> : null}
+                {/* The cursor rides the reply as it streams, then keeps blinking after his latest one, like a terminal. */}
+                {!t.done || (i === turns.length - 1 && !heard) ? <span className="chat__caret" aria-hidden="true" /> : null}
               </p>
             ) : null}
           </li>

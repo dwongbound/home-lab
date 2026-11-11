@@ -1,7 +1,7 @@
 // The page in jsdom with fetch faked: the blocking spinner on first load,
 // the overview, the error state, the unload-the-local-model flow and Ask Jarvis.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SWRConfig } from 'swr'
 import { App } from '../../src/App'
@@ -45,6 +45,9 @@ function fakeServer(options: { actionGate?: Promise<void>; live?: boolean } = {}
       return new Response(body, { headers: { 'content-type': 'application/x-ndjson' } })
     }
     if (url === '/api/jarvis/history') return Response.json({ turns: await source.history() })
+    if (url === '/api/jarvis/voice' && init?.method === 'POST') return Response.json(await source.setVoice(JSON.parse(String(init.body))))
+    if (url === '/api/jarvis/voice') return Response.json({ voice: await source.voice() })
+    if (url.startsWith('/api/jarvis/voice/sample?')) return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })
     if (url === '/api/jarvis/memory' && init?.method === 'POST') return Response.json(await source.changeMemory(JSON.parse(String(init.body))))
     if (url === '/api/jarvis/memory') return Response.json({ memory: await source.memory() })
     if (url.startsWith('/api/jarvis/memory/search?q=')) return Response.json({ hits: await source.searchMemory(decodeURIComponent(url.split('q=')[1])) })
@@ -194,6 +197,34 @@ describe('App', () => {
     await user.click(within(panel).getByRole('button', { name: 'Search' }))
     const results = await within(panel).findByRole('list', { name: 'Search results' })
     expect(within(results).getByText(/check the weather before volleyball/)).toBeInTheDocument()
+  })
+
+  it('Settings: picking a voice, the speed and a blend, playing a sample, and saving', async () => {
+    const fetch = fakeServer()
+    vi.stubGlobal('fetch', fetch)
+    window.location.hash = '#preferences'
+    const user = userEvent.setup()
+    renderApp()
+
+    const panel = await screen.findByRole('region', { name: 'Voice' })
+    const voices = await within(panel).findByRole('list', { name: 'Voices' })
+    expect(within(voices).getByRole('radio', { name: /George/ })).toBeChecked()
+    expect(within(panel).getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    await user.click(within(panel).getByRole('button', { name: 'Play Lewis' }))
+    await waitFor(() => expect(fetch.mock.calls.some((c) => String(c[0]).startsWith('/api/jarvis/voice/sample?voice=bm_lewis'))).toBe(true))
+
+    await user.click(within(panel).getByRole('radio', { name: 'American' }))
+    await user.click(within(panel).getByRole('radio', { name: /Heart/ }))
+    fireEvent.change(within(panel).getByRole('slider', { name: /Speed/ }), { target: { value: '110' } })
+    expect(within(panel).getByText('1.10×')).toBeInTheDocument()
+    await user.click(within(panel).getByRole('switch', { name: 'Blend in a second voice' }))
+    expect(within(panel).getByText(/70% Heart · 30% /)).toBeInTheDocument()
+
+    await user.click(within(panel).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(within(panel).getByRole('status')).toHaveTextContent(/^Saved/))
+    const saved = fetch.mock.calls.find((c) => c[0] === '/api/jarvis/voice' && c[1]?.method === 'POST')
+    expect(JSON.parse(String(saved?.[1]?.body))).toMatchObject({ voice: 'af_heart', speed: 1.1, blend: { mix: 0.3 } })
   })
 
   it('Home: turning a switch on, and a scene with no on/off', async () => {

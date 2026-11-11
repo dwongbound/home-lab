@@ -6,6 +6,7 @@
 // Load buttons visibly do something in the preview.
 
 import { createPickStore } from '../money-picks.mjs'
+import { SAMPLE_VOICES, sampleWav } from '../voice.mjs'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const REQUESTS_PER_DAY = [14, 22, 9, 31, 26, 7, 4]
@@ -142,6 +143,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
     // Pretend things Jarvis remembers (made up: this repo is public).
     facts: sampleFacts(now()),
     nextFactId: 100,
+    // How the pretend Jarvis sounds; the Voice section changes it.
+    voice: { voice: 'bm_george', speed: 1, blend: null },
     // When a pretend digest refresh finishes (ms), so the page's
     // "Updating from Jarvis…" can be seen and then clear.
     digestReadyAt: 0,
@@ -260,6 +263,27 @@ export function createMockSource({ now = () => new Date() } = {}) {
       else if (command === 'mode' && device.kind === 'climate' && device.modes.includes(value)) device.state = value
       else if (command !== 'run') return { ok: false, message: `Can't ${command} that` }
       return { ok: true, message: 'Done' }
+    },
+
+    /** The pretend voice settings and the sample voice list. */
+    async voice() {
+      return { ...state.voice, voices: SAMPLE_VOICES }
+    },
+
+    /** Saves the pretend voice, refusing voices that aren't in the list. */
+    async setVoice(choice) {
+      const known = new Set(SAMPLE_VOICES.map((v) => v.id))
+      if (!known.has(choice.voice) || (choice.blend && !known.has(choice.blend.voice2))) {
+        return { ok: false, message: 'Jarvis doesn’t have that voice' }
+      }
+      state.voice = { voice: choice.voice, speed: choice.speed, blend: choice.blend }
+      return { ok: true, message: 'Saved. Jarvis sounds like this from his next reply.' }
+    },
+
+    /** A made-up sample sound (sample data has no Kokoro). */
+    async voiceSample(choice) {
+      await delay(300)
+      return { ok: true, audio: sampleWav(choice) }
     },
 
     /** Sample data has no engine to start. */

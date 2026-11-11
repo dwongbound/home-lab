@@ -16,6 +16,8 @@ import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
 const realExecFile = promisify(execFileCallback)
+// Making a voice sample can take a few seconds when the GPU is busy.
+const SAMPLE_TIMEOUT_MS = 15_000
 const PROBE_TIMEOUT_MS = 2500
 // Jarvis can take a while: Claude thinking, or the local model loading first.
 const ASK_TIMEOUT_MS = 180_000
@@ -491,6 +493,80 @@ export function createLiveSource(config, deps = {}) {
         const body = await res.json().catch(() => ({}))
         if (!res.ok) return { ok: false, message: body?.message ?? `Jarvis answered ${res.status}` }
         return { ok: true, message: body?.message ?? 'Done' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
+     * How Jarvis sounds (GET /voice): his voice, speed, blend and every
+     * voice he has. Null when there's no login or he doesn't answer.
+     */
+    async voice(caller = {}) {
+      if (!caller.login) return null
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/voice`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        const body = await res.json()
+        const voices = Array.isArray(body?.voices) ? body.voices.filter((v) => typeof v?.id === 'string') : []
+        if (typeof body?.voice !== 'string' || voices.length === 0) return null
+        let blend = null
+        if (typeof body.blend?.voice2 === 'string') blend = { voice2: body.blend.voice2, mix: Number(body.blend.mix) || 0.5 }
+        return {
+          voice: body.voice,
+          speed: Number(body.speed) || 1,
+          blend,
+          voices: voices.map((v) => ({
+            id: v.id,
+            name: typeof v.name === 'string' && v.name ? v.name : v.id,
+            accent: v.accent === 'gb' ? 'gb' : 'us',
+            gender: v.gender === 'f' ? 'f' : 'm',
+          })),
+        }
+      } catch {
+        return null
+      }
+    },
+
+    /** Saves how Jarvis sounds (POST /voice); he uses it from his next reply. */
+    async setVoice(choice, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to change Jarvis’s voice' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/voice`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login, 'content-type': 'application/json' },
+          body: JSON.stringify(choice),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) return { ok: false, message: body?.message ?? `Jarvis answered ${res.status}` }
+        return { ok: true, message: body?.message ?? 'Saved' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
+     * A spoken sample (GET /voice/sample, WAV). Longer timeout than other
+     * calls: the first sample of a voice is made on the spot.
+     */
+    async voiceSample(choice, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to hear Jarvis' }
+      const params = new URLSearchParams({ voice: choice.voice, speed: String(choice.speed) })
+      if (choice.blend) {
+        params.set('voice2', choice.blend.voice2)
+        params.set('mix', String(choice.blend.mix))
+      }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/voice/sample?${params}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(SAMPLE_TIMEOUT_MS),
+        })
+        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        return { ok: true, audio: new Uint8Array(await res.arrayBuffer()) }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }

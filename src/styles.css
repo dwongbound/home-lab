@@ -22,6 +22,8 @@
 
   --font-display: 'Bricolage Grotesque Variable', 'Avenir Next', system-ui, sans-serif;
   --font-body: 'Figtree Variable', 'Segoe UI', system-ui, sans-serif;
+  /* The chat's typewriter text: the system's own monospace (SF Mono on Apple, Cascadia/Consolas on Windows), so no font to download. */
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
 
   --gutter: clamp(16px, 3vw, 32px);
   --gap: clamp(12px, 1.4vw, 18px);
@@ -413,10 +415,11 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .chat__status { color: var(--frost-dim); font-size: 14px; }
 .chat__turns { list-style: none; margin: 0; padding: 0 2px 0 0; display: grid; align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
 .chat__turn { display: grid; gap: 8px; }
+.chat__q, .chat__a { font-family: var(--font-mono); font-size: 14px; line-height: 1.55; letter-spacing: -0.01em; }
 .chat__q { justify-self: end; max-width: 80%; padding: 9px 15px; border-radius: 18px 18px 6px 18px; background: rgba(255,255,255,.14); overflow-wrap: anywhere; }
 .chat__a { max-width: 92%; color: var(--frost); white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat__a--error { color: #ffc2c8; }
-.chat__caret { display: inline-block; width: 8px; height: 1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--glacier); }
+.chat__caret { display: inline-block; width: .6em; height: 1.1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--glacier); }
 .chat__form { display: flex; gap: 8px; }
 .chat__actions { justify-content: space-between; align-items: center; }
 .switch.chat__speak { margin-top: 0; }
@@ -815,3 +818,21 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .memory__heading { font-size: 15px; margin-top: 22px; }
 .memory__wait { padding: 12px 0; }
 .memory .btn { min-height: 44px; }
+
+/* ---------- Voice (Settings) ---------- */
+.voice { grid-column: 1 / -1; }
+.voice .btn { min-height: 44px; }
+.voice__list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); column-gap: 18px; max-height: 300px; overflow-y: auto; }
+.voice__row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid rgba(255,255,255,.07); }
+.voice__pick { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.voice__pick input { width: 18px; height: 18px; accent-color: var(--frost); flex: none; }
+.voice__pick > span { display: grid; }
+.voice__name { font-size: 14.5px; }
+.voice__row[data-picked] .voice__name { font-weight: 600; }
+.voice__kind { font-size: 12.5px; color: var(--frost-faint); }
+.voice__level { display: grid; grid-template-columns: 4em 1fr auto; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: var(--frost-dim); }
+.voice__level input[type='range'] { width: 100%; accent-color: var(--frost); min-height: 44px; }
+.voice__value { min-width: 3.4em; text-align: right; font-variant-numeric: tabular-nums; }
+.voice__select { width: 100%; min-height: 44px; grid-column: 2 / -1; }
+.voice__mix { font-size: 13px; color: var(--frost-dim); margin-top: 2px; padding-left: calc(4em + 10px); }
+.voice__actions { display: flex; gap: 8px; margin-top: 16px; }

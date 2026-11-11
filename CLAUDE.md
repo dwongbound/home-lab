@@ -23,6 +23,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`),
   `POST /api/jarvis/chat` (`{text}`, same header; streams Jarvis `/chat/stream` NDJSON), `GET /api/jarvis/history` (Jarvis `/chat/history`), `POST /api/jarvis/warm` (same header; Jarvis `/chat/warm`, sent when the chat sheet opens),
   `GET /api/jarvis/memory` + `GET /api/jarvis/memory/search?q=` + `POST /api/jarvis/memory` (`{op: remember|forget}`, same header; Jarvis `/memory/facts`, `/memory/search`; `MemoryPanel` = Memory, last on Settings),
+  `GET`/`POST /api/jarvis/voice` + `GET /api/jarvis/voice/sample` (WAV; checks in `server/voice.mjs`; Jarvis `/voice`, `/voice/sample`; `VoicePanel` on Settings before Memory),
   `POST /api/home/control` (`{entity, command, value?}`; climate takes `target` °/`mode`; same header + Tailscale login; allowlist in
   `server/sources/home.mjs`, which also reads devices/weather/sun into `snapshot.home`),
   `POST /api/digest/refresh` (same header; asks Jarvis `/digest/refresh`; client hook `src/api/digestRefresh.tsx`),
@@ -30,7 +31,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `MONEY_PICKS_FILE`; snapshot `moneyPicks`; banner via `pickReminderDue`).
 - **Today:** live `today` = Jarvis `GET /schedule/today`; Overview merges it with the calendar in `src/lib/agenda.ts`. Service alerts go in `AlertBanner` (every page) via `activeAlerts`.
 - **Talk:** `server/talk.mjs` proxies the `/api/jarvis/talk` WebSocket (wired in `server/index.mjs`) to Jarvis `/talk/ws?chat=web` (Tailscale login + same-origin `Origin`);
-  client `src/lib/talk.ts` (worklet resamples mic to 16 kHz PCM16, plays his PCM, sends `idle`). Mock data → demo loop.
+  client `src/lib/talk.ts` (worklet resamples mic to 16 kHz PCM16, plays his PCM, sends `idle`; `partial` events = live words while you talk). Mock data → demo loop.
 - **Shell:** `server/shell.mjs` proxies `/shell/` (HTTP + WebSocket upgrade, wired in `server/index.mjs`)
   to ttyd on 127.0.0.1:7681 (`deploy/ttyd.service`, tmux) only for `SHELL_USERS` Tailscale logins with a same-origin `Origin`.
 - **Sources:** `server/sources/mock.mjs` (default; Pacific-time schedule, remembers
@@ -55,7 +56,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,
-  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/{speech,talk}.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (in `views/Shell.tsx`, also on Services), `MemoryPanel` (Settings: Jarvis's facts + search), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
+  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/{speech,talk}.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (in `views/Shell.tsx`, also on Services), `MemoryPanel` (Settings: Jarvis's facts + search), `VoicePanel` (Settings: Kokoro voice, speed, blend), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
 - **Helpers:** `src/lib/format.ts`, `sky.ts` (phase by hour), `sparkline.ts`,
   `prefs.ts` (localStorage key `home-lab:v1:sky`, guarded).
 - **Styles:** `src/styles.css` — tokens in `:root`, sky phases on `.backdrop[data-phase]` (colours are `@property`-registered so phases fade over 120 s; `data-picked` = 1.5 s),

@@ -9,6 +9,8 @@
 //   GET  /api/jarvis/memory         what Jarvis remembers ({memory})
 //   GET  /api/jarvis/memory/search?q=  past conversations matching q ({hits})
 //   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
+//   GET  /api/jarvis/voice          how Jarvis sounds + every voice; POST saves {voice, speed, blend}
+//   GET  /api/jarvis/voice/sample   a WAV of ?voice=&speed=&voice2=&mix=
 //   POST /api/jarvis/warm           starts Jarvis's web-chat engine early (the chat sheet opened)
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
@@ -18,6 +20,7 @@
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
 import { createMockSource } from './sources/mock.mjs'
 import { createLiveSource } from './sources/live.mjs'
+import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
@@ -158,6 +161,35 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
+  /** How Jarvis sounds, and the voices he has. */
+  async function handleVoice(req, res) {
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { voice: await source.voice({ login }) })
+  }
+
+  /** Saves how Jarvis sounds. */
+  async function handleVoiceChange(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const checked = checkVoiceChoice(await readJson(req))
+    if (checked.error) return sendJson(res, 400, { ok: false, message: checked.error })
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.setVoice(checked.choice, { login })
+    return sendJson(res, result.ok ? 200 : 502, result)
+  }
+
+  /** A spoken sample of one voice choice, as WAV. */
+  async function handleVoiceSample(req, res, params) {
+    const checked = choiceFromQuery(params)
+    if (checked.error) return sendJson(res, 400, { ok: false, message: checked.error })
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const sample = await source.voiceSample(checked.choice, { login })
+    if (!sample.ok) return sendJson(res, 502, sample)
+    res.writeHead(200, { 'content-type': 'audio/wav', 'content-length': sample.audio.byteLength, 'cache-control': 'private, max-age=3600' })
+    res.end(Buffer.from(sample.audio.buffer, sample.audio.byteOffset, sample.audio.byteLength))
+  }
+
   /** Gets Jarvis's web-chat engine started before the first question, so it answers sooner. */
   async function handleWarm(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -239,6 +271,15 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/memory') {
         return await handleMemoryChange(req, res)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/voice') {
+        return await handleVoice(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/voice') {
+        return await handleVoiceChange(req, res)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/voice/sample') {
+        return await handleVoiceSample(req, res, new URL(req.url ?? '/', 'http://localhost').searchParams)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/warm') {
         return await handleWarm(req, res)
