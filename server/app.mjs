@@ -97,6 +97,31 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
+  /**
+   * Chats with Jarvis, streaming his reply back as it's written: one JSON
+   * event per line (application/x-ndjson), ending with done or error.
+   */
+  async function handleChat(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    const text = typeof body?.text === 'string' ? body.text.trim() : ''
+    if (!text) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"text": "..."}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' })
+    await source.chat(text, { login }, (event) => res.write(`${JSON.stringify(event)}\n`))
+    res.end()
+  }
+
+  /** The web chat so far, so the page can show it after a reload. */
+  async function handleHistory(req, res) {
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { turns: await source.history({ login }) })
+  }
+
   /** Sends one command to one Home Assistant device (server/sources/home.mjs). */
   async function handleControl(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -153,6 +178,12 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/ask') {
         return await handleAsk(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/chat') {
+        return await handleChat(req, res)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/history') {
+        return await handleHistory(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/home/control') {
         return await handleControl(req, res)

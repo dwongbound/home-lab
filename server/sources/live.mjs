@@ -377,6 +377,64 @@ export function createLiveSource(config, deps = {}) {
     },
 
     /**
+     * Talks to Jarvis's streaming chat (POST /chat/stream, chat "web") and
+     * hands each event on as it arrives: {type: 'delta', text}, then
+     * {type: 'done', ok: true} or {type: 'error', message}. Jarvis sends one
+     * JSON object per line.
+     */
+    async chat(text, caller, onEvent) {
+      if (!caller.login) {
+        onEvent({ type: 'error', message: 'Open this page through Tailscale to talk to Jarvis' })
+        return
+      }
+      let res
+      try {
+        res = await fetchFn(`${config.jarvisApiUrl}/chat/stream`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify({ text }),
+          signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
+        })
+      } catch {
+        onEvent({ type: 'error', message: 'Jarvis is not answering' })
+        return
+      }
+      if (res.status === 401) return onEvent({ type: 'error', message: `Jarvis doesn't know ${caller.login}` })
+      if (!res.ok || !res.body) return onEvent({ type: 'error', message: `Jarvis answered ${res.status}` })
+      let ended = false
+      try {
+        for await (const event of readJsonLines(res.body)) {
+          if (event.type === 'delta' && typeof event.text === 'string') onEvent({ type: 'delta', text: event.text })
+          else if (event.type === 'done') { ended = true; onEvent({ type: 'done', ok: true }) }
+          else if (event.type === 'error') { ended = true; onEvent({ type: 'error', message: String(event.message ?? 'Jarvis hit an error') }) }
+        }
+      } catch {
+        // The connection dropped mid-reply; say so below.
+      }
+      if (!ended) onEvent({ type: 'error', message: 'Jarvis stopped answering partway' })
+    },
+
+    /** The web chat's recent turns from Jarvis (GET /chat/history), oldest first; empty if unreachable. */
+    async history(caller) {
+      if (!caller.login) return []
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/chat/history?limit=50`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return []
+        const body = await res.json()
+        const list = Array.isArray(body) ? body : body?.turns
+        if (!Array.isArray(list)) return []
+        return list
+          .filter((t) => typeof t?.text === 'string')
+          .map((t) => ({ role: t.role === 'user' ? 'user' : 'jarvis', text: t.text, at: String(t.at ?? '') }))
+      } catch {
+        return []
+      }
+    },
+
+    /**
      * Asks Jarvis to rewrite the digest now (POST /digest/refresh). Jarvis
      * skips it when a run is going or the last write is under 2 minutes
      * old, and answers at once; the page keeps showing the last digest
@@ -400,5 +458,30 @@ export function createLiveSource(config, deps = {}) {
         return idle
       }
     },
+  }
+}
+
+/**
+ * Reads a streamed body of newline-separated JSON objects, yielding each
+ * one as soon as its line is complete. Blank or broken lines are skipped.
+ */
+async function* readJsonLines(body) {
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for await (const chunk of body) {
+    buffer += decoder.decode(chunk, { stream: true })
+    let newline = buffer.indexOf('\n')
+    while (newline !== -1) {
+      const line = buffer.slice(0, newline).trim()
+      buffer = buffer.slice(newline + 1)
+      if (line) {
+        try { yield JSON.parse(line) } catch { /* not JSON; skip it */ }
+      }
+      newline = buffer.indexOf('\n')
+    }
+  }
+  const last = buffer.trim()
+  if (last) {
+    try { yield JSON.parse(last) } catch { /* not JSON; skip it */ }
   }
 }

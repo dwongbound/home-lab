@@ -29,9 +29,18 @@ function fakeServer(options: { actionGate?: Promise<void> } = {}) {
       const { entity, command, value } = JSON.parse(String(init.body))
       return Response.json(await source.control(entity, command, value))
     }
-    if (url === '/api/jarvis/ask' && init?.method === 'POST') {
-      return Response.json(await source.ask(JSON.parse(String(init.body)).text))
+    if (url === '/api/jarvis/chat' && init?.method === 'POST') {
+      // Streamed like the real server: one JSON event per line as Jarvis writes.
+      const text = JSON.parse(String(init.body)).text
+      const body = new ReadableStream({
+        async start(controller) {
+          await source.chat(text, {}, (event: unknown) => controller.enqueue(new TextEncoder().encode(`${JSON.stringify(event)}\n`)))
+          controller.close()
+        },
+      })
+      return new Response(body, { headers: { 'content-type': 'application/x-ndjson' } })
     }
+    if (url === '/api/jarvis/history') return Response.json({ turns: await source.history() })
     return new Response('not found', { status: 404 })
   })
 }
@@ -117,7 +126,7 @@ describe('App', () => {
     expect(within(chat).getByText('Is the garage open?')).toBeInTheDocument()
     expect(await within(chat).findByText('Sample data: on the PC, Jarvis would answer "Is the garage open?" here.', {}, { timeout: 4000 })).toBeInTheDocument()
     expect(await within(chat).findByText('Type below, or tap Talk')).toBeInTheDocument()
-    const [, init] = fetch.mock.calls.find((c) => c[0] === '/api/jarvis/ask')!
+    const [, init] = fetch.mock.calls.find((c) => c[0] === '/api/jarvis/chat')!
     expect((init!.headers as Record<string, string>)['x-home-lab']).toBe('1')
 
     // Close keeps the conversation: the bar shows the last reply and reopens it.
