@@ -456,10 +456,19 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .dialog--chat[data-page] .chat__head .dialog__title { order: -1; }
 /* Kept for screen readers, hidden from view. */
 .chat__status[data-quiet] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-/* Words fade out as they scroll up under the orb rather than being cut off. */
+/* Words fade out at the top and bottom edges of the chat as they scroll,
+   rather than being cut off hard (Dylan, 2026-11-11). The padding lets the
+   first and last lines sit clear of the fade once scrolled to the end. */
+.dialog--chat .chat__turns {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 36px, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 36px, #000 calc(100% - 24px), transparent);
+  padding-top: 28px;
+  padding-bottom: 20px;
+}
+/* On /talk the top fade is deeper, under the orb. */
 .dialog--chat[data-page] .chat__turns {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 56px, #000 calc(100% - 24px), transparent);
   padding-top: 40px;
 }
 /* Before the first tap on iOS, the whole screen is the Talk button. */
@@ -682,7 +691,7 @@ html[data-modal] { overflow: hidden; }
      pixel off: the "slight shift" at the end of a page change, landing or
      reveal. Kept on their own layers for good, nothing jumps. */
   .main .glass > * { will-change: opacity; }
-  .main .hero { will-change: opacity, transform; }
+  .main .hero, .main .hero__title, .main .hero__sub { will-change: opacity, transform; }
 
   /* A swipe in progress (src/swipeMotion.ts): the title and whole panels
      follow the finger while their contents fade a little; once it counts
@@ -780,10 +789,13 @@ html[data-modal] { overflow: hidden; }
 @keyframes land-sky { from { filter: brightness(.15) saturate(.4); } }
 @keyframes land-sun { from { opacity: 0; } }
 @keyframes land-fade { from { opacity: 0; } }
-@keyframes land-rise { from { opacity: 0; transform: translateY(26px); filter: blur(6px); } }
+/* The title and line under it only fade in: in Dylan's iPhone recording
+   (2026-11-11) the sliding, blurred title landed 2 px off and then jumped
+   into place as the animation ended. */
+@keyframes land-rise { from { opacity: 0; } }
 /* No letter-spacing here: animating it re-wraps the title every frame, which
    nudged the text beside and below it while the page landed. */
-@keyframes land-title { from { opacity: 0; transform: translateY(56px) scale(1.06); filter: blur(18px); } }
+@keyframes land-title { from { opacity: 0; } }
 /* Glass only ever animates its tint, edge and glow; never its blur, opacity
    or position. Two things here made the panels shake on an iPhone as they
    landed (Dylan's recording, 2026-11-11): the tint used to be `background`,
