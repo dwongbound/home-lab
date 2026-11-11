@@ -143,6 +143,16 @@ export async function loadChatHistory(): Promise<ChatTurn[]> {
   }
 }
 
+/** Asks Jarvis to get his chat engine ready (the chat sheet just opened). Fire and forget. */
+export async function warmJarvis(): Promise<void> {
+  if (IS_STATIC_BUILD) return
+  try {
+    await fetch('/api/jarvis/warm', { method: 'POST', headers: { 'x-home-lab': '1' } })
+  } catch {
+    // Only a head start: the first answer is just slower without it.
+  }
+}
+
 /** Sends one command to one Home Assistant device. */
 export async function controlDevice(entity: string, command: HomeCommand, value?: number | string): Promise<ActionResult> {
   if (IS_STATIC_BUILD) {

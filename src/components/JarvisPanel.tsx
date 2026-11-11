@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
-import { loadChatHistory, streamJarvis } from '../api/client'
+import { loadChatHistory, streamJarvis, warmJarvis } from '../api/client'
 import type { ChatTurn } from '../types'
 import { readSpeak, writeSpeak } from '../lib/prefs'
 import { canSpeak, speak, stopSpeaking } from '../lib/speech'
@@ -241,6 +241,12 @@ export function JarvisPanel({ live }: Props) {
     })
     return () => { live = false }
   }, [])
+
+  // Opening the sheet gets Jarvis's chat engine going while Dylan types
+  // (Talk's own line does the same for voice when it connects).
+  useEffect(() => {
+    if (open && live) void warmJarvis()
+  }, [open, live])
 
   // Leaving the page stops the microphone and the voice.
   useEffect(() => () => stopTalk(), [])

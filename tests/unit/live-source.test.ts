@@ -34,6 +34,10 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ running: true, lastWrite: '2026-11-10T09:16:11Z' }, { status: jarvisStatusCode })
     }
+    if (url === `${config.jarvisApiUrl}/chat/warm`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      return Response.json({ ok: true }, { status: jarvisStatusCode })
+    }
     if (url === `${config.jarvisApiUrl}/chat/stream`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       if (jarvisStatusCode !== 200) return new Response('no', { status: jarvisStatusCode })
@@ -264,5 +268,15 @@ describe('live chat with Jarvis', () => {
     const turns = await liveWith({}).source.history({ login: 'dylan@example.com' })
     expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b' }])
     expect(await liveWith({}).source.history({})).toEqual([])
+  })
+
+  it("warms Jarvis's chat engine as the caller, and skips it without a login", async () => {
+    const { source, fetch } = liveWith({})
+    expect(await source.warm({ login: 'dylan@example.com' })).toBe(true)
+    const [url, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/chat/warm`)!
+    expect(url).toContain('/chat/warm')
+    expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
+    expect(await source.warm({})).toBe(false)
+    expect(await liveWith({ jarvisAnswers: false }).source.warm({ login: 'dylan@example.com' })).toBe(false)
   })
 })

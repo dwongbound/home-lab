@@ -21,7 +21,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
 - **API:** `server/app.mjs` — `GET /api/snapshot`, `POST /api/actions/:name`
   (`ollama-unload`, `ollama-load`; needs header `x-home-lab: 1`; one at a time, 409 otherwise),
   `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`),
-  `POST /api/jarvis/chat` (`{text}`, same header; streams Jarvis `/chat/stream` NDJSON), `GET /api/jarvis/history` (Jarvis `/chat/history`),
+  `POST /api/jarvis/chat` (`{text}`, same header; streams Jarvis `/chat/stream` NDJSON), `GET /api/jarvis/history` (Jarvis `/chat/history`), `POST /api/jarvis/warm` (same header; Jarvis `/chat/warm`, sent when the chat sheet opens),
   `POST /api/home/control` (`{entity, command, value?}`; climate takes `target` °/`mode`; same header + Tailscale login; allowlist in
   `server/sources/home.mjs`, which also reads devices/weather/sun into `snapshot.home`),
   `POST /api/digest/refresh` (same header; asks Jarvis `/digest/refresh`; client hook `src/api/digestRefresh.tsx`),
