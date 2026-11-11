@@ -692,17 +692,22 @@ test('Settings Voice plays a sample, and saves a voice, speed and blend', async 
   await expect(panel.getByRole('button', { name: 'Save' })).toBeDisabled()
 })
 
-test('/talk is only the chat, filling the screen: Talk starts it, Close goes to the dashboard', async ({ page }) => {
+test('/talk is only the chat, edge to edge with no pop-up look: Talk starts it, Close goes to the dashboard', async ({ page }) => {
   await page.goto('/talk')
   const chat = page.getByRole('dialog', { name: 'Jarvis' })
   await expect(chat).toBeVisible()
   // No dashboard around it: no tabs, no Ask Jarvis bar.
   await expect(page.getByRole('navigation')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toHaveCount(0)
+  // Not a pop-up: it is the whole screen, edge to edge, with no card edge or corners.
   const viewport = page.viewportSize()!
   const box = (await chat.boundingBox())!
-  expect(box.width).toBeGreaterThan(viewport.width - 40)
-  expect(box.height).toBeGreaterThan(viewport.height - 40)
+  expect(box).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height })
+  const look = await chat.evaluate((el) => {
+    const css = getComputedStyle(el)
+    return { radius: css.borderTopLeftRadius, border: css.borderTopWidth, blur: css.backdropFilter }
+  })
+  expect(look).toEqual({ radius: '0px', border: '0px', blur: 'none' })
   // Saved to the home screen it opens straight here.
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', './talk.webmanifest')
   const manifest = await (await page.request.get('/talk.webmanifest')).json()
@@ -713,8 +718,8 @@ test('/talk is only the chat, filling the screen: Talk starts it, Close goes to 
   await expect(chat.getByRole('status')).toHaveText('Listening… just talk')
   await chat.getByRole('button', { name: 'Stop talking' }).click()
   await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })
-  // Still full screen after talking stops.
-  expect((await chat.boundingBox())!.width).toBeGreaterThan(viewport.width - 40)
+  // Still the whole screen after talking stops.
+  expect((await chat.boundingBox())!.width).toBe(viewport.width)
 
   await chat.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page).toHaveURL(/\/$/)

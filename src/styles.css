@@ -429,8 +429,20 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* Talk mode: the sheet fills the screen (one fixed size, never animated: it's glass). */
 .dialog.dialog--chat[data-talking] { width: calc(100vw - 32px); max-width: none; height: calc(var(--safe-h) - 32px); max-height: none; }
 .dialog--chat[data-talking] .chat__turns { width: min(100%, 860px); justify-self: center; }
-/* The /talk page: the sheet is the page, so the sky shows behind it, not a dimmed dashboard. */
+/* The /talk page isn't a pop-up (Dylan, 2026-11-11): no card, edge, corners
+   or margin. The chat sits straight on the sky, edge to edge, with only a
+   light shade so the words read under the bright day sky. Content keeps
+   clear of the notch and home bar. */
 .dialog--chat[data-page]::backdrop { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.dialog.dialog--chat[data-page] {
+  inset: 0; margin: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none;
+  border: 0; border-radius: 0; box-shadow: none; background: rgba(8, 12, 18, 0.18);
+  padding: max(22px, env(safe-area-inset-top, 0px)) max(22px, env(safe-area-inset-right, 0px)) max(22px, env(safe-area-inset-bottom, 0px)) max(22px, env(safe-area-inset-left, 0px));
+}
+.dialog--chat[data-page] .chat__form { width: min(100%, 860px); justify-self: center; }
+/* Nothing scrolls on /talk, so don't hold room for a scroll bar down the right edge. */
+html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
+.dialog--chat[data-page] .chat__close { top: max(14px, env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); }
 .chat__status { color: var(--frost-dim); font-size: 14px; }
 .chat__turns { list-style: none; margin: 0; padding: 0 2px 0 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
 .chat__turn { display: grid; gap: 8px; }
