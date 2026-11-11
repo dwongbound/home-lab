@@ -413,6 +413,9 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
     if (!d || d.open) return
     if (typeof d.showModal === 'function') d.showModal()
     else d.setAttribute('open', '')
+    // Focus the box itself, not ×: Safari draws the focus ring on whatever
+    // showModal picks, and × is first while the message box is disabled.
+    if (document.activeElement !== input.current) d.focus()
     return () => { if (typeof d.close === 'function') d.close() }
   }, [])
 
@@ -462,6 +465,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
     <dialog
       ref={ref}
       className="dialog dialog--chat glass"
+      tabIndex={-1}
       // Talk mode takes the whole screen (Dylan, 2026-11-11), with a bigger orb.
       data-talking={talking ? '' : undefined}
       aria-labelledby="chat-title"
