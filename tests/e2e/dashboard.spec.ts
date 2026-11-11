@@ -177,6 +177,30 @@ test('the first load lands with a show, once, and the glass ends fully frosted',
   expect(blur).toContain('blur(26px)')
 })
 
+test('the thermostat shows the room temperature, and + and the mode buttons change it', async ({ page }) => {
+  await page.goto('/#home')
+  const tile = page.getByRole('region', { name: 'Thermostat' })
+  await expect(tile).toBeVisible()
+  await expect(tile.getByText('Inside')).toBeVisible()
+  // The thermostat comes first on the page.
+  await expect(page.locator('.grid--devices > .device').first()).toHaveAttribute('aria-label', 'Thermostat')
+  const target = tile.locator('.thermo__target')
+  const before = Number((await target.textContent())!.replace(/\D/g, ''))
+  // Two quick taps send one command, for two steps.
+  const sent = page.waitForRequest((r) => r.url().endsWith('/api/home/control'))
+  await tile.getByRole('button', { name: 'Warmer' }).click()
+  await tile.getByRole('button', { name: 'Warmer' }).click()
+  await expect(target).toContainText(`${before + 2}°`)
+  expect((await sent).postDataJSON()).toEqual({ entity: 'climate.thermostat', command: 'target', value: before + 2 })
+  // Back down, and modes are buttons that show which one is on.
+  await tile.getByRole('button', { name: 'Cooler' }).click()
+  await tile.getByRole('button', { name: 'Cooler' }).click()
+  const heat = tile.getByRole('group', { name: 'Mode' }).getByRole('button', { name: 'Heat', exact: true })
+  await expect(heat).toHaveAttribute('aria-pressed', 'true')
+  const box = (await heat.boundingBox())!
+  expect(box.height).toBeGreaterThanOrEqual(44)
+})
+
 test('Shell shows the terminal frame, and says so when the shell is off', async ({ page }) => {
   await page.goto('/#shell')
   await expect(page.getByRole('heading', { level: 1, name: 'Shell' })).toBeVisible()

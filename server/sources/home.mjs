@@ -18,6 +18,7 @@ const KINDS = {
   media_player: 'media',
   scene: 'scene',
   script: 'script',
+  climate: 'climate',
 }
 
 /** Page command -> Home Assistant service, per kind. */
@@ -28,7 +29,13 @@ const COMMANDS = {
   media: { power: null, playpause: 'media_play_pause', volume: 'volume_set' },
   scene: { run: 'turn_on' },
   script: { run: 'turn_on' },
+  climate: { target: 'set_temperature', mode: 'set_hvac_mode' },
 }
+
+/** The thermostat modes the page may pick, as Home Assistant names them. */
+const HVAC_MODES = ['off', 'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only']
+// A target outside this (degrees, F or C) is a typo, not a setting.
+const TEMP_RANGE = [0, 100]
 
 // Switches that belong to a speaker or TV (a Sonos's "Loudness" or
 // "Crossfade") are its settings, not things in the house. The states API
@@ -60,7 +67,27 @@ export function toDevice(entity) {
     if (playing) device.detail = playing
     else if (a.app_name) device.detail = a.app_name
   }
+  if (kind === 'climate') Object.assign(device, climateFields(a))
   return device
+}
+
+/** A number, or undefined when Home Assistant didn't give one. */
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+
+/** A thermostat's temperatures, limits and modes, from its attributes. */
+function climateFields(a) {
+  const fields = {
+    current: num(a.current_temperature),
+    target: num(a.temperature),
+    min: num(a.min_temp),
+    max: num(a.max_temp),
+    step: num(a.target_temp_step) ?? 1,
+    modes: Array.isArray(a.hvac_modes) ? a.hvac_modes.filter((m) => HVAC_MODES.includes(m)) : [],
+  }
+  if (typeof a.hvac_action === 'string') fields.detail = a.hvac_action
+  // Leave out what's missing, so the page can tell "not reported" from 0.
+  for (const k of Object.keys(fields)) if (fields[k] === undefined) delete fields[k]
+  return fields
 }
 
 /** Creates the reader. `deps.fetch` is swappable for tests. */
@@ -122,8 +149,8 @@ export function createHomeReader(config, deps = {}) {
           if (e.entity_id === 'sensor.sun_next_rising') sun.rising = e.state
           if (e.entity_id === 'sensor.sun_next_setting') sun.setting = e.state
         }
-        // Things you can switch first, then media, then scenes and scripts; A-Z within.
-        const order = ['light', 'switch', 'fan', 'media', 'scene', 'script']
+        // The thermostat first, then things you can switch, media, scenes and scripts; A-Z within.
+        const order = ['climate', 'light', 'switch', 'fan', 'media', 'scene', 'script']
         devices.sort((x, y) => order.indexOf(x.kind) - order.indexOf(y.kind) || x.name.localeCompare(y.name))
         return { devices, weather, sun }
       } catch {
@@ -133,7 +160,7 @@ export function createHomeReader(config, deps = {}) {
 
     /**
      * Sends one command to one entity. `value` is 0-1 for brightness and
-     * volume. `current` is the device's state, needed to pick on or off for
+     * volume, degrees for a thermostat's target, a mode name for its mode. `current` is the device's state, needed to pick on or off for
      * a media player's power button.
      */
     async act(entityId, command, value, current) {
@@ -150,6 +177,14 @@ export function createHomeReader(config, deps = {}) {
         if (typeof value !== 'number' || !(value >= 0 && value <= 1)) return { ok: false, message: 'Send a value from 0 to 1' }
         if (command === 'brightness') data.brightness_pct = Math.round(value * 100)
         else data.volume_level = share(value)
+      }
+      if (command === 'target') {
+        if (typeof value !== 'number' || !(value >= TEMP_RANGE[0] && value <= TEMP_RANGE[1])) return { ok: false, message: 'Send a temperature' }
+        data.temperature = Math.round(value * 10) / 10
+      }
+      if (command === 'mode') {
+        if (!HVAC_MODES.includes(value)) return { ok: false, message: 'Not a thermostat mode' }
+        data.hvac_mode = value
       }
 
       try {

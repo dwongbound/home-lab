@@ -81,7 +81,7 @@ export interface CloudDigest {
 }
 
 // Home Assistant devices for the Home page (server/sources/home.mjs).
-export type DeviceKind = 'light' | 'switch' | 'fan' | 'media' | 'scene' | 'script'
+export type DeviceKind = 'light' | 'switch' | 'fan' | 'media' | 'scene' | 'script' | 'climate'
 export interface Device {
   id: string
   name: string
@@ -93,15 +93,24 @@ export interface Device {
   brightness?: number
   /** 0-1, media players only. */
   volume?: number
-  /** What's playing, or the app open. */
+  /** What's playing, or the app open; for a thermostat, what it's doing ("heating"). */
   detail?: string
+  /** Thermostats only: the room's temperature and the one it's set to, in HA's unit. */
+  current?: number
+  target?: number
+  /** Thermostats only: the lowest and highest target, and how far one press moves it. */
+  min?: number
+  max?: number
+  step?: number
+  /** Thermostats only: the modes it offers ("off", "heat", "cool", "heat_cool"...). */
+  modes?: string[]
 }
 export interface HomeState {
   devices: Device[]
   weather: { condition: string; temperature: number | null; unit: string } | null
   sun: { rising: string | null; setting: string | null }
 }
-export type HomeCommand = 'toggle' | 'brightness' | 'power' | 'playpause' | 'volume' | 'run'
+export type HomeCommand = 'toggle' | 'brightness' | 'power' | 'playpause' | 'volume' | 'run' | 'target' | 'mode'
 
 export interface Snapshot {
   generatedAt: string
@@ -130,7 +139,7 @@ export interface DataSource {
   /** Asks Jarvis. On success `message` is Jarvis's reply. */
   ask(text: string, caller?: { login?: string }): Promise<ActionResult>
   /** Sends one command to one Home Assistant device. */
-  control(entity: string, command: HomeCommand, value?: number, caller?: { login?: string }): Promise<ActionResult>
+  control(entity: string, command: HomeCommand, value?: number | string, caller?: { login?: string }): Promise<ActionResult>
   /** Asks Jarvis to rewrite the digest now (calendar, email, money). */
   refreshDigest(caller?: { login?: string }): Promise<DigestRefresh>
 }

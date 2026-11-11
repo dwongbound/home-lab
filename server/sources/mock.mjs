@@ -141,6 +141,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
     digestDoneAt: 0,
     // Sample devices for the Home page. Its buttons change these.
     home: [
+      { id: 'climate.thermostat', name: 'Thermostat', kind: 'climate', state: 'heat', available: true, current: 68, target: 70, min: 50, max: 90, step: 1, modes: ['off', 'heat', 'cool', 'heat_cool'] },
       { id: 'light.living_room_lamp', name: 'Living room lamp', kind: 'light', state: 'on', available: true, brightness: 0.6 },
       { id: 'switch.porch_lights', name: 'Porch lights', kind: 'switch', state: 'off', available: true },
       { id: 'media_player.bedroom', name: 'Bedroom speaker', kind: 'media', state: 'playing', available: true, volume: 0.25, detail: 'Hillsong UNITED · Oceans' },
@@ -235,6 +236,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
       else if (command === 'playpause') device.state = device.state === 'playing' ? 'paused' : 'playing'
       else if (command === 'brightness') { device.brightness = value; device.state = value > 0 ? 'on' : 'off' }
       else if (command === 'volume') device.volume = value
+      else if (command === 'target' && device.kind === 'climate' && typeof value === 'number') device.target = Math.min(device.max, Math.max(device.min, value))
+      else if (command === 'mode' && device.kind === 'climate' && device.modes.includes(value)) device.state = value
       else if (command !== 'run') return { ok: false, message: `Can't ${command} that` }
       return { ok: true, message: 'Done' }
     },
