@@ -108,16 +108,30 @@ proxied in `npm run dev`; use `npm start` to try it.
 
 ### Ask Jarvis
 
-Type a question and Jarvis answers in the panel, through the same `/ask`
-endpoint the Siri Shortcut uses, so it has the same memory, tools and
-Home Assistant access. The page keeps that visit's questions and answers
-until you reload; Jarvis keeps its own memory.
+Type a question and the chat opens: a fixed-size sheet with Jarvis's orb,
+which spins while he thinks and pulses as the reply types out (streamed
+from Jarvis's `/chat/stream`, so it is the same Jarvis with the same
+memory, tools and Home Assistant access as Telegram and Siri). The
+conversation lives on the PC, so a reload or another device picks it up.
+**Speak replies** reads typed answers aloud with the browser's voice.
+
+**Talk** is hands-free: the page opens a WebSocket to `/api/jarvis/talk`,
+which `server/talk.mjs` carries to Jarvis's own voice pipeline
+(`/talk/ws?chat=web`: Whisper on the GPU, Jarvis, then his voice). The
+microphone goes as 16 kHz 16-bit audio in 20 ms frames (resampled in an
+audio worklet, `src/lib/talk.ts`) and keeps going while he speaks, so
+talking over him stops him. The orb follows your voice while he listens
+and his while he speaks, and spoken turns land in the same chat as typed
+ones. With sample data (and in the preview) Talk plays a demo instead.
 
 The page holds no Jarvis password. Jarvis decides who may ask: the server
 passes on the `Tailscale-User-Login` header that `tailscale serve` adds,
 and Jarvis checks it against `JARVIS_TAILSCALE_USERS`. So Ask Jarvis only
 works when the page is opened through Tailscale (see [Reaching it](#reaching-it-from-your-phone-or-mac));
-opened at `http://127.0.0.1` it says so instead of answering.
+opened at `http://127.0.0.1` it says so instead of answering. The Talk
+WebSocket also needs that login, and an `Origin` of this page, so another
+website open in the same browser can't open the microphone line. It isn't
+proxied in `npm run dev`; use `npm start` to try it.
 
 ### Tap anything for more
 

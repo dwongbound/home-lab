@@ -3,16 +3,17 @@ import { loadChatHistory, streamJarvis } from '../api/client'
 import type { ChatTurn } from '../types'
 import { readSpeak, writeSpeak } from '../lib/prefs'
 import { canSpeak, speak, stopSpeaking } from '../lib/speech'
-import { canRecognize, listenOnce, startMicLevel } from '../lib/talk'
+import { openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 
 // Talking to Jarvis from the home page. The Overview keeps a slim bar: the
 // orb, a box, Ask and Talk. Asking opens the chat: a fixed-size sheet with a
 // big orb that thinks while Jarvis works and pulses as the reply types out
 // (and with the voice, when "Speak replies" is on). Talk makes it hands-free:
-// the orb follows your voice while Jarvis listens, he answers out loud, and
-// it listens again until you stop. The conversation outlives closing the
-// sheet and changing pages, for this visit.
+// the orb follows your voice while Jarvis listens, he answers out loud in
+// his own voice from the PC, and it listens again until you stop (talk
+// over him and he stops). The conversation outlives closing the sheet and
+// changing pages, for this visit.
 
 interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean }
 
@@ -20,16 +21,17 @@ interface Turn { id: number; question: string; answer: string; ok: boolean; done
 // when Dylan visits another page and comes back.
 let savedTurns: Turn[] = []
 
-/** What the orb's status line says in each state. */
-function statusText(state: OrbState): string {
+/** What the orb's status line says in each state; when idle, why Talk ended (if it ended by itself). */
+function statusText(state: OrbState, notice = ''): string {
+  if (state === 'idle' && notice) return notice
   if (state === 'thinking') return 'Jarvis is thinking…'
   if (state === 'speaking') return 'Jarvis is answering'
   if (state === 'listening') return 'Listening… just talk'
   return 'Type below, or tap Talk'
 }
 
-// When the microphone isn't allowed (a preview inside another page, or
-// permission said no), Talk plays these turns so the flow can still be seen.
+// With sample data there's no Jarvis to talk to, so Talk plays these turns
+// and the whole hands-free loop can still be seen (the preview, and tests).
 const DEMO_QUESTIONS = ["What's on my schedule today?", 'Is the living room lamp on?', "How's the weather for flying tomorrow?"]
 
 /** Pairs saved chat lines into question-and-answer turns for the sheet. */
@@ -50,8 +52,13 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+interface Props {
+  /** True with live data: Talk opens the real voice line to Jarvis. Otherwise it plays the demo. */
+  live: boolean
+}
+
 /** The bar on the Overview, plus the chat sheet it opens. */
-export function JarvisPanel() {
+export function JarvisPanel({ live }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<OrbState>('idle')
   const [turns, setTurnsState] = useState<Turn[]>(savedTurns)
@@ -59,12 +66,15 @@ export function JarvisPanel() {
   const [speakOn, setSpeakOn] = useState(readSpeak)
   const [talkingOn, setTalkingOn] = useState(false)
   const [heard, setHeard] = useState('')
+  // Why Talk ended by itself (no microphone, the line dropped), shown in the status line.
+  const [notice, setNotice] = useState('')
   const barOrb = useRef<OrbHandle>(null)
   const sheetOrb = useRef<OrbHandle>(null)
   // Refs, not state, because the talk loop reads them between awaits.
   const talking = useRef(false)
-  const listeningNow = useRef(false)
-  const stopListening = useRef<() => void>(() => {})
+  const line = useRef<TalkLine | null>(null)
+  // The turn the voice line is answering right now.
+  const talkTurn = useRef(-1)
   const busy = state !== 'idle' || talkingOn
 
   /** Updates the turns here and in the copy that outlives this page. */
@@ -113,45 +123,75 @@ export function JarvisPanel() {
     setState('idle')
   }
 
-  /**
-   * Hands-free: listen for a turn, ask it, answer out loud, and go again
-   * until Stop talking or Close. Without a microphone it plays the demo
-   * turns instead, so the preview still shows the whole loop.
-   */
+  /** Hands-free Talk: the real voice line with live data, the demo otherwise. */
   async function startTalk() {
     if (talking.current) return
     talking.current = true
     setTalkingOn(true)
     setOpen(true)
-    // The orb only follows the mic while listening, so Jarvis's own voice
-    // coming out of the speaker doesn't make it jump.
-    const stopMic = await startMicLevel((level) => { if (listeningNow.current) pulse(level) })
-    const live = stopMic !== null && canRecognize()
+    setNotice('')
+    if (live) await openLine()
+    else await demoLoop()
+  }
+
+  /** Updates the turn the voice line is answering. */
+  function updateTalkTurn(change: (t: Turn) => Turn) {
+    const id = talkTurn.current
+    setTurns((t) => t.map((x) => (x.id === id ? change(x) : x)))
+  }
+
+  /**
+   * Opens the voice line. From then on Jarvis drives: he says when he's
+   * listening, thinking or speaking, what he heard, and his reply, and the
+   * orb follows whichever voice matters.
+   */
+  async function openLine() {
+    setState('listening')
+    try {
+      line.current = await openTalkLine(talkUrl(window.location), {
+        onState: (s) => { if (talking.current) setState(s) },
+        onHeard: (question) => {
+          const id = savedTurns.length
+          talkTurn.current = id
+          setTurns((t) => [...t, { id, question, answer: '', ok: true, done: false }])
+        },
+        onReply: (added) => updateTalkTurn((x) => ({ ...x, answer: x.answer + added })),
+        onDone: () => updateTalkTurn((x) => ({ ...x, done: true })),
+        onInterrupted: () => updateTalkTurn((x) => ({ ...x, done: true })),
+        onLevel: pulse,
+        onClosed: (message) => endTalk(message),
+      })
+    } catch (err) {
+      endTalk(err instanceof Error ? err.message : 'Talk didn’t start')
+    }
+    // Stopped while the line was still opening: hang it up now.
+    if (!talking.current) line.current?.close()
+  }
+
+  /** Talk ended by itself; message says why. */
+  function endTalk(message: string) {
+    talking.current = false
+    line.current = null
+    setTalkingOn(false)
+    setState('idle')
+    setNotice(message)
+  }
+
+  /** The sample-data loop: hear a demo question, answer it out loud, and go again until stopped. */
+  async function demoLoop() {
     let demo = 0
     while (talking.current) {
-      listeningNow.current = true
       setState('listening')
+      const question = await demoTurn(DEMO_QUESTIONS[demo % DEMO_QUESTIONS.length])
+      demo++
       setHeard('')
-      let question: string | null
-      if (live) {
-        const turn = listenOnce(setHeard)
-        stopListening.current = turn.stop
-        question = await turn.result
-      } else {
-        question = await demoTurn(DEMO_QUESTIONS[demo % DEMO_QUESTIONS.length])
-        demo++
-      }
-      listeningNow.current = false
-      setHeard('')
-      if (!talking.current) break
-      if (question === null) continue
+      if (!talking.current || question === null) break
       await ask(question, true)
     }
-    if (stopMic) stopMic()
     setState('idle')
   }
 
-  /** The preview's pretend turn: the words appear as if heard, with the orb following a voice. */
+  /** The demo's pretend turn: the words appear as if heard, with the orb following a voice. */
   async function demoTurn(question: string): Promise<string | null> {
     await wait(700)
     const words = question.split(' ')
@@ -168,10 +208,13 @@ export function JarvisPanel() {
   /** Ends hands-free talk; anything being heard or said stops. */
   function stopTalk() {
     talking.current = false
-    listeningNow.current = false
     setTalkingOn(false)
-    stopListening.current()
+    setHeard('')
+    line.current?.close()
+    line.current = null
     stopSpeaking()
+    // The demo loop and ask() reset the state themselves; the voice line doesn't.
+    if (live) setState('idle')
   }
 
   /** Turns reading aloud on or off, and remembers it for this browser. */
@@ -230,7 +273,7 @@ export function JarvisPanel() {
       {last && !open ? (
         <button type="button" className="jarvis__last" onClick={() => setOpen(true)}>
           <span className="jarvis__last-label">Jarvis</span>
-          <span className="jarvis__last-text">{last.answer || statusText(state)}</span>
+          <span className="jarvis__last-text">{last.answer || statusText(state, notice)}</span>
           <span className="jarvis__last-open">Open chat</span>
         </button>
       ) : null}
@@ -246,6 +289,7 @@ export function JarvisPanel() {
           onToggleSpeak={toggleSpeak}
           talking={talkingOn}
           heard={heard}
+          notice={notice}
           onTalk={() => void startTalk()}
           onStopTalk={stopTalk}
           onClose={close}
@@ -268,13 +312,15 @@ interface SheetProps {
   talking: boolean
   /** What's being heard right now, while listening. */
   heard: string
+  /** Why Talk ended by itself, if it did. */
+  notice: string
   onTalk: () => void
   onStopTalk: () => void
   onClose: () => void
 }
 
 /** The chat itself: a fixed-size native dialog, so focus and Esc come from the browser. */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onToggleSpeak, talking, heard, onTalk, onStopTalk, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onToggleSpeak, talking, heard, notice, onTalk, onStopTalk, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const list = useRef<HTMLOListElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -311,7 +357,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, speakOn, onTogg
       <header className="chat__head">
         <JarvisOrb ref={orbRef} state={state} size={64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
-        <p className="chat__status" role="status">{statusText(state)}</p>
+        <p className="chat__status" role="status">{statusText(state, notice)}</p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite">
         {turns.map((t) => (

@@ -28,6 +28,8 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `POST /api/money/picks` (`{op: pick|clear|remind}`, same header; store `server/money-picks.mjs`, file `money-picks-file.mjs`,
   `MONEY_PICKS_FILE`; snapshot `moneyPicks`; banner via `pickReminderDue`).
 - **Today:** live `today` = Jarvis `GET /schedule/today`; Overview merges it with the calendar in `src/lib/agenda.ts`. Service alerts go in `AlertBanner` (every page) via `activeAlerts`.
+- **Talk:** `server/talk.mjs` proxies the `/api/jarvis/talk` WebSocket (wired in `server/index.mjs`) to Jarvis `/talk/ws?chat=web` (Tailscale login + same-origin `Origin`);
+  client `src/lib/talk.ts` (worklet resamples mic to 16 kHz PCM16, plays his PCM, sends `idle`). Mock data → demo loop.
 - **Shell:** `server/shell.mjs` proxies `/shell/` (HTTP + WebSocket upgrade, wired in `server/index.mjs`)
   to ttyd on 127.0.0.1:7681 (`deploy/ttyd.service`, tmux) only for `SHELL_USERS` Tailscale logins with a same-origin `Origin`.
 - **Sources:** `server/sources/mock.mjs` (default; Pacific-time schedule, remembers

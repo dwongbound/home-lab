@@ -8,11 +8,13 @@ import { fileURLToPath } from 'node:url'
 import { loadConfig, loadEnvFile } from './config.mjs'
 import { createApi, createSource } from './app.mjs'
 import { createShellProxy, isShellPath } from './shell.mjs'
+import { createTalkProxy, isTalkPath } from './talk.mjs'
 
 loadEnvFile()
 const config = loadConfig()
 const api = createApi(createSource(config))
 const shell = createShellProxy(config)
+const talk = createTalkProxy(config)
 const distDir = resolve(fileURLToPath(new URL('../dist/', import.meta.url)))
 const indexHtml = resolve(distDir, 'index.html')
 
@@ -73,9 +75,10 @@ function handle(req, res) {
 }
 
 const server = http.createServer(handle)
-// The terminal's WebSocket arrives as an upgrade, not a normal request.
+// The terminal's and Talk's WebSockets arrive as upgrades, not normal requests.
 server.on('upgrade', (req, socket, head) => {
   if (isShellPath(req.url)) return shell.upgrade(req, socket, head)
+  if (isTalkPath(req.url)) return talk.upgrade(req, socket, head)
   socket.destroy()
 })
 server.listen(config.port, config.host, () => {

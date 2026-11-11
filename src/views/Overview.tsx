@@ -63,7 +63,7 @@ export function Overview({ data, now }: { data: Snapshot; now: Date }) {
         </p>
       </section>
 
-      <JarvisPanel />
+      <JarvisPanel live={data.source === 'live'} />
 
       <div className="grid grid--stats">
         {data.metrics.map((m) => <StatCard key={m.id} metric={m} />)}
