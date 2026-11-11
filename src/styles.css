@@ -429,6 +429,8 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* Talk mode: the sheet fills the screen (one fixed size, never animated: it's glass). */
 .dialog.dialog--chat[data-talking] { width: calc(100vw - 32px); max-width: none; height: calc(var(--safe-h) - 32px); max-height: none; }
 .dialog--chat[data-talking] .chat__turns { width: min(100%, 860px); justify-self: center; }
+/* The /talk page: the sheet is the page, so the sky shows behind it, not a dimmed dashboard. */
+.dialog--chat[data-page]::backdrop { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .chat__status { color: var(--frost-dim); font-size: 14px; }
 .chat__turns { list-style: none; margin: 0; padding: 0 2px 0 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
 .chat__turn { display: grid; gap: 8px; }

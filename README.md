@@ -105,6 +105,17 @@ ttyd listens on 127.0.0.1 only and runs as a user service
 (`deploy/ttyd.service`; setup steps are at the top of that file). It isn't
 proxied in `npm run dev`; use `npm start` to try it.
 
+**The Talk page** is the same chat on its own, filling the screen with no
+tabs or panels: `https://jarvis.snakebird-ph.ts.net/talk` (or `#talk` on a
+build served from a folder, like the preview). Tap **Talk** to start, since
+iOS only opens the microphone after a tap; **Close** goes back to the
+dashboard. It keeps the screen on while open, because Safari drops the
+microphone when the screen locks. Add it to the home screen from Safari
+(Share, Add to Home Screen) and the icon, named Talk, opens straight into
+it: the page swaps in `talk.webmanifest`, whose `start_url` is `./talk`.
+It goes through the same Tailscale login as the rest of the page, and
+it's a different address from Jarvis's own voice page at `:8443/talk`.
+
 ### Ask Jarvis
 
 Type a question and the chat opens: a fixed-size sheet with Jarvis's orb,

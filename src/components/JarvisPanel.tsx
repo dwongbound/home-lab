@@ -86,16 +86,21 @@ function wait(ms: number): Promise<void> {
 interface Props {
   /** True with live data: Talk opens the real voice line to Jarvis. Otherwise it plays the demo. */
   live: boolean
+  /**
+   * The /talk page: no bar, just the chat filling the screen, ready for a
+   * tap on Talk. Close goes back to the dashboard.
+   */
+  page?: boolean
 }
 
-/** The bar on the Overview, plus the chat sheet it opens. */
-export function JarvisPanel({ live }: Props) {
+/** The bar on the Overview, plus the chat sheet it opens (or, on /talk, only the sheet). */
+export function JarvisPanel({ live, page = false }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<OrbState>('idle')
   const [turns, setTurnsState] = useState<Turn[]>(savedTurns)
   // Whether the saved chat has been fetched (or wasn't needed), for the row under the bar.
   const [historyChecked, setHistoryChecked] = useState(savedTurns.length > 0)
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(page)
   const [talkingOn, setTalkingOn] = useState(false)
   const [heard, setHeard] = useState('')
   // Why Talk ended by itself (no microphone, the line dropped), shown in the status line.
@@ -292,10 +297,11 @@ export function JarvisPanel({ live }: Props) {
     if (live) setState('idle')
   }
 
-  /** Closes the sheet; talking stops. */
+  /** Closes the sheet; talking stops. On /talk, Close goes to the dashboard. */
   function close() {
     stopTalk()
-    setOpen(false)
+    if (page) window.location.assign('./')
+    else setOpen(false)
   }
 
   // First visit: pick up the conversation where Jarvis left it (it lives on
@@ -323,6 +329,26 @@ export function JarvisPanel({ live }: Props) {
 
   // Leaving the page stops the microphone and the voice.
   useEffect(() => () => stopTalk(), [])
+
+  const sheet = (
+    <ChatSheet
+      turns={turns}
+      state={state}
+      orbRef={sheetOrb}
+      text={text}
+      onText={setText}
+      onSend={send}
+      talking={talkingOn}
+      page={page}
+      heard={heard}
+      notice={notice}
+      onTalk={() => void startTalk()}
+      onStopTalk={stopTalk}
+      onAnswer={(id, ok) => void answer(id, ok)}
+      onClose={close}
+    />
+  )
+  if (page) return sheet
 
   const last = turns.length > 0 ? turns[turns.length - 1] : null
   const lastText = lastLine(last, historyChecked, state, notice)
@@ -357,23 +383,7 @@ export function JarvisPanel({ live }: Props) {
         <span className="jarvis__last-text">{lastText}</span>
         <span className="jarvis__last-open">Open chat</span>
       </button>
-      {open ? (
-        <ChatSheet
-          turns={turns}
-          state={state}
-          orbRef={sheetOrb}
-          text={text}
-          onText={setText}
-          onSend={send}
-          talking={talkingOn}
-          heard={heard}
-          notice={notice}
-          onTalk={() => void startTalk()}
-          onStopTalk={stopTalk}
-          onAnswer={(id, ok) => void answer(id, ok)}
-          onClose={close}
-        />
-      ) : null}
+      {open ? sheet : null}
     </section>
   )
 }
@@ -387,6 +397,8 @@ interface SheetProps {
   onSend: (e: FormEvent) => void
   /** Hands-free talk is on. */
   talking: boolean
+  /** The /talk page: the sheet always fills the screen and Talk is the main button. */
+  page: boolean
   /** What's being heard right now, while listening. */
   heard: string
   /** Why Talk ended by itself, if it did. */
@@ -403,7 +415,7 @@ interface SheetProps {
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard, notice, onTalk, onStopTalk, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, heard, notice, onTalk, onStopTalk, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -473,10 +485,13 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
       className="dialog dialog--chat glass"
       tabIndex={-1}
       // Talk mode takes the whole screen (Dylan, 2026-11-11), with a bigger orb.
-      data-talking={talking ? '' : undefined}
+      // The /talk page always does, even before Talk is tapped.
+      data-talking={talking || page ? '' : undefined}
+      data-page={page ? '' : undefined}
       aria-labelledby="chat-title"
       onCancel={(e) => { e.preventDefault(); onClose() }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      // A tap outside the sheet closes it, except on /talk where there's nothing outside.
+      onClick={(e) => { if (!page && e.target === e.currentTarget) onClose() }}
     >
       <button type="button" className="icon-btn chat__close" aria-label="Close" onClick={onClose}>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
@@ -524,7 +539,8 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
         ) : (
           <>
             <button type="submit" className="btn btn--primary" disabled={busy || !text.trim()}>Send</button>
-            <button type="button" className="btn" disabled={state !== 'idle'} onClick={onTalk}>Talk</button>
+            {/* On /talk, Talk is what you came for, so it's the main button. */}
+            <button type="button" className={page ? 'btn btn--primary' : 'btn'} disabled={state !== 'idle'} onClick={onTalk}>Talk</button>
           </>
         )}
       </form>
