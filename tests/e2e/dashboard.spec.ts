@@ -542,7 +542,7 @@ test('before Jarvis runs a command the chat asks, and Approve or Deny decides it
   await page.getByRole('button', { name: 'Ask', exact: true }).click()
   const chat = page.getByRole('dialog', { name: 'Jarvis' })
   // The card shows exactly what he wants to run, and he waits.
-  const card = chat.getByRole('group', { name: 'Jarvis asks to run a command' }).last()
+  const card = chat.getByRole('group', { name: 'Jarvis asks: Run a command' }).last()
   await expect(card).toBeVisible({ timeout: 10_000 })
   await expect(card.getByText('sudo systemctl restart jarvis')).toBeVisible()
   await expect(chat.getByRole('status')).toHaveText('Waiting for your OK')
@@ -557,7 +557,7 @@ test('before Jarvis runs a command the chat asks, and Approve or Deny decides it
   await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
   await chat.getByRole('textbox', { name: 'Message Jarvis' }).fill('Edit my todo note')
   await chat.getByRole('button', { name: 'Send' }).click()
-  const edit = chat.getByRole('group', { name: 'Jarvis asks to edit a file' }).last()
+  const edit = chat.getByRole('group', { name: 'Jarvis asks: Edit a file' }).last()
   await expect(edit).toBeVisible({ timeout: 10_000 })
   await edit.getByRole('button', { name: 'Deny' }).click()
   await expect(edit.getByText('Denied', { exact: true })).toBeVisible()

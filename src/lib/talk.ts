@@ -50,9 +50,9 @@ interface TalkEvent {
   by?: string
 }
 
-/** Who settled an approval, as one of the three the page knows. */
+/** Who settled an approval, as one of the four the page knows. */
 function approvalBy(by: string | undefined): ApprovalBy {
-  if (by === 'page' || by === 'telegram') return by
+  if (by === 'page' || by === 'voice' || by === 'telegram') return by
   return 'timeout'
 }
 
@@ -310,7 +310,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       silence()
       on.onInterrupted()
     } else if (event.type === 'approval' && typeof event.id === 'string' && typeof event.summary === 'string') {
-      on.onApproval({ id: event.id, tool: event.tool ?? 'action', summary: event.summary, expires: event.expires ?? '' })
+      on.onApproval({ id: event.id, tool: event.tool ?? '', summary: event.summary, expires: event.expires ?? '' })
     } else if (event.type === 'approval_done' && typeof event.id === 'string') {
       on.onApprovalDone(event.id, event.ok === true, approvalBy(event.by))
     }

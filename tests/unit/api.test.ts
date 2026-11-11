@@ -157,7 +157,7 @@ describe('Jarvis approvals', () => {
     })
     const id = await approvalId
     // A reload would see it waiting.
-    expect((await callApi(api, 'GET', '/api/jarvis/approvals')).json().pending).toMatchObject([{ id, tool: 'Run a command' }])
+    expect((await callApi(api, 'GET', '/api/jarvis/approvals')).json().pending).toMatchObject([{ id, tool: 'run_command' }])
     // Needs the page header and a proper body.
     expect((await callApi(api, 'POST', '/api/jarvis/approve', {}, JSON.stringify({ id, ok: true }))).statusCode).toBe(403)
     expect((await callApi(api, 'POST', '/api/jarvis/approve', ACTION_HEADER, JSON.stringify({ id, ok: 'yes' }))).statusCode).toBe(400)

@@ -439,10 +439,10 @@ function sampleHits(t) {
 function sampleAction(text) {
   const q = text.toLowerCase()
   if (q.includes('run ') || q.includes('restart')) {
-    return { tool: 'Run a command', summary: 'sudo systemctl restart jarvis', done: 'Jarvis restarted.' }
+    return { tool: 'run_command', summary: 'sudo systemctl restart jarvis', done: 'Jarvis restarted.' }
   }
   if (q.includes('write') || q.includes('edit') || q.includes('note')) {
-    return { tool: 'Edit a file', summary: '~/notes/todo.md\n+ - Book the rental car for Dallas', done: 'The note is saved.' }
+    return { tool: 'edit_file', summary: 'edit ~/notes/todo.md (1 lines)\n+ - Book the rental car for Dallas', done: 'The note is saved.' }
   }
   return null
 }

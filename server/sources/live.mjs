@@ -29,15 +29,15 @@ function toApproval(raw) {
   if (typeof raw?.id !== 'string' || typeof raw.summary !== 'string') return null
   return {
     id: raw.id.slice(0, 64),
-    tool: String(raw.tool ?? 'action').slice(0, 60),
+    tool: String(raw.tool ?? '').slice(0, 60),
     summary: raw.summary.slice(0, 4000),
     expires: typeof raw.expires === 'string' ? raw.expires : '',
   }
 }
 
-/** Who answered an approval, as one of the three the page knows. */
+/** Who answered an approval, as one of the four the page knows. */
 function toApprovalBy(by) {
-  if (by === 'page' || by === 'telegram') return by
+  if (by === 'page' || by === 'voice' || by === 'telegram') return by
   return 'timeout'
 }
 const HISTORY_POINTS = 24

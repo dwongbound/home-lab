@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'rea
 import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent } from '../api/client'
 import type { Approval, ApprovalBy, ChatTurn } from '../types'
 import { openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
+import { toolLabel } from '../lib/approvals'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
 
@@ -526,6 +527,7 @@ function outcomeText(a: ApprovalView): string {
   if (a.by === 'timeout') return 'No answer in time, so he left it alone'
   const verb = a.outcome === 'approved' ? 'Approved' : 'Denied'
   if (a.by === 'telegram') return `${verb} on Telegram`
+  if (a.by === 'voice') return `${verb} out loud`
   return verb
 }
 
@@ -536,8 +538,8 @@ function outcomeText(a: ApprovalView): string {
  */
 function ApprovalCard({ approval: a, talking, onAnswer }: { approval: ApprovalView; talking: boolean; onAnswer: (id: string, ok: boolean) => void }) {
   return (
-    <div className="approval" role="group" aria-label={`Jarvis asks to ${a.tool.toLowerCase()}`} data-outcome={a.outcome}>
-      <p className="approval__tool">{a.tool}</p>
+    <div className="approval" role="group" aria-label={`Jarvis asks: ${toolLabel(a.tool)}`} data-outcome={a.outcome}>
+      <p className="approval__tool">{toolLabel(a.tool)}</p>
       <pre className="approval__summary">{a.summary}</pre>
       {a.outcome ? (
         <p className="approval__outcome">{outcomeText(a)}</p>

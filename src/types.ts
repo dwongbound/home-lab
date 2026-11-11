@@ -175,8 +175,8 @@ export interface ActionResult { ok: boolean; message: string }
  * or no in Talk, or Telegram, whichever answers first.
  */
 export interface Approval { id: string; tool: string; summary: string; expires: string }
-/** Who settled an approval: a tap or word on the page, Telegram, or nobody in time. */
-export type ApprovalBy = 'page' | 'telegram' | 'timeout'
+/** Who settled an approval: a tap on the page, a spoken yes or no in Talk, Telegram, or nobody in time. */
+export type ApprovalBy = 'page' | 'voice' | 'telegram' | 'timeout'
 export type ChatEvent =
   | { type: 'delta'; text: string }
   | { type: 'done'; ok: true }
