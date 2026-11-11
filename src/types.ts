@@ -138,7 +138,7 @@ export interface Snapshot {
   today: TimelineItem[]
   activity: ActivityItem[]
   services: Service[]
-  /** Gemma (OLLAMA_MODEL), the model the Load/Unload button acts on, whether or not it's loaded. */
+  /** The local model (OLLAMA_MODEL), the model the Load/Unload button acts on, whether or not it's loaded. */
   model: { name: string; loaded: boolean; vramGb: number; loadSeconds: number | null }
   /** Every model Ollama has in memory right now, with what it's there for. */
   models: LoadedModel[]
@@ -153,7 +153,7 @@ export interface Snapshot {
 /** One model Ollama has loaded (GET /api/ps), and its job on jarvis. */
 export interface LoadedModel {
   name: string
-  /** What it's for: chat (Gemma), watch (Jarvis's background triage), or other. */
+  /** What it's for: chat (a chat model), watch (Jarvis's background triage), or other. */
   role: 'chat' | 'watch' | 'other'
   vramGb: number
   /** When Ollama will unload it if nothing uses it, or null when it stays. */

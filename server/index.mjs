@@ -1,6 +1,6 @@
 // Production server: serves the built page from dist/ plus the API.
 // Plain node:http with no framework, because jarvis has 16 GB of RAM and
-// Gemma wants most of it.
+// the local model and voice want the rest.
 import http from 'node:http'
 import { readFile, stat } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'

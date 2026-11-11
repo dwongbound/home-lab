@@ -1,14 +1,14 @@
 import type { LoadedModel } from '../types'
 
 // What's in the GPU right now: every model Ollama has loaded, with its job
-// on jarvis, how much GPU memory it holds and when it unloads. Gemma is
-// Jarvis's chat brain; Jarvis's watch model (Qwen) scores new items in the
-// background and steps aside whenever Gemma loads.
+// on jarvis, how much GPU memory it holds and when it unloads. Jarvis's
+// local model (Qwen) is both its background watch and its offline backup
+// brain; Claude does the everyday thinking.
 
 /** Each role in plain words. */
 const ROLE: Record<LoadedModel['role'], string> = {
-  chat: 'Chat brain for Jarvis.',
-  watch: 'Jarvis’s background watch: scores new items against your interests and, once an hour, looks for ones that connect. Unloads itself when Gemma loads.',
+  chat: 'Chat model for Jarvis.',
+  watch: 'Jarvis’s local brain: scores new items against your interests in the background, and answers when Claude can’t be reached.',
   other: 'Loaded by something else (a script, or by hand).',
 }
 
@@ -42,7 +42,7 @@ export function LoadedModels({ models, now }: { models: LoadedModel[]; now: Date
           <p className="panel__sub">{models.length === 0 ? 'Nothing loaded' : `${Math.round(used * 10) / 10} of 12 GB used by models`}</p>
         </div>
       </header>
-      {models.length === 0 ? <p className="empty">No model is loaded. Gemma loads when Jarvis needs it, or with Load Gemma.</p> : (
+      {models.length === 0 ? <p className="empty">No model is loaded. The local model loads when Jarvis needs it, or with Load local model.</p> : (
         <ul className="cloud__list loaded__list">
           {models.map((m) => (
             <li key={m.name} className="loaded__item">

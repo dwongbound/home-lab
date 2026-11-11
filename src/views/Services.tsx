@@ -4,7 +4,7 @@ import { ModelCard } from '../components/ModelCard'
 import { LoadedModels } from '../components/LoadedModels'
 import { TerminalPanel } from './Shell'
 
-// The Services page: every service with response times, the Gemma card,
+// The Services page: every service with response times, the local model card,
 // what's in GPU memory and why, and a terminal on jarvis (the same tmux
 // session as the Shell tab) for restarting things by hand.
 

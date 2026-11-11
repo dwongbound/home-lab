@@ -1,8 +1,8 @@
 // The API, as a plain Node request handler:
 //
 //   GET  /api/snapshot              everything the page shows, in one call
-//   POST /api/actions/ollama-unload free Gemma's ~10 GB of GPU memory
-//   POST /api/actions/ollama-load   load Gemma back (about 3 minutes)
+//   POST /api/actions/ollama-unload free the local model's ~6 GB of GPU memory
+//   POST /api/actions/ollama-load   load it back
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
@@ -50,7 +50,7 @@ async function readJson(req) {
  * go to `next` (the static file server), or 404 when there's no `next`.
  */
 export function createApi(source) {
-  // Only one action at a time: loading Gemma twice at once would just
+  // Only one action at a time: loading the model twice at once would just
   // fight over the same GPU memory.
   let actionInFlight = null
 

@@ -13,9 +13,9 @@ describe('LoadedModels', () => {
       { name: 'gemma4:12b', role: 'chat', vramGb: 4.1, until: null, parameters: null, quantization: null, contextLength: null },
     ]} />)
     expect(screen.getByText('9.4 of 12 GB used by models')).toBeInTheDocument()
-    expect(screen.getByText(/background watch/)).toBeInTheDocument()
+    expect(screen.getByText(/in the background, and answers when Claude/)).toBeInTheDocument()
     expect(screen.getByText(/Unloads in 52 min if unused · 9.7B parameters · Q4_K_M · 8,192 token context/)).toBeInTheDocument()
-    expect(screen.getByText(/Chat brain/)).toBeInTheDocument()
+    expect(screen.getByText(/Chat model for Jarvis/)).toBeInTheDocument()
     expect(screen.getByText('Stays loaded')).toBeInTheDocument()
   })
 

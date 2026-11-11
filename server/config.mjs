@@ -26,10 +26,12 @@ export function loadConfig(env = process.env) {
     haUrl: env.HA_URL ?? 'http://192.168.68.94:8123',
     haToken: env.HA_TOKEN ?? '',
     ollamaUrl: env.OLLAMA_URL ?? 'http://127.0.0.1:11434',
-    ollamaModel: env.OLLAMA_MODEL ?? 'gemma4:12b',
-    // How long Ollama keeps Gemma after Load. "-1" = forever, which is how
-    // jarvis normally runs it. A number is seconds; "30m" style also works.
-    ollamaKeepAlive: env.OLLAMA_KEEP_ALIVE ?? '-1',
+    // Jarvis's local model (Gemma was dropped 2026-11-11): its offline
+    // backup brain and background watch. The model card loads and unloads it.
+    ollamaModel: env.OLLAMA_MODEL ?? 'qwen3.5:9b',
+    // How long Ollama keeps it after Load, like Jarvis's own requests (10
+    // minutes idle). "-1" = forever; a number is seconds; "30m" style works.
+    ollamaKeepAlive: env.OLLAMA_KEEP_ALIVE ?? '10m',
     // Jarvis's background watch model (JARVIS_TRIAGE_MODEL in Jarvis), so
     // the Services page can say what it's doing when it's loaded.
     ollamaWatchModel: env.OLLAMA_WATCH_MODEL ?? 'qwen3.5:9b',

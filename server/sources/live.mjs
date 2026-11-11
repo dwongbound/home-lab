@@ -17,7 +17,7 @@ import { createPickFile } from '../money-picks-file.mjs'
 
 const realExecFile = promisify(execFileCallback)
 const PROBE_TIMEOUT_MS = 2500
-// Jarvis can take a while: Claude thinking, or Gemma loading first.
+// Jarvis can take a while: Claude thinking, or the local model loading first.
 const ASK_TIMEOUT_MS = 180_000
 const HISTORY_POINTS = 24
 const GB = 1024 ** 3
@@ -216,7 +216,7 @@ export function createLiveSource(config, deps = {}) {
     return 'idle'
   }
 
-  /** "gemma4:12b and qwen3.5:9b loaded", or "No model loaded". */
+  /** "qwen3.5:9b loaded" (several joined with "and"), or "No model loaded". */
   function ollamaDetail(models) {
     if (models.length === 0) return 'No model loaded'
     return `${models.map((m) => m.name).join(' and ')} loaded`
@@ -275,8 +275,8 @@ export function createLiveSource(config, deps = {}) {
 
       const models = await readLoadedModels(ollama)
       const jarvisHealth = await readJarvisHealth(jarvisHttp)
-      // The Gemma card is only ever about Gemma; anything else loaded (like
-      // Jarvis's watch model) is listed on its own.
+      // The model card is only ever about OLLAMA_MODEL; anything else
+      // loaded is listed on its own.
       const model = models.find((m) => m.name === config.ollamaModel)
 
       return {
@@ -318,9 +318,9 @@ export function createLiveSource(config, deps = {}) {
     },
 
     /**
-     * Loads or unloads Gemma. Ollama has no "unload" call: you send an empty
-     * generate request with keep_alive 0 (unload now) or OLLAMA_KEEP_ALIVE
-     * (load and keep it that long; -1 = forever, how jarvis runs it).
+     * Loads or unloads the local model. Ollama has no "unload" call: you
+     * send an empty generate request with keep_alive 0 (unload now) or
+     * OLLAMA_KEEP_ALIVE (load and keep it that long; 10m by default).
      */
     async action(name) {
       if (name !== 'ollama-unload' && name !== 'ollama-load') {
@@ -331,11 +331,11 @@ export function createLiveSource(config, deps = {}) {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ model: config.ollamaModel, keep_alive: unloading ? 0 : parseKeepAlive(config.ollamaKeepAlive) }),
-        // Loading Gemma takes about 3 minutes on this PC, so allow 5.
+        // A cold load can take a few minutes on this PC, so allow 5.
         signal: AbortSignal.timeout(unloading ? 30_000 : 300_000),
       })
       if (!res.ok) return { ok: false, message: `Ollama answered ${res.status}` }
-      return { ok: true, message: unloading ? 'Gemma unloaded' : 'Gemma loaded' }
+      return { ok: true, message: unloading ? 'Local model unloaded' : 'Local model loaded' }
     },
 
     /**

@@ -21,6 +21,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
 - **API:** `server/app.mjs` — `GET /api/snapshot`, `POST /api/actions/:name`
   (`ollama-unload`, `ollama-load`; needs header `x-home-lab: 1`; one at a time, 409 otherwise),
   `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`),
+  `POST /api/jarvis/chat` (`{text}`, same header; streams Jarvis `/chat/stream` NDJSON), `GET /api/jarvis/history` (Jarvis `/chat/history`),
   `POST /api/home/control` (`{entity, command, value?}`; climate takes `target` °/`mode`; same header + Tailscale login; allowlist in
   `server/sources/home.mjs`, which also reads devices/weather/sun into `snapshot.home`),
   `POST /api/digest/refresh` (same header; asks Jarvis `/digest/refresh`; client hook `src/api/digestRefresh.tsx`),
@@ -30,7 +31,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
 - **Shell:** `server/shell.mjs` proxies `/shell/` (HTTP + WebSocket upgrade, wired in `server/index.mjs`)
   to ttyd on 127.0.0.1:7681 (`deploy/ttyd.service`, tmux) only for `SHELL_USERS` Tailscale logins with a same-origin `Origin`.
 - **Sources:** `server/sources/mock.mjs` (default; Pacific-time schedule, remembers
-  Gemma loaded/unloaded), `server/sources/live.mjs` (parallel probes, 2.5 s timeouts).
+  the local model loaded/unloaded), `server/sources/live.mjs` (parallel probes, 2.5 s timeouts).
   Picked by `DATA_SOURCE` in `server/app.mjs createSource`.
 - **Config/env:** `server/config.mjs` (`loadConfig`, `loadEnvFile`). All vars in `.env.example`.
 - **Shape:** `src/types.ts` `Snapshot`, `DataSource`. Change it → update BOTH sources.
@@ -51,7 +52,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,
-  `JarvisPanel` (Ask Jarvis), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (in `views/Shell.tsx`, also on Services), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
+  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/{speech,talk}.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (in `views/Shell.tsx`, also on Services), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
 - **Helpers:** `src/lib/format.ts`, `sky.ts` (phase by hour), `sparkline.ts`,
   `prefs.ts` (localStorage key `home-lab:v1:sky`, guarded).
 - **Styles:** `src/styles.css` — tokens in `:root`, sky phases on `.backdrop[data-phase]` (colours are `@property`-registered so phases fade over 120 s; `data-picked` = 1.5 s),
@@ -67,9 +68,9 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
 
 jarvis: Windows 11 + Ubuntu 24.04 in WSL 2 (user `dwong`, systemd on, mirrored
 networking), 16 GB RAM (WSL capped at 10), RTX 3060 12 GB. Home Assistant in
-Docker at 192.168.68.94:8123. Ollama with Gemma ~12B (~10 GB VRAM, ~3 min load).
-This page at https://jarvis.snakebird-ph.ts.net, Jarvis agent at :8443
-(systemd unit `jarvis`; restarting needs Dylan's sudo password). Open WebUI was removed 2026-11-11.
+Docker at 192.168.68.94:8123. Ollama with qwen3.5:9b as Jarvis's local model (~6 GB VRAM, 10-min idle unload; Gemma dropped 2026-11-11).
+This page at https://jarvis.snakebird-ph.ts.net, Jarvis agent at :8443 (Open WebUI removed 2026-11-11)
+(systemd unit `jarvis`; `sudo -n systemctl restart jarvis` works without a password).
 
 **Never** open, read or print `~/jarvis/data/memory.md` or
 `/srv/open-webui/data/webui.db` unless Dylan asks in that conversation.

@@ -2,7 +2,7 @@
 // reviewed before anything on the PC is wired up. It returns the same
 // Snapshot shape as the live source (see src/types.ts).
 //
-// It also keeps a tiny bit of state (is Gemma loaded?) so the Unload and
+// It also keeps a tiny bit of state (is the local model loaded?) so the Unload and
 // Load buttons visibly do something in the preview.
 
 import { createPickStore } from '../money-picks.mjs'
@@ -193,26 +193,25 @@ export function createMockSource({ now = () => new Date() } = {}) {
           { id: 't2', at: atPacificTime(t, 9, 0), title: 'Fantasy pickup run', detail: 'Failed: Jarvis is running old code, needs a restart', status: 'failed' },
           { id: 't3', at: atPacificTime(t, 12, 30), title: 'Home Assistant backup', detail: 'Local snapshot, 212 MB', status: 'done' },
           { id: 't4', at: atPacificTime(t, 17, 5), title: 'Porch lights on at sunset', detail: 'Home Assistant automation', status: 'scheduled' },
-          { id: 't5', at: atPacificTime(t, 23, 30), title: 'Unload Gemma if idle', detail: 'Frees about 10 GB of GPU memory', status: 'scheduled' },
+          { id: 't5', at: atPacificTime(t, 23, 30), title: 'Local model unloads if idle', detail: 'Frees about 6 GB of GPU memory', status: 'scheduled' },
         ],
         activity: [
           { id: 'a1', at: minutesAgo(4), kind: 'jarvis', text: 'Jarvis answered "what time is sunset" on Telegram' },
           { id: 'a2', at: minutesAgo(38), kind: 'ha', text: 'Living room lamp turned off by the bedtime scene' },
-          { id: 'a3', at: minutesAgo(95), kind: 'ollama', text: 'Gemma loaded in 2 min 48 s' },
+          { id: 'a3', at: minutesAgo(95), kind: 'ollama', text: 'qwen3.5:9b loaded in 41 s' },
           { id: 'a4', at: minutesAgo(240), kind: 'system', text: 'Ubuntu started by the "Start Ubuntu (WSL)" task' },
           { id: 'a5', at: minutesAgo(610), kind: 'jarvis', text: 'Fantasy pickup run failed with an import error' },
         ],
         services: [
           { id: 'ha', name: 'Home Assistant', detail: '2026.10.2 in Docker', status: 'up', latencyMs: 14, url: 'http://192.168.68.94:8123' },
-          { id: 'ollama', name: 'Ollama', detail: loaded ? 'gemma4:12b loaded' : 'qwen3.5:9b loaded', status: 'up', latencyMs: 3 },
+          { id: 'ollama', name: 'Ollama', detail: loaded ? 'qwen3.5:9b loaded' : 'No model loaded', status: 'up', latencyMs: 3 },
           { id: 'jarvis', name: 'Jarvis', detail: 'Running, code changed since start', status: 'degraded', latencyMs: 22, url: 'https://jarvis.snakebird-ph.ts.net:8443' },
         ],
-        model: { name: 'gemma4:12b', loaded, vramGb: loaded ? 10.1 : 0, loadSeconds: 168 },
-        // Like jarvis: Gemma when loaded, else Jarvis's watch model, which
-        // steps aside whenever Gemma loads.
+        model: { name: 'qwen3.5:9b', loaded, vramGb: loaded ? 5.7 : 0, loadSeconds: 41 },
+        // Like jarvis: the one local model, unloading after 10 idle minutes.
         models: loaded
-          ? [{ name: 'gemma4:12b', role: 'chat', vramGb: 10.1, until: null, parameters: '12.2B', quantization: 'Q4_K_M', contextLength: 8192 }]
-          : [{ name: 'qwen3.5:9b', role: 'watch', vramGb: 5.3, until: new Date(t.getTime() + 52 * 60_000).toISOString(), parameters: '9.7B', quantization: 'Q4_K_M', contextLength: 8192 }],
+          ? [{ name: 'qwen3.5:9b', role: 'watch', vramGb: 5.7, until: new Date(t.getTime() + 8 * 60_000).toISOString(), parameters: '9.7B', quantization: 'Q4_K_M', contextLength: 8192 }]
+          : [],
         cloud,
         home: {
           devices: state.home.map((d) => ({ ...d })),
@@ -228,17 +227,17 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return picks.change(change)
     },
 
-    /** Pretends to load or unload Gemma, taking long enough to see the spinner. */
+    /** Pretends to load or unload the local model, taking long enough to see the spinner. */
     async action(name) {
       if (name === 'ollama-unload') {
         await delay(1200)
         state.modelLoaded = false
-        return { ok: true, message: 'Gemma unloaded' }
+        return { ok: true, message: 'Local model unloaded' }
       }
       if (name === 'ollama-load') {
         await delay(1800)
         state.modelLoaded = true
-        return { ok: true, message: 'Gemma loaded' }
+        return { ok: true, message: 'Local model loaded' }
       }
       return { ok: false, message: `Unknown action: ${name}` }
     },

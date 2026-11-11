@@ -1,5 +1,5 @@
 // The page in jsdom with fetch faked: the blocking spinner on first load,
-// the overview, the error state, the Unload Gemma flow and Ask Jarvis.
+// the overview, the error state, the unload-the-local-model flow and Ask Jarvis.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -59,10 +59,10 @@ describe('App', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Jarvis is thinking')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(/, Dylan$/)
     expect(screen.getByText('Sample data')).toBeInTheDocument()
-    // The overview is a glance: no chart, services list or Gemma card.
+    // The overview is a glance: no chart, services list or model card.
     expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Jarvis requests' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Unload Gemma' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unload local model' })).not.toBeInTheDocument()
     // Jarvis needs attention, the 9 am run failed, and two threads wait on him.
     expect(screen.getByRole('link', { name: '4 things need you.' })).toHaveAttribute('href', '#claude')
   })
@@ -74,27 +74,27 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 
-  it('unloads Gemma: confirm dialog with Close, blocking spinner while it runs, then a toast', async () => {
+  it('unloads the local model: confirm dialog with Close, blocking spinner while it runs, then a toast', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
     vi.stubGlobal('fetch', fakeServer({ actionGate: gate }))
     const user = userEvent.setup()
-    // The Gemma card lives on Services.
+    // The model card lives on Services.
     window.location.hash = '#services'
     renderApp()
 
-    await user.click(await screen.findByRole('button', { name: 'Unload Gemma' }))
+    await user.click(await screen.findByRole('button', { name: 'Unload local model' }))
     const dialog = screen.getByRole('dialog', { hidden: true })
-    expect(dialog).toHaveTextContent('Unload Gemma?')
+    expect(dialog).toHaveTextContent('Unload the local model?')
     expect(screen.getByRole('button', { name: 'Close', hidden: true })).toBeEnabled()
 
     await user.click(screen.getByRole('button', { name: 'Unload', hidden: true }))
-    expect(await screen.findByText('Unloading Gemma…')).toBeInTheDocument()
+    expect(await screen.findByText('Unloading the local model…')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close', hidden: true })).toBeDisabled()
 
     release()
-    expect(await screen.findByText('Gemma unloaded', {}, { timeout: 3000 })).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Load Gemma' })).toBeInTheDocument())
+    expect(await screen.findByText('Local model unloaded', {}, { timeout: 3000 })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load local model' })).toBeInTheDocument())
   })
 
   it('Close dismisses the dialog without doing anything', async () => {
@@ -103,7 +103,7 @@ describe('App', () => {
     const user = userEvent.setup()
     window.location.hash = '#services'
     renderApp()
-    await user.click(await screen.findByRole('button', { name: 'Unload Gemma' }))
+    await user.click(await screen.findByRole('button', { name: 'Unload local model' }))
     await user.click(screen.getByRole('button', { name: 'Close', hidden: true }))
     expect(screen.queryByRole('dialog', { hidden: true })).not.toBeInTheDocument()
     expect(fetch.mock.calls.some((c) => String(c[0]).startsWith('/api/actions/'))).toBe(false)
