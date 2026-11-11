@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSnapshot } from './api/client'
 import { DigestRefreshing, useDigestRefresh } from './api/digestRefresh'
 import { Backdrop } from './components/Backdrop'
@@ -18,6 +18,7 @@ import { useSwipeNav } from './useSwipeNav'
 import { useNow } from './useNow'
 import { readAwake, readSky, writeAwake, writeSky } from './lib/prefs'
 import { useWakeLock } from './useWakeLock'
+import { useReveal } from './useReveal'
 import { shownPhase } from './lib/sky'
 
 // The whole page: backdrop, top bar, and whichever view the hash names.
@@ -55,6 +56,11 @@ export function App() {
     const id = setTimeout(() => setLanding(false), LANDING_MS)
     return () => clearTimeout(id)
   }, [hasData])
+
+  // Panels below the screen fade in as they're scrolled to. The main
+  // element is replaced once the data arrives (its key), so watch again then.
+  const mainRef = useRef<HTMLElement>(null)
+  useReveal(mainRef, hasData ? 'ready' : 'waiting')
 
   // Swiping sideways changes tab, on touch screens.
   useSwipeNav(view, swipeToView)
@@ -103,7 +109,7 @@ export function App() {
         {/* Anything needing him right now sits above every page, not inside Today. */}
         {data ? <AlertBanner alerts={activeAlerts(data, now)} /> : null}
         <DigestRefreshing.Provider value={digestRefreshing}>
-          <main className="main" key={data ? 'ready' : 'waiting'}>{body}</main>
+          <main className="main" ref={mainRef} key={data ? 'ready' : 'waiting'}>{body}</main>
         </DigestRefreshing.Provider>
         {data && error ? <p className="stale" role="status">Last update failed. Showing numbers from {new Date(data.generatedAt).toLocaleTimeString()}.</p> : null}
       </div>

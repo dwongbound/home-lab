@@ -63,6 +63,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `prefs.ts` (localStorage key `home-lab:v1:sky`, guarded).
 - **Styles:** `src/styles.css` — tokens in `:root`, sky phases on `.backdrop[data-phase]` (colours are `@property`-registered so phases fade over 120 s; `data-picked` = 1.5 s),
   ALL animation inside `@media (prefers-reduced-motion: no-preference)` (tested).
+  Below-the-screen panels fade in when first scrolled to: `src/useReveal.ts` sets `.glass[data-reveal=wait|in|shown]` (IntersectionObserver, time-based; no `animation-timeline`, which Safari skipped and which restarted after the landing).
 - **Tests:** `tests/unit/*` (Vitest), `tests/e2e/dashboard.spec.ts` (Playwright).
   `tests/unit/helpers.ts callApi` drives the handler without a port.
 - **Deploy:** `deploy/home-lab.service` (systemd on jarvis) or `Dockerfile` +
