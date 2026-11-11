@@ -116,7 +116,9 @@ start" and the whole screen is the button. After that one big button reads
 pick back up. It keeps the screen on while open, because Safari drops the
 microphone when the screen locks. Add it to the home screen from Safari
 (Share, Add to Home Screen) and the icon, named Talk, opens straight into
-it: the page swaps in `talk.webmanifest`, whose `start_url` is `./talk`.
+it: the server sends /talk with its own head (`server/talk-head.mjs`), naming
+`talk.webmanifest` (its own `id`, `start_url` and `scope` `./talk`), so iOS
+sees a second app beside the dashboard rather than the same one.
 It goes through the same Tailscale login as the rest of the page, and
 it's a different address from Jarvis's own voice page at `:8443/talk`.
 

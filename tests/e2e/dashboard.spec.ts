@@ -743,6 +743,10 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', './talk.webmanifest')
   const manifest = await (await page.request.get('/talk.webmanifest')).json()
   expect(manifest.start_url).toBe('./talk')
+  // iOS reads the app from the HTML as served, before any script, so /talk's own head must name it.
+  const served = await (await page.request.get('/talk')).text()
+  expect(served).toContain('href="./talk.webmanifest"')
+  expect(served).toContain('content="Talk"')
 
   // Voice only, and nothing to close: nowhere to type, nothing to send, no ×.
   await expect(chat.getByRole('textbox')).toHaveCount(0)
