@@ -26,6 +26,8 @@ export function ConfirmDialog({ title, body, confirmLabel, busyLabel, busy, erro
   useEffect(() => {
     const d = ref.current
     if (d && !d.open) d.showModal?.()
+    // Focus the box, not its first button, so no focus ring shows on open (Safari).
+    d?.focus()
     return () => d?.close?.()
   }, [])
 
@@ -33,6 +35,7 @@ export function ConfirmDialog({ title, body, confirmLabel, busyLabel, busy, erro
     <dialog
       ref={ref}
       className="dialog glass"
+      tabIndex={-1}
       aria-labelledby="dialog-title"
       aria-busy={busy}
       // Esc fires "cancel". Stop the browser closing it on its own so React

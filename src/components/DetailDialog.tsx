@@ -30,6 +30,9 @@ export function DetailDialog({ title, sub, facts = [], links = [], children, onC
     if (!d || d.open) return
     if (typeof d.showModal === 'function') d.showModal()
     else d.setAttribute('open', '')
+    // Hold focus on the box itself, not its first button: Safari otherwise
+    // draws the keyboard-focus ring on that button as soon as it opens.
+    d.focus()
     return () => { if (typeof d.close === 'function') d.close() }
   }, [])
 
@@ -37,6 +40,7 @@ export function DetailDialog({ title, sub, facts = [], links = [], children, onC
     <dialog
       ref={ref}
       className="dialog dialog--detail glass"
+      tabIndex={-1}
       aria-labelledby="detail-title"
       // Esc fires "cancel"; React closes it so the hash stays in step.
       onCancel={(e) => { e.preventDefault(); onClose() }}

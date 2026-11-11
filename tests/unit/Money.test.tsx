@@ -62,9 +62,20 @@ describe('Money', () => {
     expect(dialog).toHaveTextContent('Needs a category')
     expect(dialog).toHaveTextContent('Checking')
     expect(dialog).toHaveTextContent('Lesson')
+    // The box takes focus, not its first button, so no focus ring shows on open.
+    expect(dialog).toHaveFocus()
     await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(window.location.hash).toBe('#money')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('never asks for a category on a transfer between his own accounts', async () => {
+    window.location.hash = '#money/t/x9'
+    render(<Money data={await snapshot()} now={now} />)
+    const dialog = screen.getByRole('dialog', { name: 'Online Transfer To Chk' })
+    expect(dialog).toHaveTextContent('Transfer between your accounts')
+    expect(dialog).not.toHaveTextContent('Needs a category')
+    expect(screen.queryByRole('group', { name: 'Category' })).not.toBeInTheDocument()
   })
 
   it('says the digest needs setting up when there is no digest', async () => {

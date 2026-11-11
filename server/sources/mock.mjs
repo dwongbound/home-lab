@@ -111,6 +111,7 @@ function mockDigest(t, minutesAgo) {
         { id: 'x5', date: minutesAgo(900), merchant: 'Venmo Alex "undefined"', category: 'Other', amount: 120, account: 'Checking', accountId: 'm1', note: 'Lesson' },
         { id: 'x2', date: minutesAgo(1500), merchant: 'Shell', category: 'Transport', amount: 48.02, account: 'Sapphire', accountId: 'm3', pending: true },
         { id: 'x3', date: minutesAgo(2900), merchant: 'Payroll', category: 'Income', amount: -3450, account: 'Checking', accountId: 'm1' },
+        { id: 'x9', date: minutesAgo(3600), merchant: 'Online Transfer To Chk', category: '', amount: 500, account: 'Savings', accountId: 'm2', type: 'transfer' },
         { id: 'x4', date: minutesAgo(4300), merchant: 'Spotify', category: 'Subscriptions', amount: 11.99, account: 'Sapphire', accountId: 'm3' },
         { id: 'x6', date: minutesAgo(5800), merchant: 'Amazon', category: '', amount: 34.5, account: 'Sapphire', accountId: 'm3' },
       ],

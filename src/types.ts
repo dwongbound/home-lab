@@ -55,6 +55,8 @@ export interface MoneyTransaction {
   id: string; date: string; merchant: string; category: string; amount: number
   /** Optional, when the digest has them: which account, still pending, a note. */
   account?: string; accountId?: string; pending?: boolean; note?: string
+  /** Copilot's type, when the digest has it: a transfer between his own accounts needs no category. */
+  type?: 'regular' | 'income' | 'transfer'
 }
 export interface MoneyFlag { id: string; text: string }
 export interface MoneyDigest {

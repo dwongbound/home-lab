@@ -364,6 +364,7 @@ function TransactionDetail({ t, now, choices }: { t: MoneyTransaction; now: Date
   if (t.account) facts.push({ label: 'Account', value: cleanText(t.account) })
   if (t.note) facts.push({ label: 'Note', value: cleanText(t.note) })
   let sub = `${t.category || 'No category'} · ${ago(t.date, now)}`
+  if (t.type === 'transfer') sub = `Transfer between your accounts · ${ago(t.date, now)}`
   if (needsCategory(t)) sub = 'Needs a category'
   return (
     <DetailDialog title={cleanText(t.merchant)} sub={sub} facts={facts} onClose={closeDetail}>
