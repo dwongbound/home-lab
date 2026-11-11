@@ -49,12 +49,18 @@ test('opening the page asks Jarvis for a fresh digest, showing the last one mean
   await expect(calendar.getByText('Updated just now')).toBeVisible()
 })
 
-test('Schedule has the requests chart; Services has every service and the Gemma card', async ({ page }) => {
+test('Schedule has the requests chart; Services has every service, the Gemma card, what is loaded and a terminal', async ({ page }) => {
   await page.goto('/#schedule')
   await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toBeVisible()
   await page.goto('/#services')
   await expect(page.getByRole('link', { name: 'Open Home Assistant' })).toHaveAttribute('href', 'http://192.168.68.94:8123')
   await expect(page.getByRole('button', { name: 'Unload Gemma' })).toBeVisible()
+  const loaded = page.getByRole('region', { name: 'In GPU memory' })
+  await expect(loaded).toContainText('gemma4:12b')
+  await expect(loaded).toContainText('Chat brain')
+  // The terminal replaced the "Restarting Jarvis" note.
+  await expect(page.locator('iframe[title="Terminal on jarvis"]')).toBeVisible()
+  await expect(page.getByText('Restarting Jarvis')).toHaveCount(0)
 })
 
 test('changing page cross-fades and slides the pill light, and never with reduced motion', async ({ browser }) => {
@@ -111,6 +117,8 @@ test('unloading Gemma blocks the dialog until it finishes, then loading it back 
 
   await expect(page.getByRole('status').filter({ hasText: 'Gemma unloaded' })).toBeVisible()
   await expect(page.getByText('Unloaded', { exact: true })).toBeVisible()
+  // With Gemma gone, Jarvis's watch model shows in its place, with its job.
+  await expect(page.getByRole('region', { name: 'In GPU memory' })).toContainText('background watch')
 
   // Put it back so the next test starts from the same state.
   await page.getByRole('button', { name: 'Load Gemma' }).click()

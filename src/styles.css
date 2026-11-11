@@ -48,8 +48,20 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 :focus-visible { outline: 2px solid var(--glacier); outline-offset: 3px; border-radius: 8px; }
 
 /* ---------- The window ---------- */
+/* The sky's colours and sun, registered as typed values so the browser can
+   blend them: a gradient can't be transitioned, but the colours inside it
+   can. Without @property support the sky simply switches. */
+@property --sky-top { syntax: '<color>'; inherits: true; initial-value: #0f1726; }
+@property --sky-mid { syntax: '<color>'; inherits: true; initial-value: #1d2a40; }
+@property --sky-low { syntax: '<color>'; inherits: true; initial-value: #33405a; }
+@property --sky-floor { syntax: '<color>'; inherits: true; initial-value: #161c24; }
+@property --sun { syntax: '<color>'; inherits: true; initial-value: #9fb6e0; }
+@property --ridge { syntax: '<color>'; inherits: true; initial-value: #121926; }
+@property --sun-a { syntax: '<number>'; inherits: true; initial-value: .22; }
+@property --sun-x { syntax: '<percentage>'; inherits: true; initial-value: 24%; }
+@property --sun-y { syntax: '<percentage>'; inherits: true; initial-value: 30%; }
 .backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: var(--basalt); }
-.backdrop__sky { position: absolute; inset: 0; background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 52%, var(--sky-low) 78%, var(--sky-floor) 100%); transition: background 2s ease; }
+.backdrop__sky { position: absolute; inset: 0; background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 52%, var(--sky-low) 78%, var(--sky-floor) 100%); }
 .backdrop__sun {
   position: absolute; left: var(--sun-x); top: var(--sun-y); width: 70vmax; height: 70vmax; transform: translate(-50%, -50%);
   background: radial-gradient(circle, var(--sun) 0%, transparent 62%); opacity: var(--sun-a); filter: blur(10px);
@@ -259,6 +271,17 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .shell__open { width: 44px; height: 44px; }
 /* A fixed height, so typing never makes the page jump; the terminal scrolls inside. */
 .shell__frame { display: block; width: 100%; height: clamp(420px, calc(100dvh - 260px), 1100px); border: 0; border-radius: var(--r-inner); background: #16212c; }
+/* On Services, a shorter terminal under the panels. */
+.terminal--compact { margin-top: var(--gap); }
+.terminal--compact .shell__frame { height: clamp(280px, 42dvh, 520px); }
+/* Services: what each loaded model is doing. */
+.loaded__list { gap: 14px; }
+.loaded__item { display: grid; gap: 3px; }
+.loaded__item p { margin: 0; }
+.loaded__name { font-weight: 600; font-size: 14.5px; }
+.loaded__gb { font-variant-numeric: tabular-nums; color: var(--frost-dim); }
+.loaded__role { font-size: 13.5px; color: var(--frost-dim); }
+.loaded__meta { white-space: normal; }
 
 /* ---------- Model ---------- */
 .model { display: grid; align-content: start; gap: 16px; }
@@ -460,6 +483,15 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- Motion: only when wanted ---------- */
 @media (prefers-reduced-motion: no-preference) {
+  /* One sky fades into the next (dawn, day, dusk, night) over two
+     minutes, so the change is barely noticed. Picking a sky in Settings
+     (data-picked) answers in a second and a half instead. */
+  .backdrop {
+    transition-property: --sky-top, --sky-mid, --sky-low, --sky-floor, --sun, --ridge, --sun-a, --sun-x, --sun-y;
+    transition-duration: 120s;
+    transition-timing-function: ease-in-out;
+  }
+  .backdrop[data-picked] { transition-duration: 1.5s; }
   /* The one load moment is the bars growing. Nothing that contains glass
      is animated: a transform or opacity animation on a glass panel's
      ancestor breaks backdrop-filter (Chrome shows no blur until it ends,

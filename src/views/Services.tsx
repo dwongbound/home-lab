@@ -1,22 +1,26 @@
 import type { Snapshot } from '../types'
 import { ServicesPanel } from '../components/ServicesPanel'
 import { ModelCard } from '../components/ModelCard'
+import { LoadedModels } from '../components/LoadedModels'
+import { TerminalPanel } from './Shell'
 
-// The Services page: every service with response times, and the Gemma card.
+// The Services page: every service with response times, the Gemma card,
+// what's in GPU memory and why, and a terminal on jarvis (the same tmux
+// session as the Shell tab) for restarting things by hand.
 
 /** The services page. */
-export function Services({ data, onToast }: { data: Snapshot; onToast: (m: string) => void }) {
+export function Services({ data, now, onToast }: { data: Snapshot; now: Date; onToast: (m: string) => void }) {
   return (
     <>
       <section className="hero hero--small"><h1 className="hero__title">Services</h1></section>
       <div className="grid grid--split">
-        <ServicesPanel services={data.services} detailed />
+        <div className="stack">
+          <ServicesPanel services={data.services} detailed />
+          <LoadedModels models={data.models} now={now} />
+        </div>
         <ModelCard model={data.model} onDone={onToast} />
       </div>
-      <section className="glass panel note">
-        <h2 className="panel__title">Restarting Jarvis</h2>
-        <p>Restarting the <code>jarvis</code> service needs your password, so this page can’t do it. On the PC, run <code>sudo systemctl restart jarvis</code> in Ubuntu.</p>
-      </section>
+      <TerminalPanel compact />
     </>
   )
 }

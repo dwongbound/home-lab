@@ -10,15 +10,13 @@ const SHELL_URL = './shell/'
 // The shareable preview has no server behind it, so no terminal either.
 const IS_STATIC_BUILD = import.meta.env.VITE_DATA === 'static'
 
-/** The Shell page. */
-export function Shell() {
+/**
+ * The terminal panel: the Shell page's, and a shorter one on Services.
+ * Both show the same tmux session, so a command started in one is there in the other.
+ */
+export function TerminalPanel({ compact = false }: { compact?: boolean }) {
   return (
-    <>
-      <section className="hero hero--small">
-        <h1 className="hero__title">Shell</h1>
-        <p className="hero__sub">A terminal on jarvis as dwong. It keeps running when you leave.</p>
-      </section>
-      <section className="glass panel terminal" aria-labelledby="terminal-title">
+      <section className={`glass panel terminal${compact ? ' terminal--compact' : ''}`} aria-labelledby="terminal-title">
         <header className="panel__head">
           <h2 id="terminal-title" className="panel__title">Terminal</h2>
           {IS_STATIC_BUILD ? null : (
@@ -33,6 +31,18 @@ export function Shell() {
           <iframe className="shell__frame" src={SHELL_URL} title="Terminal on jarvis" />
         )}
       </section>
+  )
+}
+
+/** The Shell page. */
+export function Shell() {
+  return (
+    <>
+      <section className="hero hero--small">
+        <h1 className="hero__title">Shell</h1>
+        <p className="hero__sub">A terminal on jarvis as dwong. It keeps running when you leave.</p>
+      </section>
+      <TerminalPanel />
     </>
   )
 }
