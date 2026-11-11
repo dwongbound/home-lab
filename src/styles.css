@@ -440,6 +440,9 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   padding: max(22px, env(safe-area-inset-top, 0px)) max(22px, env(safe-area-inset-right, 0px)) max(22px, env(safe-area-inset-bottom, 0px)) max(22px, env(safe-area-inset-left, 0px));
 }
 .dialog--chat[data-page] .chat__form { width: min(100%, 860px); justify-self: center; }
+/* /talk's one big Talk / Pause button, centred, easy to hit without looking. */
+.chat__form--voice { justify-content: center; }
+.chat__voice { min-width: min(100%, 280px); min-height: 64px; font-size: 1.2rem; border-radius: 999px; }
 /* Nothing scrolls on /talk, so don't hold room for a scroll bar down the right edge. */
 html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .dialog--chat[data-page] .chat__close { top: max(14px, env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); }

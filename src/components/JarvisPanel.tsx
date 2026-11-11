@@ -523,28 +523,39 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
       {behind ? (
         <button type="button" className="btn chat__latest" onClick={toLatest}>Latest ↓</button>
       ) : null}
-      <form className="chat__form" onSubmit={onSend}>
-        <label htmlFor="chat-input" className="jarvis__label">Message Jarvis</label>
-        <input
-          ref={input}
-          id="chat-input"
-          className="jarvis__input"
-          value={text}
-          onChange={(e) => onText(e.target.value)}
-          placeholder="Message Jarvis"
-          autoComplete="off"
-          disabled={busy}
-        />
-        {talking ? (
-          <button type="button" className="btn btn--primary" onClick={onStopTalk}>Stop talking</button>
-        ) : (
-          <>
-            <button type="submit" className="btn btn--primary" disabled={busy || !text.trim()}>Send</button>
-            {/* On /talk, Talk is what you came for, so it's the main button. */}
-            <button type="button" className={page ? 'btn btn--primary' : 'btn'} disabled={state !== 'idle'} onClick={onTalk}>Talk</button>
-          </>
-        )}
-      </form>
+      {page ? (
+        // /talk is voice only: no typing, just one big button that talks and pauses.
+        // Pausing closes the voice line, so he stops mid-sentence too; tapping again picks back up.
+        <div className="chat__form chat__form--voice">
+          {talking ? (
+            <button type="button" className="btn btn--primary chat__voice" onClick={onStopTalk}>Pause</button>
+          ) : (
+            <button type="button" className="btn btn--primary chat__voice" disabled={state !== 'idle'} onClick={onTalk}>Talk</button>
+          )}
+        </div>
+      ) : (
+        <form className="chat__form" onSubmit={onSend}>
+          <label htmlFor="chat-input" className="jarvis__label">Message Jarvis</label>
+          <input
+            ref={input}
+            id="chat-input"
+            className="jarvis__input"
+            value={text}
+            onChange={(e) => onText(e.target.value)}
+            placeholder="Message Jarvis"
+            autoComplete="off"
+            disabled={busy}
+          />
+          {talking ? (
+            <button type="button" className="btn btn--primary" onClick={onStopTalk}>Stop talking</button>
+          ) : (
+            <>
+              <button type="submit" className="btn btn--primary" disabled={busy || !text.trim()}>Send</button>
+              <button type="button" className="btn" disabled={state !== 'idle'} onClick={onTalk}>Talk</button>
+            </>
+          )}
+        </form>
+      )}
     </dialog>
   )
 }
