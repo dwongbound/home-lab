@@ -68,8 +68,8 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
 jarvis: Windows 11 + Ubuntu 24.04 in WSL 2 (user `dwong`, systemd on, mirrored
 networking), 16 GB RAM (WSL capped at 10), RTX 3060 12 GB. Home Assistant in
 Docker at 192.168.68.94:8123. Ollama with Gemma ~12B (~10 GB VRAM, ~3 min load).
-This page at https://jarvis.snakebird-ph.ts.net, Open WebUI at :8081, Jarvis agent at :8443
-(systemd unit `jarvis`; restarting needs Dylan's sudo password).
+This page at https://jarvis.snakebird-ph.ts.net, Jarvis agent at :8443
+(systemd unit `jarvis`; restarting needs Dylan's sudo password). Open WebUI was removed 2026-11-11.
 
 **Never** open, read or print `~/jarvis/data/memory.md` or
 `/srv/open-webui/data/webui.db` unless Dylan asks in that conversation.

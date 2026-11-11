@@ -56,7 +56,7 @@ export function ModelCard({ model, onDone }: { model: Snapshot['model']; onDone:
         <ConfirmDialog
           title={model.loaded ? 'Unload Gemma?' : 'Load Gemma?'}
           body={model.loaded
-            ? 'This frees about 10 GB of GPU memory for games. Jarvis and Open WebUI can’t use Gemma until it loads again, which takes about 3 minutes.'
+            ? 'This frees about 10 GB of GPU memory for games. Jarvis can’t use Gemma until it loads again, which takes about 3 minutes.'
             : 'Loading takes about 3 minutes and uses about 10 GB of GPU memory.'}
           confirmLabel={model.loaded ? 'Unload' : 'Load'}
           busyLabel={model.loaded ? 'Unloading Gemma…' : 'Loading Gemma, about 3 minutes…'}

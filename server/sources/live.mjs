@@ -1,6 +1,6 @@
 // Live source: reads the real PC.
 //
-// Every probe (GPU, disk, Home Assistant, Ollama, Open WebUI, Jarvis) runs
+// Every probe (GPU, disk, Home Assistant, Ollama, Jarvis) runs
 // at the same time and has a short timeout, so one slow or dead service
 // never holds up the page (Vercel rule async-parallel). A probe that fails
 // just shows as "Not responding" or "Not reporting".
@@ -166,12 +166,6 @@ export function createLiveSource(config, deps = {}) {
     })
   }
 
-  /** For a web page (Open WebUI): any answer below 500 means the server is up. */
-  function webStatus(probe) {
-    if (probe !== null && probe.res.status < 500) return 'up'
-    return 'down'
-  }
-
   /** Home Assistant: OK is up, 401 means running but the token was rejected. */
   function haStatus(probe) {
     if (probe === null) return 'down'
@@ -263,14 +257,13 @@ export function createLiveSource(config, deps = {}) {
         readDisk(),
         probeHttp(`${config.haUrl}/api/`, haHeaders),
         probeHttp(`${config.ollamaUrl}/api/ps`),
-        probeHttp(config.openWebUiUrl),
         probeHttp(`${config.jarvisApiUrl}/health`),
         readUnitState(),
         digest.read(),
         home.read(),
         readJarvisSchedule(),
       ])
-      const [gpu, disk, ha, ollama, webui, jarvisHttp, unitResult, cloud, homeState, jarvisToday] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -304,7 +297,6 @@ export function createLiveSource(config, deps = {}) {
         services: [
           { id: 'ha', name: 'Home Assistant', detail: haDetail(ha), status: haStatus(ha), latencyMs: ha?.ms, url: config.haUrl },
           { id: 'ollama', name: 'Ollama', detail: ollamaDetail(models), status: ollamaStatus(ollama, models), latencyMs: ollama?.ms },
-          { id: 'webui', name: 'Open WebUI', detail: 'Chat with Gemma', status: webStatus(webui), latencyMs: webui?.ms, url: config.openWebUiUrl },
           { id: 'jarvis', name: 'Jarvis', detail: jarvisDetail(unitState, jarvisHealth), status: jarvisStatus(unitState, jarvisHealth), latencyMs: jarvisHttp?.ms, url: config.jarvisUrl },
         ],
         model: {
