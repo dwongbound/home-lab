@@ -2,7 +2,7 @@
 // that it refuses plainly when there's no microphone, and which of
 // Jarvis's events reach which handler.
 import { describe, expect, it, vi } from 'vitest'
-import { makeResampler, openTalkLine, pcm16ToFloat, talkUrl } from '../../src/lib/talk'
+import { makeResampler, openTalkLine, pcm16ToFloat, softenEdges, talkUrl } from '../../src/lib/talk'
 
 describe('the voice line', () => {
   it('uses wss on the https page and ws on plain http', () => {
@@ -37,6 +37,16 @@ describe('the voice line', () => {
     expect(got).toBeCloseTo(0.5 * Math.sin((2 * Math.PI * 440 * n) / 16000), 2)
   })
 
+  it("fades the first and last few milliseconds of a sentence so its edges don't pop", () => {
+    const floats = new Float32Array(2400).fill(1)
+    softenEdges(floats, 24000)
+    expect(floats[0]).toBe(0)
+    expect(floats[floats.length - 1]).toBe(0)
+    expect(floats[48]).toBeCloseTo(0.5, 1)
+    // The middle is untouched.
+    expect(floats[1200]).toBe(1)
+  })
+
   it('refuses in words when the browser has no microphone', async () => {
     const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn() }
     await expect(openTalkLine('ws://x/api/jarvis/talk', on)).rejects.toThrow('This browser can’t send your voice to Jarvis')
@@ -53,8 +63,20 @@ describe('the voice line', () => {
       createMediaStreamSource = node
       createAnalyser = node
       createGain = node
+      createMediaStreamDestination = () => ({ stream: 'his voice' })
       close = async () => {}
     }
+    // His voice plays through an <audio> element, so the browser's echo cancellation hears it.
+    const players: { srcObject: unknown; paused: boolean }[] = []
+    class FakeAudio {
+      srcObject: unknown = null
+      autoplay = false
+      paused = true
+      constructor() { players.push(this) }
+      play = async () => { this.paused = false }
+      pause = () => { this.paused = true }
+    }
+    vi.stubGlobal('Audio', FakeAudio)
     class FakeWorklet { port: { onmessage: unknown } = { onmessage: null }; connect = (next: unknown) => next }
     let socket: { onopen?: () => void; onmessage?: (e: { data: string }) => void; readyState: number; send: () => void; close: () => void } | null = null
     class FakeSocket {
@@ -89,7 +111,10 @@ describe('the voice line', () => {
     expect(on.onHearing.mock.calls).toEqual([['turn the'], ['turn the big light']])
     expect(on.onHeard).toHaveBeenCalledWith('Turn the big light off.')
     expect(on.onReply).toHaveBeenCalledWith('Done.')
+    expect(players).toHaveLength(1)
+    expect(players[0].srcObject).toBe('his voice')
     line.close()
+    expect(players[0].paused).toBe(true)
     vi.unstubAllGlobals()
   })
 })
