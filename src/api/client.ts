@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
+import type { ActionName, ActionResult, Approval, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -81,7 +81,14 @@ export async function runAction(name: ActionName): Promise<ActionResult> {
  * can type it out and the orb can pulse with it. Resolves with the whole
  * reply (ok) or what went wrong.
  */
-export async function streamJarvis(text: string, onWords: (soFar: string, added: string) => void): Promise<ActionResult> {
+/** An approval asked for, or settled, while a reply streams. */
+export type ApprovalEvent = Extract<ChatEvent, { type: 'approval' | 'approval_done' }>
+
+export async function streamJarvis(
+  text: string,
+  onWords: (soFar: string, added: string) => void,
+  onApproval: (event: ApprovalEvent) => void = () => {},
+): Promise<ActionResult> {
   let soFar = ''
   let outcome: ActionResult = { ok: false, message: 'Jarvis stopped answering partway' }
   /** Handles one event from the stream. */
@@ -91,6 +98,8 @@ export async function streamJarvis(text: string, onWords: (soFar: string, added:
       onWords(soFar, event.text)
     } else if (event.type === 'done') {
       outcome = { ok: true, message: soFar }
+    } else if (event.type === 'approval' || event.type === 'approval_done') {
+      onApproval(event)
     } else {
       outcome = { ok: false, message: event.message }
     }
@@ -126,6 +135,40 @@ export async function streamJarvis(text: string, onWords: (soFar: string, added:
     }
   }
   return outcome
+}
+
+/** Approves (ok) or denies one thing Jarvis asked to do on the PC. */
+export async function answerApproval(id: string, ok: boolean): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.answerApproval(id, ok)
+  }
+  try {
+    const res = await fetch('/api/jarvis/approve', {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify({ id, ok }),
+    })
+    const body = await res.json().catch(() => null)
+    return { ok: res.ok, message: body?.message ?? `The server answered ${res.status}` }
+  } catch {
+    return { ok: false, message: 'The page server isn’t answering' }
+  }
+}
+
+/** What Jarvis is still waiting on an answer for, so a reload can show it again. */
+export async function loadApprovals(): Promise<Approval[]> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.approvals()
+  }
+  try {
+    const res = await fetch('/api/jarvis/approvals')
+    const body = await res.json()
+    return Array.isArray(body?.pending) ? body.pending : []
+  } catch {
+    return []
+  }
 }
 
 /** The web chat with Jarvis so far (oldest first), so a reload keeps the conversation. */

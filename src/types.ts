@@ -169,7 +169,20 @@ export interface LoadedModel {
 export interface ActionResult { ok: boolean; message: string }
 
 /** One piece of Jarvis's streamed chat reply: more words, the end, or what went wrong. */
-export type ChatEvent = { type: 'delta'; text: string } | { type: 'done'; ok: true } | { type: 'error'; message: string }
+/**
+ * Jarvis asking before he writes a file or runs a command on the PC. He
+ * waits (up to `expires`) for Approve or Deny from the page, a spoken yes
+ * or no in Talk, or Telegram, whichever answers first.
+ */
+export interface Approval { id: string; tool: string; summary: string; expires: string }
+/** Who settled an approval: a tap or word on the page, Telegram, or nobody in time. */
+export type ApprovalBy = 'page' | 'telegram' | 'timeout'
+export type ChatEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'done'; ok: true }
+  | { type: 'error'; message: string }
+  | { type: 'approval'; approval: Approval }
+  | { type: 'approval_done'; id: string; ok: boolean; by: ApprovalBy }
 /** One saved line of the web chat. */
 export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string }
 export type ActionName = 'ollama-unload' | 'ollama-load'
@@ -237,6 +250,10 @@ export interface DataSource {
   chat(text: string, caller: { login?: string }, onEvent: (event: ChatEvent) => void): Promise<void>
   /** The web chat with Jarvis so far, oldest first. */
   history(caller?: { login?: string }): Promise<ChatTurn[]>
+  /** Approves or denies one waiting request; false when Jarvis doesn't know it (answered or expired). */
+  answerApproval(id: string, ok: boolean, caller?: { login?: string }): Promise<ActionResult>
+  /** Requests still waiting for an answer, e.g. after a reload. */
+  approvals(caller?: { login?: string }): Promise<Approval[]>
   /** What Jarvis remembers, or null when he can't be asked. */
   memory(caller?: { login?: string }): Promise<JarvisMemory | null>
   /** Searches past conversations (newest and best matches first). */

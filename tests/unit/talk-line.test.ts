@@ -48,11 +48,11 @@ describe('the voice line', () => {
   })
 
   it('refuses in words when the browser has no microphone', async () => {
-    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn() }
+    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn(), onApproval: vi.fn(), onApprovalDone: vi.fn() }
     await expect(openTalkLine('ws://x/api/jarvis/talk', on)).rejects.toThrow('This browser can’t send your voice to Jarvis')
   })
 
-  it('hands your words over while you talk, then the whole turn, then his reply', async () => {
+  it('hands your words over while you talk, then the whole turn, then his reply, and his approval requests', async () => {
     // Just enough of a browser's audio and WebSocket for the line to open.
     const node = () => ({ connect: (next: unknown) => next, gain: { value: 1 }, fftSize: 0, getFloatTimeDomainData: () => {} })
     class FakeContext {
@@ -98,7 +98,7 @@ describe('the voice line', () => {
     URL.createObjectURL = () => 'blob:x'
     URL.revokeObjectURL = () => {}
 
-    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn() }
+    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn(), onApproval: vi.fn(), onApprovalDone: vi.fn() }
     const opening = openTalkLine('ws://x/api/jarvis/talk', on)
     await vi.waitFor(() => expect(socket).not.toBeNull())
     socket!.onopen!()
@@ -111,6 +111,11 @@ describe('the voice line', () => {
     expect(on.onHearing.mock.calls).toEqual([['turn the'], ['turn the big light']])
     expect(on.onHeard).toHaveBeenCalledWith('Turn the big light off.')
     expect(on.onReply).toHaveBeenCalledWith('Done.')
+    // Asking before he runs something, then hearing it was answered.
+    say({ type: 'approval', id: 'a7', tool: 'Run a command', summary: 'ls ~/jarvis', expires: '2026-11-11T12:20:00Z' })
+    say({ type: 'approval_done', id: 'a7', ok: true, by: 'page' })
+    expect(on.onApproval).toHaveBeenCalledWith({ id: 'a7', tool: 'Run a command', summary: 'ls ~/jarvis', expires: '2026-11-11T12:20:00Z' })
+    expect(on.onApprovalDone).toHaveBeenCalledWith('a7', true, 'page')
     expect(players).toHaveLength(1)
     expect(players[0].srcObject).toBe('his voice')
     line.close()

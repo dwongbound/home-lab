@@ -58,8 +58,22 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       if (jarvisStatusCode !== 200) return new Response('no', { status: jarvisStatusCode })
       // Split mid-line on purpose: the reader must join pieces before parsing.
-      const pieces = ['{"type":"delta","text":"Lamp "}\n{"type":"del', 'ta","text":"is off."}\n', '{"type":"done"}\n']
+      const pieces = [
+        '{"type":"delta","text":"Lamp "}\n{"type":"del', 'ta","text":"is off."}\n',
+        '{"type":"approval","id":"a1","tool":"Run a command","summary":"ls","expires":"2026-11-11T12:20:00Z"}\n',
+        '{"type":"approval","tool":"no id"}\n',
+        '{"type":"approval_done","id":"a1","ok":true,"by":"page"}\n',
+        '{"type":"done"}\n',
+      ]
       return new Response(new ReadableStream({ start(c) { for (const p of pieces) c.enqueue(new TextEncoder().encode(p)); c.close() } }))
+    }
+    if (url === `${config.jarvisApiUrl}/approve`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      const { id } = JSON.parse(String(init?.body))
+      return Response.json({ ok: true }, { status: id === 'a1' ? jarvisStatusCode : 404 })
+    }
+    if (url === `${config.jarvisApiUrl}/approvals`) {
+      return Response.json({ pending: [{ id: 'a2', tool: 'Edit a file', summary: '~/x.md', expires: 'z' }, { tool: 'broken' }] })
     }
     if (url === `${config.jarvisApiUrl}/chat/history?limit=50`) {
       return Response.json({ turns: [{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'assistant', text: 'Lamp is off.', at: 'b' }, { role: 'user' }] })
@@ -263,8 +277,26 @@ describe('live chat with Jarvis', () => {
     const { source, fetch } = liveWith({})
     const events: unknown[] = []
     await source.chat('lamp off', { login: 'dylan@example.com' }, (e: unknown) => events.push(e))
-    expect(events).toEqual([{ type: 'delta', text: 'Lamp ' }, { type: 'delta', text: 'is off.' }, { type: 'done', ok: true }])
+    expect(events).toEqual([
+      { type: 'delta', text: 'Lamp ' },
+      { type: 'delta', text: 'is off.' },
+      { type: 'approval', approval: { id: 'a1', tool: 'Run a command', summary: 'ls', expires: '2026-11-11T12:20:00Z' } },
+      { type: 'approval_done', id: 'a1', ok: true, by: 'page' },
+      { type: 'done', ok: true },
+    ])
     const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/chat/stream`)!
+    expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
+  })
+
+  it('answers approvals and lists the waiting ones, as the caller', async () => {
+    const { source, fetch } = liveWith({})
+    const login = { login: 'dylan@example.com' }
+    expect(await source.answerApproval('a1', true, login)).toEqual({ ok: true, message: 'Approved' })
+    expect(await source.answerApproval('gone', false, login)).toEqual({ ok: false, message: 'That request was already answered or ran out of time' })
+    expect(await source.approvals(login)).toEqual([{ id: 'a2', tool: 'Edit a file', summary: '~/x.md', expires: 'z' }])
+    expect(await source.answerApproval('a1', true, {})).toMatchObject({ ok: false })
+    expect(await liveWith({ jarvisAnswers: false }).source.answerApproval('a1', true, login)).toEqual({ ok: false, message: 'Jarvis is not answering' })
+    const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/approve`)!
     expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
   })
 

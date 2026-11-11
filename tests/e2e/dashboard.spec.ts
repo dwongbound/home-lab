@@ -11,6 +11,7 @@
 //   - I swipe sideways to change tab.
 //   - In Safari, changing tab never shows the panels dark before they frost.
 //   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
+//   - Before Jarvis writes a file or runs a command, the chat asks me, and I tap Approve or Deny.
 //   - While the chat is open the page behind it stays put, and reading back up isn't interrupted by new words.
 //   - In Settings, under Voice, I play a sample, pick a voice, speed and blend, and save it.
 //   - In Settings, under Memory, I see what Jarvis remembers, teach him something, forget it, and search past chats.
@@ -532,6 +533,40 @@ test('while the first snapshot is on its way, a full-page "Jarvis is thinking" l
     await expect(loader).toHaveCount(0)
     await context.close()
   }
+})
+
+test('before Jarvis runs a command the chat asks, and Approve or Deny decides it', async ({ page }) => {
+  test.setTimeout(45_000)
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Please restart Jarvis')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  // The card shows exactly what he wants to run, and he waits.
+  const card = chat.getByRole('group', { name: 'Jarvis asks to run a command' }).last()
+  await expect(card).toBeVisible({ timeout: 10_000 })
+  await expect(card.getByText('sudo systemctl restart jarvis')).toBeVisible()
+  await expect(chat.getByRole('status')).toHaveText('Waiting for your OK')
+  // Finger-sized buttons.
+  const approve = card.getByRole('button', { name: 'Approve' })
+  expect((await approve.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await approve.click()
+  await expect(card.getByText('Approved', { exact: true })).toBeVisible()
+  await expect(chat.getByText('Sample data: done. Jarvis restarted.').last()).toBeVisible({ timeout: 10_000 })
+
+  // Deny leaves it alone.
+  await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
+  await chat.getByRole('textbox', { name: 'Message Jarvis' }).fill('Edit my todo note')
+  await chat.getByRole('button', { name: 'Send' }).click()
+  const edit = chat.getByRole('group', { name: 'Jarvis asks to edit a file' }).last()
+  await expect(edit).toBeVisible({ timeout: 10_000 })
+  await edit.getByRole('button', { name: 'Deny' }).click()
+  await expect(edit.getByText('Denied', { exact: true })).toBeVisible()
+  await expect(chat.getByText('Sample data: okay, I left it alone.').last()).toBeVisible({ timeout: 10_000 })
+  // Everything fits inside the sheet, Talk included, even on a narrow phone.
+  const sheet = (await chat.boundingBox())!
+  const talk = (await chat.getByRole('button', { name: 'Talk', exact: true }).boundingBox())!
+  expect(talk.x + talk.width).toBeLessThanOrEqual(sheet.x + sheet.width)
+  await chat.getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 test('the page behind the chat stays put, and scrolling up to read back is not pulled down by new words', async ({ page }) => {
