@@ -545,6 +545,8 @@ test('before Jarvis runs a command the chat asks, and Approve or Deny decides it
   const card = chat.getByRole('group', { name: 'Jarvis asks: Run a command' }).last()
   await expect(card).toBeVisible({ timeout: 10_000 })
   await expect(card.getByText('sudo systemctl restart jarvis')).toBeVisible()
+  // Opening the chat doesn't put a focus ring on ×.
+  await expect(chat.getByRole('button', { name: 'Close', exact: true })).not.toBeFocused()
   await expect(chat.getByRole('status')).toHaveText('Waiting for your OK')
   // Finger-sized buttons.
   const approve = card.getByRole('button', { name: 'Approve' })
