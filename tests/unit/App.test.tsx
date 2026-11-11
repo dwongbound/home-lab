@@ -100,7 +100,7 @@ describe('App', () => {
     expect(fetch.mock.calls.some((c) => String(c[0]).startsWith('/api/actions/'))).toBe(false)
   })
 
-  it('asks Jarvis and shows the question and the answer', async () => {
+  it('asks Jarvis from the bar, opens the chat, and types out the answer', async () => {
     const fetch = fakeServer()
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
@@ -108,14 +108,22 @@ describe('App', () => {
 
     const input = await screen.findByRole('textbox', { name: 'Question for Jarvis' })
     expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled()
-    await user.type(input, 'Is the porch light on?')
+    await user.type(input, 'Is the garage open?')
     await user.click(screen.getByRole('button', { name: 'Ask' }))
 
-    expect(await screen.findByText('Sample data: on the PC, Jarvis would answer "Is the porch light on?" here.', {}, { timeout: 3000 })).toBeInTheDocument()
-    expect(screen.getByText('Is the porch light on?')).toBeInTheDocument()
-    expect(input).toHaveValue('')
+    // The chat opens with the question in it and the reply typed out.
+    const chat = await screen.findByRole('dialog', { name: 'Jarvis' })
+    expect(within(chat).getByText('Is the garage open?')).toBeInTheDocument()
+    expect(await within(chat).findByText('Sample data: on the PC, Jarvis would answer "Is the garage open?" here.', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(await within(chat).findByText('Jarvis is listening')).toBeInTheDocument()
     const [, init] = fetch.mock.calls.find((c) => c[0] === '/api/jarvis/ask')!
     expect((init!.headers as Record<string, string>)['x-home-lab']).toBe('1')
+
+    // Close keeps the conversation: the bar shows the last reply and reopens it.
+    await user.click(within(chat).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Jarvis' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Open chat/ }))
+    expect(within(await screen.findByRole('dialog', { name: 'Jarvis' })).getByText('Is the garage open?')).toBeInTheDocument()
   })
 
   it('Home: turning a switch on, and a scene with no on/off', async () => {

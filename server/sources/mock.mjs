@@ -275,7 +275,26 @@ export function createMockSource({ now = () => new Date() } = {}) {
     /** Pretends to be Jarvis, so the Ask box works on sample data. */
     async ask(text) {
       await delay(900)
-      return { ok: true, message: `Sample data: on the PC, Jarvis would answer "${text}" here.` }
+      return { ok: true, message: sampleReply(text) }
     },
   }
+}
+
+/**
+ * A canned reply for the preview, so the chat has something real-sounding
+ * to type out. A few topics get a longer answer; anything else says where
+ * the real one would come from.
+ */
+function sampleReply(text) {
+  const q = text.toLowerCase()
+  if (q.includes('light') || q.includes('lamp')) {
+    return 'Sample data: the living room lamp is on at 60%, and the porch light turns on at sunset, around 4:55 tonight. Want me to switch the lamp off?'
+  }
+  if (q.includes('today') || q.includes('schedule') || q.includes('calendar')) {
+    return 'Sample data: you have volleyball at 7:30 tonight and a study block for the written test at 10. Nothing else until tomorrow morning.'
+  }
+  if (q.includes('weather')) {
+    return 'Sample data: 68 and clear in West LA right now, dropping to 55 overnight. Light wind at Torrance, good flying weather tomorrow morning.'
+  }
+  return `Sample data: on the PC, Jarvis would answer "${text}" here.`
 }

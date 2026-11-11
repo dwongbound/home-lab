@@ -94,6 +94,31 @@ export async function askJarvis(text: string): Promise<ActionResult> {
   }
 }
 
+/** Waits ms milliseconds. */
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Asks Jarvis and hands back the reply a few words at a time, so the page
+ * can type it out and the orb can pulse with it. Jarvis answers in one
+ * piece today, so the words are released here at a speaking pace; when
+ * Jarvis streams, only this function changes.
+ */
+export async function streamJarvis(text: string, onWords: (soFar: string, added: string) => void): Promise<ActionResult> {
+  const result = await askJarvis(text)
+  if (!result.ok) return result
+  // Split on spaces but keep them, so the text builds up exactly as sent.
+  const pieces = result.message.split(/(?<=\s)/)
+  let soFar = ''
+  for (const piece of pieces) {
+    soFar += piece
+    onWords(soFar, piece)
+    await wait(55)
+  }
+  return result
+}
+
 /** Sends one command to one Home Assistant device. */
 export async function controlDevice(entity: string, command: HomeCommand, value?: number | string): Promise<ActionResult> {
   if (IS_STATIC_BUILD) {
