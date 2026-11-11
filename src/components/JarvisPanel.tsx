@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
-import { streamJarvis } from '../api/client'
+import { loadChatHistory, streamJarvis } from '../api/client'
+import type { ChatTurn } from '../types'
 import { readSpeak, writeSpeak } from '../lib/prefs'
 import { canSpeak, speak, stopSpeaking } from '../lib/speech'
 import { canRecognize, listenOnce, startMicLevel } from '../lib/talk'
@@ -30,6 +31,19 @@ function statusText(state: OrbState): string {
 // When the microphone isn't allowed (a preview inside another page, or
 // permission said no), Talk plays these turns so the flow can still be seen.
 const DEMO_QUESTIONS = ["What's on my schedule today?", 'Is the living room lamp on?', "How's the weather for flying tomorrow?"]
+
+/** Pairs saved chat lines into question-and-answer turns for the sheet. */
+function toTurns(lines: ChatTurn[]): Turn[] {
+  const turns: Turn[] = []
+  for (const line of lines) {
+    if (line.role === 'user') {
+      turns.push({ id: turns.length, question: line.text, answer: '', ok: true, done: true })
+    } else if (turns.length > 0 && turns[turns.length - 1].answer === '') {
+      turns[turns.length - 1].answer = line.text
+    }
+  }
+  return turns
+}
 
 /** Waits ms milliseconds. */
 function wait(ms: number): Promise<void> {
@@ -173,6 +187,17 @@ export function JarvisPanel() {
     stopTalk()
     setOpen(false)
   }
+
+  // First visit: pick up the conversation where Jarvis left it (it lives on
+  // the PC, so a reload or another device sees the same chat).
+  useEffect(() => {
+    if (savedTurns.length > 0) return
+    let live = true
+    void loadChatHistory().then((lines) => {
+      if (live && savedTurns.length === 0 && lines.length > 0) setTurns(() => toTurns(lines))
+    })
+    return () => { live = false }
+  }, [])
 
   // Leaving the page stops the microphone and the voice.
   useEffect(() => () => stopTalk(), [])

@@ -137,6 +137,8 @@ function withRefresh(digest, state) {
 export function createMockSource({ now = () => new Date() } = {}) {
   const state = {
     modelLoaded: true,
+    // The pretend web chat with Jarvis, oldest first.
+    chat: [],
     // When a pretend digest refresh finishes (ms), so the page's
     // "Updating from Jarvis…" can be seen and then clear.
     digestReadyAt: 0,
@@ -276,6 +278,29 @@ export function createMockSource({ now = () => new Date() } = {}) {
     async ask(text) {
       await delay(900)
       return { ok: true, message: sampleReply(text) }
+    },
+
+    /**
+     * Pretends to be Jarvis's streaming chat: thinks for a moment, then
+     * hands the reply over a word at a time, and keeps the conversation
+     * so history() can give it back like the PC does.
+     */
+    async chat(text, _caller, onEvent) {
+      const at = new Date().toISOString()
+      state.chat.push({ role: 'user', text, at })
+      await delay(700)
+      const reply = sampleReply(text)
+      for (const piece of reply.split(/(?<=\s)/)) {
+        onEvent({ type: 'delta', text: piece })
+        await delay(45)
+      }
+      state.chat.push({ role: 'jarvis', text: reply, at: new Date().toISOString() })
+      onEvent({ type: 'done', ok: true })
+    },
+
+    /** The sample conversation so far, oldest first. */
+    async history() {
+      return state.chat.slice(-50)
     },
   }
 }

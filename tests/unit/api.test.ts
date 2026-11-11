@@ -66,6 +66,38 @@ describe('POST /api/jarvis/ask', () => {
   })
 })
 
+describe('POST /api/jarvis/chat and GET /api/jarvis/history', () => {
+  it('refuses requests without the page header, and empty text', async () => {
+    const api = createApi(createMockSource())
+    expect((await callApi(api, 'POST', '/api/jarvis/chat', {}, '{"text":"hi"}')).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/jarvis/chat', ACTION_HEADER, '{"text":" "}')).statusCode).toBe(400)
+  })
+
+  it('streams the reply as one JSON event per line, ending with done, and keeps it in history', async () => {
+    const api = createApi(createMockSource())
+    const res = await callApi(api, 'POST', '/api/jarvis/chat', ACTION_HEADER, '{"text":"weather?"}')
+    expect(res.headers['content-type']).toContain('application/x-ndjson')
+    const events = res.body.trim().split('\n').map((line) => JSON.parse(line))
+    expect(events.length).toBeGreaterThan(3)
+    expect(events.at(-1)).toEqual({ type: 'done', ok: true })
+    const reply = events.filter((e) => e.type === 'delta').map((e) => e.text).join('')
+    expect(reply).toContain('68 and clear')
+    const history = (await callApi(api, 'GET', '/api/jarvis/history')).json().turns
+    expect(history.map((t: { role: string }) => t.role)).toEqual(['user', 'jarvis'])
+    expect(history[1].text).toBe(reply)
+  })
+
+  it("passes the caller's Tailscale login to the source", async () => {
+    let seen: unknown = null
+    const source = {
+      ...createMockSource(),
+      chat: async (text: string, caller: unknown, onEvent: (e: unknown) => void) => { seen = { text, caller }; onEvent({ type: 'done', ok: true }) },
+    }
+    await callApi(createApi(source), 'POST', '/api/jarvis/chat', { ...ACTION_HEADER, 'tailscale-user-login': 'dylan@example.com' }, '{"text":"hi"}')
+    expect(seen).toEqual({ text: 'hi', caller: { login: 'dylan@example.com' } })
+  })
+}, 15_000)
+
 describe('POST /api/home/control', () => {
   it('refuses requests without the page header, and bodies without entity and command', async () => {
     const api = createApi(createMockSource())

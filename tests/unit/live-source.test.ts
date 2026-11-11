@@ -34,6 +34,16 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ running: true, lastWrite: '2026-11-10T09:16:11Z' }, { status: jarvisStatusCode })
     }
+    if (url === `${config.jarvisApiUrl}/chat/stream`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      if (jarvisStatusCode !== 200) return new Response('no', { status: jarvisStatusCode })
+      // Split mid-line on purpose: the reader must join pieces before parsing.
+      const pieces = ['{"type":"delta","text":"Lamp "}\n{"type":"del', 'ta","text":"is off."}\n', '{"type":"done"}\n']
+      return new Response(new ReadableStream({ start(c) { for (const p of pieces) c.enqueue(new TextEncoder().encode(p)); c.close() } }))
+    }
+    if (url === `${config.jarvisApiUrl}/chat/history?limit=50`) {
+      return Response.json({ turns: [{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'assistant', text: 'Lamp is off.', at: 'b' }, { role: 'user' }] })
+    }
     if (url === `${config.jarvisApiUrl}/ask`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return new Response(JSON.stringify({ reply: 'Lamp is off.' }), { status: jarvisStatusCode })
@@ -225,5 +235,34 @@ describe('digest refresh', () => {
     expect(await liveWith({}).source.refreshDigest({})).toEqual(idle)
     expect(await liveWith({ jarvisAnswers: false }).source.refreshDigest({ login: 'd' })).toEqual(idle)
     expect(await liveWith({ jarvisStatusCode: 404 }).source.refreshDigest({ login: 'd' })).toEqual(idle)
+  })
+})
+
+describe('live chat with Jarvis', () => {
+  it('passes streamed pieces on as they arrive, joining lines split across chunks', async () => {
+    const { source, fetch } = liveWith({})
+    const events: unknown[] = []
+    await source.chat('lamp off', { login: 'dylan@example.com' }, (e: unknown) => events.push(e))
+    expect(events).toEqual([{ type: 'delta', text: 'Lamp ' }, { type: 'delta', text: 'is off.' }, { type: 'done', ok: true }])
+    const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/chat/stream`)!
+    expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
+  })
+
+  it('says why when there is no login, Jarvis is down, or refuses the caller', async () => {
+    const events: unknown[] = []
+    await liveWith({}).source.chat('hi', {}, (e: unknown) => events.push(e))
+    await liveWith({ jarvisAnswers: false }).source.chat('hi', { login: 'x@y.z' }, (e: unknown) => events.push(e))
+    await liveWith({ jarvisStatusCode: 401 }).source.chat('hi', { login: 'x@y.z' }, (e: unknown) => events.push(e))
+    expect(events).toEqual([
+      { type: 'error', message: 'Open this page through Tailscale to talk to Jarvis' },
+      { type: 'error', message: 'Jarvis is not answering' },
+      { type: 'error', message: "Jarvis doesn't know x@y.z" },
+    ])
+  })
+
+  it("reads the web chat history, naming Jarvis's lines and dropping broken ones", async () => {
+    const turns = await liveWith({}).source.history({ login: 'dylan@example.com' })
+    expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b' }])
+    expect(await liveWith({}).source.history({})).toEqual([])
   })
 })

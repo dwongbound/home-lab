@@ -21,8 +21,11 @@ export function callApi(
       headers: {} as Record<string, string>,
       body: '',
       setHeader(name: string, value: string) { this.headers[name] = value },
+      // Streamed answers (the chat) set status and headers at once, then write in pieces.
+      writeHead(status: number, headers: Record<string, string> = {}) { this.statusCode = status; Object.assign(this.headers, headers) },
+      write(chunk: string) { this.body += String(chunk) },
       end(chunk = '') {
-        this.body = String(chunk)
+        this.body += String(chunk)
         resolve({ statusCode: this.statusCode, headers: this.headers, body: this.body, json: () => JSON.parse(this.body) })
       },
     }

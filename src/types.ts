@@ -165,6 +165,11 @@ export interface LoadedModel {
 }
 
 export interface ActionResult { ok: boolean; message: string }
+
+/** One piece of Jarvis's streamed chat reply: more words, the end, or what went wrong. */
+export type ChatEvent = { type: 'delta'; text: string } | { type: 'done'; ok: true } | { type: 'error'; message: string }
+/** One saved line of the web chat. */
+export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string }
 export type ActionName = 'ollama-unload' | 'ollama-load'
 
 /** What both server sources (mock and live) look like from the outside. */
@@ -174,6 +179,10 @@ export interface DataSource {
   action(name: ActionName): Promise<ActionResult>
   /** Asks Jarvis. On success `message` is Jarvis's reply. */
   ask(text: string, caller?: { login?: string }): Promise<ActionResult>
+  /** Chats with Jarvis, calling onEvent as his reply streams in. */
+  chat(text: string, caller: { login?: string }, onEvent: (event: ChatEvent) => void): Promise<void>
+  /** The web chat with Jarvis so far, oldest first. */
+  history(caller?: { login?: string }): Promise<ChatTurn[]>
   /** Sends one command to one Home Assistant device. */
   control(entity: string, command: HomeCommand, value?: number | string, caller?: { login?: string }): Promise<ActionResult>
   /** Asks Jarvis to rewrite the digest now (calendar, email, money). */
