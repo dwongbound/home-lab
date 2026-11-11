@@ -753,6 +753,11 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
 
   // Talking already (sample data plays the demo, which needs no tap).
   await expect(chat.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
+  // Just "Jarvis" over the orb: the orb shows listening, thinking and speaking, so the status line is for screen readers only.
+  const title = (await chat.getByRole('heading', { name: 'Jarvis' }).boundingBox())!
+  const orb = (await chat.locator('.chat__head .orb').boundingBox())!
+  expect(title.y).toBeLessThan(orb.y)
+  expect((await chat.getByRole('status').boundingBox())!.height).toBeLessThanOrEqual(1)
   // The same button pauses, and tapping it again picks back up.
   await chat.getByRole('button', { name: 'Pause', exact: true }).click()
   await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })

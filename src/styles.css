@@ -451,7 +451,11 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 /* /talk keeps the orb and title small and high so the conversation gets the room. */
 .dialog--chat[data-page] .chat__head { padding-top: 0; gap: 2px; }
-.dialog--chat[data-page] .chat__head .orb { margin-bottom: 8px; }
+.dialog--chat[data-page] .chat__head .orb { margin: 10px 0 8px; }
+/* "Jarvis" sits above the orb on /talk. */
+.dialog--chat[data-page] .chat__head .dialog__title { order: -1; }
+/* Kept for screen readers, hidden from view. */
+.chat__status[data-quiet] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* Words fade out as they scroll up under the orb rather than being cut off. */
 .dialog--chat[data-page] .chat__turns {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px);

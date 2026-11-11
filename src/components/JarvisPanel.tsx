@@ -28,6 +28,14 @@ interface ApprovalView extends Approval {
 // when Dylan visits another page and comes back.
 let savedTurns: Turn[] = []
 
+/** On /talk the status line hides unless it asks for something or says why Talk stopped. */
+function quietStatus(page: boolean, tapToStart: boolean, waiting: boolean, state: OrbState, notice: string): boolean {
+  if (!page) return false
+  if (tapToStart || waiting) return false
+  if (state === 'idle' && notice) return false
+  return true
+}
+
 /** What the orb's status line says in each state; when idle, why Talk ended (if it ended by itself). */
 function statusText(state: OrbState, notice = '', page = false, tapToStart = false): string {
   if (state === 'idle' && notice) return notice
@@ -535,7 +543,11 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
       <header className="chat__head">
         <JarvisOrb ref={orbRef} state={state} size={page ? 52 : 64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
-        <p className="chat__status" role="status">{waiting ? 'Waiting for your OK' : statusText(state, notice, page, tapToStart)}</p>
+        {/* /talk shows only "Jarvis" over the orb (Dylan, 2026-11-11); the status stays for
+            screen readers and shows when there's something to do: a first tap, an OK, or why Talk ended. */}
+        <p className="chat__status" role="status" data-quiet={quietStatus(page, tapToStart, waiting, state, notice) ? '' : undefined}>
+          {waiting ? 'Waiting for your OK' : statusText(state, notice, page, tapToStart)}
+        </p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
         {turns.map((t, i) => (
