@@ -218,7 +218,7 @@ export function createLiveSource(config, deps = {}) {
     return 'idle'
   }
 
-  /** "qwen3.5:9b loaded" (several joined with "and"), or "No model loaded". */
+  /** "ornith-1.5:9b loaded" (several joined with "and"), or "No model loaded". */
   function ollamaDetail(models) {
     if (models.length === 0) return 'No model loaded'
     return `${models.map((m) => m.name).join(' and ')} loaded`

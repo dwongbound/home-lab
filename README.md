@@ -76,7 +76,7 @@ Eight pages, picked from the pill bar at the top. Each is a plain link to a
 ### The local model button
 
 Gemma was dropped on 2026-11-11. Jarvis's only local model is now
-`qwen3.5:9b` (about 6 GB of the GPU's 12): its background watch and its
+`ornith-1.5:9b` (about 6 GB of the GPU's 12): its background watch and its
 offline backup brain when Claude can't be reached. Jarvis asks Ollama to
 keep it only 10 idle minutes. **Unload local model** asks first, in a
 dialog with **Close** and **Unload**. While Ollama works, the dialog is
@@ -315,9 +315,9 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `HA_URL` | `http://192.168.68.94:8123` | Home Assistant. |
 | `HA_TOKEN` | *(empty)* | Home Assistant long-lived access token. **Secret.** Server-side only. |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama's API. |
-| `OLLAMA_MODEL` | `qwen3.5:9b` | The model the local model card loads and unloads (Jarvis's local brain). Check the exact name with `ollama list`. |
+| `OLLAMA_MODEL` | `ornith-1.5:9b` | The model the local model card loads and unloads (Jarvis's local brain). Check the exact name with `ollama list`. |
 | `OLLAMA_KEEP_ALIVE` | `10m` | How long Load keeps it. `-1` = forever, a number = seconds, or `30m` style. |
-| `OLLAMA_WATCH_MODEL` | `qwen3.5:9b` | Jarvis's background watch model (its `JARVIS_TRIAGE_MODEL`), so Services can say what it's doing when loaded. |
+| `OLLAMA_WATCH_MODEL` | `ornith-1.5:9b` | Jarvis's background watch model (its `JARVIS_TRIAGE_MODEL`), so Services can say what it's doing when loaded. |
 | `NVIDIA_SMI` | `/usr/lib/wsl/lib/nvidia-smi` | WSL's nvidia-smi, which isn't on PATH. |
 | `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's address on the tailnet, for the link on its row. |
 | `JARVIS_API_URL` | `http://127.0.0.1:8765` | Jarvis's own API on the PC, for `/health` and Ask Jarvis. |

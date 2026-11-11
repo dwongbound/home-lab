@@ -2,7 +2,7 @@ import type { LoadedModel } from '../types'
 
 // What's in the GPU right now: every model Ollama has loaded, with its job
 // on jarvis, how much GPU memory it holds and when it unloads. Jarvis's
-// local model (Qwen) is both its background watch and its offline backup
+// local model (Ornith) is both its background watch and its offline backup
 // brain; Claude does the everyday thinking.
 
 /** Each role in plain words. */
