@@ -20,7 +20,7 @@ interface Fakes {
 
 /** A live source whose fetch/execFile/statfs answer as described. */
 function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 200, haStatusCode = 200, unitState = 'active', gpuFails = false, schedule }: Fakes) {
-  const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/api/ps')) return new Response(JSON.stringify({ models: ollamaModels }))
     if (url === `${config.jarvisApiUrl}/health`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
@@ -33,6 +33,14 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url === `${config.jarvisApiUrl}/digest/refresh`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ running: true, lastWrite: '2026-11-10T09:16:11Z' }, { status: jarvisStatusCode })
+    }
+    if (url === `${config.jarvisApiUrl}/memory/facts`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      if (init?.method === 'POST') return Response.json({ ok: true, message: 'Forgotten' }, { status: jarvisStatusCode })
+      return Response.json({ facts: [{ id: 'a', text: 'Likes knots', learned: '2026-11-10T11:30:00Z', from: 'nightly' }, { id: 'b' }], turns: 42, lastDistill: '2026-11-11T11:30:00Z' }, { status: jarvisStatusCode })
+    }
+    if (url.startsWith(`${config.jarvisApiUrl}/memory/search?`)) {
+      return Response.json({ hits: [{ chat: 'voice', role: 'assistant', text: 'Lamp is off.', at: 'b' }, { chat: 'x' }] })
     }
     if (url === `${config.jarvisApiUrl}/chat/warm`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
@@ -268,6 +276,19 @@ describe('live chat with Jarvis', () => {
     const turns = await liveWith({}).source.history({ login: 'dylan@example.com' })
     expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b' }])
     expect(await liveWith({}).source.history({})).toEqual([])
+  })
+
+  it("reads, searches and changes Jarvis's memory as the caller, dropping broken rows", async () => {
+    const { source, fetch } = liveWith({})
+    const login = { login: 'dylan@example.com' }
+    expect(await source.memory(login)).toEqual({ facts: [{ id: 'a', text: 'Likes knots', learned: '2026-11-10T11:30:00Z', from: 'nightly' }], turns: 42, lastDistill: '2026-11-11T11:30:00Z' })
+    expect(await source.searchMemory('lamp off', login)).toEqual([{ chat: 'voice', role: 'jarvis', text: 'Lamp is off.', at: 'b' }])
+    expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/memory/search?q=lamp%20off&limit=8'))).toBe(true)
+    expect(await source.changeMemory({ op: 'forget', id: 'a' }, login)).toEqual({ ok: true, message: 'Forgotten' })
+    expect(await source.memory({})).toBeNull()
+    expect(await source.searchMemory('x', {})).toEqual([])
+    expect((await source.changeMemory({ op: 'forget', id: 'a' }, {})).ok).toBe(false)
+    expect(await liveWith({ jarvisAnswers: false }).source.memory(login)).toBeNull()
   })
 
   it("warms Jarvis's chat engine as the caller, and skips it without a login", async () => {

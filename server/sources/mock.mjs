@@ -139,6 +139,9 @@ export function createMockSource({ now = () => new Date() } = {}) {
     modelLoaded: true,
     // The pretend web chat with Jarvis, oldest first.
     chat: [],
+    // Pretend things Jarvis remembers (made up: this repo is public).
+    facts: sampleFacts(now()),
+    nextFactId: 100,
     // When a pretend digest refresh finishes (ms), so the page's
     // "Updating from Jarvis…" can be seen and then clear.
     digestReadyAt: 0,
@@ -306,7 +309,60 @@ export function createMockSource({ now = () => new Date() } = {}) {
     async history() {
       return state.chat.slice(-50)
     },
+
+    /** The pretend facts, newest first, and a made-up count of saved turns. */
+    async memory() {
+      const facts = [...state.facts].sort((a, b) => b.learned.localeCompare(a.learned))
+      const lastDistill = new Date(now().getTime() - 7 * 3600_000).toISOString()
+      return { facts, turns: 1284 + state.chat.length, lastDistill }
+    },
+
+    /** Finds sample past moments containing the words searched for. */
+    async searchMemory(query) {
+      const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+      if (words.length === 0) return []
+      const all = [...sampleHits(now()), ...state.chat.map((t) => ({ chat: 'web', role: t.role, text: t.text, at: t.at }))]
+      return all.filter((h) => words.some((w) => h.text.toLowerCase().includes(w))).slice(0, 8)
+    },
+
+    /** Remembers or forgets one pretend fact. */
+    async changeMemory(change) {
+      if (change?.op === 'remember' && typeof change.text === 'string' && change.text.trim()) {
+        state.facts.push({ id: `f${state.nextFactId++}`, text: change.text.trim(), learned: now().toISOString(), from: 'you' })
+        return { ok: true, message: 'Jarvis will remember that' }
+      }
+      if (change?.op === 'forget') {
+        const before = state.facts.length
+        state.facts = state.facts.filter((f) => f.id !== change.id)
+        if (state.facts.length < before) return { ok: true, message: 'Forgotten' }
+        return { ok: false, message: 'Jarvis didn’t have that one' }
+      }
+      return { ok: false, message: 'Send {"op": "remember", "text"} or {"op": "forget", "id"}' }
+    },
   }
+}
+
+/** Made-up facts for the sample memory, learned over the last few days. */
+function sampleFacts(t) {
+  const daysAgo = (d) => new Date(t.getTime() - d * 86_400_000).toISOString()
+  return [
+    { id: 'f1', text: 'Calls the living room lamp "the big light".', learned: daysAgo(0.3), from: 'nightly' },
+    { id: 'f2', text: 'Wants weather in °F and wind in knots.', learned: daysAgo(1.3), from: 'nightly' },
+    { id: 'f3', text: 'Plays volleyball on Tuesday nights; a rain warning before 6 pm is useful.', learned: daysAgo(2.3), from: 'nightly' },
+    { id: 'f4', text: 'Prefers short answers out loud, details in text.', learned: daysAgo(3), from: 'you' },
+    { id: 'f5', text: 'Unloads the local model before gaming.', learned: daysAgo(5.3), from: 'nightly' },
+  ]
+}
+
+/** Made-up past moments for the sample memory search. */
+function sampleHits(t) {
+  const daysAgo = (d) => new Date(t.getTime() - d * 86_400_000).toISOString()
+  return [
+    { chat: 'telegram', role: 'user', text: 'Remind me to check the weather before volleyball on Tuesday', at: daysAgo(2.4) },
+    { chat: 'voice', role: 'jarvis', text: 'The big light is on at 60 percent.', at: daysAgo(0.5) },
+    { chat: 'web', role: 'user', text: 'Turn the big light off when I start gaming', at: daysAgo(4.1) },
+    { chat: 'siri', role: 'jarvis', text: "Tomorrow looks clear, 68 and light wind, good flying weather.", at: daysAgo(6.2) },
+  ]
 }
 
 /**

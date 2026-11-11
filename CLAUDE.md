@@ -22,6 +22,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   (`ollama-unload`, `ollama-load`; needs header `x-home-lab: 1`; one at a time, 409 otherwise),
   `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`),
   `POST /api/jarvis/chat` (`{text}`, same header; streams Jarvis `/chat/stream` NDJSON), `GET /api/jarvis/history` (Jarvis `/chat/history`), `POST /api/jarvis/warm` (same header; Jarvis `/chat/warm`, sent when the chat sheet opens),
+  `GET /api/jarvis/memory` + `GET /api/jarvis/memory/search?q=` + `POST /api/jarvis/memory` (`{op: remember|forget}`, same header; Jarvis `/memory/facts`, `/memory/search`; `MemoryPanel` on Settings),
   `POST /api/home/control` (`{entity, command, value?}`; climate takes `target` °/`mode`; same header + Tailscale login; allowlist in
   `server/sources/home.mjs`, which also reads devices/weather/sun into `snapshot.home`),
   `POST /api/digest/refresh` (same header; asks Jarvis `/digest/refresh`; client hook `src/api/digestRefresh.tsx`),
@@ -54,7 +55,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,
-  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/{speech,talk}.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (in `views/Shell.tsx`, also on Services), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
+  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/{speech,talk}.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (in `views/Shell.tsx`, also on Services), `MemoryPanel` (Settings: Jarvis's facts + search), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
 - **Helpers:** `src/lib/format.ts`, `sky.ts` (phase by hour), `sparkline.ts`,
   `prefs.ts` (localStorage key `home-lab:v1:sky`, guarded).
 - **Styles:** `src/styles.css` — tokens in `:root`, sky phases on `.backdrop[data-phase]` (colours are `@property`-registered so phases fade over 120 s; `data-picked` = 1.5 s),

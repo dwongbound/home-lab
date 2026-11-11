@@ -10,6 +10,7 @@
 //   - I swipe sideways to change tab.
 //   - In Safari, changing tab never shows the panels dark before they frost.
 //   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
+//   - In Settings I see what Jarvis remembers, teach him something, forget it, and search past chats.
 import { expect, test } from '@playwright/test'
 
 test('overview shows the PC at a glance', async ({ page }) => {
@@ -527,4 +528,26 @@ test('asking Jarvis opens the chat, and Talk goes hands-free until Stop talking'
   await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })
   await chat.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(chat).toHaveCount(0)
+})
+
+test('Settings shows what Jarvis remembers; I teach him something, forget it, and search past chats', async ({ page }) => {
+  await page.goto('/#preferences')
+  const panel = page.getByRole('region', { name: 'What Jarvis remembers' })
+  await expect(panel.getByRole('list', { name: 'Things Jarvis remembers' })).toBeVisible()
+
+  // Teach him something with a name unique to this run (the sample server is shared).
+  const fact = `Likes test fact ${Date.now()}`
+  await panel.getByRole('textbox', { name: 'Something for Jarvis to remember' }).fill(fact)
+  await panel.getByRole('button', { name: 'Remember' }).click()
+  await expect(panel.getByText(fact)).toBeVisible()
+
+  // Forget asks first, with Close to back out.
+  await panel.getByRole('button', { name: `Forget: ${fact}` }).click()
+  const confirm = page.getByRole('dialog', { name: 'Forget this?' })
+  await confirm.getByRole('button', { name: 'Forget', exact: true }).click()
+  await expect(panel.getByText(fact)).toHaveCount(0)
+
+  await panel.getByRole('searchbox', { name: 'Search past conversations' }).fill('big light')
+  await panel.getByRole('button', { name: 'Search', exact: true }).click()
+  await expect(panel.getByRole('list', { name: 'Search results' }).getByText('The big light is on at 60 percent.')).toBeVisible()
 })
