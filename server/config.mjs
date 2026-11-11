@@ -33,7 +33,6 @@ export function loadConfig(env = process.env) {
     // Jarvis's background watch model (JARVIS_TRIAGE_MODEL in Jarvis), so
     // the Services page can say what it's doing when it's loaded.
     ollamaWatchModel: env.OLLAMA_WATCH_MODEL ?? 'qwen3.5:9b',
-    openWebUiUrl: env.OPEN_WEBUI_URL ?? 'https://jarvis.snakebird-ph.ts.net:8081',
     jarvisUrl: env.JARVIS_URL ?? 'https://jarvis.snakebird-ph.ts.net:8443',
     jarvisUnit: env.JARVIS_UNIT ?? 'jarvis',
     // Jarvis's own HTTP API (/health, /ask), which listens on this PC only.

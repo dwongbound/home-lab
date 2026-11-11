@@ -7,9 +7,9 @@ import type { LoadedModel } from '../types'
 
 /** Each role in plain words. */
 const ROLE: Record<LoadedModel['role'], string> = {
-  chat: 'Chat brain for Jarvis and Open WebUI.',
+  chat: 'Chat brain for Jarvis.',
   watch: 'Jarvis’s background watch: scores new items against your interests and, once an hour, looks for ones that connect. Unloads itself when Gemma loads.',
-  other: 'Loaded by something else (Open WebUI or a script).',
+  other: 'Loaded by something else (a script, or by hand).',
 }
 
 /** "Unloads in 52 min" style text, or that it stays. */

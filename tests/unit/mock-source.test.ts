@@ -32,6 +32,11 @@ describe('createMockSource', () => {
     expect(snap.requests.find((d: { day: string }) => d.day === 'Sat')!.count).toBe(0)
   })
 
+  it('has the same services as the live source, without Open WebUI', async () => {
+    const snap = await createMockSource({ now }).snapshot()
+    expect(snap.services.map((s: { id: string }) => s.id)).toEqual(['ha', 'ollama', 'jarvis'])
+  })
+
   it('keeps activity newest first', async () => {
     const snap = await createMockSource({ now }).snapshot()
     const times = snap.activity.map((a: { at: string }) => a.at)

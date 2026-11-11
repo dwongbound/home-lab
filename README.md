@@ -1,7 +1,7 @@
 # home-lab
 
 A glassy admin page for **jarvis**, the home lab PC: how much memory, GPU
-and disk it's using, whether Home Assistant, Ollama, Open WebUI and the
+and disk it's using, whether Home Assistant, Ollama and the
 Jarvis agent are running, what ran today, and a button to unload Gemma
 before gaming.
 
@@ -169,7 +169,7 @@ the glass frosted the whole time. Chrome keeps the crossfade.
                                                                              │  2.5 s timeout each)
                      nvidia-smi · statfs /mnt/c · os.* · systemctl is-active jarvis
                      Home Assistant /api/ (with the token) · Ollama /api/ps
-                     Open WebUI · Jarvis 127.0.0.1:8765/health
+                     Jarvis 127.0.0.1:8765/health
 ```
 
 - **One call per refresh.** Everything the page shows comes back from
@@ -233,7 +233,6 @@ interface DataSource {
 | Free on C: | `statfs('/mnt/c')` |
 | Home Assistant | `GET $HA_URL/api/` with `Authorization: Bearer $HA_TOKEN`. A 401 shows as "Needs attention. Token rejected". |
 | Ollama and Gemma | `GET $OLLAMA_URL/api/ps` (which models are in memory) |
-| Open WebUI | `GET $OPEN_WEBUI_URL`. Any answer below 500 counts as up. |
 | Jarvis | `GET $JARVIS_API_URL/health`, which says which brain Jarvis is using ("Thinking with claude"), plus `systemctl is-active jarvis` where there is a systemctl. Answering is "Running"; silent while systemd says active is "Needs attention"; anything else is "Not responding". In Docker there's no systemctl, so `/health` alone decides. |
 | Ask Jarvis | `POST $JARVIS_API_URL/ask` with `{"text": ...}` and the caller's `Tailscale-User-Login`, waiting up to 3 minutes. |
 | Unload / load Gemma | `POST $OLLAMA_URL/api/generate` with `keep_alive: 0` (unload now) or `OLLAMA_KEEP_ALIVE` (load; `-1`, the default, keeps it loaded forever, which is how jarvis runs Gemma). Ollama has no separate unload call. |
@@ -295,7 +294,6 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `OLLAMA_KEEP_ALIVE` | `-1` | How long Load keeps Gemma. `-1` = forever, a number = seconds, or `30m` style. |
 | `OLLAMA_WATCH_MODEL` | `qwen3.5:9b` | Jarvis's background watch model (its `JARVIS_TRIAGE_MODEL`), so Services can say what it's doing when loaded. |
 | `NVIDIA_SMI` | `/usr/lib/wsl/lib/nvidia-smi` | WSL's nvidia-smi, which isn't on PATH. |
-| `OPEN_WEBUI_URL` | `https://jarvis.snakebird-ph.ts.net:8081` | Open WebUI, for its status and link. |
 | `JARVIS_URL` | `https://jarvis.snakebird-ph.ts.net:8443` | Jarvis's address on the tailnet, for the link on its row. |
 | `JARVIS_API_URL` | `http://127.0.0.1:8765` | Jarvis's own API on the PC, for `/health` and Ask Jarvis. |
 | `JARVIS_UNIT` | `jarvis` | The systemd unit to ask about (skipped in Docker, which has no systemctl). |
@@ -344,7 +342,7 @@ systemctl status home-lab
 ### In Docker
 
 The other way to run it, with nothing installed on Ubuntu but Docker
-(which jarvis already has for Home Assistant and Open WebUI):
+(which jarvis already has for Home Assistant):
 
 ```bash
 cd ~/home-lab
@@ -369,19 +367,17 @@ RAM more. It typically uses well under 100 MB.
 
 By default the server only listens on `127.0.0.1`, which is the PC itself.
 The way to open it from other devices is `tailscale serve`, the same way
-Jarvis and Open WebUI are published. It works for both the Docker and the
+Jarvis is published. It works for both the Docker and the
 systemd setup, and it's what makes Ask Jarvis work, because it tells the
-page (and so Jarvis) who you are. The page has the PC's main address and
-Open WebUI moves to :8081. From Ubuntu:
+page (and so Jarvis) who you are. The page has the PC's main address. From Ubuntu:
 
 ```bash
 TS="/mnt/c/Program Files/Tailscale/tailscale.exe"
-"$TS" serve --bg --https=8081 http://127.0.0.1:3000   # Open WebUI
 "$TS" serve --bg --https=443 http://127.0.0.1:4180    # this page
 ```
 
 Then open `https://jarvis.snakebird-ph.ts.net` on the phone or Mac with
-Tailscale on; Open WebUI is at `https://jarvis.snakebird-ph.ts.net:8081`.
+Tailscale on.
 `"$TS" serve status` lists what's published.
 
 Two things that don't work on jarvis, so you don't have to find out:
@@ -389,8 +385,8 @@ Two things that don't work on jarvis, so you don't have to find out:
 - **Publishing on the same port the page listens on.** WSL's mirrored
   networking shares ports between Ubuntu and Windows, and `serve --http=80`
   in front of a page on `127.0.0.1:80` never answered (connection refused).
-  Every service here uses two numbers (this page 4180 → 443, Open WebUI
-  3000 → 8081, Jarvis 8765 → 8443); keep to that.
+  Every service here uses two numbers (this page 4180 → 443,
+  Jarvis 8765 → 8443); keep to that.
 - **Plain `http://jarvis.snakebird-ph.ts.net` on port 80.** Browsers try
   `https://` first on that name, so they land on whatever is on 443. Use
   `https://`.
@@ -409,7 +405,7 @@ Two things that don't work on jarvis, so you don't have to find out:
    Tailscale on.
 
 There's no login on the page. It relies on Tailscale for who can reach it,
-the same way Open WebUI does. Don't expose it to the internet, and with
+the same way Jarvis does. Don't expose it to the internet, and with
 Ask Jarvis don't use `HOST=0.0.0.0` either: anyone on the home network
 could then send a made-up Tailscale login header and talk to Jarvis.
 

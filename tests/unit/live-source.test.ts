@@ -62,6 +62,13 @@ function service(snap: any, id: string) {
 }
 
 describe('live snapshot', () => {
+  it('lists only the services still on the PC (Open WebUI was removed) and never probes it', async () => {
+    const { source, fetch } = liveWith({})
+    const snap = await source.snapshot()
+    expect(snap.services.map((s: { id: string }) => s.id)).toEqual(['ha', 'ollama', 'jarvis'])
+    expect(fetch.mock.calls.some(([url]) => String(url).includes(':8081'))).toBe(false)
+  })
+
   it("puts Jarvis's reminders for today on the timeline, past ones done", async () => {
     const past = new Date(Date.now() - 3600_000).toISOString()
     const later = new Date(Date.now() + 3600_000).toISOString()
