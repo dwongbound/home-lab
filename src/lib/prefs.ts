@@ -22,14 +22,3 @@ export function readAwake(): boolean {
 export function writeAwake(on: boolean): void {
   try { localStorage.setItem(AWAKE_KEY, on ? 'on' : 'off') } catch { /* not saved; fine */ }
 }
-
-const SPEAK_KEY = 'home-lab:v1:speak'
-
-/** Whether Jarvis's replies are read aloud in this browser. Off unless saved on. */
-export function readSpeak(): boolean {
-  try { return localStorage.getItem(SPEAK_KEY) === 'on' } catch { return false }
-}
-/** Saves the read-aloud choice. Silently does nothing if storage is blocked. */
-export function writeSpeak(on: boolean): void {
-  try { localStorage.setItem(SPEAK_KEY, on ? 'on' : 'off') } catch { /* not saved; fine */ }
-}

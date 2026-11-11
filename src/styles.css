@@ -409,20 +409,12 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* The chat sheet: one fixed size (it never grows with the conversation);
    the turns scroll in the middle. */
-.dialog.dialog--chat { width: min(580px, calc(100vw - 32px)); height: min(680px, calc(100dvh - 32px)); grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 14px; }
+.dialog.dialog--chat { width: min(580px, calc(100vw - 32px)); height: min(680px, calc(100dvh - 32px)); grid-template-rows: auto minmax(0, 1fr) auto; gap: 14px; }
 .chat__head { display: grid; justify-items: center; gap: 4px; padding-top: 34px; }
 .chat__head .orb { margin-bottom: 26px; }
-/* Talk mode: the sheet fills the screen (one fixed size, never animated: it's glass)
-   and the orb gets room to swing. */
+/* Talk mode: the sheet fills the screen (one fixed size, never animated: it's glass). */
 .dialog.dialog--chat[data-talking] { width: calc(100vw - 32px); max-width: none; height: calc(100dvh - 32px); max-height: none; }
-.dialog--chat[data-talking] .chat__head { padding-top: 70px; }
-.dialog--chat[data-talking] .chat__head .orb { margin-bottom: 70px; }
 .dialog--chat[data-talking] .chat__turns { width: min(100%, 860px); justify-self: center; }
-/* Phones: less room above and below the orb, so the conversation still fits. */
-@media (max-width: 600px) {
-  .dialog--chat[data-talking] .chat__head { padding-top: 34px; }
-  .dialog--chat[data-talking] .chat__head .orb { --orb: 96px !important; margin-bottom: 40px; }
-}
 .chat__status { color: var(--frost-dim); font-size: 14px; }
 .chat__turns { list-style: none; margin: 0; padding: 0 2px 0 0; display: grid; align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
 .chat__turn { display: grid; gap: 8px; }
@@ -432,11 +424,9 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .chat__a--error { color: #ffc2c8; }
 .chat__caret { display: inline-block; width: .6em; height: 1.1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--glacier); }
 .chat__form { display: flex; gap: 8px; }
-.chat__actions { justify-content: space-between; align-items: center; }
-.switch.chat__speak { margin-top: 0; }
-.chat__actions { flex-wrap: wrap; }
-.chat__buttons { display: flex; gap: 8px; margin-left: auto; }
-.chat__buttons .btn, .chat__speak { white-space: nowrap; }
+.chat__form .btn { white-space: nowrap; }
+/* Close: the × in the sheet's top right corner (44 px to tap). */
+.chat__close { position: absolute; top: 14px; right: 14px; width: 44px; height: 44px; z-index: 1; }
 .chat__q--heard { opacity: .6; border: 1px dashed var(--glass-edge); background: rgba(255,255,255,.06); }
 /* Listening: the orb goes a touch greener so it's clear it's your turn. */
 .orb[data-state='listening'] .orb__core { filter: hue-rotate(-28deg) saturate(1.15); }
