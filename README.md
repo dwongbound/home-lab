@@ -115,7 +115,7 @@ memory, tools and Home Assistant access as Telegram and Siri). The
 conversation lives on the PC, so a reload or another device picks it up.
 **Speak replies** reads typed answers aloud with the browser's voice.
 
-**Talk** is hands-free and fills the screen, with a bigger orb that swings with his voice: the page opens a WebSocket to `/api/jarvis/talk`,
+**Talk** is hands-free and fills the screen, with a bigger orb: the page opens a WebSocket to `/api/jarvis/talk`,
 which `server/talk.mjs` carries to Jarvis's own voice pipeline
 (`/talk/ws?chat=web`: Whisper on the GPU, Jarvis, then his voice). The
 microphone goes as 16 kHz 16-bit audio in 20 ms frames (resampled in an
