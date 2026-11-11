@@ -11,6 +11,7 @@
 //   - I swipe sideways to change tab.
 //   - In Safari, changing tab never shows the panels dark before they frost.
 //   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
+//   - While the chat is open the page behind it stays put, and reading back up isn't interrupted by new words.
 //   - In Settings, under Voice, I play a sample, pick a voice, speed and blend, and save it.
 //   - In Settings, under Memory, I see what Jarvis remembers, teach him something, forget it, and search past chats.
 import { expect, test } from '@playwright/test'
@@ -121,7 +122,7 @@ test('changing page cross-fades and slides the pill light, and never with reduce
 test('pill navigation reaches every page and keeps the back button working', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: 'Sections' })
-  for (const name of ['Home', 'Money', 'Services', 'Shell', 'Schedule', 'Settings']) {
+  for (const name of ['Home', 'Money', 'Services', 'Schedule', 'Settings']) {
     await nav.getByRole('link', { name }).click()
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
     await expect(nav.getByRole('link', { name })).toHaveAttribute('aria-current', 'page')
@@ -235,19 +236,17 @@ test('the thermostat shows the room temperature, and + and the mode buttons chan
   expect(box.height).toBeGreaterThanOrEqual(44)
 })
 
-test('Shell shows the terminal frame, and says so when the shell is off', async ({ page }) => {
-  await page.goto('/#shell')
-  await expect(page.getByRole('heading', { level: 1, name: 'Shell' })).toBeVisible()
+test('Services has the terminal, and there is no separate Shell tab', async ({ page }) => {
+  await page.goto('/#services')
+  await expect(page.getByRole('heading', { level: 1, name: 'Services' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Shell' })).toHaveCount(0)
   // The test server has no SHELL_USERS, so the frame explains instead of opening a terminal.
   const frame = page.frameLocator('iframe[title="Terminal on jarvis"]')
   await expect(frame.getByText('The shell is off')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Open the terminal full screen' })).toHaveAttribute('href', './shell/')
-  // The terminal spans the page's full content width, as wide as the hero above it.
-  const frameWidth = await page.locator('iframe[title="Terminal on jarvis"]').evaluate((el) => el.getBoundingClientRect().width)
-  const heroWidth = await page.locator('.hero').evaluate((el) => el.getBoundingClientRect().width)
-  expect(frameWidth).toBeGreaterThan(heroWidth - 80)
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
-  expect(overflow).toBeLessThanOrEqual(0)
+  // An old #shell link lands on the Overview.
+  await page.goto('/#shell')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Dylan')
 })
 
 test('Money flags purchases to sort, and every row opens a detail that Close and Back dismiss', async ({ page }) => {
@@ -533,6 +532,48 @@ test('while the first snapshot is on its way, a full-page "Jarvis is thinking" l
     await expect(loader).toHaveCount(0)
     await context.close()
   }
+})
+
+test('the page behind the chat stays put, and scrolling up to read back is not pulled down by new words', async ({ page }) => {
+  test.setTimeout(60_000)
+  // A shorter window on desktop so a few turns are enough to make the chat scroll.
+  const size = page.viewportSize()!
+  if (size.height > 700) await page.setViewportSize({ width: size.width, height: 520 })
+  await page.goto('/')
+  const before = await page.evaluate(() => { window.scrollTo(0, 120); return window.scrollY })
+  // Enough turns that the chat scrolls.
+  const bar = page.getByRole('textbox', { name: 'Question for Jarvis' })
+  await bar.fill('Is the garage open?')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  const box = chat.getByRole('textbox', { name: 'Message Jarvis' })
+  for (const q of ['What is on today?', 'How is the weather for flying?', 'Any email I should read?']) {
+    await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
+    await box.fill(q)
+    await chat.getByRole('button', { name: 'Send' }).click()
+  }
+  await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
+
+  // The page behind is pinned: its body doesn't scroll while the chat is open.
+  expect(await page.evaluate(() => getComputedStyle(document.body).position)).toBe('fixed')
+
+  // Talk, then scroll up to read back while the demo turn plays.
+  await chat.getByRole('button', { name: 'Talk', exact: true }).click()
+  await expect(chat.getByRole('status')).toHaveText('Listening… just talk')
+  const list = chat.getByRole('list')
+  await list.evaluate((el) => { el.scrollTop = 0; el.dispatchEvent(new Event('scroll')) })
+  await expect(chat.getByText(/you have volleyball at 7:30/).last()).toBeAttached({ timeout: 15_000 })
+  expect(await list.evaluate((el) => el.scrollTop)).toBeLessThan(40)
+  // Latest takes him back down.
+  await chat.getByRole('button', { name: /Latest/ }).click()
+  expect(await list.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThan(50)
+
+  await chat.getByRole('button', { name: 'Stop talking' }).click()
+  await chat.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(chat).toHaveCount(0)
+  // Back where the page was.
+  expect(await page.evaluate(() => getComputedStyle(document.body).position)).not.toBe('fixed')
+  expect(await page.evaluate(() => window.scrollY)).toBe(before)
 })
 
 test('asking Jarvis opens the chat, and Talk goes hands-free until Stop talking', async ({ page }) => {

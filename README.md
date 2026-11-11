@@ -68,8 +68,7 @@ Eight pages, picked from the pill bar at the top. Each is a plain link to a
 | **Home** (`#home`) | The thermostat first (room temperature, − and + for the target, mode buttons), then every light, switch, fan, speaker or TV, scene and script in Home Assistant, each with the controls that suit it: on/off, brightness, play/pause, volume, or Run. The weather and the next sunrise or sunset. New devices appear as they're added to Home Assistant; a speaker's own settings switches, locks, alarms and garage doors don't. Controlling needs the page opened through Tailscale. |
 | **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
 | **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. Purchases still in **Other** (or with no category) get a yellow outline and "!", and **Worth a look** counts them. Tap one to pick its category (Copilot's own, or type another): Copilot's connector is read-only, so picks are saved on the PC (`MONEY_PICKS_FILE`) in **Ready for Copilot**, grouped by category, to apply in the Copilot app in one sitting and mark **Done**. The first pick sets a reminder for tomorrow at 8 PM (move it to tonight or in 3 days); when it comes, the banner says how many are waiting. Picks clear by themselves once Copilot shows the purchase sorted. Recent sits on the right, as tall as the left column, scrolling inside. Accounts are grouped with subtotals, and $0 ones wait behind **Show empty accounts**. |
-| **Services** (`#services`) | Every service with its status, response time and a link to open it; the local model card (always about `OLLAMA_MODEL`); **In GPU memory**, listing each model Ollama has loaded with its job (`OLLAMA_WATCH_MODEL` = Jarvis's local brain: background watch and offline backup), GPU memory, size and when it unloads; and a terminal on jarvis (the Shell tab's tmux session), e.g. for `sudo systemctl restart jarvis`. |
-| **Shell** (`#shell`) | A terminal on jarvis (tmux through ttyd), so you can run commands from your phone. Only your Tailscale login gets in. See [The Shell page](#the-shell-page). |
+| **Services** (`#services`) | Every service with its status, response time and a link to open it; the local model card (always about `OLLAMA_MODEL`); **In GPU memory**, listing each model Ollama has loaded with its job (`OLLAMA_WATCH_MODEL` = Jarvis's local brain: background watch and offline backup), GPU memory, size and when it unloads; and a terminal on jarvis (tmux through ttyd, only your Tailscale login gets in; see [The terminal](#the-terminal)), e.g. for `sudo systemctl restart jarvis`. |
 | **Schedule** (`#schedule`) | Today's runs on jarvis next to your calendar for the day, then email that needs you and recent activity. Calendar and email come from the [cloud digest](#cloud-digest). |
 | **Settings** (`#preferences`) | The sky behind the page (follow the clock, or pin dawn, day, dusk or night; saved in that browser only), keep the screen on, and where the data is coming from. **Voice**: how Jarvis sounds when he talks back (Kokoro's English voices, British or American, each with **Play**; speed 0.7–1.4×; an optional blend with a second voice; **Hear it** and **Save**, which Jarvis uses from his next sentence). Then **Memory** at the bottom: the facts Jarvis keeps in mind in every conversation (learned from chats each night at 3:30 am, or told to him here), each with **Forget**, a box to tell him something to remember, and a search over past conversations, the same one he runs before answering. His private `memory.md` is never shown or changed. |
 
@@ -87,9 +86,9 @@ minutes (`OLLAMA_KEEP_ALIVE`).
 
 Only one action runs at a time: the server answers `409` to a second one.
 
-### The Shell page
+### The terminal
 
-A real terminal on jarvis, as `dwong`, in a frame on the page (or full
+A real terminal on jarvis, as `dwong`, in a frame on Services (or full
 screen with the arrow button). It's `tmux new -A -s main`, so it's the same
 session every time, and a long command keeps going if your phone locks.
 
@@ -326,7 +325,7 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `DIGEST_BRANCH` | `main` | Its branch. |
 | `DIGEST_PATH` | `digest.json` | The file in it. |
 | `DIGEST_TOKEN` | *(empty)* | Fine-grained GitHub token, **Contents: Read-only on that one repo**. **Secret.** Empty (and no `DIGEST_FILE`) turns the cloud panels off. |
-| `SHELL_USERS` | *(empty)* | Tailscale logins allowed to use the Shell page, comma-separated. Empty turns the shell off. |
+| `SHELL_USERS` | *(empty)* | Tailscale logins allowed to use the terminal on Services, comma-separated. Empty turns the shell off. |
 | `SHELL_URL` | `http://127.0.0.1:7681` | Where ttyd listens (`deploy/ttyd.service`). |
 | `THREADS_FILE` | *(empty)* | Claude threads file whose `threads` replace the digest's. `docker-compose.yml` sets it to `/digest/threads.json`. |
 | `MONEY_PICKS_FILE` | *(empty)* | Where Money page category picks wait until you apply them in Copilot. Empty keeps them in memory (lost on restart). `docker-compose.yml` sets it to `/data/money-picks.json`, mounted read-write from `~/.local/share/home-lab/data`. |

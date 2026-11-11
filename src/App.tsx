@@ -11,7 +11,6 @@ import { Services } from './views/Services'
 import { Claude } from './views/Claude'
 import { Money } from './views/Money'
 import { Home } from './views/Home'
-import { Shell } from './views/Shell'
 import { Schedule } from './views/Schedule'
 import { Settings, type SkyChoice } from './views/Settings'
 import { swipeToView, useHashView } from './useHashView'
@@ -79,8 +78,6 @@ export function App() {
     body = <section className="state state--loading"><ThinkingLoader /></section>
   } else if (view === 'claude') {
     body = <Claude data={data} now={now} />
-  } else if (view === 'shell') {
-    body = <Shell />
   } else if (view === 'home') {
     body = <Home data={data} now={now} />
   } else if (view === 'money') {

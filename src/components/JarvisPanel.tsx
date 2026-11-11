@@ -3,6 +3,7 @@ import { loadChatHistory, streamJarvis, warmJarvis } from '../api/client'
 import type { ChatTurn } from '../types'
 import { openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
+import { useScrollLock } from '../useScrollLock'
 
 // Talking to Jarvis from the home page. The Overview keeps a slim bar: the
 // orb, a box, Ask and Talk. Asking opens the chat: a fixed-size sheet with a
@@ -37,6 +38,14 @@ function lastLine(last: Turn | null, historyChecked: boolean, state: OrbState, n
   if (last) return last.answer || statusText(state, notice)
   if (historyChecked) return 'No chat yet. Ask anything, or tap Talk'
   return '\u00a0'
+}
+
+// How close to the bottom (px) still counts as reading the newest line.
+const BOTTOM_SLACK_PX = 48
+
+/** True when a scroll box is at, or within a finger's slack of, its bottom. */
+function atBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX
 }
 
 // With sample data there's no Jarvis to talk to, so Talk plays these turns
@@ -331,6 +340,7 @@ interface SheetProps {
  */
 function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard, notice, onTalk, onStopTalk, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
+  useScrollLock()
   const list = useRef<HTMLOListElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const busy = state !== 'idle' || talking
@@ -344,11 +354,42 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
     return () => { if (typeof d.close === 'function') d.close() }
   }, [])
 
-  // Keep the newest words in view as the reply types out.
+  // Whether the chat is scrolled to (or near) the newest line. Scrolling up
+  // to read back turns this off, so new words don't drag him down again
+  // (Dylan, 2026-11-11); scrolling back down, or Latest, turns it on.
+  const following = useRef(true)
+  const [behind, setBehind] = useState(false)
+
+  /** Notes whether he's at the bottom after he (or the page) scrolls the chat. */
+  function onScroll() {
+    const el = list.current
+    if (!el) return
+    following.current = atBottom(el)
+    if (following.current) setBehind(false)
+  }
+
+  /** Jumps to the newest line and follows it again. */
+  function toLatest() {
+    const el = list.current
+    following.current = true
+    setBehind(false)
+    if (el) el.scrollTop = el.scrollHeight
+  }
+
+  // Keep the newest words in view as the reply types out, unless he has
+  // scrolled up; then offer Latest instead.
   useEffect(() => {
     const el = list.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    if (following.current) el.scrollTop = el.scrollHeight
+    else setBehind(true)
   }, [turns, heard])
+
+  // A question he just typed always brings him to the bottom to see it answered.
+  const turnCount = turns.length
+  useEffect(() => {
+    if (!talking) toLatest()
+  }, [turnCount])
 
   // Back to the box once Jarvis is done, ready for the next question.
   useEffect(() => {
@@ -373,7 +414,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
         <p className="chat__status" role="status">{statusText(state, notice)}</p>
       </header>
-      <ol ref={list} className="chat__turns" aria-live="polite">
+      <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
         {turns.map((t, i) => (
           <li key={t.id} className="chat__turn">
             <p className="chat__q">{t.question}</p>
@@ -388,6 +429,9 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, heard,
         ))}
         {heard ? <li className="chat__turn"><p className="chat__q chat__q--heard">{heard}</p></li> : null}
       </ol>
+      {behind ? (
+        <button type="button" className="btn chat__latest" onClick={toLatest}>Latest ↓</button>
+      ) : null}
       <form className="chat__form" onSubmit={onSend}>
         <label htmlFor="chat-input" className="jarvis__label">Message Jarvis</label>
         <input

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Spinner } from './Spinner'
+import { useScrollLock } from '../useScrollLock'
 
 interface Props {
   title: string
@@ -20,6 +21,7 @@ interface Props {
 /** The dialog. Mount it to open it; unmount it to close it. */
 export function ConfirmDialog({ title, body, confirmLabel, busyLabel, busy, error, onConfirm, onClose }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
+  useScrollLock()
 
   // Open as a modal on mount. showModal is optional-chained because jsdom
   // (the unit test DOM) doesn't implement it.

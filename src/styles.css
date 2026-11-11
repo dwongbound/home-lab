@@ -411,11 +411,11 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* The chat sheet: one fixed size (it never grows with the conversation);
    the turns scroll in the middle. */
-.dialog.dialog--chat { width: min(580px, calc(100vw - 32px)); height: min(680px, calc(100dvh - 32px)); grid-template-rows: auto minmax(0, 1fr) auto; gap: 14px; }
+.dialog.dialog--chat { width: min(580px, calc(100vw - 32px)); height: min(680px, calc(var(--safe-h) - 32px)); grid-template-rows: auto minmax(0, 1fr) auto; gap: 14px; }
 .chat__head { display: grid; justify-items: center; gap: 4px; padding-top: 34px; }
 .chat__head .orb { margin-bottom: 26px; }
 /* Talk mode: the sheet fills the screen (one fixed size, never animated: it's glass). */
-.dialog.dialog--chat[data-talking] { width: calc(100vw - 32px); max-width: none; height: calc(100dvh - 32px); max-height: none; }
+.dialog.dialog--chat[data-talking] { width: calc(100vw - 32px); max-width: none; height: calc(var(--safe-h) - 32px); max-height: none; }
 .dialog--chat[data-talking] .chat__turns { width: min(100%, 860px); justify-self: center; }
 .chat__status { color: var(--frost-dim); font-size: 14px; }
 .chat__turns { list-style: none; margin: 0; padding: 0 2px 0 0; display: grid; align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
@@ -429,6 +429,11 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .chat__form .btn { white-space: nowrap; }
 /* Close: the × in the sheet's top right corner (44 px to tap). */
 .chat__close { position: absolute; top: 14px; right: 14px; width: 44px; height: 44px; z-index: 1; }
+/* Shown when he has scrolled up to read back and new words arrive below. */
+.chat__latest { position: absolute; left: 50%; bottom: 86px; transform: translateX(-50%); z-index: 1; background: rgba(22, 32, 44, .94); box-shadow: 0 6px 18px rgba(0,0,0,.3); }
+/* The page behind an open pop-up stays put (src/useScrollLock.ts pins the body). */
+html[data-modal] { overflow: hidden; }
+.dialog--detail .dialog__body, .chat__turns { overscroll-behavior: contain; }
 .chat__q--heard { opacity: .6; border: 1px dashed var(--glass-edge); background: rgba(255,255,255,.06); }
 /* Listening: the orb goes a touch greener so it's clear it's your turn. */
 .orb[data-state='listening'] .orb__core { filter: hue-rotate(-28deg) saturate(1.15); }
@@ -436,7 +441,14 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- Dialog, blocking, toast ---------- */
 /* Fixed and centred in the window: .glass sets position: relative, which in the top layer would pin the dialog to the top of the page instead of the screen. */
-.dialog { position: fixed; inset: 0; width: min(440px, calc(100vw - 32px)); height: 252px; border-radius: var(--r-panel); color: var(--frost); padding: 22px; margin: auto; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; overflow: hidden; }
+/* Pop-ups sit inside the iPhone's safe area: below the notch and status bar,
+   above the home bar (the page uses viewport-fit=cover, so the screen's
+   edges are ours to avoid). --safe-h is the height that's left. */
+.dialog {
+  --safe-h: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+.dialog { position: fixed; width: min(440px, calc(100vw - 32px)); height: 252px; border-radius: var(--r-panel); color: var(--frost); padding: 22px; margin: auto; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; overflow: hidden; }
 .dialog:not([open]) { display: none; }
 .dialog::backdrop { background: rgba(8, 12, 18, 0.5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
 .dialog__title { font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
@@ -497,7 +509,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .timeline__card > .badge { display: inline-block; }
 
 /* The detail pop-up: one fixed size, so it never jumps; the middle scrolls. */
-.dialog--detail { width: min(520px, calc(100vw - 32px)); height: min(560px, calc(100dvh - 32px)); grid-template-rows: auto minmax(0, 1fr) auto; }
+.dialog--detail { width: min(520px, calc(100vw - 32px)); height: min(560px, calc(var(--safe-h) - 32px)); grid-template-rows: auto minmax(0, 1fr) auto; }
 .detail__body { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding-right: 2px; }
 .detail__facts { display: grid; gap: 0; margin: 4px 0 14px; }
 .detail__fact { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }

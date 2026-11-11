@@ -1,6 +1,7 @@
-import { Icon } from '../components/Icon'
+import { Icon } from './Icon'
 
-// The Shell page: a terminal on jarvis, in a frame. The terminal is ttyd
+// A terminal on jarvis, in a frame, on the Services page (it had its own
+// Shell tab until Dylan dropped it, 2026-11-11). The terminal is ttyd
 // running tmux on the PC, reached through the page's own server at /shell/
 // (server/shell.mjs), which lets in only the Tailscale logins in
 // SHELL_USERS. tmux keeps the session, so a long command carries on if the
@@ -11,12 +12,12 @@ const SHELL_URL = './shell/'
 const IS_STATIC_BUILD = import.meta.env.VITE_DATA === 'static'
 
 /**
- * The terminal panel: the Shell page's, and a shorter one on Services.
- * Both show the same tmux session, so a command started in one is there in the other.
+ * The terminal panel on Services. The ↗ button opens the same tmux session
+ * full screen in a new tab, so a command started in one is there in the other.
  */
-export function TerminalPanel({ compact = false }: { compact?: boolean }) {
+export function TerminalPanel() {
   return (
-      <section className={`glass panel terminal${compact ? ' terminal--compact' : ''}`} aria-labelledby="terminal-title">
+      <section className="glass panel terminal terminal--compact" aria-labelledby="terminal-title">
         <header className="panel__head">
           <h2 id="terminal-title" className="panel__title">Terminal</h2>
           {IS_STATIC_BUILD ? null : (
@@ -31,18 +32,5 @@ export function TerminalPanel({ compact = false }: { compact?: boolean }) {
           <iframe className="shell__frame" src={SHELL_URL} title="Terminal on jarvis" />
         )}
       </section>
-  )
-}
-
-/** The Shell page. */
-export function Shell() {
-  return (
-    <>
-      <section className="hero hero--small">
-        <h1 className="hero__title">Shell</h1>
-        <p className="hero__sub">A terminal on jarvis as dwong. It keeps running when you leave.</p>
-      </section>
-      <TerminalPanel />
-    </>
   )
 }
