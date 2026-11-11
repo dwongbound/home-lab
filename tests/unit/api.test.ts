@@ -66,6 +66,18 @@ describe('POST /api/jarvis/ask', () => {
   })
 })
 
+describe('POST /api/jarvis/warm', () => {
+  it('needs the page header, and passes the login on', async () => {
+    let seen: unknown = null
+    const source = { ...createMockSource(), warm: async (caller: unknown) => { seen = caller; return true } }
+    const api = createApi(source)
+    expect((await callApi(api, 'POST', '/api/jarvis/warm', {})).statusCode).toBe(403)
+    const res = await callApi(api, 'POST', '/api/jarvis/warm', { ...ACTION_HEADER, 'tailscale-user-login': 'dylan@example.com' })
+    expect(res.json()).toEqual({ ok: true })
+    expect(seen).toEqual({ login: 'dylan@example.com' })
+  })
+})
+
 describe('POST /api/jarvis/chat and GET /api/jarvis/history', () => {
   it('refuses requests without the page header, and empty text', async () => {
     const api = createApi(createMockSource())

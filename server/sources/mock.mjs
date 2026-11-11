@@ -259,6 +259,11 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: true, message: 'Done' }
     },
 
+    /** Sample data has no engine to start. */
+    async warm() {
+      return true
+    },
+
     /**
      * Pretends Jarvis rewrites the digest, taking a few seconds. An ask
      * during a run pushes its end back, so every page that asks sees the

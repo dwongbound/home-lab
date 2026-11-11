@@ -183,6 +183,8 @@ export interface DataSource {
   chat(text: string, caller: { login?: string }, onEvent: (event: ChatEvent) => void): Promise<void>
   /** The web chat with Jarvis so far, oldest first. */
   history(caller?: { login?: string }): Promise<ChatTurn[]>
+  /** Starts Jarvis's web-chat engine early; true when he said yes. */
+  warm(caller?: { login?: string }): Promise<boolean>
   /** Sends one command to one Home Assistant device. */
   control(entity: string, command: HomeCommand, value?: number | string, caller?: { login?: string }): Promise<ActionResult>
   /** Asks Jarvis to rewrite the digest now (calendar, email, money). */

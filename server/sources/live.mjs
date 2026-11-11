@@ -435,6 +435,25 @@ export function createLiveSource(config, deps = {}) {
     },
 
     /**
+     * Asks Jarvis to start the web chat's Claude engine now (POST
+     * /chat/warm, no model call), so the first question doesn't pay for
+     * starting it. True when Jarvis said yes.
+     */
+    async warm(caller = {}) {
+      if (!caller.login) return false
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/chat/warm`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        return res.ok
+      } catch {
+        return false
+      }
+    },
+
+    /**
      * Asks Jarvis to rewrite the digest now (POST /digest/refresh). Jarvis
      * skips it when a run is going or the last write is under 2 minutes
      * old, and answers at once; the page keeps showing the last digest

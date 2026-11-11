@@ -4,6 +4,9 @@
 //   POST /api/actions/ollama-unload free the local model's ~6 GB of GPU memory
 //   POST /api/actions/ollama-load   load it back
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
+//   POST /api/jarvis/chat           {"text": "..."} -> Jarvis's reply, streamed as NDJSON
+//   GET  /api/jarvis/history        the web chat so far
+//   POST /api/jarvis/warm           starts Jarvis's web-chat engine early (the chat sheet opened)
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
 //   POST /api/money/picks           {"op": "pick" | "clear" | "remind", ...} -> Money page category picks
@@ -122,6 +125,15 @@ export function createApi(source) {
     return sendJson(res, 200, { turns: await source.history({ login }) })
   }
 
+  /** Gets Jarvis's web-chat engine started before the first question, so it answers sooner. */
+  async function handleWarm(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { ok: await source.warm({ login }) })
+  }
+
   /** Sends one command to one Home Assistant device (server/sources/home.mjs). */
   async function handleControl(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -184,6 +196,9 @@ export function createApi(source) {
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/history') {
         return await handleHistory(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/warm') {
+        return await handleWarm(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/home/control') {
         return await handleControl(req, res)
