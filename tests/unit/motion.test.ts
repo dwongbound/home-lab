@@ -38,6 +38,8 @@ describe('motion', () => {
     const block = motionBlock(css)
     expect(css).toMatch(/@keyframes reveal \{ from \{ opacity: 0; \} \}/)
     expect(css).toMatch(/@keyframes land-sun \{ from \{ opacity: 0; \} \}/)
+    expect(css).toMatch(/@keyframes land-title \{ from \{ opacity: 0; \} \}/)
+    expect(css).toMatch(/@keyframes land-rise \{ from \{ opacity: 0; \} \}/)
     expect(css).not.toMatch(/land-ridge/)
     expect(block).toMatch(/\.main \.glass > \* \{ will-change: opacity; \}/)
   })
