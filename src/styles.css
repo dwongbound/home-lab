@@ -642,21 +642,17 @@ html[data-modal] { overflow: hidden; }
   .thinking__dots span:nth-child(2) { animation-delay: .16s; }
   .thinking__dots span:nth-child(3) { animation-delay: .32s; }
   .thinking { animation: rise .5s ease both; }
-  /* Jarvis's orb: a slow breath when idle; a quicker one with spinning
-     orbits while he thinks; ripples while he talks (the swell with each
-     word is --level, set from JarvisOrb.tsx, so the core's own
-     animation is off then). Only transform and opacity move. */
-  .orb__core { animation: orb-breathe 5.5s ease-in-out infinite; }
-  .orb__halo { animation: orb-halo 5.5s ease-in-out infinite; }
+  /* Jarvis's orb: still when idle; a quick breath with spinning orbits
+     while he thinks; ripples while he talks (the swell with each word is
+     --level, set from JarvisOrb.tsx). Only transform and opacity move.
+     No idle breathing: the orb sits inside a glass panel, and a loop that
+     never stops made iOS redraw that panel's blur every frame, which
+     quivered like an earthquake on Dylan's iPhone (2026-11-12). */
   .orb__orbit { transition: opacity .4s ease; }
-  .orb[data-state='thinking'] .orb__core { animation-duration: 1.6s; }
-  .orb[data-state='thinking'] .orb__halo { animation-duration: 1.6s; }
+  .orb[data-state='thinking'] .orb__core { animation: orb-breathe 1.6s ease-in-out infinite; }
+  .orb[data-state='thinking'] .orb__halo { animation: orb-halo 1.6s ease-in-out infinite; }
   .orb[data-state='thinking'] .orb__orbit--a { animation: orb-orbit-a 1.8s linear infinite; }
   .orb[data-state='thinking'] .orb__orbit--b { animation: orb-orbit-b 2.6s linear infinite reverse; }
-  .orb[data-state='speaking'] .orb__core,
-  .orb[data-state='speaking'] .orb__halo,
-  .orb[data-state='listening'] .orb__core,
-  .orb[data-state='listening'] .orb__halo { animation: none; }
   .orb[data-state='speaking'] .orb__wave { animation: orb-wave 1.7s ease-out infinite; }
   .orb[data-state='listening'] .orb__wave { animation: orb-wave 2.4s ease-out infinite reverse; }
   .chat__caret { animation: caret 1s steps(2, jump-none) infinite; }

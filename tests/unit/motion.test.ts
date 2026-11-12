@@ -61,4 +61,12 @@ describe('motion', () => {
       expect(rule?.[1]).not.toMatch(/opacity|transform|filter/)
     }
   })
+
+  it('keeps the idle orb still: nothing loops forever inside glass', () => {
+    // An endless idle breath made iOS redraw the Ask Jarvis panel's blur
+    // every frame, which quivered (Dylan's iPhone, 2026-11-12).
+    const block = motionBlock(css)
+    expect(block).not.toMatch(/^\s*\.orb__(core|halo) \{[^}]*animation/m)
+    expect(block).toMatch(/\.orb\[data-state='thinking'\] \.orb__core \{ animation: orb-breathe/)
+  })
 })
