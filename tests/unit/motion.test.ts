@@ -34,41 +34,24 @@ describe('motion', () => {
     expect(css.replace(block, '')).not.toMatch(/\.backdrop[^{]*\{[^}]*transition/)
   })
 
-  it('appears without moving: reveals are pure fades, nothing behind the glass moves, layers stay put', () => {
+  it('has no landing animation: the page simply appears when the data arrives', () => {
+    // Every landing tried (slides, blur, frost, staggered fades) shook on
+    // Dylan's iPhone (2026-11-11), so there is none.
+    expect(css).not.toMatch(/data-landing|@keyframes land-/)
+  })
+
+  it('fades panels in as they scroll into view: only their contents, by opacity', () => {
     const block = motionBlock(css)
     expect(css).toMatch(/@keyframes reveal \{ from \{ opacity: 0; \} \}/)
-    expect(css).toMatch(/@keyframes land-sun \{ from \{ opacity: 0; \} \}/)
-    expect(css).toMatch(/@keyframes land-title \{ from \{ opacity: 0; \} \}/)
-    expect(css).toMatch(/@keyframes land-rise \{ from \{ opacity: 0; \} \}/)
-    expect(css).not.toMatch(/land-ridge/)
-    expect(block).toMatch(/\.main \.glass > \* \{ will-change: opacity; \}/)
-  })
-
-  it('leaves the top bar alone on landing: it is already showing over the loader', () => {
-    expect(motionBlock(css)).not.toMatch(/data-landing\][^{]*(topbar|pill)/)
-  })
-
-  it('fades panel contents in place on landing, without moving them', () => {
-    const block = motionBlock(css)
-    expect(block).toMatch(/\.shell\[data-landing\] \.main \.glass > \*\s*\{\s*animation: land-fade /)
-    expect(css).toMatch(/@keyframes land-fade \{ from \{ opacity: 0; \} \}/)
-  })
-
-  it('fades panels in as they scroll into view, never fading the glass itself', () => {
-    const block = motionBlock(css)
-    // useReveal sets data-reveal; the glass only frosts, its contents fade up,
-    // and a waiting panel holds at the first frame until it is reached.
-    expect(block).toMatch(/\.glass\[data-reveal='in'\] \{ animation: land-frost /)
     expect(block).toMatch(/\.glass\[data-reveal='in'\] > \* \{ animation: reveal /)
     expect(block).toMatch(/\.glass\[data-reveal='wait'\] > \* \{ animation-play-state: paused; \}/)
     // No scroll-driven timeline: Safari skipped it, and in Chromium it took
-    // over from the landing ~3 s after load and shook the lower panels.
+    // over ~3 s after load and shook the lower panels.
     expect(css).not.toMatch(/animation-timeline/)
     // Fading a glass panel, or anything holding one, breaks its blur. Glass
-    // may only frost (no opacity or transform, checked below) or slide itself
-    // in when the page changes (translate only, checked below).
+    // may only slide itself in when the page changes (translate only, checked below).
     const glassAnimations = [...block.matchAll(/\.glass(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)].map((m) => m[1]).filter((rule) => /animation:/.test(rule))
-    for (const rule of glassAnimations) expect(rule).toMatch(/animation:\s*(land-frost|enter-glass-from-(right|left))\b/)
+    for (const rule of glassAnimations) expect(rule).toMatch(/animation:\s*enter-glass-from-(right|left)\b/)
   })
 
   it('glass slides itself in on a page change, never fading', () => {
@@ -77,18 +60,5 @@ describe('motion', () => {
       expect(rule?.[1]).toMatch(/translate: -?56px 0/)
       expect(rule?.[1]).not.toMatch(/opacity|transform|filter/)
     }
-  })
-
-  it('the landing frosts the glass without fading or moving it', () => {
-    const frost = css.slice(css.indexOf('@keyframes land-frost'))
-    const body = frost.slice(0, frost.indexOf('\n}') + 2)
-    // Growing the blur made Safari re-snap the sky behind every frame (a shake).
-    expect(body).not.toMatch(/opacity|transform|backdrop-filter/)
-    // The tint fades through registered colours: `background` can't blend
-    // from a colour to the glass gradient, so it snapped dark mid-landing.
-    expect(body).not.toMatch(/background/)
-    expect(body).toMatch(/--glass: transparent; --glass-strong: transparent/)
-    expect(css).toMatch(/@property --glass \{ syntax: '<color>'/)
-    expect(css).toMatch(/@property --glass-strong \{ syntax: '<color>'/)
   })
 })

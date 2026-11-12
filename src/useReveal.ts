@@ -4,14 +4,13 @@ import { useEffect, type RefObject } from 'react'
 //
 // A glass panel that starts below the screen gets data-reveal="wait"
 // (frame clear, contents hidden); when it scrolls into view it becomes
-// data-reveal="in" and plays a short, time-based frost + fade
-// (styles.css). Each panel reveals once. Panels already on screen are left
-// to the landing animation, so nothing restarts after the page has loaded.
+// data-reveal="in" and its contents play a short, time-based opacity fade
+// (styles.css; the glass frame itself never animates). Each panel reveals
+// once. Panels already on screen are marked "shown" and never animate.
 //
 // This replaces a CSS scroll-driven reveal (animation-timeline: view()),
-// which Safari on the iPhone skipped and which, in Chromium, took over from
-// the landing animation about 3 s after load and dropped the lower panels
-// back down and dimmed them (the "shake").
+// which Safari on the iPhone skipped and which, in Chromium, restarted about
+// 3 s after load and dropped the lower panels back down (the "shake").
 
 // Reveal once the panel's top is a little way up from the bottom edge, so
 // the fade is seen rather than happening just out of sight.

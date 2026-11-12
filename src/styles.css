@@ -57,10 +57,6 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 /* The sky's colours and sun, registered as typed values so the browser can
    blend them: a gradient can't be transitioned, but the colours inside it
    can. Without @property support the sky simply switches. */
-/* The glass tint colours, registered so a panel's tint can fade in smoothly
-   as it frosts over (land-frost). */
-@property --glass { syntax: '<color>'; inherits: true; initial-value: rgba(255, 255, 255, 0.075); }
-@property --glass-strong { syntax: '<color>'; inherits: true; initial-value: rgba(255, 255, 255, 0.12); }
 @property --sky-top { syntax: '<color>'; inherits: true; initial-value: #0f1726; }
 @property --sky-mid { syntax: '<color>'; inherits: true; initial-value: #1d2a40; }
 @property --sky-low { syntax: '<color>'; inherits: true; initial-value: #33405a; }
@@ -77,6 +73,15 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
   background: radial-gradient(circle, var(--sun) 0%, transparent 62%); opacity: var(--sun-a); filter: blur(10px);
 }
 .backdrop__ridge { position: absolute; left: 0; right: 0; bottom: 18%; width: 100%; height: 22vh; fill: var(--ridge); filter: blur(3px); }
+/* iOS Safari's toolbar slides in and out while the page loads and scrolls,
+   which changes the visible height (and vh) every frame. Sized to the full
+   (large) viewport instead, the sky, sun and ridge never move behind the
+   glass, which read as the panels shaking (Dylan's iPhone, 2026-11-12). */
+@supports (height: 100lvh) {
+  .backdrop { inset: auto; top: 0; left: 0; width: 100lvw; height: 100lvh; }
+  .backdrop__sun { width: 70lvmax; height: 70lvmax; }
+  .backdrop__ridge { height: 22lvh; bottom: 18lvh; }
+}
 .backdrop__grain { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 120%, rgba(0,0,0,.45), transparent 60%); }
 
 .backdrop[data-phase='dusk'] { --sky-top: #2a3550; --sky-mid: #7d6a7c; --sky-low: #e3a874; --sky-floor: #3b3130; --sun: #ffcf8f; --sun-a: .75; --sun-x: 70%; --sun-y: 66%; --ridge: #3a3442; }
@@ -114,7 +119,7 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 .shell[data-sky='day'] .timeline__card { background: rgba(12, 24, 36, 0.16); }
 
 /* ---------- Shell ---------- */
-.shell { position: relative; z-index: 1; min-height: 100vh; overflow-x: clip; /* the landing slides things in from the sides; never a sideways scroll */ padding: 14px var(--gutter) 48px; max-width: 1440px; margin: 0 auto; }
+.shell { position: relative; z-index: 1; min-height: 100vh; overflow-x: clip; /* page changes slide panels in from the sides; never a sideways scroll */ padding: 14px var(--gutter) 48px; max-width: 1440px; margin: 0 auto; }
 /* Opened from the Home Screen, the page runs under the status bar and
    around the rounded corners (viewport-fit=cover), so keep clear of them. */
 @supports (padding: max(0px)) {
@@ -686,12 +691,6 @@ html[data-modal] { overflow: hidden; }
   html[data-enter='next'] .main .glass { animation: enter-glass-from-right 560ms cubic-bezier(.16, 1, .3, 1) 50ms both; }
   html[data-enter='prev'] .main .glass { animation: enter-glass-from-left 560ms cubic-bezier(.16, 1, .3, 1) 50ms both; }
   html[data-enter] .main .glass > * { animation: enter-fade 460ms ease-out 50ms both; }
-  /* Safari draws what's inside the glass on its own layer while it fades,
-     then folds it back into the panel when the fade ends, landing it up to a
-     pixel off: the "slight shift" at the end of a page change, landing or
-     reveal. Kept on their own layers for good, nothing jumps. */
-  .main .glass > * { will-change: opacity; }
-  .main .hero, .main .hero__title, .main .hero__sub { will-change: opacity, transform; }
 
   /* A swipe in progress (src/swipeMotion.ts): the title and whole panels
      follow the finger while their contents fade a little; once it counts
@@ -708,55 +707,14 @@ html[data-modal] { overflow: hidden; }
   .main[data-swipe='settle'] .glass > *,
   .main[data-swipe='settle'] .hero { transition: translate 460ms cubic-bezier(.2, 1.35, .4, 1), opacity 300ms ease-out; }
 
-  /* ---------- Landing: the first load only (App sets data-landing) ----------
-     A bold arrival, about 1.8 s, then out of the way for good: the sky
-     comes up from dark, the sun swells and rises, the ridge lifts, the top
-     bar slides in from both sides, the title rises out of a blur, and each
-     panel's tint and edge light up over its blur as its contents fade in where they sit, row by row.
-     The glass rule still holds: the panels themselves only animate their own
-     blur, tint, edge and glow, never opacity or transform, and nothing that
-     holds a panel moves. Everything that moves is outside the glass (sky,
-     title) or inside it (the panel's contents). */
-  .backdrop[data-landing] .backdrop__sky { animation: land-sky 1.6s cubic-bezier(.2, .7, .2, 1) both; }
-  /* Nothing behind the glass moves: the sun only fades up and the ridge
-     stays put. The rising ridge, blurred through the lower panels, made them
-     look like they wobbled as they landed on an iPhone (2026-11-11). */
-  .backdrop[data-landing] .backdrop__sun { animation: land-sun 1.9s cubic-bezier(.16, .8, .2, 1) both; }
-  /* The top bar doesn't land: it's already on screen over the "Jarvis is
-     thinking" loader, so sliding it out and back in read as a flicker
-     (Dylan's recording, 2026-11-11). */
-  .shell[data-landing] .hero__title { animation: land-title 1.1s cubic-bezier(.16, .8, .2, 1) 320ms both; }
-  .shell[data-landing] .hero__sub { animation: land-rise .8s cubic-bezier(.2, .8, .2, 1) 620ms both; }
-  .shell[data-landing] .main .glass {
-    animation: land-frost 1.1s cubic-bezier(.3, .7, .2, 1) calc(480ms + var(--row, 0ms) + var(--col, 0ms)) both;
-  }
-  /* Panel contents only fade in, in place: sliding them up as well read
-     as the panels shaking on load (Dylan, 2026-11-10). */
-  .shell[data-landing] .main .glass > * {
-    animation: land-fade .9s ease-out calc(640ms + var(--row, 0ms) + var(--col, 0ms)) both;
-  }
-  /* Rows of the page arrive one after another, and panels side by side
-     within a row a beat apart. */
-  .main > :nth-child(2) { --row: 110ms; }
-  .main > :nth-child(3) { --row: 220ms; }
-  .main > :nth-child(4) { --row: 330ms; }
-  .main > :nth-child(n+5) { --row: 440ms; }
-  .main .grid > :nth-child(2) { --col: 70ms; }
-  .main .grid > :nth-child(3) { --col: 140ms; }
-  .main .grid > :nth-child(4) { --col: 210ms; }
-
   /* Panels that start below the screen fade in as they first scroll into
-     view (src/useReveal.ts sets data-reveal). Waiting, the glass is untinted
-     and its contents hidden, both held at the first frame; scrolled to, the
-     same animations simply play: the glass tints over (tint, edge
-     only) and its contents fade in. Time-based, so Safari plays it too.
-     These come after the landing and outrank the page-change slides, so a
-     waiting panel stays hidden until it is reached. */
-  .shell .main .glass[data-reveal='wait'],
-  .shell .main .glass[data-reveal='in'] { animation: land-frost .9s cubic-bezier(.3, .7, .2, 1) both; }
+     view (src/useReveal.ts sets data-reveal): only what's inside the glass
+     fades, the frame is already there. Waiting, the contents are held hidden
+     at the first frame; scrolled to, the fade plays. Time-based, so Safari
+     plays it too. These outrank the page-change slides, so a waiting panel
+     stays hidden until it is reached. */
   .shell .main .glass[data-reveal='wait'] > *,
   .shell .main .glass[data-reveal='in'] > * { animation: reveal .7s cubic-bezier(.2, .8, .2, 1) 120ms both; }
-  .shell .main .glass[data-reveal='wait'],
   .shell .main .glass[data-reveal='wait'] > * { animation-play-state: paused; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -786,28 +744,6 @@ html[data-modal] { overflow: hidden; }
 @keyframes enter-fade { from { opacity: 0; } }
 @keyframes enter-from-right { from { opacity: 0; transform: translateX(56px); } }
 @keyframes enter-from-left { from { opacity: 0; transform: translateX(-56px); } }
-@keyframes land-sky { from { filter: brightness(.15) saturate(.4); } }
-@keyframes land-sun { from { opacity: 0; } }
-@keyframes land-fade { from { opacity: 0; } }
-/* The title and line under it only fade in: in Dylan's iPhone recording
-   (2026-11-11) the sliding, blurred title landed 2 px off and then jumped
-   into place as the animation ended. */
-@keyframes land-rise { from { opacity: 0; } }
-/* No letter-spacing here: animating it re-wraps the title every frame, which
-   nudged the text beside and below it while the page landed. */
-@keyframes land-title { from { opacity: 0; } }
-/* Glass only ever animates its tint, edge and glow; never its blur, opacity
-   or position. Two things here made the panels shake on an iPhone as they
-   landed (Dylan's recording, 2026-11-11): the tint used to be `background`,
-   which can't blend from `transparent` to the glass gradient and snapped
-   dark halfway, so it now fades through the registered --glass colours; and
-   Safari re-snapped the blurred sky behind every frame while the blur
-   radius grew, so the blur is simply there from the start. */
-@keyframes land-frost {
-  from { --glass: transparent; --glass-strong: transparent; border-color: transparent; box-shadow: none; }
-  55% { border-color: rgba(255,255,255,.5); box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 0 40px -6px rgba(255,255,255,.35); }
-}
-
 /* ---------- Narrow screens ---------- */
 @media (max-width: 1080px) {
   .grid--stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
