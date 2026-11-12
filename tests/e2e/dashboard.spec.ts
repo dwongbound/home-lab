@@ -77,8 +77,10 @@ test('once the page has landed nothing animates again, and lower panels fade in 
   await last.scrollIntoViewIfNeeded()
   await expect(last).toHaveAttribute('data-reveal', 'in')
   await expect.poll(() => last.evaluate((el) => getComputedStyle(el.firstElementChild!).opacity)).toBe('1')
-  // Panels on screen at load were never hidden.
-  await expect(page.locator('.main .glass').first()).toHaveAttribute('data-reveal', 'shown')
+  // Panels on screen at load faded in with the page and are fully there.
+  const first = page.locator('.main .glass').first()
+  await expect(first).toHaveAttribute('data-reveal', 'in')
+  expect(await first.evaluate((el) => getComputedStyle(el.firstElementChild!).opacity)).toBe('1')
 })
 
 test('an alert is a banner across the top, not a row in Today, and Close hides it', async ({ page }) => {
@@ -229,14 +231,17 @@ test('the Claude page shows threads waiting on me first, linked to the thread', 
   await expect(page.getByRole('region', { name: 'Shipping' })).toContainText('tapworship.com')
 })
 
-test('the first load simply appears, with nothing animating in, and the glass fully frosted', async ({ page }) => {
+test('the first load fades the panels in, one after another, then nothing moves and the glass stays frosted', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
-  // No landing show: every one tried shook on the iPhone.
+  // No landing show on the frame itself: only what's inside the glass fades.
   await expect(page.locator('[data-landing]')).toHaveCount(0)
-  const running = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running').map((a) => (a as CSSAnimation).animationName).filter((n) => n && !/orb|think|spin|caret/.test(n)))
-  expect(running).toEqual([])
-  const blur = await page.locator('.main .glass').first().evaluate((el) => getComputedStyle(el).backdropFilter)
+  const first = page.locator('.main .glass').first()
+  await expect(first).toHaveAttribute('data-reveal', 'in')
+  // Once the fade is over nothing keeps running (an endless loop inside glass
+  // made the iPhone redraw its blur every frame, which quivered).
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running').map((a) => (a as CSSAnimation).animationName).filter((n) => n && !/think|spin|caret/.test(n))), { timeout: 5000 }).toEqual([])
+  const blur = await first.evaluate((el) => getComputedStyle(el).backdropFilter)
   expect(blur).toContain('blur(26px)')
 })
 
