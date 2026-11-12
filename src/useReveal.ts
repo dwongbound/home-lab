@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react'
+import { useLayoutEffect, type RefObject } from 'react'
 
 // Panels fade in as they first scroll into view (Dylan, 2026-11-11).
 //
@@ -30,7 +30,10 @@ function prefersLessMotion(): boolean {
 
 /** Marks below-the-screen glass panels inside `main` to fade in when scrolled to. `mainKey` changes when the main element is replaced. */
 export function useReveal(main: RefObject<HTMLElement | null>, mainKey: string): void {
-  useEffect(() => {
+  // A layout effect, so panels are marked before the first paint: marked
+  // after it (useEffect), they showed for a frame and then faded, which
+  // read as a flash rather than a fade on Dylan's iPhone (2026-11-12).
+  useLayoutEffect(() => {
     const root = main.current
     if (!root || typeof IntersectionObserver !== 'function' || prefersLessMotion()) return
 
