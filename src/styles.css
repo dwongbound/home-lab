@@ -708,9 +708,10 @@ html[data-modal] { overflow: hidden; }
      fades, the frame is already there. Waiting, the contents are held hidden
      at the first frame; scrolled to, the fade plays. Time-based, so Safari
      plays it too. These outrank the page-change slides, so a waiting panel
-     stays hidden until it is reached. */
+     stays hidden until it is reached. A plain ease, not a fast ease-out:
+     the fast one was mostly done in the first 150 ms and read as a pop. */
   .shell .main .glass[data-reveal='wait'] > *,
-  .shell .main .glass[data-reveal='in'] > * { animation: reveal .7s cubic-bezier(.2, .8, .2, 1) calc(120ms + var(--reveal-i, 0) * 70ms) both; }
+  .shell .main .glass[data-reveal='in'] > * { animation: reveal 1s cubic-bezier(.4, 0, .2, 1) calc(250ms + var(--reveal-i, 0) * 90ms) both; }
   .shell .main .glass[data-reveal='wait'] > * { animation-play-state: paused; }
 }
 @media (prefers-reduced-motion: reduce) {
