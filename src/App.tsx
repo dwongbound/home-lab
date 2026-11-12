@@ -26,9 +26,6 @@ import { shownPhase } from './lib/sky'
 // (blocking spinner), can't reach the server (error with Try again), and
 // ready.
 
-// Long enough for the slowest landing animation (styles.css) to finish.
-const LANDING_MS = 2600
-
 /** The app. */
 export function App() {
   const { data, error, isValidating, mutate } = useSnapshot()
@@ -47,15 +44,9 @@ export function App() {
     return () => clearTimeout(id)
   }, [toast])
 
-  // The landing plays once, when the first snapshot arrives, and is then
-  // switched off so it never replays (page changes have their own crossfade).
+  // When the first snapshot arrives the page simply appears: no landing
+  // animation. Every version of one shook on Dylan's iPhone (2026-11-11).
   const hasData = data !== undefined
-  const [landing, setLanding] = useState(true)
-  useEffect(() => {
-    if (!hasData) return
-    const id = setTimeout(() => setLanding(false), LANDING_MS)
-    return () => clearTimeout(id)
-  }, [hasData])
 
   // Panels below the screen fade in as they're scrolled to. The main
   // element is replaced once the data arrives (its key), so watch again then.
@@ -100,11 +91,10 @@ export function App() {
 
   return (
     <>
-      <Backdrop now={now} override={sky} landing={landing} />
-      {/* data-landing waits for the data, so the arrival plays on the real page, not the spinner. */}
+      <Backdrop now={now} override={sky} />
       {/* data-sky lets the glass darken its tint under the bright day sky (styles.css). */}
       {/* data-view lets the Overview fill exactly one screen on a display-sized window. */}
-      <div className="shell" data-view={view} data-sky={shownPhase(now, sky)} data-landing={landing && hasData ? '' : undefined}>
+      <div className="shell" data-view={view} data-sky={shownPhase(now, sky)}>
         <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} />
         {/* Anything needing him right now sits above every page, not inside Today. */}
         {data ? <AlertBanner alerts={activeAlerts(data, now)} /> : null}

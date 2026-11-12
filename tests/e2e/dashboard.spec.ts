@@ -5,7 +5,7 @@
 //   - I move between Overview, Services, Schedule and Settings, and it glides.
 //   - I unload the local model before gaming, and see it working until it's done.
 //   - I pick a sky in Settings and it's remembered.
-//   - The first load lands with a show; with reduced motion on, nothing moves.
+//   - The first load simply appears (no landing show); with reduced motion on, nothing moves.
 //   - I tap any money row, Today row, event or email for a pop-up with more, and links out.
 //   - Purchases still in "Other" stand out so I know to sort them.
 //   - The iPad can stay on as a wall display, with the whole Overview on one screen.
@@ -229,15 +229,13 @@ test('the Claude page shows threads waiting on me first, linked to the thread', 
   await expect(page.getByRole('region', { name: 'Shipping' })).toContainText('tapworship.com')
 })
 
-test('the first load lands with a show, once, and the glass ends fully frosted', async ({ page }) => {
+test('the first load simply appears, with nothing animating in, and the glass fully frosted', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('.shell[data-landing]')).toHaveCount(1)
-  await expect(page.locator('.backdrop[data-landing]')).toHaveCount(1)
-  // It switches itself off, and changing page doesn't bring it back.
-  await expect(page.locator('.shell[data-landing]')).toHaveCount(0, { timeout: 5000 })
-  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Home' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+  // No landing show: every one tried shook on the iPhone.
   await expect(page.locator('[data-landing]')).toHaveCount(0)
+  const running = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running').map((a) => (a as CSSAnimation).animationName).filter((n) => n && !/orb|think|spin|caret/.test(n)))
+  expect(running).toEqual([])
   const blur = await page.locator('.main .glass').first().evaluate((el) => getComputedStyle(el).backdropFilter)
   expect(blur).toContain('blur(26px)')
 })
@@ -446,7 +444,6 @@ test('while swiping, the page follows the finger, and springs back from a short 
   test.skip(info.project.name === 'desktop', 'Swiping is for touch screens')
   await page.goto('/#home')
   await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
-  await expect(page.locator('.shell[data-landing]')).toHaveCount(0, { timeout: 5000 })
   const { width, height } = page.viewportSize()!
   const y = Math.round(height * 0.6)
   const title = page.locator('.main .hero').first()
@@ -525,7 +522,6 @@ test('in Safari, changing tab keeps the glass frosted and slides the panels in',
   const page = await context.newPage()
   await page.goto(test.info().project.use.baseURL + '/')
   await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
-  await expect(page.locator('.shell[data-landing]')).toHaveCount(0, { timeout: 5000 })
   await page.evaluate(() => {
     const w = window as unknown as { transitions: number }
     w.transitions = 0
