@@ -17,8 +17,9 @@ import { useLayoutEffect, type RefObject } from 'react'
 // the fade is seen rather than happening just out of sight.
 const ROOT_MARGIN = '0px 0px -8% 0px'
 
-// Panels on screen when the page first appears fade in too, each a little
-// after the one before (Dylan liked those fades, 2026-11-12). The stagger is
+// Panels on screen when the page first appears, or a new page is shown,
+// fade in too, each a little after the one before (Dylan liked those fades,
+// 2026-11-12). The stagger is
 // capped so the last panel isn't kept waiting.
 const APPEAR_MS = 1500
 const MAX_STAGGER = 6
@@ -28,7 +29,7 @@ function prefersLessMotion(): boolean {
   return typeof matchMedia !== 'function' || !matchMedia('(prefers-reduced-motion: no-preference)').matches
 }
 
-/** Marks below-the-screen glass panels inside `main` to fade in when scrolled to. `mainKey` changes when the main element is replaced. */
+/** Marks glass panels inside `main` to fade in: on screen now, or when scrolled to. `mainKey` changes with the main element or the page. */
 export function useReveal(main: RefObject<HTMLElement | null>, mainKey: string): void {
   // A layout effect, so panels are marked before the first paint: marked
   // after it (useEffect), they showed for a frame and then faded, which

@@ -9,11 +9,12 @@ import { clearSwipe, motionWanted } from './swipeMotion'
 // bookmarked, and Back closes the pop-up.
 // useSyncExternalStore keeps both in step with back/forward without an effect.
 //
-// Changing page runs inside a view transition where the browser has one
-// (and motion is wanted): the browser snapshots the old page, React swaps
-// in the new one synchronously, and the two crossfade. The snapshots are
-// flat images, so the frosted glass stays intact the whole way through,
-// which animating the panels themselves can't do.
+// Changing page swaps it at once. A tap on a pill fades the new page in
+// (the title here, the panels' contents in useReveal), the same soft fade
+// the first load uses (Dylan, 2026-11-12). A swipe slides it in from the
+// side the finger went, carrying on from the swipe. There are no view
+// transitions: WebKit's snapshots dropped the glass, and one fade
+// everywhere is simpler.
 
 const ids = new Set<string>(VIEWS.map((v) => v.id))
 
@@ -27,44 +28,25 @@ function hashParts(): [string, string] {
 
 const read = (): View => { const page = hashParts()[0]; return (ids.has(page) ? page : 'overview') as View }
 
-/**
- * True in Safari and every other WebKit browser (all of them on iPad and
- * iPhone). WebKit's view-transition snapshots leave out backdrop-filter, so
- * the crossfaded panels show dark, untinted glass and then "pop" frosted
- * when the live page returns. There's no feature test for that, so it's
- * read from the user agent: WebKit without Chrome's or Firefox's own engine.
- */
-function snapshotsDropGlass(): boolean {
-  const ua = navigator.userAgent
-  return /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg\/|Android/.test(ua)
-}
-
-/** True when the browser can run a view transition that keeps the glass. */
-function canTransition(): boolean {
-  if (typeof document.startViewTransition !== 'function') return false
-  if (snapshotsDropGlass()) return false
-  return motionWanted()
-}
-
-// How long the contents take to slide in where there's no view transition
-// (matches the enter animation in styles.css).
-const ENTER_MS = 620
+// How long the title's enter animation runs (matches styles.css), after
+// which the marker comes off so it can play again.
+const ENTER_MS = 1100
 let enterTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
- * Without a view transition (WebKit), the page swaps at once and only the
- * panels slide in (translate only) from the side the new page came from
- * while their contents fade in. The glass never fades, so it stays frosted.
+ * Marks the page change on <html> for styles.css: "fade" after a tap (the
+ * title fades in), "next"/"prev" after a swipe (title and panels slide in,
+ * translate only, from that side). The glass itself never fades.
  */
-function playEnter(direction: 'next' | 'prev'): void {
-  // A swipe's glide-out ends here, in the same frame the new page slides in.
+function playEnter(kind: 'next' | 'prev' | 'fade'): void {
+  // A swipe's glide-out ends here, in the same frame the new page comes in.
   clearSwipe()
   if (!motionWanted()) return
   const root = document.documentElement
   // Remove and re-add, so a quick second change restarts the animation.
   delete root.dataset.enter
   void root.offsetWidth
-  root.dataset.enter = direction
+  root.dataset.enter = kind
   clearTimeout(enterTimer)
   enterTimer = setTimeout(() => { delete root.dataset.enter }, ENTER_MS)
 }
@@ -76,7 +58,7 @@ function directionOf(from: View, to: View): 'next' | 'prev' {
 }
 
 // Set by swipeToView: the next page change slides the way the finger went
-// rather than crossfading, everywhere, so it carries on from the swipe.
+// rather than fading, so it carries on from the swipe.
 let swiping = false
 
 const subscribe = (cb: () => void) => {
@@ -90,12 +72,9 @@ const subscribe = (cb: () => void) => {
     const swap = () => { flushSync(cb); window.scrollTo(0, 0) }
     const swiped = swiping
     swiping = false
-    if (!swiped && canTransition()) {
-      document.startViewTransition(swap)
-      return
-    }
+    // Marked first, so the new panels' fades start with the shorter page-change delay.
+    playEnter(swiped ? direction : 'fade')
     swap()
-    playEnter(direction)
   }
   window.addEventListener('hashchange', onHashChange)
   return () => window.removeEventListener('hashchange', onHashChange)

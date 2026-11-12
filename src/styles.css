@@ -140,7 +140,7 @@ body::before {
   background: linear-gradient(to bottom, rgba(10, 15, 22, 0.92) 60%, rgba(10, 15, 22, 0));
 }
 
-.topbar { view-transition-name: topbar; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: clamp(18px, 3vw, 34px); }
+.topbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: clamp(18px, 3vw, 34px); }
 .topbar__host { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: -0.01em; justify-self: start; }
 .topbar__orb { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff, var(--glacier) 55%, #4f88b0); box-shadow: 0 0 14px rgba(142, 197, 234, .7); }
 .topbar__end { display: flex; align-items: center; gap: 8px; justify-self: end; }
@@ -659,15 +659,6 @@ html[data-modal] { overflow: hidden; }
   .icon-btn[data-spinning] svg { animation: spin 1s linear infinite; }
   .toast { animation: rise .35s ease both; }
 
-  /* Changing page (src/useHashView.ts): the old and new page crossfade.
-     The browser's own crossfade keeps the two adding up to full strength,
-     so the sky behind never dims. The top bar is left out of it and shown
-     live, so the light under the pills slides instead of fading. */
-  ::view-transition-old(root),
-  ::view-transition-new(root) { animation-duration: 560ms; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
-  ::view-transition-group(topbar) { animation: none; }
-  ::view-transition-old(topbar) { display: none; }
-  ::view-transition-new(topbar) { animation: none; }
   /* The light and its dark copy share one curve, so they stay aligned. */
   .pills__light { transition: transform 460ms cubic-bezier(.3, .7, .2, 1), width 460ms cubic-bezier(.3, .7, .2, 1); }
   .pills__ink { transition: transform 460ms cubic-bezier(.3, .7, .2, 1); }
@@ -675,18 +666,21 @@ html[data-modal] { overflow: hidden; }
   .pill { transition: color 220ms ease, background-color 220ms ease; }
   .switch__knob { transition: left 180ms ease; }
 
-  /* Changing page without a view transition (Safari, and every swipe;
-     src/useHashView.ts): the title and the glass panels themselves glide
-     in from the side the new page came from, the panels just after the
-     title, and what's inside them fades up. A panel only ever moves
-     itself, with `translate`: its blur stays live because nothing above
-     it moves or fades (that's what breaks backdrop-filter in Safari), and
-     the glass itself is never faded. */
+  /* Changing page (src/useHashView.ts). A tap fades the new page in: the
+     title here, the panels' contents through the reveal below, sooner than
+     on the first load. A swipe instead slides the title and the glass panels
+     themselves in from the side the finger went, and their contents fade
+     up. A panel only ever moves itself, with `translate`: its blur stays
+     live because nothing above it moves or fades (that's what breaks
+     backdrop-filter in Safari), and the glass itself is never faded. */
+  html[data-enter] { --reveal-start: 60ms; }
+  html[data-enter='fade'] .main .hero { animation: reveal 1s cubic-bezier(.4, 0, .2, 1) both; }
   html[data-enter='next'] .main .hero { animation: enter-from-right 560ms cubic-bezier(.16, 1, .3, 1) both; }
   html[data-enter='prev'] .main .hero { animation: enter-from-left 560ms cubic-bezier(.16, 1, .3, 1) both; }
   html[data-enter='next'] .main .glass { animation: enter-glass-from-right 560ms cubic-bezier(.16, 1, .3, 1) 50ms both; }
   html[data-enter='prev'] .main .glass { animation: enter-glass-from-left 560ms cubic-bezier(.16, 1, .3, 1) 50ms both; }
-  html[data-enter] .main .glass > * { animation: enter-fade 460ms ease-out 50ms both; }
+  html[data-enter='next'] .main .glass > *,
+  html[data-enter='prev'] .main .glass > * { animation: enter-fade 460ms ease-out 50ms both; }
 
   /* A swipe in progress (src/swipeMotion.ts): the title and whole panels
      follow the finger while their contents fade a little; once it counts
@@ -711,7 +705,7 @@ html[data-modal] { overflow: hidden; }
      stays hidden until it is reached. A plain ease, not a fast ease-out:
      the fast one was mostly done in the first 150 ms and read as a pop. */
   .shell .main .glass[data-reveal='wait'] > *,
-  .shell .main .glass[data-reveal='in'] > * { animation: reveal 1s cubic-bezier(.4, 0, .2, 1) calc(250ms + var(--reveal-i, 0) * 90ms) both; }
+  .shell .main .glass[data-reveal='in'] > * { animation: reveal 1s cubic-bezier(.4, 0, .2, 1) calc(var(--reveal-start, 250ms) + var(--reveal-i, 0) * 90ms) both; }
   .shell .main .glass[data-reveal='wait'] > * { animation-play-state: paused; }
 }
 @media (prefers-reduced-motion: reduce) {

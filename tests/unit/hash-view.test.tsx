@@ -1,9 +1,9 @@
-// Changing page: inside a view transition where the browser has one,
-// a plain swap where it doesn't or motion is turned down, and in Safari a
-// swap with the panels' contents sliding in (its snapshots drop the glass).
+// Changing page: a tap fades the new page in and a swipe slides it in, in
+// every browser and never in a view transition; with motion turned down it
+// simply swaps.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
-import { useHashView } from '../../src/useHashView'
+import { swipeToView, useHashView } from '../../src/useHashView'
 import { swipeTarget } from '../../src/useSwipeNav'
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -23,6 +23,14 @@ function go(hash: string) {
   act(() => {
     window.history.replaceState(null, '', hash)
     window.dispatchEvent(new HashChangeEvent('hashchange'))
+  })
+}
+
+/** Swipes to a page; jsdom fires the hashchange a moment later. */
+async function swipe(view: Parameters<typeof swipeToView>[0]) {
+  await act(async () => {
+    swipeToView(view)
+    await new Promise((r) => setTimeout(r, 0))
   })
 }
 
@@ -46,28 +54,27 @@ describe('useHashView', () => {
     expect(screen.getByText('services')).toBeInTheDocument()
   })
 
-  it('changes page inside a view transition when the browser has them', () => {
-    const start = vi.fn((update: () => void) => { update(); return {} })
-    Object.assign(document, { startViewTransition: start })
-    vi.stubGlobal('matchMedia', () => ({ matches: false }))
-    asBrowser(CHROME_UA)
-    render(<Current />)
-    go('#schedule')
-    expect(start).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('schedule')).toBeInTheDocument()
+  it('a tap fades the new page in, with no view transition, in every browser', () => {
+    for (const ua of [CHROME_UA, IPAD_UA]) {
+      const start = vi.fn()
+      Object.assign(document, { startViewTransition: start })
+      vi.stubGlobal('matchMedia', (q: string) => ({ matches: !q.includes('reduce') }))
+      asBrowser(ua)
+      const { unmount } = render(<Current />)
+      go(ua === CHROME_UA ? '#money' : '#home')
+      expect(start).not.toHaveBeenCalled()
+      expect(document.documentElement.dataset.enter).toBe('fade')
+      unmount()
+    }
   })
 
-  it('in Safari, swaps without a view transition and slides the contents in from the right side', () => {
-    const start = vi.fn()
-    Object.assign(document, { startViewTransition: start })
-    vi.stubGlobal('matchMedia', () => ({ matches: false }))
-    asBrowser(IPAD_UA)
+  it('a swipe slides the new page in from the side the finger went', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: !q.includes('reduce') }))
     render(<Current />)
-    go('#money')
-    expect(start).not.toHaveBeenCalled()
+    await swipe('money')
     expect(screen.getByText('money')).toBeInTheDocument()
     expect(document.documentElement.dataset.enter).toBe('next')
-    go('#home')
+    await swipe('home')
     expect(document.documentElement.dataset.enter).toBe('prev')
   })
 
@@ -78,13 +85,11 @@ describe('useHashView', () => {
     expect(swipeTarget('preferences', 'next')).toBeNull()
   })
 
-  it('skips the transition with reduced motion', () => {
-    const start = vi.fn()
-    Object.assign(document, { startViewTransition: start })
+  it('changes page with no motion at all with reduced motion', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce') }))
     render(<Current />)
     go('#claude')
-    expect(start).not.toHaveBeenCalled()
     expect(screen.getByText('claude')).toBeInTheDocument()
+    expect(document.documentElement.dataset.enter).toBeUndefined()
   })
 })

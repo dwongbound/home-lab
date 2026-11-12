@@ -30,8 +30,8 @@
 - Anything waiting on the network shows a blocking indicator with a label.
 - Motion degrades to the plain page; animations only inside the
   no-preference media block. Glass falls back to solid without backdrop-filter.
-- Page changes go through a view transition (useHashView) and the sliding pill
-  light (TopNav). Never fade glass or animate its ancestors (a panel may slide itself with `translate` on page changes and swipes, Dylan 2026-11-10); don't replay animations
+- Page changes fade the new page in (useHashView + useReveal; swipes slide) and
+  move the sliding pill light (TopNav). Never fade glass or animate its ancestors (a panel may slide itself with `translate` on page changes and swipes, Dylan 2026-11-10); don't replay animations
   inside glass on every visit (frame rate halves).
 - Logs newest first. Fixed-size dialogs. 44 px touch targets on phones.
 - Keep the page light: jarvis has 16 GB and Gemma uses most of it. No UI

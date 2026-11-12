@@ -48,10 +48,12 @@ export function App() {
   // animation. Every version of one shook on Dylan's iPhone (2026-11-11).
   const hasData = data !== undefined
 
-  // Panels below the screen fade in as they're scrolled to. The main
-  // element is replaced once the data arrives (its key), so watch again then.
+  // Panels fade in on the first load and on every page change, and below
+  // the screen as they're scrolled to. The main element is replaced once the
+  // data arrives (its key), and each page brings new panels, so watch again
+  // on either.
   const mainRef = useRef<HTMLElement>(null)
-  useReveal(mainRef, hasData ? 'ready' : 'waiting')
+  useReveal(mainRef, `${hasData ? 'ready' : 'waiting'}:${view}`)
 
   // Swiping sideways changes tab, on touch screens.
   useSwipeNav(view, swipeToView)
