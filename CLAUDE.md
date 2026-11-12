@@ -52,8 +52,8 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `src/components/AgendaDetail.tsx` (`j`, `e`, `m`).
 - **Always-on iPad:** `src/useWakeLock.ts` + Settings switch (`home-lab:v1:awake` in `prefs.ts`);
   `public/manifest.webmanifest` + Apple meta tags in `index.html`. Overview one-screen layout keys off
-  `.shell[data-view='overview']` (end of `styles.css`). Swipe tabs: `src/useSwipeNav.ts` (finger-follow + glide in `src/swipeMotion.ts`, `main[data-swipe]`; swipes always slide via `swipeToView`). WebKit skips
-  view transitions (its snapshots drop backdrop-filter) and uses `html[data-enter]` panel slides (translate only) (`useHashView.ts`).
+  `.shell[data-view='overview']` (end of `styles.css`). Swipe tabs: `src/useSwipeNav.ts` (finger-follow + glide in `src/swipeMotion.ts`, `main[data-swipe]`; swipes always slide via `swipeToView`). No view transitions: a tab tap sets
+  `html[data-enter=fade]` and the new panels fade in through `useReveal`; a swipe sets `next`/`prev` panel slides (translate only) (`useHashView.ts`).
 - **Views:** `src/views/{Overview,Home,Claude,Money,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,

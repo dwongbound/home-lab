@@ -122,26 +122,25 @@ test('Schedule has the requests chart; Services has every service, the model car
   await expect(page.getByText('Restarting Jarvis')).toHaveCount(0)
 })
 
-test('changing page cross-fades and slides the pill light, and never with reduced motion', async ({ browser }) => {
+test('tapping a tab fades the new page in and slides the pill light, with no motion at all with reduced motion', async ({ browser }) => {
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     const context = await browser.newContext({ reducedMotion })
     const page = await context.newPage()
     await page.goto(test.info().project.use.baseURL + '/')
     await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
-    // Count view transitions the page starts.
-    await page.evaluate(() => {
-      const w = window as unknown as { transitions: number }
-      w.transitions = 0
-      const start = document.startViewTransition.bind(document)
-      document.startViewTransition = ((cb?: () => void) => { w.transitions++; return start(cb) }) as typeof document.startViewTransition
-    })
     const nav = page.getByRole('navigation', { name: 'Sections' })
     await nav.getByRole('link', { name: 'Services' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Services' })).toBeVisible()
-    const transitions = await page.evaluate(() => (window as unknown as { transitions: number }).transitions)
-    // Safari (the iPad) changes page without one; it slides the contents instead.
-    const safari = await page.evaluate(() => /AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent))
-    expect(transitions).toBe(reducedMotion === 'reduce' || safari ? 0 : 1)
+    // The new page's panels fade their contents in (never the glass itself, which stays frosted).
+    const first = page.locator('.main .glass').first()
+    if (reducedMotion === 'reduce') {
+      expect(await page.evaluate(() => document.documentElement.dataset.enter ?? 'none')).toBe('none')
+      await expect(first).not.toHaveAttribute('data-reveal', /.+/)
+    } else {
+      await expect(first).toHaveAttribute('data-reveal', 'in')
+      expect(await first.evaluate((el) => getComputedStyle(el).backdropFilter)).toContain('blur(26px)')
+      await expect.poll(() => first.evaluate((el) => getComputedStyle(el.firstElementChild!).opacity)).toBe('1')
+    }
     // One light, sitting under the current pill once it settles.
     await expect(nav.locator('.pills__light')).toHaveCount(1)
     const current = await nav.getByRole('link', { name: 'Services' }).boundingBox()
@@ -517,31 +516,6 @@ test('swiping sideways changes tab, and not inside a text box', async ({ page },
   const input = (await page.getByRole('textbox', { name: 'Question for Jarvis' }).boundingBox())!
   await swipe(page, input.x + input.width * 0.8, input.x + 10, input.y + input.height / 2)
   await expect(page.getByRole('heading', { level: 1, name: /Dylan/ })).toBeVisible()
-})
-
-test('in Safari, changing tab keeps the glass frosted and slides the panels in', async ({ browser }) => {
-  const context = await browser.newContext({
-    viewport: { width: 1194, height: 834 },
-    userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1',
-  })
-  const page = await context.newPage()
-  await page.goto(test.info().project.use.baseURL + '/')
-  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
-  await page.evaluate(() => {
-    const w = window as unknown as { transitions: number }
-    w.transitions = 0
-    const start = document.startViewTransition.bind(document)
-    document.startViewTransition = ((cb?: () => void) => { w.transitions++; return start(cb) }) as typeof document.startViewTransition
-  })
-  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Money' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Money' })).toBeVisible()
-  // No snapshot crossfade; the live glass is there, frosted, from the first frame.
-  expect(await page.evaluate(() => (window as unknown as { transitions: number }).transitions)).toBe(0)
-  expect(await page.evaluate(() => document.documentElement.dataset.enter)).toBe('next')
-  const blur = await page.locator('.main .glass').first().evaluate((el) => getComputedStyle(el).backdropFilter)
-  expect(blur).toContain('blur(26px)')
-  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.enter ?? 'done')).toBe('done')
-  await context.close()
 })
 
 test('while the first snapshot is on its way, a full-page "Jarvis is thinking" loader shows, still with reduced motion', async ({ browser }) => {
