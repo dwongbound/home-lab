@@ -471,6 +471,10 @@ function sampleHits(t) {
  */
 function sampleAction(text) {
   const q = text.toLowerCase()
+  // Asking him to change himself: one plain question, no file paths.
+  if (q.includes('your code') || q.includes('change yourself')) {
+    return { tool: 'change_code', summary: 'Is it OK if I change my code so drive times mention parking?', done: 'Starting that now. I’ll tell you when it’s ready.' }
+  }
   if (q.includes('run ') || q.includes('restart')) {
     return { tool: 'run_command', summary: 'sudo systemctl restart jarvis', done: 'Jarvis restarted.' }
   }

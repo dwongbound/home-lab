@@ -69,6 +69,7 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
         '{"type":"approval","id":"a1","tool":"run_command","summary":"ls","expires":"2026-11-11T12:20:00Z"}\n',
         '{"type":"approval","tool":"no id"}\n',
         '{"type":"approval_done","id":"a1","ok":true,"by":"voice"}\n',
+        '{"type":"approval_done","id":"a2","ok":false,"by":"voice","later":true}\n',
         '{"type":"done"}\n',
       ]
       return new Response(new ReadableStream({ start(c) { for (const p of pieces) c.enqueue(new TextEncoder().encode(p)); c.close() } }))
@@ -296,7 +297,8 @@ describe('live chat with Jarvis', () => {
       { type: 'delta', text: 'Lamp ' },
       { type: 'delta', text: 'is off.' },
       { type: 'approval', approval: { id: 'a1', tool: 'run_command', summary: 'ls', expires: '2026-11-11T12:20:00Z' } },
-      { type: 'approval_done', id: 'a1', ok: true, by: 'voice' },
+      { type: 'approval_done', id: 'a1', ok: true, by: 'voice', later: false },
+      { type: 'approval_done', id: 'a2', ok: false, by: 'voice', later: true },
       { type: 'done', ok: true },
     ])
     const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/chat/stream`)!

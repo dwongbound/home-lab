@@ -445,7 +445,7 @@ export function createLiveSource(config, deps = {}) {
             const approval = toApproval(event)
             if (approval) onEvent({ type: 'approval', approval })
           } else if (event.type === 'approval_done' && typeof event.id === 'string') {
-            onEvent({ type: 'approval_done', id: event.id, ok: event.ok === true, by: toApprovalBy(event.by) })
+            onEvent({ type: 'approval_done', id: event.id, ok: event.ok === true, by: toApprovalBy(event.by), later: event.later === true })
           }
         }
       } catch {

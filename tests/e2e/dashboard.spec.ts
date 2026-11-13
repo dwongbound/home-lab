@@ -14,7 +14,7 @@
 //   - In Safari, changing tab never shows the panels dark before they frost.
 //   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
 //   - /talk is just the chat, full screen: one tap on Talk and I'm talking; Close goes to the dashboard.
-//   - Before Jarvis writes a file or runs a command, the chat asks me, and I tap Approve or Deny.
+//   - Before Jarvis writes a file, runs a command or changes his own code, the chat asks me, and I tap Approve or Deny (or say yes, no or wait).
 //   - While the chat is open the page behind it stays put, and reading back up isn't interrupted by new words.
 //   - In Settings, under Voice, I play a sample, pick a voice, speed and blend, and save it.
 //   - In Settings, under Memory, I see what Jarvis remembers, teach him something, forget it, and search past chats.
@@ -578,6 +578,17 @@ test('before Jarvis runs a command the chat asks, and Approve or Deny decides it
   await edit.getByRole('button', { name: 'Deny' }).click()
   await expect(edit.getByText('Denied', { exact: true })).toBeVisible()
   await expect(chat.getByText('Sample data: okay, I left it alone.').last()).toBeVisible({ timeout: 10_000 })
+
+  // Changing himself: one plain question, and the answer shows in the card.
+  await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
+  await chat.getByRole('textbox', { name: 'Message Jarvis' }).fill('Change your code so drive times mention parking')
+  await chat.getByRole('button', { name: 'Send' }).click()
+  const change = chat.getByRole('group', { name: 'Jarvis asks: Change Jarvis’s code' }).last()
+  await expect(change).toBeVisible({ timeout: 10_000 })
+  await expect(change.getByText('Is it OK if I change my code so drive times mention parking?')).toBeVisible()
+  await change.getByRole('button', { name: 'Approve' }).click()
+  await expect(change.getByText('Approved', { exact: true })).toBeVisible()
+  await expect(chat.getByText(/Starting that now/).last()).toBeVisible({ timeout: 10_000 })
   // Everything fits inside the sheet, Talk included, even on a narrow phone.
   const sheet = (await chat.boundingBox())!
   const talk = (await chat.getByRole('button', { name: 'Talk', exact: true }).boundingBox())!

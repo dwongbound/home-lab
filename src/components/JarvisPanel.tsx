@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent } from '../api/client'
-import type { Approval, ApprovalBy, ChatTurn } from '../types'
+import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn } from '../types'
 import { canTalkUnprompted, openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
-import { toolLabel } from '../lib/approvals'
+import { outcomeText, settledAs, toolLabel } from '../lib/approvals'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
 
@@ -18,7 +18,7 @@ import { useScrollLock } from '../useScrollLock'
 interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[] }
 /** An approval as the chat shows it: waiting, being sent, or settled (and how). */
 interface ApprovalView extends Approval {
-  outcome?: 'approved' | 'denied'
+  outcome?: ApprovalOutcome
   by?: ApprovalBy
   sending?: boolean
   error?: string
@@ -167,15 +167,15 @@ export function JarvisPanel({ live, page = false }: Props) {
     }))
   }
 
-  /** Marks an approval settled: Approved or Denied, and who answered. */
-  function settleApproval(id: string, ok: boolean, by: ApprovalBy) {
-    updateApproval(id, (a) => ({ ...a, outcome: ok ? 'approved' : 'denied', by, sending: false, error: undefined }))
+  /** Marks an approval settled: Approved, Denied, or held for later ("wait"), and who answered. */
+  function settleApproval(id: string, ok: boolean, by: ApprovalBy, later = false) {
+    updateApproval(id, (a) => ({ ...a, outcome: settledAs(ok, later), by, sending: false, error: undefined }))
   }
 
   /** Hands one approval event from the reply stream to the turn it's for. */
   function onApprovalEvent(turnId: number, event: ApprovalEvent) {
     if (event.type === 'approval') addApproval(turnId, event.approval)
-    else settleApproval(event.id, event.ok, event.by)
+    else settleApproval(event.id, event.ok, event.by, event.later === true)
   }
 
   /** Approve or Deny tapped: tells Jarvis, and shows the answer once he has it. */
@@ -672,15 +672,6 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
   )
 }
 
-/** What a settled approval says: the answer, and who gave it if not this page. */
-function outcomeText(a: ApprovalView): string {
-  if (a.by === 'timeout') return 'No answer in time, so he left it alone'
-  const verb = a.outcome === 'approved' ? 'Approved' : 'Denied'
-  if (a.by === 'telegram') return `${verb} on Telegram`
-  if (a.by === 'voice') return `${verb} out loud`
-  return verb
-}
-
 /**
  * Jarvis asking before he writes a file or runs a command on the PC: what
  * he wants to do, exactly, with Approve and Deny. In Talk, saying yes or no
@@ -697,7 +688,7 @@ function ApprovalCard({ approval: a, talking, onAnswer }: { approval: ApprovalVi
         <div className="approval__actions">
           <button type="button" className="btn" disabled={a.sending} onClick={() => onAnswer(a.id, false)}>Deny</button>
           <button type="button" className="btn btn--primary" disabled={a.sending} onClick={() => onAnswer(a.id, true)}>Approve</button>
-          {talking ? <span className="approval__hint">or say yes or no</span> : null}
+          {talking ? <span className="approval__hint">or say yes, no or wait</span> : null}
         </div>
       )}
       {a.error ? <p className="approval__error" role="alert">{a.error}</p> : null}

@@ -121,7 +121,10 @@ describe('the voice line', () => {
     say({ type: 'approval', id: 'a7', tool: 'run_command', summary: 'ls ~/jarvis', expires: '2026-11-11T12:20:00Z' })
     say({ type: 'approval_done', id: 'a7', ok: true, by: 'voice' })
     expect(on.onApproval).toHaveBeenCalledWith({ id: 'a7', tool: 'run_command', summary: 'ls ~/jarvis', expires: '2026-11-11T12:20:00Z' })
-    expect(on.onApprovalDone).toHaveBeenCalledWith('a7', true, 'voice')
+    expect(on.onApprovalDone).toHaveBeenCalledWith('a7', true, 'voice', false)
+    // "Wait": held for later, not denied.
+    say({ type: 'approval_done', id: 'a8', ok: false, by: 'voice', later: true })
+    expect(on.onApprovalDone).toHaveBeenLastCalledWith('a8', false, 'voice', true)
     expect(players).toHaveLength(1)
     expect(players[0].srcObject).toBe('his voice')
     // Mute: the line stays open and his replies still arrive, but only silence goes out and the mic track is off.

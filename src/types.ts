@@ -206,12 +206,15 @@ export interface ActionResult { ok: boolean; message: string }
 export interface Approval { id: string; tool: string; summary: string; expires: string }
 /** Who settled an approval: a tap on the page, a spoken yes or no in Talk, Telegram, or nobody in time. */
 export type ApprovalBy = 'page' | 'voice' | 'telegram' | 'timeout'
+/** How an approval ended: yes, no, or held for later because he said "wait". */
+export type ApprovalOutcome = 'approved' | 'denied' | 'later'
 export type ChatEvent =
   | { type: 'delta'; text: string }
   | { type: 'done'; ok: true }
   | { type: 'error'; message: string }
   | { type: 'approval'; approval: Approval }
-  | { type: 'approval_done'; id: string; ok: boolean; by: ApprovalBy }
+  /** later: he said "wait", so Jarvis holds the request until he brings it up again. */
+  | { type: 'approval_done'; id: string; ok: boolean; by: ApprovalBy; later?: boolean }
   /** Jarvis started a slow lookup (label: "Searching the web."), and when it's over. */
   | { type: 'working'; label: string }
   | { type: 'working_done' }

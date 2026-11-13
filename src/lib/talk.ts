@@ -35,7 +35,8 @@ export interface TalkHandlers {
   /** Jarvis wants an OK to write a file or run a command (answer by tap, or say yes or no). */
   onApproval: (approval: Approval) => void
   /** An approval was settled: by the page (a tap or a spoken yes/no), Telegram, or the clock. */
-  onApprovalDone: (id: string, ok: boolean, by: ApprovalBy) => void
+  /** later: he said "wait", so the request is held rather than denied. */
+  onApprovalDone: (id: string, ok: boolean, by: ApprovalBy, later: boolean) => void
 }
 
 /** One JSON event from Jarvis's side of the line (fields depend on its type). */
@@ -51,6 +52,7 @@ interface TalkEvent {
   expires?: string
   ok?: boolean
   by?: string
+  later?: boolean
 }
 
 /** Who settled an approval, as one of the four the page knows. */
@@ -344,7 +346,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     } else if (event.type === 'approval' && typeof event.id === 'string' && typeof event.summary === 'string') {
       on.onApproval({ id: event.id, tool: event.tool ?? '', summary: event.summary, expires: event.expires ?? '' })
     } else if (event.type === 'approval_done' && typeof event.id === 'string') {
-      on.onApprovalDone(event.id, event.ok === true, approvalBy(event.by))
+      on.onApprovalDone(event.id, event.ok === true, approvalBy(event.by), event.later === true)
     }
   }
 

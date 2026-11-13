@@ -22,7 +22,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   (`ollama-unload`, `ollama-load`; needs header `x-home-lab: 1`; one at a time, 409 otherwise),
   `POST /api/jarvis/ask` (`{text}`, same header; forwards `Tailscale-User-Login` to Jarvis `/ask`),
   `POST /api/jarvis/chat` (`{text}`, same header; streams Jarvis `/chat/stream` NDJSON), `GET /api/jarvis/history` (Jarvis `/chat/history`), `POST /api/jarvis/warm` (same header; Jarvis `/chat/warm`, sent when the chat sheet opens),
-  `POST /api/jarvis/approve` (`{id, ok}`, same header; Jarvis `/approve`) + `GET /api/jarvis/approvals` (Jarvis `/approvals`): Approve/Deny cards for `approval`/`approval_done` events on the chat stream and talk line (`ApprovalCard` in `JarvisPanel`),
+  `POST /api/jarvis/approve` (`{id, ok}`, same header; Jarvis `/approve`) + `GET /api/jarvis/approvals` (Jarvis `/approvals`): Approve/Deny cards for `approval`/`approval_done` events on the chat stream and talk line (`ApprovalCard` in `JarvisPanel`; labels + outcome text in `src/lib/approvals.ts`; `later: true` = he said "wait", card shows held; self-change tools `change_code`/`apply_code_change`/`change_setting`),
   `GET /api/jarvis/memory` + `GET /api/jarvis/memory/search?q=` + `POST /api/jarvis/memory` (`{op: remember|forget}`, same header; Jarvis `/memory/facts`, `/memory/search`; `MemoryPanel` = Memory, last on Settings),
   `GET`/`POST /api/jarvis/voice` + `GET /api/jarvis/voice/sample` (WAV; checks in `server/voice.mjs`; Jarvis `/voice`, `/voice/sample`; `VoicePanel` on Settings before Memory),
   `POST /api/home/control` (`{entity, command, value?}`; climate takes `target` °/`mode`; same header + Tailscale login; allowlist in
