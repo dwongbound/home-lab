@@ -832,6 +832,7 @@ test('while Jarvis looks something up, the orb switches to its working sweep and
   await expect(chat.locator('.chat__status:not([data-quiet])', { hasText: 'Checking your calendar.' })).toBeVisible({ timeout: 15_000 })
   await expect(chat.locator('.chat__head .orb[data-state="working"]')).toHaveCount(1)
   // Then the answer follows.
-  await expect(chat.getByText(/volleyball at 7:30/)).toBeVisible({ timeout: 15_000 })
+  // .last(): the sample server keeps the chat across tests, so earlier answers may be there too.
+  await expect(chat.getByText(/volleyball at 7:30/).last()).toBeVisible({ timeout: 15_000 })
   await expect(chat.locator('.chat__head .orb')).not.toHaveAttribute('data-state', 'working')
 })
