@@ -703,7 +703,7 @@ test('Settings Voice plays a sample, and saves a voice, speed and blend', async 
   await expect(panel.getByRole('button', { name: 'Save' })).toBeDisabled()
 })
 
-test('/talk is voice only, edge to edge and already talking: no typing, no Close, one button pauses and resumes', async ({ page }) => {
+test('/talk is voice only, edge to edge and already talking: no typing, no Close, Mute beside the button that pauses and resumes', async ({ page }) => {
   await page.goto('/talk')
   const chat = page.getByRole('dialog', { name: 'Jarvis' })
   await expect(chat).toBeVisible()
@@ -745,6 +745,18 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   const orb = (await chat.locator('.chat__head .orb').boundingBox())!
   expect(title.y).toBeLessThan(orb.y)
   expect((await chat.getByRole('status').boundingBox())!.height).toBeLessThanOrEqual(1)
+  // Mute stops only the microphone: Talk carries on, and the status says so.
+  const mute = chat.getByRole('button', { name: 'Mute', exact: true })
+  await expect(mute).toHaveAttribute('aria-pressed', 'false')
+  const muteBox = (await mute.boundingBox())!
+  expect(muteBox.height).toBeGreaterThanOrEqual(44)
+  await mute.click()
+  const unmute = chat.getByRole('button', { name: 'Unmute', exact: true })
+  await expect(unmute).toHaveAttribute('aria-pressed', 'true')
+  await expect(chat.getByRole('status')).toHaveText('Muted. Jarvis can still talk.')
+  await expect(chat.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
+  await unmute.click()
+  await expect(chat.getByRole('button', { name: 'Mute', exact: true })).toBeVisible()
   // The same button pauses, and tapping it again picks back up.
   await chat.getByRole('button', { name: 'Pause', exact: true }).click()
   await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })

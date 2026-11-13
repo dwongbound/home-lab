@@ -59,6 +59,12 @@ function approvalBy(by: string | undefined): ApprovalBy {
 export interface TalkLine {
   /** Hangs up: the microphone, the voice and the socket all stop. */
   close: () => void
+  /**
+   * Mutes or unmutes the microphone. Muted, the line stays open and Jarvis
+   * keeps answering and speaking, but he hears only silence: the mic track
+   * is switched off, so nothing it picks up leaves the phone.
+   */
+  setMuted: (muted: boolean) => void
 }
 
 /** The voice line's address on this page's own host (wss on https). */
@@ -360,8 +366,19 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   })
 
   // From here on, every 20 ms frame of the microphone goes to Jarvis.
+  // Muted, a frame of silence goes instead, so his listening clock keeps
+  // running and a half-finished turn still ends.
+  let muted = false
   capture.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(e.data)
+    if (ws.readyState !== WebSocket.OPEN) return
+    if (muted) ws.send(new ArrayBuffer(e.data.byteLength))
+    else ws.send(e.data)
+  }
+
+  /** Switches the mic track itself off too, so muting doesn't rely on the frames alone. */
+  function setMuted(next: boolean) {
+    muted = next
+    for (const t of stream.getAudioTracks()) t.enabled = !next
   }
   ws.onmessage = (e: MessageEvent<ArrayBuffer | string>) => {
     if (typeof e.data === 'string') {
@@ -373,5 +390,5 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   frame = requestAnimationFrame(tick)
   on.onState('listening')
 
-  return { close: () => shutDown(null) }
+  return { close: () => shutDown(null), setMuted }
 }
