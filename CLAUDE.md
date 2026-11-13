@@ -58,7 +58,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,
   `Timeline`, `ActivityList`, `ServicesPanel`, `ModelCard` + `ConfirmDialog`,
-  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/talk.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `TerminalPanel` (Services only; the Shell tab was removed 2026-11-11), `MemoryPanel` (Settings: Jarvis's facts + search), `VoicePanel` (Settings: Kokoro voice, speed, blend), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
+  `JarvisPanel` (Ask Jarvis bar + chat sheet + Talk; `JarvisOrb`, `src/lib/talk.ts`), `LoadedModels` (Services: every Ollama model + role, `snapshot.models`), `JobsPanel` (Services: "What Jarvis is doing", `snapshot.jobs` from Jarvis `GET /jobs`, cleaned by `server/sources/jobs.mjs parseJobs`; null on an older Jarvis), `TerminalPanel` (Services only; the Shell tab was removed 2026-11-11), `MemoryPanel` (Settings: Jarvis's facts + search), `VoicePanel` (Settings: Kokoro voice, speed, blend), `Spinner`, `ThinkingLoader` (first load), `Backdrop`, `Icon`.
 - **Helpers:** `src/lib/format.ts`, `sky.ts` (phase by hour), `sparkline.ts`,
   `prefs.ts` (localStorage key `home-lab:v1:sky`, guarded).
 - **Styles:** `src/styles.css` — tokens in `:root`, sky phases on `.backdrop[data-phase]` (colours are `@property`-registered so phases fade over 120 s; `data-picked` = 1.5 s),

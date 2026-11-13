@@ -59,6 +59,31 @@ const PROJECT_URL = 'https://claude.ai/code/project/chan_example'
  * A sample cloud digest, shaped like the one the scheduled task writes
  * (docs/digest.md). Titles are examples, not real threads.
  */
+/**
+ * What Jarvis is doing in the background, shaped like the live source's
+ * parseJobs output: the three main jobs plus the quiet housekeeping.
+ */
+function mockJobs(t, minutesAgo) {
+  const minutesAhead = (min) => new Date(t.getTime() + min * 60_000).toISOString()
+  return {
+    generatedAt: t.toISOString(),
+    jobs: [
+      { id: 'lookout', name: 'Lookout', group: 'main', model: 'ornith-1.5:9b', schedule: 'Every 30 min while you’re awake', status: 'ok', lastRun: minutesAgo(11), nextRun: minutesAhead(19), lastResult: 'Checked the drive to volleyball and the weather there; nothing worth a ping.' },
+      { id: 'messenger', name: 'Messenger', group: 'main', model: 'claude-opus-5-5', schedule: 'Whenever Lookout raises something, plus the 6 PM digest', status: 'ok', lastRun: minutesAgo(95), nextRun: null, lastResult: 'Sent: leave by 7:05 for Si! Mon.' },
+      { id: 'nightly', name: 'Nightly', group: 'main', model: 'claude-opus-5-5', schedule: 'Every night at 3:30 AM', status: 'ok', lastRun: minutesAgo(600), nextRun: minutesAhead(840), lastResult: 'Saved 4 new facts and 2 to-dos, and planned tomorrow.' },
+      { id: 'housekeeping-page', name: 'Home page summary', group: 'housekeeping', model: 'claude-haiku-5-5', schedule: 'Hourly, 7 AM to 11 PM', status: 'ok', lastRun: minutesAgo(24), nextRun: minutesAhead(36), lastResult: null },
+      { id: 'housekeeping-nutrition', name: 'Nutrition sync', group: 'housekeeping', model: null, schedule: 'Hourly', status: 'ok', lastRun: minutesAgo(40), nextRun: minutesAhead(20), lastResult: null },
+      { id: 'housekeeping-google', name: 'Google sign-in check', group: 'housekeeping', model: null, schedule: 'Every 10 min, 8 AM to 10 PM', status: 'ok', lastRun: minutesAgo(3), nextRun: minutesAhead(7), lastResult: null },
+    ],
+    lookout: {
+      checks: ['drive_time', 'place_weather', 'calendar'],
+      watching: ['Volleyball at 8 PM: light rain possible after 7'],
+      heldBack: [{ text: 'SPY down 0.8%', reason: 'A normal move, not worth a ping.' }],
+    },
+    messenger: { sentToday: 2, cap: 5, quiet: null },
+  }
+}
+
 function mockDigest(t, minutesAgo) {
   const thread = (id, title, state, min) => ({ id, title, state, lastActivityAt: minutesAgo(min), url: `${PROJECT_URL}?thread=${id}` })
   return {
@@ -230,6 +255,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
           weather: { condition: 'partlycloudy', temperature: 61, unit: '°F' },
           sun: { rising: atPacificTime(t, 6, 41), setting: atPacificTime(t, 16, 52) },
         },
+        jobs: mockJobs(t, minutesAgo),
         moneyPicks: await picks.read(cloud.money.recent),
       }
     },

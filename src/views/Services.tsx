@@ -3,9 +3,11 @@ import { ServicesPanel } from '../components/ServicesPanel'
 import { ModelCard } from '../components/ModelCard'
 import { LoadedModels } from '../components/LoadedModels'
 import { TerminalPanel } from '../components/TerminalPanel'
+import { JobsPanel } from '../components/JobsPanel'
 
 // The Services page: every service with response times, the local model card,
-// what's in GPU memory and why, and a terminal on jarvis (the same tmux
+// what's in GPU memory and why, what Jarvis is doing in the background,
+// and a terminal on jarvis (the same tmux
 // session as the Shell tab) for restarting things by hand.
 
 /** The services page. */
@@ -18,7 +20,10 @@ export function Services({ data, now, onToast }: { data: Snapshot; now: Date; on
           <ServicesPanel services={data.services} detailed />
           <LoadedModels models={data.models} now={now} />
         </div>
-        <ModelCard model={data.model} onDone={onToast} />
+        <div className="stack">
+          <JobsPanel jobs={data.jobs} now={now} />
+          <ModelCard model={data.model} onDone={onToast} />
+        </div>
       </div>
       <TerminalPanel />
     </>
