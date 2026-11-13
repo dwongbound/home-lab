@@ -13,9 +13,30 @@ const TOOL_LABELS: Record<string, string> = {
   change_setting: 'Change a setting',
 }
 
-/** The words for an approval's tool, e.g. "run_command" → "Run a command"; anything else → "Do this". */
+/** The words for an approval's tool, e.g. "run_command" → "Run a command"; anything else → "Needs your OK". */
 export function toolLabel(tool: string): string {
-  return TOOL_LABELS[tool] ?? 'Do this'
+  return TOOL_LABELS[tool] ?? 'Needs your OK'
+}
+
+// Ids, calendar addresses and key=value pairs mean the summary is the raw
+// tool call, not words (Dylan, 2026-11-13: "take out anything not human readable").
+const MACHINE_BITS = /\w=\S|\S@\S+\.\w|[A-Za-z0-9_-]{20,}/
+
+/**
+ * The approval's summary as Dylan should read it. Jarvis writes them in
+ * plain words; if a raw tool call slips through ("Google Calendar
+ * delete_event (eventId=…)"), only the service and the action are kept:
+ * "Google Calendar: delete event".
+ */
+export function readableSummary(summary: string): string {
+  if (!MACHINE_BITS.test(summary)) return summary
+  const head = summary.split('(')[0].trim()
+  const words = head.split(/\s+/).filter((w) => w && !MACHINE_BITS.test(w))
+  const service = words.filter((w) => !w.includes('_')).join(' ')
+  const action = words.filter((w) => w.includes('_')).map((w) => w.replace(/_/g, ' ')).join(', ')
+  if (service && action) return `${service}: ${action}`
+  if (service || action) return service || action
+  return 'Jarvis wants to make a change. Ask him what it is before saying yes.'
 }
 
 /** Which outcome an answer is: yes, no, or "wait" (held, not denied). */

@@ -4,7 +4,7 @@ import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, RunningTask } from '../types'
 import { BackgroundTasks } from './BackgroundTasks'
 import { canTalkUnprompted, openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
-import { outcomeText, settledAs, toolLabel } from '../lib/approvals'
+import { outcomeText, readableSummary, settledAs, toolLabel } from '../lib/approvals'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
 
@@ -717,7 +717,7 @@ function ApprovalCard({ approval: a, talking, onAnswer }: { approval: ApprovalVi
   return (
     <div className="approval" role="group" aria-label={`Jarvis asks: ${toolLabel(a.tool)}`} data-outcome={a.outcome}>
       <p className="approval__tool">{toolLabel(a.tool)}</p>
-      <pre className="approval__summary">{a.summary}</pre>
+      <p className="approval__summary">{readableSummary(a.summary)}</p>
       {a.outcome ? (
         <p className="approval__outcome">{outcomeText(a)}</p>
       ) : (
