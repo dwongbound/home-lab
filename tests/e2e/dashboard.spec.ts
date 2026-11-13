@@ -746,6 +746,16 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   expect(Math.abs(orbBox.width - expected)).toBeLessThan(1.5)
   const titleBox = (await chat.getByRole('heading', { name: 'Jarvis' }).boundingBox())!
   expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(orbBox.y - orbBox.width * 0.38)
+  // Work he sent to the background sits in the empty space right of the orb, each with a spinner,
+  // the next one marked "Up next". The orb stays centred.
+  const tasks = chat.getByRole('list', { name: 'Working on in the background' })
+  await expect(tasks.getByRole('listitem')).toHaveCount(2)
+  await expect(tasks.getByText('Making drive times mention parking')).toBeVisible()
+  await expect(tasks.getByText('Up next')).toBeVisible()
+  const tasksBox = (await tasks.boundingBox())!
+  expect(tasksBox.x).toBeGreaterThanOrEqual(orbBox.x + orbBox.width)
+  expect(tasksBox.x + tasksBox.width).toBeLessThanOrEqual(viewport.width)
+  expect(Math.abs(orbBox.x + orbBox.width / 2 - viewport.width / 2)).toBeLessThan(2)
   // Words fade out under the orb instead of a hard edge.
   const mask = await chat.locator('.chat__turns').evaluate((el) => getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage)
   expect(mask).toContain('linear-gradient')

@@ -16,6 +16,7 @@ const jobs: JarvisJobs = {
   ],
   lookout: { checks: ['drive_time', 'place_weather'], watching: ['Volleyball at 8 PM'], heldBack: [{ text: 'SPY down 0.8%', reason: 'A normal move.' }] },
   messenger: { sentToday: 2, cap: 5, quiet: 'Sleeping' },
+  running: [],
 }
 
 describe('JobsPanel', () => {

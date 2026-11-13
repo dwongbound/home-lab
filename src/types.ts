@@ -179,6 +179,17 @@ export interface JarvisJobs {
   lookout: { checks: string[]; watching: string[]; heldBack: { text: string; reason: string | null }[] } | null
   /** Pings sent today against the daily cap, and why it's quiet if it is. */
   messenger: { sentToday: number; cap: number; quiet: string | null } | null
+  /** Work Dylan sent to the background (e.g. a change to Jarvis's code), still running or queued. Shown beside the orb on /talk. */
+  running: RunningTask[]
+}
+
+/** One piece of background work Dylan asked for, until it finishes. */
+export interface RunningTask {
+  id: string
+  /** What it is, in a few plain words. */
+  label: string
+  state: 'running' | 'queued'
+  startedAt: string | null
 }
 
 /** One model Ollama has loaded (GET /api/ps), and its job on jarvis. */

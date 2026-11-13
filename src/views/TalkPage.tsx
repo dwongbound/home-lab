@@ -35,7 +35,8 @@ export function TalkPage() {
   let body: React.ReactNode = <section className="state state--loading"><ThinkingLoader /></section>
   // The snapshot only says whether there's a real Jarvis to talk to (live)
   // or the demo (sample data).
-  if (data) body = <JarvisPanel live={data.source === 'live'} page />
+  // It also lists the work he's sent to the background, beside the orb.
+  if (data) body = <JarvisPanel live={data.source === 'live'} page tasks={data.jobs?.running ?? []} />
 
   return (
     <>

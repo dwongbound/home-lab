@@ -485,6 +485,18 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .dialog--chat[data-page] .chat__head { padding-top: 0; gap: 2px; }
 /* The orb follows the screen there, so its room does too: its orbits reach about .4 of its size past the edge, and "Jarvis" sits clear above them. */
 .dialog--chat[data-page] .chat__head .orb { margin: calc(var(--orb) * .45) 0 calc(var(--orb) * .3); }
+/* /talk's head is three columns so background work can sit in the empty
+   space right of the orb without moving it off centre. */
+.dialog--chat[data-page] .chat__head { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; }
+.dialog--chat[data-page] .chat__head > * { grid-column: 1 / -1; }
+.dialog--chat[data-page] .chat__head > .orb { grid-column: 2; grid-row: 2; }
+.dialog--chat[data-page] .chat__head > .bgtasks { grid-column: 3; grid-row: 2; }
+.bgtasks { list-style: none; margin: 0 0 0 clamp(16px, 4vw, 48px); padding: 0; display: grid; gap: 10px; justify-self: start; max-width: 340px; font-size: clamp(12.5px, 1.4vmin + 6px, 17px); color: var(--frost); }
+.bgtasks__item { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 10px; }
+.bgtasks__ring { width: 1.1em; height: 1.1em; border-radius: 50%; border: 2px solid rgba(255,255,255,.2); border-top-color: var(--frost); }
+.bgtasks__item[data-state='queued'] .bgtasks__ring { border-style: dashed; border-color: rgba(255,255,255,.3); }
+.bgtasks__label { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-wrap: pretty; }
+.bgtasks__queued { grid-column: 2; color: var(--frost-dim); font-size: .85em; }
 /* "Jarvis" sits above the orb on /talk. */
 .dialog--chat[data-page] .chat__head .dialog__title { order: -1; }
 /* Kept for screen readers, hidden from view. */
@@ -657,6 +669,7 @@ html[data-modal] { overflow: hidden; }
      Safari leaves blocky light/dark patches). */
   .chart[data-grow] .chart__bar { transform-origin: bottom; animation: grow .9s cubic-bezier(.2, .7, .2, 1) 260ms both; }
   .spinner__ring { animation: spin .9s linear infinite; }
+  .bgtasks__item[data-state='running'] .bgtasks__ring { animation: spin .9s linear infinite; }
 
   /* The first-load loader: the orb breathes, its halo pulses a beat
      behind, the orbits turn at different speeds, and the dots bounce. */
