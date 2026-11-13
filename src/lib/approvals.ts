@@ -30,13 +30,16 @@ const MACHINE_BITS = /\w=\S|\S@\S+\.\w|[A-Za-z0-9_-]{20,}/
  */
 export function readableSummary(summary: string): string {
   if (!MACHINE_BITS.test(summary)) return summary
-  const head = summary.split('(')[0].trim()
-  const words = head.split(/\s+/).filter((w) => w && !MACHINE_BITS.test(w))
-  const service = words.filter((w) => !w.includes('_')).join(' ')
-  const action = words.filter((w) => w.includes('_')).map((w) => w.replace(/_/g, ' ')).join(', ')
-  if (service && action) return `${service}: ${action}`
-  if (service || action) return service || action
-  return 'Jarvis wants to make a change. Ask him what it is before saying yes.'
+  // The raw call is "<service words> <tool_name> <arguments…>": keep the
+  // words before the tool name and the tool name itself, nothing after
+  // (the arguments are where ids and names-in-pieces came from).
+  const words = summary.split('(')[0].trim().split(/\s+/)
+  const toolAt = words.findIndex((w) => w.includes('_'))
+  if (toolAt === -1) return 'Jarvis wants to make a change. Ask him what it is before saying yes.'
+  const service = words.slice(0, toolAt).filter((w) => !MACHINE_BITS.test(w)).join(' ')
+  const action = words[toolAt].replace(/[^A-Za-z_]/g, '').replace(/_/g, ' ').trim()
+  if (service) return `${service}: ${action}`
+  return action
 }
 
 /** Which outcome an answer is: yes, no, or "wait" (held, not denied). */
