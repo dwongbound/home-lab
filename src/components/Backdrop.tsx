@@ -6,8 +6,8 @@ import { shownPhase } from '../lib/sky'
 // (It used to have window frame bars too; seen through the frosted
 // panels they read as dark shading glitches, so they're gone.)
 const Ridge = (
-  <svg className="backdrop__ridge" viewBox="0 0 1440 220" preserveAspectRatio="none" aria-hidden="true">
-    <path d="M0 150 L120 128 L210 140 L330 96 L420 118 L540 84 L640 112 L760 70 L880 104 L990 90 L1110 120 L1230 98 L1340 126 L1440 110 V220 H0 Z" />
+  <svg className="backdrop__ridge" viewBox="0 0 1440 420" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 150 L120 128 L210 140 L330 96 L420 118 L540 84 L640 112 L760 70 L880 104 L990 90 L1110 120 L1230 98 L1340 126 L1440 110 V420 H0 Z" />
   </svg>
 )
 
