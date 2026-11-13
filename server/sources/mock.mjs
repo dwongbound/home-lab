@@ -81,6 +81,10 @@ function mockJobs(t, minutesAgo) {
       heldBack: [{ text: 'SPY down 0.8%', reason: 'A normal move, not worth a ping.' }],
     },
     messenger: { sentToday: 2, cap: 5, quiet: null },
+    running: [
+      { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: minutesAgo(2) },
+      { id: 'r2', label: 'Saying traffic first', state: 'queued', startedAt: null },
+    ],
   }
 }
 

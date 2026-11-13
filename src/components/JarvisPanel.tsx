@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent } from '../api/client'
-import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn } from '../types'
+import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, RunningTask } from '../types'
+import { BackgroundTasks } from './BackgroundTasks'
 import { canTalkUnprompted, openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
 import { outcomeText, settledAs, toolLabel } from '../lib/approvals'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
@@ -117,10 +118,12 @@ interface Props {
    * tap on Talk. Close goes back to the dashboard.
    */
   page?: boolean
+  /** /talk: the work Dylan sent to the background, shown beside the orb until it finishes. */
+  tasks?: RunningTask[]
 }
 
 /** The bar on the Overview, plus the chat sheet it opens (or, on /talk, only the sheet). */
-export function JarvisPanel({ live, page = false }: Props) {
+export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<OrbState>('idle')
   const [turns, setTurnsState] = useState<Turn[]>(savedTurns)
@@ -424,6 +427,7 @@ export function JarvisPanel({ live, page = false }: Props) {
       onSend={send}
       talking={talkingOn}
       page={page}
+      tasks={tasks}
       tapToStart={tapToStart}
       onTapStart={tapStart}
       heard={heard}
@@ -488,6 +492,8 @@ interface SheetProps {
   talking: boolean
   /** The /talk page: the sheet always fills the screen and Talk is the main button. */
   page: boolean
+  /** /talk: background work to show beside the orb. */
+  tasks: RunningTask[]
   /** /talk is waiting for a first tap anywhere before it can talk. */
   tapToStart: boolean
   /** That first tap. */
@@ -514,7 +520,7 @@ interface SheetProps {
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tapToStart, onTapStart, heard, notice, onTalk, onStopTalk, muted, onMute, workLabel, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onStopTalk, muted, onMute, workLabel, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -603,6 +609,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
       <header className="chat__head">
         <JarvisOrb ref={orbRef} state={state} size={page ? TALK_PAGE_ORB : 64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
+        {page ? <BackgroundTasks tasks={tasks} /> : null}
         {/* /talk shows only "Jarvis" over the orb (Dylan, 2026-11-11); the status stays for
             screen readers and shows when there's something to do: a first tap, an OK, or why Talk ended. */}
         <p className="chat__status" role="status" data-quiet={quietStatus(page, tapToStart, waiting, state, notice, talking && muted) ? '' : undefined}>

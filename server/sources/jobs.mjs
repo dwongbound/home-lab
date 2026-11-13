@@ -73,6 +73,24 @@ function parseMessenger(raw) {
   return { sentToday: raw.sent_today, cap: raw.cap, quiet: text(raw.quiet) }
 }
 
+/**
+ * The work Dylan sent off to run in the background (a change to Jarvis's
+ * code, say), still going or waiting its turn. Finished ones aren't listed.
+ */
+function parseRunning(list) {
+  if (!Array.isArray(list)) return []
+  const out = []
+  for (const raw of list) {
+    const id = text(raw?.id)
+    const label = text(raw?.label)
+    if (id === null || label === null) continue
+    let state = 'running'
+    if (raw.state === 'queued') state = 'queued'
+    out.push({ id, label, state, startedAt: time(raw.started_at) })
+  }
+  return out.slice(0, MAX_LIST)
+}
+
 /** The whole /jobs answer for the page, or null when it isn't one. */
 export function parseJobs(body) {
   if (body === null || typeof body !== 'object' || !Array.isArray(body.jobs)) return null
@@ -86,5 +104,6 @@ export function parseJobs(body) {
     jobs,
     lookout: parseLookout(body.lookout),
     messenger: parseMessenger(body.messenger),
+    running: parseRunning(body.running),
   }
 }
