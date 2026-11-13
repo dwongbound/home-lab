@@ -12,6 +12,7 @@ import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createDigestReader } from './digest.mjs'
 import { createHomeReader } from './home.mjs'
+import { parseJobs } from './jobs.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
@@ -265,6 +266,16 @@ export function createLiveSource(config, deps = {}) {
     return today
   }
 
+  /**
+   * What Jarvis is doing in the background (GET /jobs). Null when an older
+   * Jarvis answers 404 or the answer isn't the expected shape.
+   */
+  async function readJarvisJobs() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/jobs`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseJobs(await res.json())
+  }
+
   const haHeaders = {}
   if (config.haToken) haHeaders.Authorization = `Bearer ${config.haToken}`
 
@@ -283,8 +294,9 @@ export function createLiveSource(config, deps = {}) {
         digest.read(),
         home.read(),
         readJarvisSchedule(),
+        readJarvisJobs(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -329,6 +341,7 @@ export function createLiveSource(config, deps = {}) {
         models: describeModels(models),
         cloud,
         home: homeState,
+        jobs,
         moneyPicks: await picks.read(cloud?.money?.recent ?? []),
       }
     },

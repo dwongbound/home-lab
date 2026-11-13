@@ -108,7 +108,7 @@ test('opening the page asks Jarvis for a fresh digest, showing the last one mean
   await expect(calendar.getByText('Updated just now')).toBeVisible()
 })
 
-test('Schedule has the requests chart; Services has every service, the model card, what is loaded and a terminal', async ({ page }) => {
+test('Schedule has the requests chart; Services has every service, the model card, what is loaded, Jarvis’s jobs and a terminal', async ({ page }) => {
   await page.goto('/#schedule')
   await expect(page.getByRole('heading', { name: 'Jarvis requests' })).toBeVisible()
   await page.goto('/#services')
@@ -117,6 +117,13 @@ test('Schedule has the requests chart; Services has every service, the model car
   const loaded = page.getByRole('region', { name: 'In GPU memory' })
   await expect(loaded).toContainText('ornith-1.5:9b')
   await expect(loaded).toContainText('answers when Claude can’t be reached')
+  // What Jarvis runs in the background: the three main jobs and the housekeeping.
+  const jobs = page.getByRole('region', { name: 'What Jarvis is doing' })
+  await jobs.scrollIntoViewIfNeeded()
+  for (const name of ['Lookout', 'Messenger', 'Nightly', 'Quiet housekeeping', 'Decided not to bother you with']) {
+    await expect(jobs.getByText(name, { exact: true })).toBeVisible()
+  }
+  await expect(jobs).toContainText('pings sent today')
   // The terminal replaced the "Restarting Jarvis" note.
   await expect(page.locator('iframe[title="Terminal on jarvis"]')).toBeVisible()
   await expect(page.getByText('Restarting Jarvis')).toHaveCount(0)

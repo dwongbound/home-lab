@@ -305,6 +305,15 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .loaded__gb { font-variant-numeric: tabular-nums; color: var(--frost-dim); }
 .loaded__role { font-size: 13.5px; color: var(--frost-dim); }
 .loaded__meta { white-space: normal; }
+/* Services: what Jarvis is doing in the background. */
+.jobs__status { font-size: 12.5px; color: var(--frost-dim); }
+.jobs__status[data-status='error'] { color: #ffc2c8; }
+.jobs__status[data-status='running'] { color: var(--frost); }
+.jobs__result { font-size: 13.5px; }
+.jobs__checks { margin: 12px 0 0; }
+.jobs__heading { margin: 16px 0 6px; font-size: 13px; font-weight: 600; color: var(--frost-dim); }
+.jobs__plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
+.jobs__why { color: var(--frost-faint); }
 
 /* ---------- Model ---------- */
 .model { display: grid; align-content: start; gap: 16px; }

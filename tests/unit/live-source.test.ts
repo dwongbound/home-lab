@@ -16,15 +16,21 @@ interface Fakes {
   gpuFails?: boolean
   /** Jarvis's GET /schedule/today answer; undefined = an older Jarvis that 404s. */
   schedule?: unknown
+  /** Jarvis's GET /jobs answer; undefined = an older Jarvis that 404s. */
+  jobs?: unknown
 }
 
 /** A live source whose fetch/execFile/statfs answer as described. */
-function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 200, haStatusCode = 200, unitState = 'active', gpuFails = false, schedule }: Fakes) {
+function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 200, haStatusCode = 200, unitState = 'active', gpuFails = false, schedule, jobs }: Fakes) {
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/api/ps')) return new Response(JSON.stringify({ models: ollamaModels }))
     if (url === `${config.jarvisApiUrl}/health`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return new Response(JSON.stringify({ ok: true, brain: 'claude' }), { status: jarvisStatusCode })
+    }
+    if (url === `${config.jarvisApiUrl}/jobs`) {
+      if (jobs === undefined) return new Response('not found', { status: 404 })
+      return Response.json(jobs)
     }
     if (url === `${config.jarvisApiUrl}/schedule/today`) {
       if (schedule === undefined) return new Response('not found', { status: 404 })
@@ -126,6 +132,15 @@ describe('live snapshot', () => {
       { id: 'jarvis-r1', at: later, title: 'Call Noah about guitar', detail: 'Jarvis reminder', status: 'scheduled' },
       { id: 'jarvis-p1', at: past, title: 'Fantasy pickups', detail: 'Jarvis: fantasy pickups', status: 'done' },
     ])
+  })
+
+  it('reads what Jarvis is doing from /jobs, or null on an older Jarvis', async () => {
+    const jobs = { jobs: [{ id: 'lookout', name: 'Lookout', status: 'ok' }], messenger: { sent_today: 0, cap: 5 } }
+    const snap = await liveWith({ jobs }).source.snapshot()
+    expect(snap.jobs?.jobs[0]).toMatchObject({ id: 'lookout', name: 'Lookout', group: 'main' })
+    expect(snap.jobs?.messenger).toEqual({ sentToday: 0, cap: 5, quiet: null })
+    const old = await liveWith({}).source.snapshot()
+    expect(old.jobs).toBeNull()
   })
 
   it('has an empty timeline when Jarvis has no schedule endpoint yet', async () => {

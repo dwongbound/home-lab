@@ -148,8 +148,37 @@ export interface Snapshot {
   cloud: CloudDigest | null
   /** null without a Home Assistant token, or when it doesn't answer. */
   home: HomeState | null
+  /** What Jarvis runs in the background (GET /jobs); null on an older Jarvis or when it doesn't answer. */
+  jobs: JarvisJobs | null
   /** Money page category picks waiting to be applied in Copilot. */
   moneyPicks: MoneyPicks
+}
+
+/** One of Jarvis's background jobs: Lookout, Messenger, Nightly, or housekeeping. */
+export interface JarvisJob {
+  id: string
+  name: string
+  /** main = the three jobs that think; housekeeping = quiet plumbing. */
+  group: 'main' | 'housekeeping'
+  /** The model it uses, or null when no model is involved. */
+  model: string | null
+  /** When it runs, in plain words. */
+  schedule: string | null
+  status: 'ok' | 'running' | 'error' | 'paused'
+  lastRun: string | null
+  nextRun: string | null
+  /** One plain sentence about the last run. */
+  lastResult: string | null
+}
+
+/** Everything the "What Jarvis is doing" panel shows. */
+export interface JarvisJobs {
+  generatedAt: string | null
+  jobs: JarvisJob[]
+  /** What Lookout last checked (tool names), what it's keeping an eye on, and what it held back. */
+  lookout: { checks: string[]; watching: string[]; heldBack: { text: string; reason: string | null }[] } | null
+  /** Pings sent today against the daily cap, and why it's quiet if it is. */
+  messenger: { sentToday: number; cap: number; quiet: string | null } | null
 }
 
 /** One model Ollama has loaded (GET /api/ps), and its job on jarvis. */
