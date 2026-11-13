@@ -72,10 +72,7 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
   position: absolute; left: var(--sun-x); top: var(--sun-y); width: 70vmax; height: 70vmax; transform: translate(-50%, -50%);
   background: radial-gradient(circle, var(--sun) 0%, transparent 62%); opacity: var(--sun-a); filter: blur(10px);
 }
-/* The ridge's peaks sit 18–40% up the screen, and its fill runs on down past
-   the bottom edge, so the ground never stops short of the screen (the blur
-   would soften a bottom edge, hence the 2% overhang). */
-.backdrop__ridge { position: absolute; left: 0; right: 0; bottom: -2%; width: 100%; height: 42vh; fill: var(--ridge); filter: blur(3px); }
+.backdrop__ridge { position: absolute; left: 0; right: 0; bottom: 18%; width: 100%; height: 22vh; fill: var(--ridge); filter: blur(3px); }
 /* iOS Safari's toolbar slides in and out while the page loads and scrolls,
    which changes the visible height (and vh) every frame. Sized to the full
    (large) viewport instead, the sky, sun and ridge never move behind the
@@ -83,7 +80,7 @@ code { font-size: 0.92em; background: rgba(255,255,255,.08); padding: 1px 6px; b
 @supports (height: 100lvh) {
   .backdrop { inset: auto; top: 0; left: 0; width: 100lvw; height: 100lvh; }
   .backdrop__sun { width: 70lvmax; height: 70lvmax; }
-  .backdrop__ridge { height: 42lvh; bottom: -2lvh; }
+  .backdrop__ridge { height: 22lvh; bottom: 18lvh; }
 }
 .backdrop__grain { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 120%, rgba(0,0,0,.45), transparent 60%); }
 
