@@ -17,8 +17,14 @@ export interface OrbHandle {
 
 interface Props {
   state: OrbState
-  /** Diameter of the core in px; the halo and orbits scale with it. */
-  size: number
+  /** Diameter of the core: px, or any CSS length (e.g. a clamp() that follows the screen). The halo and orbits scale with it. */
+  size: number | string
+}
+
+/** The core's size as CSS: a number is px, a string is used as written. */
+function orbSize(size: number | string): string {
+  if (typeof size === 'number') return `${size}px`
+  return size
 }
 
 /** True when the browser asks for less motion (then the orb stays still). */
@@ -55,7 +61,7 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
   return (
-    <span ref={el} className="orb" data-state={state} style={{ '--orb': `${size}px` } as CSSProperties} aria-hidden="true">
+    <span ref={el} className="orb" data-state={state} style={{ '--orb': orbSize(size) } as CSSProperties} aria-hidden="true">
       <span className="orb__halo" />
       <span className="orb__wave" />
       <span className="orb__scan" />

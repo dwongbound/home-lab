@@ -714,6 +714,15 @@ test('Settings Voice plays a sample, and saves a voice, speed and blend', async 
   await expect(panel.getByRole('button', { name: 'Save' })).toBeDisabled()
 })
 
+test('the page uses the whole width of a big screen, with no empty bands at the sides', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.goto('/')
+  const shell = (await page.locator('.shell').boundingBox())!
+  expect(shell.x).toBe(0)
+  // All of it, less a scroll bar at most (it used to stop at 1440 px).
+  expect(shell.width).toBeGreaterThanOrEqual(1920 - 20)
+})
+
 test('/talk is voice only, edge to edge and already talking: no typing, no Close, Mute beside the button that pauses and resumes', async ({ page }) => {
   await page.goto('/talk')
   const chat = page.getByRole('dialog', { name: 'Jarvis' })
@@ -730,6 +739,13 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
     return { radius: css.borderTopLeftRadius, border: css.borderTopWidth, blur: css.backdropFilter }
   })
   expect(look).toEqual({ radius: '0px', border: '0px', blur: 'none' })
+  // The orb follows the screen: 12% of its short side, 40 to 160 px (small on a phone, big on a TV),
+  // and "Jarvis" sits clear above its orbits.
+  const orbBox = (await chat.locator('.chat__head .orb').boundingBox())!
+  const expected = Math.min(160, Math.max(40, Math.min(viewport.width, viewport.height) * 0.12))
+  expect(Math.abs(orbBox.width - expected)).toBeLessThan(1.5)
+  const titleBox = (await chat.getByRole('heading', { name: 'Jarvis' }).boundingBox())!
+  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(orbBox.y - orbBox.width * 0.38)
   // Words fade out under the orb instead of a hard edge.
   const mask = await chat.locator('.chat__turns').evaluate((el) => getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage)
   expect(mask).toContain('linear-gradient')
