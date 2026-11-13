@@ -467,6 +467,11 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* /talk's one big Talk / Pause button, centred, easy to hit without looking. */
 .chat__form--voice { justify-content: center; }
 .chat__voice { min-width: min(100%, 280px); min-height: 64px; font-size: 1.2rem; border-radius: 999px; }
+/* Mute sits beside Pause, smaller, and keeps one width so Pause doesn't move when it flips to Unmute. */
+.chat__form--voice { gap: 12px; flex-wrap: nowrap; }
+.chat__voice { flex: 0 1 280px; min-width: 0; }
+.chat__mute { flex: 0 0 auto; width: 112px; min-height: 64px; border-radius: 999px; }
+.chat__mute[aria-pressed='true'] { background: rgba(255, 194, 200, 0.22); border-color: rgba(255, 194, 200, 0.55); }
 /* Nothing scrolls on /talk, so don't hold room for a scroll bar down the right edge. */
 html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 /* /talk keeps the orb and title small and high so the conversation gets the room. */

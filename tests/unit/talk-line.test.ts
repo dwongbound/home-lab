@@ -77,7 +77,8 @@ describe('the voice line', () => {
       pause = () => { this.paused = true }
     }
     vi.stubGlobal('Audio', FakeAudio)
-    class FakeWorklet { port: { onmessage: unknown } = { onmessage: null }; connect = (next: unknown) => next }
+    let worklet: { port: { onmessage: ((e: { data: ArrayBuffer }) => void) | null } } | null = null
+    class FakeWorklet { port: { onmessage: unknown } = { onmessage: null }; connect = (next: unknown) => next; constructor() { worklet = this as never } }
     let socket: { onopen?: () => void; onmessage?: (e: { data: string }) => void; readyState: number; send: () => void; close: () => void } | null = null
     class FakeSocket {
       static OPEN = 1
@@ -92,7 +93,8 @@ describe('the voice line', () => {
     vi.stubGlobal('AudioContext', FakeContext)
     vi.stubGlobal('AudioWorkletNode', FakeWorklet)
     vi.stubGlobal('WebSocket', FakeSocket)
-    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } })
+    const track = { enabled: true, stop: vi.fn() }
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) } })
     vi.stubGlobal('requestAnimationFrame', () => 0)
     vi.stubGlobal('cancelAnimationFrame', () => {})
     URL.createObjectURL = () => 'blob:x'
@@ -118,6 +120,23 @@ describe('the voice line', () => {
     expect(on.onApprovalDone).toHaveBeenCalledWith('a7', true, 'voice')
     expect(players).toHaveLength(1)
     expect(players[0].srcObject).toBe('his voice')
+    // Mute: the line stays open and his replies still arrive, but only silence goes out and the mic track is off.
+    const sent = (socket as unknown as { send: ReturnType<typeof vi.fn> }).send
+    const frame = new Int16Array([1200, -800]).buffer
+    worklet!.port.onmessage!({ data: frame })
+    expect(sent).toHaveBeenLastCalledWith(frame)
+    line.setMuted(true)
+    expect(track.enabled).toBe(false)
+    worklet!.port.onmessage!({ data: frame })
+    const quiet = sent.mock.lastCall![0] as ArrayBuffer
+    expect(quiet.byteLength).toBe(frame.byteLength)
+    expect([...new Int16Array(quiet)]).toEqual([0, 0])
+    say({ type: 'reply', text: 'Still here.' })
+    expect(on.onReply).toHaveBeenLastCalledWith('Still here.')
+    line.setMuted(false)
+    expect(track.enabled).toBe(true)
+    worklet!.port.onmessage!({ data: frame })
+    expect(sent).toHaveBeenLastCalledWith(frame)
     line.close()
     expect(players[0].paused).toBe(true)
     vi.unstubAllGlobals()
