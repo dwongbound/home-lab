@@ -444,6 +444,13 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .orb__orbit--b { inset: calc(var(--orb) * -.22); transform: rotateY(62deg) rotateZ(30deg); border-color: rgba(185, 220, 243, .22); }
 .orb__spark { position: absolute; top: -2px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: #fff; box-shadow: 0 0 8px 2px rgba(185, 220, 243, .9); }
 .orb[data-state='thinking'] .orb__orbit { opacity: 1; }
+/* Working (a slow lookup: web, calendar, traffic): the core warms to amber and
+   a bright arc sweeps round it like a scanner; the orbits stay, fainter. */
+.orb__scan { inset: calc(var(--orb) * -.3); opacity: 0; background: conic-gradient(from 0deg, rgba(255, 214, 150, 0) 0 62%, rgba(255, 214, 150, .85) 100%); -webkit-mask: radial-gradient(circle, transparent 60%, #000 62%, #000 70%, transparent 72%); mask: radial-gradient(circle, transparent 60%, #000 62%, #000 70%, transparent 72%); }
+.orb[data-state='working'] .orb__scan { opacity: 1; }
+.orb[data-state='working'] .orb__orbit { opacity: .45; }
+.orb[data-state='working'] .orb__core { filter: hue-rotate(190deg) saturate(1.25) brightness(1.05); }
+.orb[data-state='working'] .orb__halo { background: radial-gradient(circle, rgba(255, 205, 140, .4), rgba(255, 205, 140, 0) 64%); }
 
 /* The chat sheet: one fixed size (it never grows with the conversation);
    the turns scroll in the middle. */
@@ -673,6 +680,9 @@ html[data-modal] { overflow: hidden; }
   .orb[data-state='thinking'] .orb__halo { animation: orb-halo 1.6s ease-in-out infinite; }
   .orb[data-state='thinking'] .orb__orbit--a { animation: orb-orbit-a 1.8s linear infinite; }
   .orb[data-state='thinking'] .orb__orbit--b { animation: orb-orbit-b 2.6s linear infinite reverse; }
+  .orb[data-state='working'] .orb__scan { animation: orb-scan 1.1s linear infinite; }
+  .orb[data-state='working'] .orb__orbit--a { animation: orb-orbit-a 1.2s linear infinite; }
+  .orb[data-state='working'] .orb__orbit--b { animation: orb-orbit-b 1.6s linear infinite reverse; }
   .orb[data-state='speaking'] .orb__wave { animation: orb-wave 1.7s ease-out infinite; }
   .orb[data-state='listening'] .orb__wave { animation: orb-wave 2.4s ease-out infinite reverse; }
   .chat__caret { animation: caret 1s steps(2, jump-none) infinite; }
@@ -741,6 +751,7 @@ html[data-modal] { overflow: hidden; }
 @keyframes orb-halo { 0%, 100% { opacity: .5; transform: scale(.92); } 55% { opacity: .95; transform: scale(1.08); } }
 @keyframes orb-orbit-a { from { transform: rotateX(66deg) rotateZ(0deg); } to { transform: rotateX(66deg) rotateZ(360deg); } }
 @keyframes orb-orbit-b { from { transform: rotateY(62deg) rotateZ(30deg); } to { transform: rotateY(62deg) rotateZ(390deg); } }
+@keyframes orb-scan { to { transform: rotate(360deg); } }
 @keyframes orb-wave { from { opacity: .7; transform: scale(1); } to { opacity: 0; transform: scale(2.1); } }
 @keyframes caret { from { opacity: 1; } to { opacity: 0; } }
 @keyframes think-breathe { 0%, 100% { transform: scale(.92); } 50% { transform: scale(1.06); } }

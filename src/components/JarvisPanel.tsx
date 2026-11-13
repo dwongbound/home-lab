@@ -31,7 +31,8 @@ let savedTurns: Turn[] = []
 /** On /talk the status line hides unless it asks for something, says it's muted, or says why Talk stopped. */
 function quietStatus(page: boolean, tapToStart: boolean, waiting: boolean, state: OrbState, notice: string, muted: boolean): boolean {
   if (!page) return false
-  if (tapToStart || waiting || muted) return false
+  // Slow lookups say what he's doing, so the wait doesn't feel like nothing.
+  if (tapToStart || waiting || muted || state === 'working') return false
   if (state === 'idle' && notice) return false
   return true
 }
@@ -40,6 +41,7 @@ function quietStatus(page: boolean, tapToStart: boolean, waiting: boolean, state
 function statusText(state: OrbState, notice = '', page = false, tapToStart = false): string {
   if (state === 'idle' && notice) return notice
   if (state === 'thinking') return 'Jarvis is thinking…'
+  if (state === 'working') return 'Jarvis is looking that up'
   if (state === 'speaking') return 'Jarvis is answering'
   if (state === 'listening') return 'Listening… just talk'
   // /talk has nothing to type in, so it only points at Talk (or anywhere, before the first tap).
@@ -49,9 +51,10 @@ function statusText(state: OrbState, notice = '', page = false, tapToStart = fal
 }
 
 /** The chat sheet's status line: an OK it's waiting for first, then muted, then the orb's state. */
-function sheetStatus(waiting: boolean, muted: boolean, state: OrbState, notice: string, page: boolean, tapToStart: boolean): string {
+function sheetStatus(waiting: boolean, muted: boolean, state: OrbState, notice: string, page: boolean, tapToStart: boolean, workLabel: string): string {
   if (waiting) return 'Waiting for your OK'
   if (muted) return 'Muted. Jarvis can still talk.'
+  if (state === 'working' && workLabel) return workLabel
   return statusText(state, notice, page, tapToStart)
 }
 
@@ -127,6 +130,8 @@ export function JarvisPanel({ live, page = false }: Props) {
   const [heard, setHeard] = useState('')
   // Why Talk ended by itself (no microphone, the line dropped), shown in the status line.
   const [notice, setNotice] = useState('')
+  // What Jarvis is off doing while the orb shows working ("Searching the web.").
+  const [workLabel, setWorkLabel] = useState('')
   const barOrb = useRef<OrbHandle>(null)
   const sheetOrb = useRef<OrbHandle>(null)
   // Refs, not state, because the talk loop reads them between awaits.
@@ -181,6 +186,21 @@ export function JarvisPanel({ live, page = false }: Props) {
     else updateApproval(id, (a) => ({ ...a, sending: false, error: result.message }))
   }
 
+  /**
+   * Jarvis started a slow lookup (label) or finished it (null): the orb
+   * switches to its working sweep and the status says what he's doing,
+   * then back to thinking until his words arrive.
+   */
+  function onWorking(label: string | null) {
+    if (label === null) {
+      setWorkLabel('')
+      setState((s) => (s === 'working' ? 'thinking' : s))
+      return
+    }
+    setWorkLabel(label)
+    setState('working')
+  }
+
   /** One beat on both orbs (the bar's is visible behind the sheet's backdrop). */
   function pulse(amount: number) {
     barOrb.current?.pulse(amount)
@@ -213,6 +233,7 @@ export function JarvisPanel({ live, page = false }: Props) {
           setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer: soFar } : x)))
         },
         (event) => onApprovalEvent(id, event),
+        onWorking,
       )
     } catch (err) {
       result = { ok: false, message: err instanceof Error ? err.message : 'The request failed' }
@@ -267,6 +288,7 @@ export function JarvisPanel({ live, page = false }: Props) {
           setTurns((t) => [...t, { id, question, answer: '', ok: true, done: false }])
         },
         onReply: (added) => updateTalkTurn((x) => ({ ...x, answer: x.answer + added })),
+        onWorking: (label) => { if (talking.current) onWorking(label) },
         onDone: () => updateTalkTurn((x) => ({ ...x, done: true })),
         onInterrupted: () => updateTalkTurn((x) => ({ ...x, done: true })),
         onLevel: pulse,
@@ -404,6 +426,7 @@ export function JarvisPanel({ live, page = false }: Props) {
       onTalk={() => void startTalk()}
       onStopTalk={stopTalk}
       muted={mutedOn}
+      workLabel={workLabel}
       onMute={() => setMute(!muted.current)}
       onAnswer={(id, ok) => void answer(id, ok)}
       onClose={close}
@@ -474,6 +497,8 @@ interface SheetProps {
   muted: boolean
   /** /talk: Mute or Unmute tapped. */
   onMute: () => void
+  /** What Jarvis is doing while the orb shows working. */
+  workLabel: string
   /** Approve (true) or Deny (false) tapped on one of Jarvis's requests. */
   onAnswer: (id: string, ok: boolean) => void
   onClose: () => void
@@ -484,7 +509,7 @@ interface SheetProps {
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tapToStart, onTapStart, heard, notice, onTalk, onStopTalk, muted, onMute, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tapToStart, onTapStart, heard, notice, onTalk, onStopTalk, muted, onMute, workLabel, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -576,7 +601,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
         {/* /talk shows only "Jarvis" over the orb (Dylan, 2026-11-11); the status stays for
             screen readers and shows when there's something to do: a first tap, an OK, or why Talk ended. */}
         <p className="chat__status" role="status" data-quiet={quietStatus(page, tapToStart, waiting, state, notice, talking && muted) ? '' : undefined}>
-          {sheetStatus(waiting, talking && muted, state, notice, page, tapToStart)}
+          {sheetStatus(waiting, talking && muted, state, notice, page, tapToStart, workLabel)}
         </p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
