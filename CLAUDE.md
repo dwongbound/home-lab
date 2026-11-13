@@ -50,6 +50,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `src/useHashView.ts`); `src/components/DetailDialog.tsx` is the fixed-size pop-up. Every pop-up calls `useScrollLock` (page behind stays put) and sits inside the iPhone safe area (`.dialog` insets, `--safe-h`). Money's are in
   `src/views/Money.tsx` (`t`, `a`, `c`, `sort`; rules in `src/lib/money.ts`), agenda ones in
   `src/components/AgendaDetail.tsx` (`j`, `e`, `m`).
+- **Kiosk mode:** top-right button (`TopNav`, Close in kiosk) → `src/useKiosk.ts` (full screen, wake lock, cycles `KIOSK_VIEWS` in `src/lib/kiosk.ts` every 20 s, waits 60 s after a touch or while `html[data-modal]`; `home-lab:v1:kiosk` in `prefs.ts`). `KioskMode` context: Money shows only `kioskPurchases`, Services drops the terminal.
 - **Always-on iPad:** `src/useWakeLock.ts` + Settings switch (`home-lab:v1:awake` in `prefs.ts`);
   `public/manifest.webmanifest` + Apple meta tags in `index.html`. Overview one-screen layout keys off
   `.shell[data-view='overview']` (end of `styles.css`). Swipe tabs: `src/useSwipeNav.ts` (finger-follow + glide in `src/swipeMotion.ts`, `main[data-swipe]`; swipes always slide via `swipeToView`). No view transitions: a tab tap sets
