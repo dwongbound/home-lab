@@ -24,6 +24,11 @@ interface ApprovalView extends Approval {
   error?: string
 }
 
+// On /talk the orb follows the screen (Dylan, 2026-11-12): smaller on a
+// phone so more words fit, bigger on an iPad or TV across the room.
+// 12% of the short side, never under 40 px or over 160 px.
+const TALK_PAGE_ORB = 'clamp(40px, 12vmin, 160px)'
+
 // Kept outside React so the conversation survives the Overview unmounting
 // when Dylan visits another page and comes back.
 let savedTurns: Turn[] = []
@@ -596,7 +601,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
         </button>
       )}
       <header className="chat__head">
-        <JarvisOrb ref={orbRef} state={state} size={page ? 52 : 64} />
+        <JarvisOrb ref={orbRef} state={state} size={page ? TALK_PAGE_ORB : 64} />
         <h2 id="chat-title" className="dialog__title">Jarvis</h2>
         {/* /talk shows only "Jarvis" over the orb (Dylan, 2026-11-11); the status stays for
             screen readers and shows when there's something to do: a first tap, an OK, or why Talk ended. */}
