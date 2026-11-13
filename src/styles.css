@@ -552,7 +552,7 @@ html[data-modal] { overflow: hidden; }
 .approval[data-outcome] { border-color: var(--glass-edge); background: rgba(255,255,255,.04); }
 .approval__tool { font-weight: 600; color: #ffd9b3; font-size: 14px; }
 .approval[data-outcome] .approval__tool { color: var(--frost-dim); }
-.approval__summary { margin: 0; font: 13px/1.5 var(--font-mono); color: var(--frost); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; }
+.approval__summary { margin: 0; font-size: 15px; line-height: 1.45; color: var(--frost); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; }
 .approval__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .approval__hint, .approval__outcome { color: var(--frost-dim); font-size: 13.5px; }
 .approval__error { color: #ffc2c8; font-size: 13.5px; }
