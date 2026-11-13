@@ -88,6 +88,7 @@ export async function streamJarvis(
   text: string,
   onWords: (soFar: string, added: string) => void,
   onApproval: (event: ApprovalEvent) => void = () => {},
+  onWorking: (label: string | null) => void = () => {},
 ): Promise<ActionResult> {
   let soFar = ''
   let outcome: ActionResult = { ok: false, message: 'Jarvis stopped answering partway' }
@@ -100,6 +101,10 @@ export async function streamJarvis(
       outcome = { ok: true, message: soFar }
     } else if (event.type === 'approval' || event.type === 'approval_done') {
       onApproval(event)
+    } else if (event.type === 'working') {
+      onWorking(event.label)
+    } else if (event.type === 'working_done') {
+      onWorking(null)
     } else {
       outcome = { ok: false, message: event.message }
     }

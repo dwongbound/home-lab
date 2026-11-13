@@ -2,12 +2,13 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, type CSSProperties 
 
 // Jarvis's orb: the same glacier-blue ball as the first-load loader, but
 // alive. It breathes slowly when idle, follows your voice while listening,
-// its orbits spin while Jarvis thinks, and while Jarvis talks it swells
-// with each word (pulse()) and lets go.
+// its orbits spin while Jarvis thinks, a warm ring sweeps around it while
+// he's off doing something slow (a web search, the calendar, traffic), and
+// while Jarvis talks it swells with each word (pulse()) and lets go.
 // Only transform and opacity move, and only inside the reduced-motion
 // no-preference block, so with reduced motion it's a still, glowing orb.
 
-export type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking'
+export type OrbState = 'idle' | 'listening' | 'thinking' | 'working' | 'speaking'
 
 export interface OrbHandle {
   /** One beat of speech: a word arriving, or a loud moment in the voice. 0..1. */
@@ -57,6 +58,7 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
     <span ref={el} className="orb" data-state={state} style={{ '--orb': `${size}px` } as CSSProperties} aria-hidden="true">
       <span className="orb__halo" />
       <span className="orb__wave" />
+      <span className="orb__scan" />
       <span className="orb__orbit orb__orbit--a"><span className="orb__spark" /></span>
       <span className="orb__orbit orb__orbit--b"><span className="orb__spark" /></span>
       <span className="orb__core" />

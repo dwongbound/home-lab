@@ -212,6 +212,9 @@ export type ChatEvent =
   | { type: 'error'; message: string }
   | { type: 'approval'; approval: Approval }
   | { type: 'approval_done'; id: string; ok: boolean; by: ApprovalBy }
+  /** Jarvis started a slow lookup (label: "Searching the web."), and when it's over. */
+  | { type: 'working'; label: string }
+  | { type: 'working_done' }
 /** One saved line of the web chat. */
 export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string }
 export type ActionName = 'ollama-unload' | 'ollama-load'

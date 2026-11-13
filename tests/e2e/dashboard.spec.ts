@@ -823,3 +823,15 @@ test('kiosk mode waits while I use the page', async ({ page }) => {
   await page.clock.runFor(31_000)
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#home')
 })
+
+test('while Jarvis looks something up, the orb switches to its working sweep and says what he is doing', async ({ page }) => {
+  await page.goto('/talk')
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  // The demo's first question is about the schedule, which needs a calendar lookup.
+  // The label shows on /talk (unlike the other states, which stay quiet there), with the orb working.
+  await expect(chat.locator('.chat__status:not([data-quiet])', { hasText: 'Checking your calendar.' })).toBeVisible({ timeout: 15_000 })
+  await expect(chat.locator('.chat__head .orb[data-state="working"]')).toHaveCount(1)
+  // Then the answer follows.
+  await expect(chat.getByText(/volleyball at 7:30/)).toBeVisible({ timeout: 15_000 })
+  await expect(chat.locator('.chat__head .orb')).not.toHaveAttribute('data-state', 'working')
+})

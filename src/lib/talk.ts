@@ -5,7 +5,7 @@
 // The page sends the microphone as 16 kHz 16-bit mono audio in 20 ms
 // frames, and keeps sending while Jarvis speaks so you can talk over him
 // (he stops). Jarvis sends JSON events (state, partial, transcript, reply,
-// done, stop, approval, approval_done) and his voice as 16-bit audio at the rate his hello names, one
+// done, stop, approval, approval_done, working, working_done) and his voice as 16-bit audio at the rate his hello names, one
 // message per sentence. When his voice has finished playing the page says
 // {"type":"idle"} so he knows the speaker is quiet again.
 
@@ -22,6 +22,8 @@ export interface TalkHandlers {
   onHeard: (text: string) => void
   /** More of Jarvis's reply text. */
   onReply: (added: string) => void
+  /** Jarvis started something slow (label says what, e.g. "Searching the web."), or finished it (null). */
+  onWorking: (label: string | null) => void
   /** Jarvis finished this reply. */
   onDone: () => void
   /** You talked over him, so the rest of the reply was dropped. */
@@ -43,6 +45,7 @@ interface TalkEvent {
   text?: string
   rate?: number
   id?: string
+  label?: string
   tool?: string
   summary?: string
   expires?: string
@@ -329,6 +332,8 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     } else if (event.type === 'partial' && event.text) on.onHearing(event.text)
     else if (event.type === 'transcript' && event.text) on.onHeard(event.text)
     else if (event.type === 'reply' && event.text) on.onReply(event.text)
+    else if (event.type === 'working') on.onWorking(event.label ?? '')
+    else if (event.type === 'working_done') on.onWorking(null)
     else if (event.type === 'done') {
       replyDone = true
       on.onDone()

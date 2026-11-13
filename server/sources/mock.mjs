@@ -365,6 +365,13 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const at = new Date().toISOString()
       state.chat.push({ role: 'user', text, at })
       await delay(700)
+      // A question that needs a lookup shows the orb's working sweep first, like the real Jarvis.
+      const work = sampleWork(text)
+      if (work) {
+        onEvent({ type: 'working', label: work })
+        await delay(1800)
+        onEvent({ type: 'working_done' })
+      }
       let reply = sampleReply(text)
       // Asking him to change a file or run something shows the approval
       // card, and his reply waits for the answer like the real Jarvis.
@@ -478,8 +485,20 @@ function sampleAction(text) {
  * to type out. A few topics get a longer answer; anything else says where
  * the real one would come from.
  */
+/** The status line for a sample question that needs a lookup, or null. */
+function sampleWork(text) {
+  const q = text.toLowerCase()
+  if (q.includes('traffic') || q.includes('drive')) return 'Checking traffic.'
+  if (q.includes('today') || q.includes('schedule') || q.includes('calendar')) return 'Checking your calendar.'
+  if (q.includes('weather')) return 'Checking the weather.'
+  return null
+}
+
 function sampleReply(text) {
   const q = text.toLowerCase()
+  if (q.includes('traffic') || q.includes('drive')) {
+    return 'Sample data: about 35 minutes to Disneyland right now, heavier than usual on the 5. Leave by 6:10 to make a 7 o’clock entry.'
+  }
   if (q.includes('light') || q.includes('lamp')) {
     return 'Sample data: the living room lamp is on at 60%, and the porch light turns on at sunset, around 4:55 tonight. Want me to switch the lamp off?'
   }
