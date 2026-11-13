@@ -89,7 +89,7 @@ export async function streamJarvis(
   onWords: (soFar: string, added: string) => void,
   onApproval: (event: ApprovalEvent) => void = () => {},
   onWorking: (label: string | null) => void = () => {},
-): Promise<ActionResult> {
+): Promise<ChatResult> {
   let soFar = ''
   let outcome: ActionResult = { ok: false, message: 'Jarvis stopped answering partway' }
   /** Handles one event from the stream. */
@@ -115,11 +115,17 @@ export async function streamJarvis(
     await source.chat(text, {}, onEvent)
     return outcome
   }
-  const res = await fetch('/api/jarvis/chat', {
-    method: 'POST',
-    headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
-    body: JSON.stringify({ text }),
-  })
+  let res
+  try {
+    res = await fetch('/api/jarvis/chat', {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+  } catch {
+    // Never reached the page server (offline, or the phone left the page).
+    return { ok: false, message: 'Couldn’t reach Jarvis', dropped: true }
+  }
   if (!res.ok || !res.body) {
     const body = await res.json().catch(() => null)
     return { ok: false, message: body?.message ?? `The server answered ${res.status}` }
@@ -127,20 +133,35 @@ export async function streamJarvis(
   // One JSON event per line; a line can arrive split across chunks.
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
-  for (;;) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffer += value
-    let newline = buffer.indexOf('\n')
-    while (newline !== -1) {
-      const line = buffer.slice(0, newline).trim()
-      buffer = buffer.slice(newline + 1)
-      if (line) onEvent(JSON.parse(line) as ChatEvent)
-      newline = buffer.indexOf('\n')
+  let ended = false
+  try {
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += value
+      let newline = buffer.indexOf('\n')
+      while (newline !== -1) {
+        const line = buffer.slice(0, newline).trim()
+        buffer = buffer.slice(newline + 1)
+        if (line) {
+          const event = JSON.parse(line) as ChatEvent
+          if (event.type === 'done' || event.type === 'error') ended = true
+          onEvent(event)
+        }
+        newline = buffer.indexOf('\n')
+      }
     }
+  } catch {
+    // iOS Safari drops the stream ("Load failed") when the phone leaves the
+    // page; Jarvis carries on at home, so the page catches up from history.
+    return { ok: false, message: soFar, dropped: true }
   }
+  if (!ended) return { ok: false, message: soFar, dropped: true }
   return outcome
 }
+
+/** A chat reply, or what went wrong; dropped = the page lost the stream but Jarvis may still be answering. */
+export interface ChatResult extends ActionResult { dropped?: boolean }
 
 /** Approves (ok) or denies one thing Jarvis asked to do on the PC. */
 export async function answerApproval(id: string, ok: boolean): Promise<ActionResult> {

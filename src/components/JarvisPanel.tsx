@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
-import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent } from '../api/client'
+import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
+import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, RunningTask } from '../types'
 import { BackgroundTasks } from './BackgroundTasks'
 import { canTalkUnprompted, openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
@@ -229,8 +230,9 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
   async function ask(question: string) {
     setState('thinking')
     const id = savedTurns.length
+    const askedAt = Date.now()
     setTurns((t) => [...t, { id, question, answer: '', ok: true, done: false }])
-    let result
+    let result: ChatResult
     try {
       result = await streamJarvis(
         question,
@@ -246,9 +248,31 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
     } catch (err) {
       result = { ok: false, message: err instanceof Error ? err.message : 'The request failed' }
     }
+    if (result.dropped) result = await catchUp(id, question, askedAt, result.message)
     const answer = result.message
     setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer, ok: result.ok, done: true } : x)))
     setState('idle')
+  }
+
+  /**
+   * The page lost the reply stream (the phone left the page), but Jarvis
+   * keeps working at home. Waits for his answer to show up in the saved
+   * chat, checking while the page is on screen, and brings back any
+   * approval he's waiting on. soFar is what had arrived before the drop.
+   */
+  async function catchUp(id: number, question: string, askedAt: number, soFar: string): Promise<ChatResult> {
+    // The orb keeps thinking (or shows "Waiting for your OK") meanwhile.
+    const giveUpAt = Date.now() + CATCH_UP_MS
+    while (Date.now() < giveUpAt) {
+      // Background tabs can't fetch on iOS anyway; check again once it's back on screen.
+      if (document.visibilityState === 'visible') {
+        const found = findAnswer(await loadChatHistory(), question, askedAt)
+        if (found !== null) return { ok: true, message: found }
+        for (const approval of await loadApprovals()) addApproval(id, approval)
+      }
+      await wait(CATCH_UP_EVERY_MS)
+    }
+    return { ok: false, message: soFar || 'Lost touch with Jarvis. Ask again, or check Telegram.' }
   }
 
   /** Hands-free Talk: the real voice line with live data, the demo otherwise. */
