@@ -390,6 +390,12 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   mask-image: linear-gradient(transparent, #000 12px, #000 calc(100% - 16px), transparent);
 }
 .money__scroll .cloud__list { gap: 4px; }
+/* Kiosk mode's Money page: just recent purchases, two columns on a wide screen. */
+.money__kiosk-list { gap: 4px; }
+@media (min-width: 900px) { .money__kiosk-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; } }
+/* Kiosk mode's Close, top right where the kiosk button was. */
+.kiosk__close { height: 36px; padding: 0 16px; }
+@media (pointer: coarse) { .kiosk__close { height: 44px; } }
 /* Picking a category for an unsorted purchase, and the Ready for Copilot list. */
 .picker { display: grid; gap: 12px; margin-top: 4px; }
 .picker .detail__hint { margin: 0; }

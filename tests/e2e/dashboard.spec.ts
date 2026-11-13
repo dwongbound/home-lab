@@ -9,6 +9,7 @@
 //   - I tap any money row, Today row, event or email for a pop-up with more, and links out.
 //   - Purchases still in "Other" stand out so I know to sort them.
 //   - The iPad can stay on as a wall display, with the whole Overview on one screen.
+//   - Kiosk mode (top right) goes full screen and moves through the tabs by itself; Money shows only purchases there.
 //   - I swipe sideways to change tab.
 //   - In Safari, changing tab never shows the panels dark before they frost.
 //   - I ask Jarvis from the Overview and the chat types out his answer; Talk goes hands-free.
@@ -754,4 +755,59 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   await expect(chat.getByRole('button', { name: 'Talk', exact: true })).toBeEnabled({ timeout: 10_000 })
   // Still the whole screen after talking stops.
   expect((await chat.boundingBox())!.width).toBe(viewport.width)
+})
+
+test('kiosk mode goes full screen, moves through the tabs by itself, and Close leaves it', async ({ page, browserName }) => {
+  // A fake clock, so the 20 s on each tab passes at once.
+  await page.clock.install()
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
+  await page.getByRole('button', { name: 'Kiosk mode' }).click()
+  const close = page.getByRole('button', { name: 'Close kiosk mode' })
+  await expect(close).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Refresh now' })).toHaveCount(0)
+  // Chromium allows full screen from the tap. (iPhone Safari can't, and the
+  // test WebKit doesn't; kiosk mode carries on without it.)
+  if (browserName === 'chromium') await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true)
+
+  // Overview, Home, Claude, Money, Services, Schedule, then round again.
+  for (const [hash, title] of [['#home', 'Home'], ['#claude', 'Claude'], ['#money', 'Money'], ['#services', 'Services'], ['#schedule', 'Schedule']]) {
+    await page.clock.runFor(21_000)
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(hash)
+    await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible()
+    if (hash === '#money') {
+      // Purchases with amounts, and nothing big: no net worth, balances or pay.
+      await expect(page.getByRole('heading', { name: 'Recent purchases' })).toBeVisible()
+      for (const gone of ['Net worth', 'Accounts', 'This month']) await expect(page.getByRole('heading', { name: gone, exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Show amounts' })).toHaveCount(0)
+      await expect(page.getByText('Payroll')).toHaveCount(0)
+    }
+    if (hash === '#services') await expect(page.getByRole('heading', { name: 'Terminal' })).toHaveCount(0)
+    // Nothing spills sideways in kiosk mode either.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
+  }
+  await page.clock.runFor(21_000)
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#overview')
+
+  // It's remembered across a reload (a deploy), still cycling.
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Close kiosk mode' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Close kiosk mode' }).click()
+  await expect(page.getByRole('button', { name: 'Kiosk mode' })).toBeVisible()
+  await page.clock.runFor(30_000)
+  expect(await page.evaluate(() => window.location.hash)).toBe('#overview')
+})
+
+test('kiosk mode waits while I use the page', async ({ page }) => {
+  await page.clock.install()
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Kiosk mode' }).click()
+  await page.clock.runFor(10_000)
+  // A tap holds the cycle for a minute.
+  await page.getByRole('heading', { level: 1 }).click()
+  await page.clock.runFor(30_000)
+  expect(await page.evaluate(() => window.location.hash)).toBe('')
+  await page.clock.runFor(31_000)
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#home')
 })

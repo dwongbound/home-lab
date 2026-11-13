@@ -14,14 +14,19 @@
 // "Ready for Copilot" list, grouped by category, so he can apply them all
 // in Copilot in one sitting. A banner reminds him when the time he chose
 // comes, and picks drop off once Copilot shows the purchase sorted.
+//
+// In kiosk mode (the iPad on the wall, src/useKiosk.ts) it shows only
+// recent purchases, amounts showing: no net worth, balances, accounts,
+// monthly totals or flags, and no money coming in (Dylan, 2026-11-13).
 import { createContext, useContext, useState } from 'react'
 import { useSWRConfig } from 'swr'
 import type { MoneyAccount, MoneyDigest, MoneyPick, MoneyPicks, MoneyTransaction, Snapshot, SpendCategory } from '../types'
 import { ago, dollars } from '../lib/format'
 import {
   categoryChoices, cleanText, defaultReminder, groupAccounts, groupPicks, isEmptyAccount,
-  needsCategory, onAccount, picksById, reminderChoices, stillToPick,
+  kioskPurchases, needsCategory, onAccount, picksById, reminderChoices, stillToPick,
 } from '../lib/money'
+import { useInKiosk } from '../useKiosk'
 import { changeMoneyPicks, SNAPSHOT_KEY } from '../api/client'
 import { useDigestRefreshing } from '../api/digestRefresh'
 import { closeDetail, detailHref, parseDetail, useHashDetail } from '../useHashView'
@@ -228,6 +233,21 @@ function Recent({ money, now }: { money: MoneyDigest; now: Date }) {
             {money.recent.map((t) => <TxRow key={t.id} t={t} now={now} />)}
           </ul>
         </div>
+      )}
+    </section>
+  )
+}
+
+/** Kiosk mode's whole Money page: recent purchases, the list as long as it needs. */
+function KioskRecent({ money, now }: { money: MoneyDigest; now: Date }) {
+  const items = kioskPurchases(money.recent)
+  return (
+    <section className="glass panel money__kiosk" aria-labelledby="kiosk-recent-title">
+      <header className="panel__head"><h2 id="kiosk-recent-title" className="panel__title">Recent purchases</h2></header>
+      {items.length === 0 ? <p className="empty">No recent purchases.</p> : (
+        <ul className="cloud__list money__kiosk-list">
+          {items.map((t) => <TxRow key={t.id} t={t} now={now} />)}
+        </ul>
       )}
     </section>
   )
@@ -492,8 +512,11 @@ function ReadyDetail({ now }: { now: Date }) {
 function MoneyDetail({ money, now }: { money: MoneyDigest; now: Date }) {
   const detail = useHashDetail()
   const picks = useContext(Picks)
+  const kiosk = useInKiosk()
   if (detail === '') return null
   const { kind, id } = parseDetail(detail)
+  // Kiosk mode opens purchases only: accounts and categories show balances and totals.
+  if (kiosk && kind !== 't') return null
   // Keyed by the detail, so moving from one to another reopens the dialog fresh.
   if (kind === 'sort') return <SortDetail key={detail} money={money} now={now} />
   if (kind === 'ready') return <ReadyDetail key={detail} now={now} />
@@ -513,11 +536,36 @@ function MoneyDetail({ money, now }: { money: MoneyDigest; now: Date }) {
   return null
 }
 
+/** Everything on Money outside kiosk mode: totals, then what needs a look, this month and accounts beside recent transactions. */
+function FullMoney({ money, now }: { money: MoneyDigest; now: Date }) {
+  return (
+    <>
+      <Totals money={money} />
+      {/* Left: what needs a look, this month and accounts. Right: recent
+          transactions, as tall as the left side and scrolling inside.
+          One column on phones, with Recent capped and scrolling. */}
+      <div className="grid grid--split money__split">
+        <div className="stack">
+          <Flags money={money} />
+          <ThisMonth money={money} />
+          <Accounts accounts={money.accounts} />
+        </div>
+        <div className="money__side">
+          <Recent money={money} now={now} />
+        </div>
+      </div>
+    </>
+  )
+}
+
 /** The Money page. */
 export function Money({ data, now }: { data: Snapshot; now: Date }) {
-  const [hidden, setHidden] = useState(true)
+  const [hiddenPicked, setHidden] = useState(true)
   const money = data.cloud?.money ?? null
   const refreshing = useDigestRefreshing()
+  const kiosk = useInKiosk()
+  // Kiosk mode shows purchase amounts (nothing bigger is on screen there), so there's no button.
+  const hidden = hiddenPicked && !kiosk
 
   return (
     <Hidden.Provider value={hidden}>
@@ -532,7 +580,7 @@ export function Money({ data, now }: { data: Snapshot; now: Date }) {
             </p>
           ) : null}
         </div>
-        {money !== null ? (
+        {money !== null && !kiosk ? (
           <button type="button" className="btn" aria-pressed={!hidden} onClick={() => setHidden((h) => !h)}>
             {hidden ? 'Show amounts' : 'Hide amounts'}
           </button>
@@ -540,20 +588,7 @@ export function Money({ data, now }: { data: Snapshot; now: Date }) {
       </section>
       {money === null ? <NotSetUp digestReady={data.cloud !== null} /> : (
         <>
-          <Totals money={money} />
-          {/* Left: what needs a look, this month and accounts. Right: recent
-              transactions, as tall as the left side and scrolling inside.
-              One column on phones, with Recent capped and scrolling. */}
-          <div className="grid grid--split money__split">
-            <div className="stack">
-              <Flags money={money} />
-              <ThisMonth money={money} />
-              <Accounts accounts={money.accounts} />
-            </div>
-            <div className="money__side">
-              <Recent money={money} now={now} />
-            </div>
-          </div>
+          {kiosk ? <KioskRecent money={money} now={now} /> : <FullMoney money={money} now={now} />}
           <MoneyDetail money={money} now={now} />
         </>
       )}

@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { Icon, type IconName } from './Icon'
 
 // The top bar: host name on the left, pill navigation in the middle, and
-// data source, refresh and avatar on the right. Navigation is plain links
+// data source, refresh, the kiosk button and avatar on the right. In kiosk
+// mode the right side is just Close. Navigation is plain links
 // to #hashes, so it works with the keyboard, back button and bookmarks.
 // The light on the current pill is one element that slides from pill to
 // pill, rather than each pill lighting up on its own. It carries a dark
@@ -27,6 +28,10 @@ interface Props {
   source: 'mock' | 'live' | null
   refreshing: boolean
   onRefresh: () => void
+  /** Whether kiosk mode is on (src/useKiosk.ts). */
+  kiosk: boolean
+  onKiosk: () => void
+  onKioskClose: () => void
 }
 
 /** Where the sliding light sits: under the current pill, in px from the bar's edge. */
@@ -54,7 +59,7 @@ function useIndicator(view: View) {
 }
 
 /** The top bar. */
-export function TopNav({ view, source, refreshing, onRefresh }: Props) {
+export function TopNav({ view, source, refreshing, onRefresh, kiosk, onKiosk, onKioskClose }: Props) {
   const { navRef, box } = useIndicator(view)
   return (
     <header className="topbar">
@@ -86,13 +91,22 @@ export function TopNav({ view, source, refreshing, onRefresh }: Props) {
           </a>
         ))}
       </nav>
+      {kiosk ? (
+        <div className="topbar__end">
+          <button type="button" className="btn kiosk__close" onClick={onKioskClose} aria-label="Close kiosk mode">Close</button>
+        </div>
+      ) : (
       <div className="topbar__end">
         {source === 'mock' ? <span className="chip" title="Numbers are made up until the live source is switched on">Sample data</span> : null}
         <button type="button" className="icon-btn" onClick={onRefresh} aria-label="Refresh now" data-spinning={refreshing || undefined}>
           <Icon name="refresh" size={16} />
         </button>
+        <button type="button" className="icon-btn" onClick={onKiosk} aria-label="Kiosk mode" title="Kiosk mode: full screen, moving through the tabs">
+          <Icon name="expand" size={16} />
+        </button>
         <span className="avatar" aria-label="Dylan">DW</span>
       </div>
+      )}
     </header>
   )
 }

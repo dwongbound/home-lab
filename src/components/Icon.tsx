@@ -13,6 +13,8 @@ const PATHS = {
   claude: 'M10 3v14M3 10h14M5 5l10 10M15 5 5 15',
   bulb: 'M7.5 14.5h5M8 17h4M10 3a5 5 0 0 0-3 9c.6.5 1 1.2 1 2h4c0-.8.4-1.5 1-2a5 5 0 0 0-3-9z',
   money: 'M2.5 5.5h15v9h-15zM10 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 8v4M15 8v4',
+  // Four corners pointing out: kiosk mode (full screen).
+  expand: 'M3.5 7.5v-4h4M12.5 3.5h4v4M16.5 12.5v4h-4M7.5 16.5h-4v-4',
   refresh: 'M15.5 8A6 6 0 0 0 4.6 6.5M4.5 3.5v3h3M4.5 12a6 6 0 0 0 10.9 1.5M15.5 16.5v-3h-3',
 } as const
 

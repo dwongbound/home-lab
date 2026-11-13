@@ -135,3 +135,13 @@ export function pickReminderDue(picks: MoneyPicks, now: Date): boolean {
   if (picks.picks.length === 0 || picks.remindAt === null) return false
   return Date.parse(picks.remindAt) <= now.getTime()
 }
+
+/**
+ * What kiosk mode shows on Money: purchases only, newest first. Money
+ * coming in (pay, refunds) and transfers between his own accounts are
+ * left out with the balances, so a wall display doesn't show what he
+ * earns or holds (Dylan, 2026-11-13).
+ */
+export function kioskPurchases(recent: MoneyTransaction[]): MoneyTransaction[] {
+  return recent.filter((t) => t.amount > 0 && t.type !== 'transfer' && t.type !== 'income')
+}

@@ -19,6 +19,7 @@ import { useNow } from './useNow'
 import { readAwake, readSky, writeAwake, writeSky } from './lib/prefs'
 import { useWakeLock } from './useWakeLock'
 import { useReveal } from './useReveal'
+import { KioskMode, useKiosk } from './useKiosk'
 import { shownPhase } from './lib/sky'
 
 // The whole page: backdrop, top bar, and whichever view the hash names.
@@ -35,7 +36,9 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null)
   // Keep the screen on (Settings), for the iPad as an always-on display.
   const [awake, setAwake] = useState(readAwake)
-  const wake = useWakeLock(awake)
+  // Kiosk mode: full screen, moving through the tabs by itself. It keeps the screen on too.
+  const kiosk = useKiosk(view)
+  const wake = useWakeLock(awake || kiosk.on)
 
   // Toasts clear themselves after 4 seconds.
   useEffect(() => {
@@ -96,12 +99,14 @@ export function App() {
       <Backdrop now={now} override={sky} />
       {/* data-sky lets the glass darken its tint under the bright day sky (styles.css). */}
       {/* data-view lets the Overview fill exactly one screen on a display-sized window. */}
-      <div className="shell" data-view={view} data-sky={shownPhase(now, sky)}>
-        <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} />
+      <div className="shell" data-view={view} data-sky={shownPhase(now, sky)} data-kiosk={kiosk.on || undefined}>
+        <TopNav view={view} source={data?.source ?? null} refreshing={isValidating} onRefresh={refresh} kiosk={kiosk.on} onKiosk={kiosk.start} onKioskClose={kiosk.stop} />
         {/* Anything needing him right now sits above every page, not inside Today. */}
         {data ? <AlertBanner alerts={activeAlerts(data, now)} /> : null}
         <DigestRefreshing.Provider value={digestRefreshing}>
-          <main className="main" ref={mainRef} key={data ? 'ready' : 'waiting'}>{body}</main>
+          <KioskMode.Provider value={kiosk.on}>
+            <main className="main" ref={mainRef} key={data ? 'ready' : 'waiting'}>{body}</main>
+          </KioskMode.Provider>
         </DigestRefreshing.Provider>
         {data && error ? <p className="stale" role="status">Last update failed. Showing numbers from {new Date(data.generatedAt).toLocaleTimeString()}.</p> : null}
       </div>

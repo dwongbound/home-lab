@@ -22,3 +22,14 @@ export function readAwake(): boolean {
 export function writeAwake(on: boolean): void {
   try { localStorage.setItem(AWAKE_KEY, on ? 'on' : 'off') } catch { /* not saved; fine */ }
 }
+
+const KIOSK_KEY = 'home-lab:v1:kiosk'
+
+/** Whether this browser was left in kiosk mode, so a reload (a deploy) carries on cycling. Off unless saved on. */
+export function readKiosk(): boolean {
+  try { return localStorage.getItem(KIOSK_KEY) === 'on' } catch { return false }
+}
+/** Saves whether kiosk mode is on. Silently does nothing if storage is blocked. */
+export function writeKiosk(on: boolean): void {
+  try { localStorage.setItem(KIOSK_KEY, on ? 'on' : 'off') } catch { /* not saved; fine */ }
+}
