@@ -123,7 +123,11 @@ export function createApi(source) {
     }
     const login = req.headers['tailscale-user-login'] ?? ''
     res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' })
-    await source.chat(text, { login }, (event) => res.write(`${JSON.stringify(event)}\n`))
+    // If the phone leaves mid-reply, keep reading Jarvis's answer to the end
+    // (he saves it to the chat history) and just stop writing to the page.
+    await source.chat(text, { login }, (event) => {
+      if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`)
+    })
     res.end()
   }
 

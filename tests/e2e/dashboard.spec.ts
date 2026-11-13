@@ -638,6 +638,26 @@ test('the page behind the chat stays put, and scrolling up to read back is not p
   expect(await page.evaluate(() => window.scrollY)).toBe(before)
 })
 
+test('leaving the page while Jarvis thinks: the reply still shows up when I come back', async ({ page }) => {
+  // The phone drops the reply stream ("Load failed"); Jarvis finishes at home and saves the answer.
+  const question = `Move Disneyland to Dec 8 (${Date.now()})`
+  let saved = false
+  await page.route('**/api/jarvis/chat', (route) => { saved = true; return route.abort('failed') })
+  await page.route('**/api/jarvis/history', (route) => route.fulfill({
+    json: { turns: saved ? [
+      { role: 'user', text: question, at: new Date().toISOString() },
+      { role: 'jarvis', text: 'Moved Disneyland to Monday, Dec 8.', at: new Date().toISOString() },
+    ] : [] },
+  }))
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill(question)
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  await expect(chat.getByText('Moved Disneyland to Monday, Dec 8.')).toBeVisible({ timeout: 15_000 })
+  await expect(chat.getByText('Load failed')).toHaveCount(0)
+  await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk')
+})
+
 test('asking Jarvis opens the chat, and Talk goes hands-free until Stop talking', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Is the garage open?')
