@@ -11,8 +11,7 @@ describe('backdrop size', () => {
     const block = css.match(/@supports \(height: 100lvh\) \{([\s\S]*?)\n\}/)?.[1] ?? ''
     expect(block).toMatch(/\.backdrop \{[^}]*height: 100lvh/)
     expect(block).toMatch(/\.backdrop__sun \{[^}]*70lvmax/)
-    // The ridge runs past the bottom edge so the ground never stops short of the screen.
-    expect(block).toMatch(/\.backdrop__ridge \{[^}]*height: 42lvh; bottom: -2lvh/)
+    expect(block).toMatch(/\.backdrop__ridge \{[^}]*height: 22lvh; bottom: 18lvh/)
   })
 
   it('shades the whole /talk screen, not just the part above Safari’s toolbar', () => {

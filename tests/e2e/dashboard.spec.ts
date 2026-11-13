@@ -739,9 +739,9 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
     return { radius: css.borderTopLeftRadius, border: css.borderTopWidth, blur: css.backdropFilter }
   })
   expect(look).toEqual({ radius: '0px', border: '0px', blur: 'none' })
-  // The ground (ridge) runs right down to the bottom of the screen, with no flat band below it.
-  const ridge = (await page.locator('.backdrop__ridge').boundingBox())!
-  expect(ridge.y + ridge.height).toBeGreaterThanOrEqual(viewport.height)
+  // The sky behind it reaches the bottom of the screen too.
+  const sky = (await page.locator('.backdrop').boundingBox())!
+  expect(sky.y + sky.height).toBeGreaterThanOrEqual(viewport.height)
   // The orb follows the screen: 12% of its short side, 40 to 160 px (small on a phone, big on a TV),
   // and "Jarvis" sits clear above its orbits.
   const orbBox = (await chat.locator('.chat__head .orb').boundingBox())!
