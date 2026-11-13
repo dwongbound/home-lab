@@ -38,6 +38,7 @@ describe('readableSummary', () => {
 
   it('never shows ids, addresses or key=value pairs from a raw tool call', () => {
     expect(readableSummary('Google Calendar delete_event (eventId=31ck5q57f9hbqfbh0b474pi, calendarId=rqj2qkvs9d6dukl7nn7ln6cm8g@group.calendar.google.com)')).toBe('Google Calendar: delete event')
+    expect(readableSummary('Flying club app book_airplane: aircraft=N8318B, instructor=Matthew Large, start=2026-11-14T09:00')).toBe('Flying club app: book airplane')
     expect(readableSummary('title=Disneyland, start=2026-12-08T00:00, calendar=Fun')).toBe('Jarvis wants to make a change. Ask him what it is before saying yes.')
   })
 })
