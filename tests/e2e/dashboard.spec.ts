@@ -258,7 +258,7 @@ test('the thermostat shows the room temperature, and + and the mode buttons chan
   await expect(tile).toBeVisible()
   await expect(tile.getByText('Inside')).toBeVisible()
   // The thermostat comes first on the page.
-  await expect(page.locator('.grid--devices > .device').first()).toHaveAttribute('aria-label', 'Thermostat')
+  await expect(page.locator('.home > .thermo').first()).toHaveAttribute('aria-label', 'Thermostat')
   const target = tile.locator('.thermo__target')
   const before = Number((await target.textContent())!.replace(/\D/g, ''))
   // Two quick taps send one command, for two steps.
