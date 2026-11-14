@@ -16,6 +16,16 @@ const PATHS = {
   // Four corners pointing out: kiosk mode (full screen).
   expand: 'M3.5 7.5v-4h4M12.5 3.5h4v4M16.5 12.5v4h-4M7.5 16.5h-4v-4',
   refresh: 'M15.5 8A6 6 0 0 0 4.6 6.5M4.5 3.5v3h3M4.5 12a6 6 0 0 0 10.9 1.5M15.5 16.5v-3h-3',
+  // Home page devices.
+  power: 'M10 3v6.5M6.2 5.6a6 6 0 1 0 7.6 0',
+  play: 'M7 4.5v11l8.5-5.5z',
+  pause: 'M7.5 5v10M12.5 5v10',
+  toggle: 'M6.5 6h7a4 4 0 0 1 0 8h-7a4 4 0 0 1 0-8zM13.5 10h.01',
+  fan: 'M10 11.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM10 8.5c-.5-3 .5-5 2.5-5s2 3-1.5 5.5M11.5 10.5c3-.5 5 .5 5 2.5s-3 2-5.5-1.5M8.5 10.5c-2 2.5-4.5 3-5.5 1.5s1-3.5 4.5-3',
+  speaker: 'M5.5 3h9v14h-9zM10 14a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM10 6h.01',
+  tv: 'M2.5 4.5h15v9.5h-15zM7 17h6',
+  moon: 'M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z',
+  sparkle: 'M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6z',
 } as const
 
 export type IconName = keyof typeof PATHS

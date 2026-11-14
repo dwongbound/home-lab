@@ -241,12 +241,14 @@ describe('App', () => {
     const user = userEvent.setup()
     renderApp()
 
-    const porch = await screen.findByRole('region', { name: 'Porch lights' })
+    // Each light is one big button: tap anywhere on it to switch it.
+    const porch = await screen.findByRole('group', { name: 'Porch lights' })
     expect(porch).toHaveTextContent('Off')
-    await user.click(within(porch).getByRole('button', { name: 'Turn on' }))
-    await waitFor(() => expect(within(porch).getByRole('button', { name: 'Turn off' })).toHaveAttribute('aria-pressed', 'true'))
-    expect(screen.getByRole('region', { name: 'TV' })).toHaveTextContent('Unavailable')
-    expect(within(screen.getByRole('region', { name: 'Movie night' })).getByRole('button', { name: 'Run' })).toBeEnabled()
+    await user.click(within(porch).getByRole('button', { name: 'Turn on Porch lights' }))
+    await waitFor(() => expect(within(porch).getByRole('button', { name: 'Turn off Porch lights' })).toHaveAttribute('aria-pressed', 'true'))
+    // Devices that can't be reached are folded away at the bottom, by name.
+    expect(screen.getByText(/isn’t reachable|aren’t reachable/).closest('details')).toHaveTextContent('TV')
+    expect(screen.getByRole('button', { name: 'Run Movie night' })).toBeEnabled()
   })
 
   it('switches pages from the hash', async () => {

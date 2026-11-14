@@ -339,25 +339,70 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .segmented__opt[aria-checked='true'] { background: var(--frost); color: var(--basalt); border-color: transparent; }
 
 /* ---------- Home ---------- */
-.grid--devices { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); align-items: start; }
-.device { display: grid; gap: 12px; }
-.device__head .panel__title { font-size: 17px; }
-.device__head .panel__sub { overflow-wrap: anywhere; }
-.device[data-on] .device__head .panel__sub { color: var(--frost); }
-.device[data-unavailable] > * { opacity: .55; }
-.device__row { display: flex; gap: 8px; }
-.device__row .btn { flex: 1; }
-.thermo__label { display: block; font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--frost-dim); }
-.thermo__now { margin: 0; font-size: clamp(34px, 5vw, 46px); font-weight: 300; line-height: 1.05; font-variant-numeric: tabular-nums; }
-.thermo__set { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 10px; }
-.thermo__step { min-height: 44px; padding: 0; font-size: 22px; line-height: 1; }
-.thermo__target { margin: 0; text-align: center; font-size: 24px; font-variant-numeric: tabular-nums; }
-.thermo__modes { display: flex; flex-wrap: wrap; gap: 8px; }
-.thermo__modes .btn { flex: 1 1 auto; min-height: 44px; }
+.device__error { color: #ffc2c8; font-size: 13.5px; margin: 0; }
+
+/* ---------- Home ---------- */
+/* One column of panels: the thermostat, then groups of tiles. Tiles are not
+   glass themselves (one blur per group keeps the iPhone smooth); they're
+   light washes that glow warm when the thing is on. */
+.home { display: grid; gap: var(--gap); }
+.home__label { margin: 0 0 12px; font: 600 12px var(--font-body); letter-spacing: .06em; text-transform: uppercase; color: var(--frost-dim); }
+
+.thermo { display: grid; gap: 16px; }
+.thermo__head .panel__sub { margin-top: 2px; }
+.thermo[data-on] .thermo__head .panel__sub { color: var(--frost); }
+.thermo__body { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.thermo__label { display: block; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--frost-dim); }
+.thermo__now { margin: 0; font-size: clamp(44px, 9vw, 60px); font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
+.thermo__set { display: grid; grid-template-columns: 48px auto 48px; align-items: center; gap: 12px; }
+.thermo__step { width: 48px; height: 48px; padding: 0; font-size: 24px; line-height: 1; }
+.thermo__target { margin: 0; min-width: 3.2em; text-align: center; font-size: 28px; font-variant-numeric: tabular-nums; }
+.thermo__target .thermo__label { font-size: 11px; }
+
+/* The modes: one pill with the current one lit, like iOS's segmented control. */
+.seg { display: flex; padding: 4px; gap: 4px; border-radius: 999px; background: rgba(255,255,255,.07); border: 1px solid var(--glass-edge); }
+.seg__btn { flex: 1 1 auto; min-width: 0; height: 44px; border: 0; border-radius: 999px; background: none; color: var(--frost-dim); font: 600 13.5px var(--font-body); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.seg__btn[aria-pressed='true'] { background: var(--frost); color: var(--basalt); }
+.seg__btn:disabled { cursor: default; opacity: .6; }
+
+/* Tiles: two across on a phone, more as the screen widens. */
+.tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); }
+.tiles--media { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.tile { display: grid; gap: 10px; align-content: start; padding: 12px; border-radius: 20px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); min-width: 0; }
+.tile[data-on] { background: rgba(255, 236, 200, .16); border-color: rgba(255, 220, 160, .35); }
+.tile__hit { display: grid; gap: 2px; justify-items: start; text-align: left; min-height: 92px; margin: -12px; padding: 12px; width: calc(100% + 24px); border: 0; border-radius: 20px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.tile__hit:disabled { cursor: progress; }
+.tile__icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,.1); color: var(--frost-dim); margin-bottom: 8px; }
+.tile[data-on] .tile__icon { background: #ffe7b8; color: #3a2a10; }
+.tile__name { font-weight: 600; font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+.tile__state { font-size: 13px; color: var(--frost-dim); overflow-wrap: anywhere; }
+.tile[data-on] .tile__state { color: var(--frost); }
+.tile__top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tile__top .tile__icon { margin: 0; flex: none; }
+.tile__text { display: grid; gap: 2px; min-width: 0; }
+.tile__actions { display: flex; gap: 8px; margin-left: auto; flex: none; }
+.tile__text { flex: 1 1 auto; }
+.round { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.1); color: var(--frost); cursor: pointer; padding: 0; }
+.round--primary { background: var(--frost); color: var(--basalt); border-color: transparent; }
+.round:disabled { opacity: .6; cursor: progress; }
+
 .device__level { display: grid; grid-template-columns: auto 1fr 3.2em; align-items: center; gap: 10px; font-size: 13px; color: var(--frost-dim); }
-.device__level input { width: 100%; accent-color: var(--frost); min-height: 44px; }
+.device__level input { width: 100%; accent-color: #ffe7b8; min-height: 44px; }
 .device__pct { text-align: right; font-variant-numeric: tabular-nums; }
-.device__error { color: #ffc2c8; font-size: 13.5px; }
+/* In a small tile the slider takes the width; its name stays for screen readers. */
+.tile .device__level { grid-template-columns: 1fr auto; gap: 8px; }
+.tile .device__level > span:first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.tile--media .device__level { grid-template-columns: auto 1fr 3.2em; }
+.tile--media .device__level > span:first-child { position: static; width: auto; height: auto; clip-path: none; }
+
+/* Scenes: chips that wrap. */
+.scenes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.scene { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.1); color: var(--frost); font: 600 14.5px var(--font-body); cursor: pointer; }
+.scene:disabled { opacity: .6; cursor: progress; }
+
+/* What Home Assistant can't reach right now: folded away, names only. */
+.home__away summary { cursor: pointer; color: var(--frost-dim); font-size: 14px; min-height: 24px; }
+.home__away ul { margin: 10px 0 0; padding-left: 18px; color: var(--frost-dim); font-size: 14px; display: grid; gap: 4px; }
 
 /* ---------- Money ---------- */
 .money__hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
