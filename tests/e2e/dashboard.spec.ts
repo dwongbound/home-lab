@@ -408,6 +408,12 @@ test('every page fits without sideways scrolling, and tappable rows are finger-s
   await page.goto('/#money')
   const heights = await page.locator('.row-link').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
   expect(Math.min(...heights)).toBeGreaterThanOrEqual(44)
+  // The tabs, the top bar's buttons and the Claude thread links too.
+  await page.goto('/#claude')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  const sizes = await page.locator('.pill, .topbar .icon-btn, .cloud__title[href]').evaluateAll((els) =>
+    els.map((el) => { const r = el.getBoundingClientRect(); return { h: r.height, w: r.width, name: el.textContent } }))
+  for (const s of sizes) expect(Math.min(s.h, s.w), s.name ?? '').toBeGreaterThanOrEqual(44)
 })
 
 /** Swipes across the page with one finger, from (x1, y) to (x2, y). */

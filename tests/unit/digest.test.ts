@@ -73,6 +73,8 @@ describe('digest reader', () => {
     const config = loadConfig({ DIGEST_FILE: '/digest/digest.json', THREADS_FILE: '/digest/threads.json' })
     const digest: any = await createDigestReader(config, { readFile, now: () => 0 }).read()
     expect(digest.threads).toEqual(threads)
+    // The panel shows when the threads were sent, not the digest's time.
+    expect(digest.threadsUpdatedAt).toBe('2026-11-11T00:40:00Z')
     // No threads file yet, or a broken one: the digest's own threads stay.
     delete files['/digest/threads.json']
     const without: any = await createDigestReader(config, { readFile, now: () => 0 }).read()

@@ -256,6 +256,8 @@ body::before {
 .services__name { font-weight: 600; font-size: 14.5px; }
 .services__detail { font-size: 13px; color: var(--frost-dim); }
 .services__ms { font-size: 12.5px; color: var(--frost-faint); }
+/* Same width as the open button, so response times line up in a column. */
+.services__nolink { width: 36px; flex: none; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--frost-faint); }
 .dot[data-status='up'] { background: var(--moss); box-shadow: 0 0 0 4px rgba(147,214,174,.16); }
 .dot[data-status='degraded'] { background: var(--ember); box-shadow: 0 0 0 4px rgba(232,176,106,.18); }
@@ -816,8 +818,20 @@ html[data-modal] { overflow: hidden; }
   .money__scroll { max-height: 60vh; }
   /* Icons only, but the label stays for screen readers. */
   .pill__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .pill { padding: 0 12px; height: 40px; }
+  .pill { padding: 0 14px; height: 40px; }
+  /* Seven 44 px icons still fit a 375 px iPhone with the gaps this tight. */
+  .pills, .pills__ink { gap: 2px; }
   .chip { display: none; }
+}
+/* Touch screens (phones and the wall iPad): everything tappable is at
+   least 44 px (.claude/CLAUDE.md), whatever the window width. */
+@media (pointer: coarse) {
+  .pill { height: 44px; }
+  .icon-btn, .avatar, .services__nolink { width: 44px; height: 44px; }
+  .cloud__row { padding-block: 0; }
+  .cloud__title { min-height: 44px; display: flex; align-items: center; }
+  .hero__alert { display: inline-block; padding-block: 12px; margin-block: -12px; }
+  .topbar__host { min-height: 44px; }
 }
 @media (max-width: 560px) {
   /* Still clear of the notch, status bar and home bar: this used to reset
@@ -831,7 +845,6 @@ html[data-modal] { overflow: hidden; }
     padding-bottom: max(40px, env(safe-area-inset-bottom, 0px));
   }
   .topbar { grid-template-columns: auto 1fr; }
-  .topbar__host span:last-child { display: none; }
   .pills { justify-self: center; }
   .topbar__end { grid-column: 2; grid-row: 1; }
   .topbar .pills { grid-column: 1 / -1; grid-row: 2; }
@@ -843,7 +856,8 @@ html[data-modal] { overflow: hidden; }
      don't fill the whole first screen on a phone. */
   .grid--money { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .money__total { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; }
-  .money__total .panel__sub { margin: 0; }
+  /* Full-strength label: these rows sit on the brightest part of the sky. */
+  .money__total .panel__sub { margin: 0; color: var(--frost); }
   .money__total .money__big { font-size: 24px; }
 }
 

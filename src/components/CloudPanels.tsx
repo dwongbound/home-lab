@@ -31,6 +31,15 @@ export function UpdatedLine({ cloud, now }: { cloud: CloudDigest; now: Date }) {
   )
 }
 
+/**
+ * The threads panel's "Updated" line. Threads come from Claude, not from
+ * Jarvis's digest, so it shows their own age and no "Updating from Jarvis…".
+ */
+function ThreadsUpdatedLine({ cloud, now }: { cloud: CloudDigest; now: Date }) {
+  const at = cloud.threadsUpdatedAt ?? cloud.updatedAt
+  return <p className="panel__sub">Updated {ago(at, now)}</p>
+}
+
 /** What a cloud panel shows before the digest is set up. */
 function NotSetUp({ what }: { what: string }) {
   return <p className="empty">{what} will show here once the Claude digest is set up. The README's “Cloud digest” section has the steps.</p>
@@ -72,7 +81,7 @@ export const ClaudeThreadsPanel = memo(function ClaudeThreadsPanel({ cloud, now,
       <header className="panel__head">
         <div>
           <h2 id="claude-title" className="panel__title">Claude threads</h2>
-          <UpdatedLine cloud={cloud} now={now} />
+          <ThreadsUpdatedLine cloud={cloud} now={now} />
         </div>
         {compact ? <a className="icon-btn" href="#claude" aria-label="All Claude threads"><Icon name="claude" size={16} /></a> : null}
       </header>
