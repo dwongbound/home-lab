@@ -8,10 +8,17 @@
 // done, stop, approval, approval_done, working, working_done) and his voice as 16-bit audio at the rate his hello names, one
 // message per sentence. When his voice has finished playing the page says
 // {"type":"idle"} so he knows the speaker is quiet again.
+//
+// Dozing (Dylan, 2026-11-14): a Jarvis whose hello says wake_word: true
+// can doze instead of hanging up. Pause sends {"type":"doze"}, and Jarvis
+// also dozes by himself when Dylan's done ("anything else?" "no"). While
+// dozing, Jarvis only listens for "Hey Jarvis" on the PC (nothing goes to
+// Whisper or his brain), then says state listening again. Talk sends
+// {"type":"wake"}. Muted, only silence goes out, so the wake word can't fire.
 
 import type { Approval, ApprovalBy } from '../types'
 
-export type TalkState = 'listening' | 'thinking' | 'speaking'
+export type TalkState = 'listening' | 'thinking' | 'speaking' | 'dozing'
 
 export interface TalkHandlers {
   /** Jarvis's side of the line changed state. */
@@ -53,6 +60,7 @@ interface TalkEvent {
   ok?: boolean
   by?: string
   later?: boolean
+  wake_word?: boolean
 }
 
 /** Who settled an approval, as one of the four the page knows. */
@@ -70,6 +78,12 @@ export interface TalkLine {
    * is switched off, so nothing it picks up leaves the phone.
    */
   setMuted: (muted: boolean) => void
+  /** Whether this Jarvis can doze and wake on "Hey Jarvis" (older ones can only hang up). */
+  canDoze: () => boolean
+  /** Pause without hanging up: his voice stops and he listens only for "Hey Jarvis". */
+  doze: () => void
+  /** Talk again after dozing, same as saying "Hey Jarvis". */
+  wake: () => void
 }
 
 /** The voice line's address on this page's own host (wss on https). */
@@ -269,6 +283,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   ws.binaryType = 'arraybuffer'
 
   let rate = 22050
+  let dozes = false
   let state: TalkState = 'listening'
   let playing: AudioBufferSourceNode[] = []
   let playAt = 0
@@ -327,8 +342,11 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
 
   /** Acts on one JSON event from Jarvis. */
   function handleEvent(event: TalkEvent) {
-    if (event.type === 'hello' && typeof event.rate === 'number') rate = event.rate
-    else if (event.type === 'state' && (event.state === 'listening' || event.state === 'thinking' || event.state === 'speaking')) {
+    if (event.type === 'hello') {
+      if (typeof event.rate === 'number') rate = event.rate
+      dozes = event.wake_word === true
+    } else if (event.type === 'state' && isTalkState(event.state)) {
+      // Dozing by himself ("that's all"): anything still queued of his sign-off plays out.
       state = event.state
       on.onState(event.state)
     } else if (event.type === 'partial' && event.text) on.onHearing(event.text)
@@ -397,5 +415,30 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   frame = requestAnimationFrame(tick)
   on.onState('listening')
 
-  return { close: () => shutDown(null), setMuted }
+  /** Tells Jarvis one thing about the line, if it's still open. */
+  function tell(type: string) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type }))
+  }
+
+  /** Pause, keeping the line: his voice stops now and he listens only for "Hey Jarvis". */
+  function doze() {
+    silence()
+    tell('doze')
+    state = 'dozing'
+    on.onState('dozing')
+  }
+
+  /** Talk after dozing: he's listening again right away (he confirms with a state event too). */
+  function wake() {
+    tell('wake')
+    state = 'listening'
+    on.onState('listening')
+  }
+
+  return { close: () => shutDown(null), setMuted, canDoze: () => dozes, doze, wake }
+}
+
+/** Whether a state Jarvis sent is one the line knows. */
+function isTalkState(value: unknown): value is TalkState {
+  return value === 'listening' || value === 'thinking' || value === 'speaking' || value === 'dozing'
 }

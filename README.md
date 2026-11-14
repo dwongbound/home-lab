@@ -114,7 +114,10 @@ Where the browser wants a tap first (iPhone and iPad Safari only open the
 microphone and play sound after one), the status reads "Tap anywhere to
 start" and the whole screen is the button. After that one big button reads
 **Pause** while talking, which also stops him mid-sentence, and **Talk** to
-pick back up. It keeps the screen on while open, because Safari drops the
+pick back up. Paused, he still listens on the PC for "Hey Jarvis" (and only
+that: nothing goes to Whisper or his brain), which picks back up too. He
+pauses himself when you're done, say "no, that's all" after "anything
+else?". Mute stops the microphone completely, wake word included. It keeps the screen on while open, because Safari drops the
 microphone when the screen locks. Add it to the home screen from Safari
 (Share, Add to Home Screen) and the icon, named Talk, opens straight into
 it: the server sends /talk with its own head (`server/talk-head.mjs`), naming

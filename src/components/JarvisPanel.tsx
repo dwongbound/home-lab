@@ -58,8 +58,10 @@ function statusText(state: OrbState, notice = '', page = false, tapToStart = fal
 }
 
 /** The chat sheet's status line: an OK it's waiting for first, then muted, then the orb's state. */
-function sheetStatus(waiting: boolean, muted: boolean, state: OrbState, notice: string, page: boolean, tapToStart: boolean, workLabel: string): string {
+function sheetStatus(waiting: boolean, muted: boolean, state: OrbState, notice: string, page: boolean, tapToStart: boolean, workLabel: string, dozing = false): string {
   if (waiting) return 'Waiting for your OK'
+  if (dozing && muted) return 'Paused and muted. Tap Talk to start'
+  if (dozing) return 'Paused. Say “Hey Jarvis” or tap Talk'
   if (muted) return 'Muted. Jarvis can still talk.'
   if (state === 'working' && workLabel) return workLabel
   return statusText(state, notice, page, tapToStart)
@@ -136,6 +138,8 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
   const [talkingOn, setTalkingOn] = useState(false)
   // /talk's Mute (Dylan, 2026-11-12): Jarvis keeps answering and speaking, but hears nothing.
   const [mutedOn, setMutedOn] = useState(false)
+  // /talk, paused but still on the line: Jarvis listens only for "Hey Jarvis" (Dylan, 2026-11-14).
+  const [dozing, setDozing] = useState(false)
   const [heard, setHeard] = useState('')
   // Why Talk ended by itself (no microphone, the line dropped), shown in the status line.
   const [notice, setNotice] = useState('')
@@ -310,7 +314,12 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
     setState('listening')
     try {
       line.current = await openTalkLine(talkUrl(window.location), {
-        onState: (s) => { if (talking.current) setState(s) },
+        onState: (s) => {
+          if (!talking.current) return
+          // Dozing shows as a still orb; any other state wakes the page with it.
+          setDozing(s === 'dozing')
+          setState(s === 'dozing' ? 'idle' : s)
+        },
         // Your words as Whisper hears them, shown while you're still talking.
         onHearing: (sofar) => { if (talking.current) setHeard(sofar) },
         onHeard: (question) => {
@@ -342,6 +351,7 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
     talking.current = false
     line.current = null
     setTalkingOn(false)
+    setDozing(false)
     setState('idle')
     setNotice(message)
   }
@@ -381,11 +391,30 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
   function stopTalk() {
     talking.current = false
     setTalkingOn(false)
+    setDozing(false)
     setHeard('')
     line.current?.close()
     line.current = null
     // The demo loop and ask() reset the state themselves; the voice line doesn't.
     if (live) setState('idle')
+  }
+
+  /**
+   * /talk's Pause: a Jarvis that can doze keeps the line and listens only
+   * for "Hey Jarvis"; an older one hangs up as before.
+   */
+  function pauseTalk() {
+    if (line.current?.canDoze()) line.current.doze()
+    else stopTalk()
+  }
+
+  /** Talk: wakes a dozing line, or opens a new one. */
+  function talkNow() {
+    if (dozing && line.current) {
+      line.current.wake()
+      return
+    }
+    void startTalk()
   }
 
   /** Closes the sheet; talking stops. */
@@ -456,7 +485,9 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
       onTapStart={tapStart}
       heard={heard}
       notice={notice}
-      onTalk={() => void startTalk()}
+      onTalk={talkNow}
+      onPause={pauseTalk}
+      dozing={dozing}
       onStopTalk={stopTalk}
       muted={mutedOn}
       workLabel={workLabel}
@@ -527,6 +558,10 @@ interface SheetProps {
   /** Why Talk ended by itself, if it did. */
   notice: string
   onTalk: () => void
+  /** /talk's Pause: doze if Jarvis can, else hang up. */
+  onPause: () => void
+  /** /talk paused but on the line, listening only for "Hey Jarvis". */
+  dozing: boolean
   onStopTalk: () => void
   /** /talk: the microphone is muted while Talk carries on. */
   muted: boolean
@@ -544,7 +579,7 @@ interface SheetProps {
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onStopTalk, muted, onMute, workLabel, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -636,8 +671,8 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
         {page ? <BackgroundTasks tasks={tasks} /> : null}
         {/* /talk shows only "Jarvis" over the orb (Dylan, 2026-11-11); the status stays for
             screen readers and shows when there's something to do: a first tap, an OK, or why Talk ended. */}
-        <p className="chat__status" role="status" data-quiet={quietStatus(page, tapToStart, waiting, state, notice, talking && muted) ? '' : undefined}>
-          {sheetStatus(waiting, talking && muted, state, notice, page, tapToStart, workLabel)}
+        <p className="chat__status" role="status" data-quiet={quietStatus(page, tapToStart, waiting, state, notice, talking && (muted || dozing)) ? '' : undefined}>
+          {sheetStatus(waiting, talking && muted, state, notice, page, tapToStart, workLabel, talking && dozing)}
         </p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
@@ -667,11 +702,15 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
         <div className="chat__form chat__form--voice">
           {talking ? (
             <>
-              {/* Mute stops only the microphone: he still answers and speaks (Dylan, 2026-11-12). */}
+              {/* Mute stops only the microphone: he still answers and speaks (Dylan, 2026-11-12). Muted, "Hey Jarvis" can't wake him either. */}
               <button type="button" className="btn chat__mute" aria-pressed={muted} onClick={onMute}>
                 {muted ? 'Unmute' : 'Mute'}
               </button>
-              <button type="button" className="btn btn--primary chat__voice" onClick={onStopTalk}>Pause</button>
+              {dozing ? (
+                <button type="button" className="btn btn--primary chat__voice" onClick={onTalk}>Talk</button>
+              ) : (
+                <button type="button" className="btn btn--primary chat__voice" onClick={onPause}>Pause</button>
+              )}
             </>
           ) : (
             <button type="button" className="btn btn--primary chat__voice" disabled={state !== 'idle'} onClick={onTalk}>Talk</button>
