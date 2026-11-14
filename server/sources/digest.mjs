@@ -55,7 +55,10 @@ export function createDigestReader(config, deps = {}) {
     try {
       const extra = JSON.parse(await readFileFn(config.threadsFile, 'utf8'))
       if (!Array.isArray(extra?.threads)) return digest
-      return { ...digest, threads: extra.threads }
+      // The threads file has its own age: it only refreshes while Claude
+      // can reach the PC, so the panel must not borrow the digest's time.
+      const threadsUpdatedAt = typeof extra.updatedAt === 'string' ? extra.updatedAt : undefined
+      return { ...digest, threads: extra.threads, threadsUpdatedAt }
     } catch {
       // No file yet, or caught mid-write: keep the digest's own threads.
       return digest

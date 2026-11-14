@@ -91,6 +91,8 @@ export type MoneyPickChange =
 export interface CloudDigest {
   updatedAt: string
   threads: ClaudeThread[]
+  /** When the threads list was last sent (THREADS_FILE), if it came separately from the digest. */
+  threadsUpdatedAt?: string
   calendar: CalendarEvent[]
   email: EmailItem[]
   deploys: Deploy[]

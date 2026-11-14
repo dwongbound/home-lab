@@ -30,7 +30,7 @@ export const ServicesPanel = memo(function ServicesPanel({ services, detailed = 
               <a className="icon-btn" href={s.url} target="_blank" rel="noreferrer" aria-label={`Open ${s.name}`}>
                 <Icon name="external" size={16} />
               </a>
-            ) : null}
+            ) : <span className="services__nolink" aria-hidden="true" />}
           </li>
         ))}
       </ul>

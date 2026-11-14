@@ -92,6 +92,7 @@ function mockDigest(t, minutesAgo) {
   const thread = (id, title, state, min) => ({ id, title, state, lastActivityAt: minutesAgo(min), url: `${PROJECT_URL}?thread=${id}` })
   return {
     updatedAt: minutesAgo(12),
+    threadsUpdatedAt: minutesAgo(40),
     threads: [
       thread('t-lab', 'Build glassy home lab admin page', 'working', 2),
       thread('t-oauth', 'Fix unverified app warning on calendar picker', 'blocked', 140),
