@@ -358,6 +358,16 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .thermo__step { width: 48px; height: 48px; padding: 0; font-size: 24px; line-height: 1; }
 .thermo__target { margin: 0; min-width: 3.2em; text-align: center; font-size: 28px; font-variant-numeric: tabular-nums; }
 .thermo__target .thermo__label { font-size: 11px; }
+.thermo__status { margin: 6px 0 0; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 500; color: var(--frost-dim); }
+.thermo__dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; opacity: .5; flex: none; }
+/* Heating or cooling right now: the line becomes a tinted pill with a bright dot (white text stays readable on any sky), and the card gets a faint wash. */
+.thermo[data-activity='heating'] .thermo__status, .thermo[data-activity='cooling'] .thermo__status { color: var(--frost); padding: 5px 12px 5px 10px; border-radius: 999px; }
+.thermo[data-activity='heating'] .thermo__status { background: rgba(214,92,24,.55); }
+.thermo[data-activity='cooling'] .thermo__status { background: rgba(28,110,190,.55); }
+.thermo[data-activity='heating'] .thermo__dot { background: #ffc08f; opacity: 1; }
+.thermo[data-activity='cooling'] .thermo__dot { background: #a9dcff; opacity: 1; }
+.thermo[data-activity='heating'] { background-image: radial-gradient(120% 90% at 0% 0%, rgba(255,150,80,.16), transparent 60%); }
+.thermo[data-activity='cooling'] { background-image: radial-gradient(120% 90% at 0% 0%, rgba(110,190,255,.16), transparent 60%); }
 
 /* The modes: one pill with the current one lit, like iOS's segmented control. */
 .seg { display: flex; padding: 4px; gap: 4px; border-radius: 999px; background: rgba(255,255,255,.07); border: 1px solid var(--glass-edge); }
@@ -709,6 +719,9 @@ html[data-modal] { overflow: hidden; }
 
 /* ---------- Motion: only when wanted ---------- */
 @media (prefers-reduced-motion: no-preference) {
+  /* The thermostat's dot breathes while it heats or cools. Opacity only, on one small dot, so it stays cheap inside glass. */
+  .thermo[data-activity='heating'] .thermo__dot, .thermo[data-activity='cooling'] .thermo__dot { animation: thermo-breathe 2.4s ease-in-out infinite; }
+  @keyframes thermo-breathe { 50% { opacity: .45; } }
   /* One sky fades into the next (dawn, day, dusk, night) over two
      minutes, so the change is barely noticed. Picking a sky in Settings
      (data-picked) answers in a second and a half instead. */
@@ -970,3 +983,4 @@ html[data-modal] { overflow: hidden; }
 .voice__select { width: 100%; min-height: 44px; grid-column: 2 / -1; }
 .voice__mix { font-size: 13px; color: var(--frost-dim); margin-top: 2px; padding-left: calc(4em + 10px); }
 .voice__actions { display: flex; gap: 8px; margin-top: 16px; }
+

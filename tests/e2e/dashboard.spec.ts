@@ -257,6 +257,9 @@ test('the thermostat shows the room temperature, and + and the mode buttons chan
   const tile = page.getByRole('region', { name: 'Thermostat' })
   await expect(tile).toBeVisible()
   await expect(tile.getByText('Inside')).toBeVisible()
+  // It says when it's working: in Heat with the room (68°) below the setting.
+  await expect(tile.locator('.thermo__status')).toHaveText(/^Heating to \d+°$/)
+  await expect(tile).toHaveAttribute('data-activity', 'heating')
   // The thermostat comes first on the page.
   await expect(page.locator('.home > .thermo').first()).toHaveAttribute('aria-label', 'Thermostat')
   const target = tile.locator('.thermo__target')

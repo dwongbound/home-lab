@@ -8,6 +8,7 @@ import { useSWRConfig } from 'swr'
 import type { Device, HomeCommand, HomeState, Snapshot } from '../types'
 import { controlDevice, SNAPSHOT_KEY } from '../api/client'
 import { clock } from '../lib/format'
+import { thermoActivity, thermoStatus } from '../lib/thermostat'
 import { Spinner } from '../components/Spinner'
 import { Icon, type IconName } from '../components/Icon'
 
@@ -36,17 +37,10 @@ const MODE_WORDS: Record<string, string> = {
   off: 'Off', heat: 'Heat', cool: 'Cool', heat_cool: 'Heat/Cool', auto: 'Auto', dry: 'Dry', fan_only: 'Fan',
 }
 
-/** What a thermostat is doing, as people say it ("heating" → "Heating"). */
-function climateText(d: Device): string {
-  if (d.state === 'off') return 'Off'
-  const doing = d.detail ? d.detail.charAt(0).toUpperCase() + d.detail.slice(1) : (MODE_WORDS[d.state] ?? d.state)
-  return d.target === undefined ? doing : `${doing}, set to ${d.target}°`
-}
-
 /** A device's state in words. */
 function stateText(d: Device): string {
   if (!d.available) return 'Unavailable'
-  if (d.kind === 'climate') return climateText(d)
+  if (d.kind === 'climate') return thermoStatus(d)
   if (d.kind === 'scene' || d.kind === 'script') return d.kind === 'scene' ? 'Scene' : 'Script'
   const word = { on: 'On', off: 'Off', playing: 'Playing', paused: 'Paused', idle: 'Idle', standby: 'Standby' }[d.state] ?? d.state
   return d.detail && d.state !== 'off' ? `${word} · ${d.detail}` : word
@@ -157,11 +151,17 @@ function deviceIcon(d: Device): IconName {
 function Thermostat({ device }: { device: Device }) {
   const { busy, error, send } = useDeviceControl(device)
   const off = !device.available || busy
+  // Heating or cooling right now, so the card can glow warm or cool.
+  const activity = thermoActivity(device)
   return (
-    <section className="glass panel thermo" data-on={isLit(device) || undefined} aria-label={device.name}>
+    <section className="glass panel thermo" data-on={isLit(device) || undefined} data-activity={activity} aria-label={device.name}>
       <header className="thermo__head">
         <h2 className="panel__title">{device.name}</h2>
-        <p className="panel__sub">{stateText(device)}</p>
+        {device.available ? (
+          <p className="thermo__status" role="status"><span className="thermo__dot" aria-hidden="true" />{thermoStatus(device)}</p>
+        ) : (
+          <p className="panel__sub">Unavailable</p>
+        )}
       </header>
       <div className="thermo__body">
         {device.current !== undefined ? (
