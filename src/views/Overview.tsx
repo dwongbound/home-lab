@@ -47,6 +47,16 @@ function AttentionLine({ count, toClaude }: { count: number; toClaude: boolean }
 /** Each Today row opens its detail. Defined once so the memoized Timeline doesn't redraw. */
 const todayLink = (item: TimelineItem) => detailHref('overview', 'j', item.id)
 
+/**
+ * Jarvis's line for the moment ("Tapestry B9 plays at 9 on court 4"), without
+ * his own hello, since the title already says good morning. Null when he has none.
+ */
+function jarvisLine(greeting: string | null): string | null {
+  if (greeting === null) return null
+  const rest = greeting.replace(/^(well,\s*)?(hi|hey|hello|good (morning|afternoon|evening|night))\b[^.!?]*[.!?]\s*/i, '').trim()
+  return rest === '' ? null : rest
+}
+
 /** The overview page. */
 export function Overview({ data, now }: { data: Snapshot; now: Date }) {
   const needs = attentionCount(data)
@@ -58,12 +68,12 @@ export function Overview({ data, now }: { data: Snapshot; now: Date }) {
       <section className="hero">
         <h1 className="hero__title">{greeting(now)}, Dylan</h1>
         <p className="hero__sub">
-          {data.host.name} has been up {uptime(data.host.uptimeSec)}.{' '}
+          {jarvisLine(data.offers?.greeting ?? null) ?? `${data.host.name} has been up ${uptime(data.host.uptimeSec)}.`}{' '}
           <AttentionLine count={needs} toClaude={threadsWaiting(data) > 0} />
         </p>
       </section>
 
-      <JarvisPanel live={data.source === 'live'} />
+      <JarvisPanel live={data.source === 'live'} offers={data.offers?.offers ?? []} />
 
       <div className="grid grid--stats">
         {data.metrics.map((m) => <StatCard key={m.id} metric={m} />)}

@@ -13,6 +13,7 @@
 //   GET  /api/jarvis/voice/sample   a WAV of ?voice=&speed=&voice2=&mix=
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
 //   GET  /api/jarvis/approvals      what Jarvis is still waiting on you to approve ({pending})
+//   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
 //   POST /api/jarvis/warm           starts Jarvis's web-chat engine early (the chat sheet opened)
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
@@ -122,10 +123,13 @@ export function createApi(source) {
       return sendJson(res, 400, { ok: false, message: 'Send JSON like {"text": "..."}' })
     }
     const login = req.headers['tailscale-user-login'] ?? ''
+    // Start on an offer card: Jarvis marks it started and takes it as Dylan's ask.
+    const caller = { login }
+    if (typeof body.offerId === 'string' && /^[\w-]{1,64}$/.test(body.offerId)) caller.offerId = body.offerId
     res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' })
     // If the phone leaves mid-reply, keep reading Jarvis's answer to the end
     // (he saves it to the chat history) and just stop writing to the page.
-    await source.chat(text, { login }, (event) => {
+    await source.chat(text, caller, (event) => {
       if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`)
     })
     res.end()
@@ -219,6 +223,20 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
+  /** Hide on an offer card: Jarvis drops it and won't offer it again soon. */
+  async function handleHideOffer(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    if (typeof body?.id !== 'string' || !/^[\w-]{1,64}$/.test(body.id)) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"id": "o1"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.hideOffer(body.id, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
   /** What Jarvis is still waiting on an answer for (after a reload, say). */
   async function handleApprovals(req, res) {
     const login = req.headers['tailscale-user-login'] ?? ''
@@ -309,6 +327,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/approve') {
         return await handleApprove(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/offers/hide') {
+        return await handleHideOffer(req, res)
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/approvals') {
         return await handleApprovals(req, res)

@@ -89,6 +89,7 @@ export async function streamJarvis(
   onWords: (soFar: string, added: string) => void,
   onApproval: (event: ApprovalEvent) => void = () => {},
   onWorking: (label: string | null) => void = () => {},
+  offerId?: string,
 ): Promise<ChatResult> {
   let soFar = ''
   let outcome: ActionResult = { ok: false, message: 'Jarvis stopped answering partway' }
@@ -112,7 +113,7 @@ export async function streamJarvis(
 
   if (IS_STATIC_BUILD) {
     const source = await getStaticSource()
-    await source.chat(text, {}, onEvent)
+    await source.chat(text, { offerId }, onEvent)
     return outcome
   }
   let res
@@ -120,7 +121,8 @@ export async function streamJarvis(
     res = await fetch('/api/jarvis/chat', {
       method: 'POST',
       headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
-      body: JSON.stringify({ text }),
+      // offerId: Start on one of his offer cards, so he knows which one.
+      body: JSON.stringify(offerId ? { text, offerId } : { text }),
     })
   } catch {
     // Never reached the page server (offline, or the phone left the page).
@@ -174,6 +176,25 @@ export async function answerApproval(id: string, ok: boolean): Promise<ActionRes
       method: 'POST',
       headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
       body: JSON.stringify({ id, ok }),
+    })
+    const body = await res.json().catch(() => null)
+    return { ok: res.ok, message: body?.message ?? `The server answered ${res.status}` }
+  } catch {
+    return { ok: false, message: 'The page server isn’t answering' }
+  }
+}
+
+/** Hide on one of Jarvis's offer cards. */
+export async function hideOffer(id: string): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.hideOffer(id)
+  }
+  try {
+    const res = await fetch('/api/jarvis/offers/hide', {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
     })
     const body = await res.json().catch(() => null)
     return { ok: res.ok, message: body?.message ?? `The server answered ${res.status}` }
