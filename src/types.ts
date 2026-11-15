@@ -154,6 +154,27 @@ export interface Snapshot {
   jobs: JarvisJobs | null
   /** Money page category picks waiting to be applied in Copilot. */
   moneyPicks: MoneyPicks
+  /** Jarvis's greeting and the tasks he offers to do (GET /offers); null on an older Jarvis. */
+  offers: JarvisOffers | null
+}
+
+/** One task Jarvis offers to do, shown as a card with Start and Hide. */
+export interface JarvisOffer {
+  id: string
+  /** "Find a cover for your Nov 29 guitar slot" */
+  title: string
+  /** What he noticed and what he'd do, in plain words. */
+  body: string
+  /** What Start says to him in the chat. */
+  startText: string
+  created: string | null
+}
+
+/** The greeting line and up to three offers. */
+export interface JarvisOffers {
+  /** "Well, good morning, Dylan! Tapestry B9 plays at 9 on court 4…", or null. */
+  greeting: string | null
+  offers: JarvisOffer[]
 }
 
 /** One of Jarvis's background jobs: Lookout, Messenger, Nightly, or housekeeping. */
@@ -295,13 +316,15 @@ export interface DataSource {
   /** Asks Jarvis. On success `message` is Jarvis's reply. */
   ask(text: string, caller?: { login?: string }): Promise<ActionResult>
   /** Chats with Jarvis, calling onEvent as his reply streams in. */
-  chat(text: string, caller: { login?: string }, onEvent: (event: ChatEvent) => void): Promise<void>
+  chat(text: string, caller: { login?: string; offerId?: string }, onEvent: (event: ChatEvent) => void): Promise<void>
   /** The web chat with Jarvis so far, oldest first. */
   history(caller?: { login?: string }): Promise<ChatTurn[]>
   /** Approves or denies one waiting request; false when Jarvis doesn't know it (answered or expired). */
   answerApproval(id: string, ok: boolean, caller?: { login?: string }): Promise<ActionResult>
   /** Requests still waiting for an answer, e.g. after a reload. */
   approvals(caller?: { login?: string }): Promise<Approval[]>
+  /** Hides one offer for good (Hide on its card). */
+  hideOffer(id: string, caller?: { login?: string }): Promise<ActionResult>
   /** What Jarvis remembers, or null when he can't be asked. */
   memory(caller?: { login?: string }): Promise<JarvisMemory | null>
   /** Searches past conversations (newest and best matches first). */

@@ -667,6 +667,30 @@ test('leaving the page while Jarvis thinks: the reply still shows up when I come
   await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk')
 })
 
+test('Jarvis offers tasks he noticed: Hide drops one, Start opens the chat and gets going', async ({ page }) => {
+  // Answered here so the shared sample server keeps its offers for the other devices.
+  let hidden: unknown = null
+  let started: unknown = null
+  await page.route('**/api/jarvis/offers/hide', async (route) => { hidden = route.request().postDataJSON(); await route.fulfill({ json: { ok: true, message: 'Hidden' } }) })
+  await page.route('**/api/jarvis/chat', async (route) => {
+    started = route.request().postDataJSON()
+    await route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"delta","text":"Here’s a draft for Alex."}\n{"type":"done","ok":true}\n' })
+  })
+  await page.goto('/')
+  // His line for the moment, without a second hello under "Good evening, Dylan".
+  await expect(page.locator('.hero__sub')).toContainText('Your 7 PM practice moved to court 2.')
+  await expect(page.getByRole('heading', { name: 'Tasks I could help with' })).toBeAttached()
+  await page.getByRole('button', { name: 'Hide: Book the oil change before your Thursday flight' }).click()
+  await expect(page.getByText('Book the oil change before your Thursday flight')).toHaveCount(0)
+  expect(hidden).toEqual({ id: 'o-oil' })
+  const start = page.getByRole('button', { name: 'Start: Find a cover for your Sunday bass slot' })
+  expect((await start.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await start.click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  await expect(chat.getByText('Here’s a draft for Alex.')).toBeVisible()
+  expect(started).toEqual({ text: 'Yes, draft the note asking Alex to cover bass on Sunday.', offerId: 'o-cover' })
+})
+
 test('asking Jarvis opens the chat, and Talk goes hands-free until Stop talking', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Is the garage open?')

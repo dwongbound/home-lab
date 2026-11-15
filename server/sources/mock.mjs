@@ -168,6 +168,26 @@ function withRefresh(digest, state) {
   return { ...digest, updatedAt: new Date(done).toISOString() }
 }
 
+/** Made-up offers like the ones Jarvis makes when he connects the dots. */
+function sampleOffers() {
+  return [
+    {
+      id: 'o-cover',
+      title: 'Find a cover for your Sunday bass slot',
+      body: 'Sam can’t make it, but Alex is already on keys that morning and plays bass too. I can draft a note asking Alex to switch.',
+      startText: 'Yes, draft the note asking Alex to cover bass on Sunday.',
+      created: null,
+    },
+    {
+      id: 'o-oil',
+      title: 'Book the oil change before your Thursday flight',
+      body: 'The plane is 2 hours from its oil change and you’re booked for 3 hours Thursday. I can find a shop slot Wednesday.',
+      startText: 'Yes, find an oil change slot on Wednesday.',
+      created: null,
+    },
+  ]
+}
+
 export function createMockSource({ now = () => new Date() } = {}) {
   const state = {
     modelLoaded: true,
@@ -178,6 +198,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
     nextApproval: 1,
     // Pretend things Jarvis remembers (made up: this repo is public).
     facts: sampleFacts(now()),
+    // Pretend tasks Jarvis offers (made up), until Start or Hide.
+    offers: sampleOffers(),
     nextFactId: 100,
     // How the pretend Jarvis sounds; the Voice section changes it.
     voice: { voice: 'bm_george', speed: 1, blend: null },
@@ -262,6 +284,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         },
         jobs: mockJobs(t, minutesAgo),
         moneyPicks: await picks.read(cloud.money.recent),
+        offers: { greeting: 'Well, good evening, Dylan! Your 7 PM practice moved to court 2.', offers: state.offers.map((o) => ({ ...o })) },
       }
     },
 
@@ -331,6 +354,12 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: true, message: ok ? 'Approved' : 'Denied' }
     },
 
+    /** Hide on an offer card: gone for good. */
+    async hideOffer(id) {
+      state.offers = state.offers.filter((o) => o.id !== id)
+      return { ok: true, message: 'Hidden' }
+    },
+
     /** Sample approvals still waiting. */
     async approvals() {
       return [...state.approvals.values()].map((w) => w.approval)
@@ -366,7 +395,9 @@ export function createMockSource({ now = () => new Date() } = {}) {
      * hands the reply over a word at a time, and keeps the conversation
      * so history() can give it back like the PC does.
      */
-    async chat(text, _caller, onEvent) {
+    async chat(text, caller, onEvent) {
+      // Start on an offer card: it's taken, so the card goes away.
+      if (caller?.offerId) state.offers = state.offers.filter((o) => o.id !== caller.offerId)
       const at = new Date().toISOString()
       state.chat.push({ role: 'user', text, at })
       await delay(700)

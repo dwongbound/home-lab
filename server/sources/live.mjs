@@ -13,6 +13,7 @@ import { promisify } from 'node:util'
 import { createDigestReader } from './digest.mjs'
 import { createHomeReader } from './home.mjs'
 import { parseJobs } from './jobs.mjs'
+import { parseOffers } from './offers.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
@@ -276,6 +277,13 @@ export function createLiveSource(config, deps = {}) {
     return parseJobs(await res.json())
   }
 
+  /** Jarvis's greeting and offers (GET /offers); null when an older Jarvis answers 404. */
+  async function readJarvisOffers() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/offers`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseOffers(await res.json())
+  }
+
   const haHeaders = {}
   if (config.haToken) haHeaders.Authorization = `Bearer ${config.haToken}`
 
@@ -295,8 +303,9 @@ export function createLiveSource(config, deps = {}) {
         home.read(),
         readJarvisSchedule(),
         readJarvisJobs(),
+        readJarvisOffers(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -343,6 +352,7 @@ export function createLiveSource(config, deps = {}) {
         home: homeState,
         jobs,
         moneyPicks: await picks.read(cloud?.money?.recent ?? []),
+        offers,
       }
     },
 
@@ -426,7 +436,7 @@ export function createLiveSource(config, deps = {}) {
         res = await fetchFn(`${config.jarvisApiUrl}/chat/stream`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify(caller.offerId ? { text, offer_id: caller.offerId } : { text }),
           signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
         })
       } catch {
@@ -467,6 +477,23 @@ export function createLiveSource(config, deps = {}) {
         if (res.status === 404) return { ok: false, message: 'That request was already answered or ran out of time' }
         if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
         return { ok: true, message: ok ? 'Approved' : 'Denied' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /** Hide on an offer card (POST /offers/{id}/hide). */
+    async hideOffer(id, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to answer Jarvis' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/offers/${encodeURIComponent(id)}/hide`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        // Already gone counts as hidden.
+        if (!res.ok && res.status !== 404) return { ok: false, message: `Jarvis answered ${res.status}` }
+        return { ok: true, message: 'Hidden' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }

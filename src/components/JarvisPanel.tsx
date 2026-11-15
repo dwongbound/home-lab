@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
 import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
-import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, RunningTask } from '../types'
+import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, RunningTask } from '../types'
+import { OfferCards } from './OfferCards'
 import { BackgroundTasks } from './BackgroundTasks'
 import { canTalkUnprompted, openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
 import { outcomeText, readableSummary, settledAs, toolLabel } from '../lib/approvals'
@@ -123,10 +124,12 @@ interface Props {
   page?: boolean
   /** /talk: the work Dylan sent to the background, shown beside the orb until it finishes. */
   tasks?: RunningTask[]
+  /** Tasks Jarvis offers to do, as cards under the bar (not on /talk). */
+  offers?: JarvisOffer[]
 }
 
 /** The bar on the Overview, plus the chat sheet it opens (or, on /talk, only the sheet). */
-export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
+export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<OrbState>('idle')
   const [turns, setTurnsState] = useState<Turn[]>(savedTurns)
@@ -230,8 +233,8 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
     void ask(question)
   }
 
-  /** Asks one question and types out the reply. */
-  async function ask(question: string) {
+  /** Asks one question and types out the reply. offerId: it's Start on one of his offer cards. */
+  async function ask(question: string, offerId?: string) {
     setState('thinking')
     const id = savedTurns.length
     const askedAt = Date.now()
@@ -248,6 +251,7 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
         },
         (event) => onApprovalEvent(id, event),
         onWorking,
+        offerId,
       )
     } catch (err) {
       result = { ok: false, message: err instanceof Error ? err.message : 'The request failed' }
@@ -498,6 +502,13 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
   )
   if (page) return sheet
 
+  /** Start on an offer card: the chat opens and Jarvis gets going on it. */
+  function startOffer(offer: JarvisOffer) {
+    if (busy) return
+    setOpen(true)
+    void ask(offer.startText, offer.id)
+  }
+
   const last = turns.length > 0 ? turns[turns.length - 1] : null
   const lastText = lastLine(last, historyChecked, state, notice)
 
@@ -531,6 +542,7 @@ export function JarvisPanel({ live, page = false, tasks = [] }: Props) {
         <span className="jarvis__last-text">{lastText}</span>
         <span className="jarvis__last-open">Open chat</span>
       </button>
+      <OfferCards offers={offers} busy={busy} onStart={startOffer} />
       {open ? sheet : null}
     </section>
   )
