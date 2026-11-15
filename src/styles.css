@@ -460,7 +460,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .picker__chip[aria-pressed='true'] { background: rgba(168, 230, 184, .2); border-color: rgba(168, 230, 184, .7); }
 .btn:disabled { opacity: .55; cursor: default; }
 .picker__other { display: flex; gap: 8px; }
-.picker__input { flex: 1; min-width: 0; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.07); color: var(--frost); font: 15px var(--font-body); }
+.picker__input { flex: 1; min-width: 0; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.07); color: var(--frost); font: 16px var(--font-body); }
 .picker__input::placeholder { color: var(--frost-faint); }
 .picker__undo { justify-self: start; }
 .picker__ready { display: grid; place-items: center; text-decoration: none; margin-bottom: 12px; }
@@ -480,7 +480,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jarvis > .orb { margin-left: 6px; }
 .jarvis__form { display: flex; gap: 8px; }
 .jarvis__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.jarvis__input { flex: 1; min-width: 0; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.07); color: var(--frost); font: 15px var(--font-body); }
+.jarvis__input { flex: 1; min-width: 0; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.07); color: var(--frost); font: 16px var(--font-body); }
 .jarvis__input::placeholder { color: var(--frost-faint); }
 /* A text box shows focus with a brighter edge, not the blue ring. */
 .jarvis__input:focus, .jarvis__input:focus-visible { outline: none; border-color: rgba(255,255,255,.4); background: rgba(255,255,255,.1); }
@@ -711,6 +711,13 @@ html[data-modal] { overflow: hidden; }
 .switch[aria-checked='true'] .switch__knob { left: 23px; background: #fff; }
 
 /* Fingers, not a mouse (iPad, iPhone): every control and row at least 44 px. */
+/* iPhone Safari zooms the page into any text box under 16px when it's
+   tapped (Dylan, 2026-11-15). 16px on touch for every box, whatever its own
+   rule says, so none can slip back; pinch-zoom still works. */
+@media (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+}
+
 @media (pointer: coarse) {
   .row-link { min-height: 44px; }
   .icon-btn { width: 44px; height: 44px; }

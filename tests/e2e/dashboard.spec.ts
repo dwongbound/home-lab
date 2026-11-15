@@ -418,6 +418,13 @@ test('every page fits without sideways scrolling, and tappable rows are finger-s
     expect(overflow, hash).toBeLessThanOrEqual(0)
   }
   if (info.project.name === 'desktop') return
+  // No text box under 16px, or the iPhone zooms in when one is tapped.
+  for (const hash of ['', '#money', '#home', '#preferences']) {
+    await page.goto('/' + hash)
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    const sizes = await page.locator('input:not([type=radio]):not([type=checkbox]), textarea, select').evaluateAll((els) => els.map((el) => parseFloat(getComputedStyle(el).fontSize)))
+    expect(Math.min(16, ...sizes), hash || 'overview').toBeGreaterThanOrEqual(16)
+  }
   await page.goto('/#money')
   const heights = await page.locator('.row-link').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
   expect(Math.min(...heights)).toBeGreaterThanOrEqual(44)
