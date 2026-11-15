@@ -1,7 +1,9 @@
 // Jarvis's "Tasks I could help with": what he noticed and what he'd do,
 // each with Hide and Start (Dylan, 2026-11-14: "this is how proactive
 // jarvis should be"). Start asks him in the chat; Hide drops it for good.
-import { useState } from 'react'
+// The list folds into one bar with a count, closed on every load (Dylan,
+// 2026-11-15: "make it default collapsed").
+import { useId, useState } from 'react'
 import { hideOffer } from '../api/client'
 import type { JarvisOffer } from '../types'
 import { Icon } from './Icon'
@@ -19,6 +21,8 @@ export function OfferCards({ offers, onStart, busy }: Props) {
   // Cards tapped away here, before the next snapshot drops them.
   const [gone, setGone] = useState<Set<string>>(() => new Set())
   const [error, setError] = useState('')
+  const [open, setOpen] = useState(false)
+  const listId = useId()
   const shown = offers.filter((o) => !gone.has(o.id))
   if (shown.length === 0) return null
 
@@ -45,9 +49,15 @@ export function OfferCards({ offers, onStart, busy }: Props) {
   }
 
   return (
-    <div className="offers">
-      <h3 className="offers__title">Tasks I could help with</h3>
-      <ul className="offers__list">
+    <div className="offers" data-open={open}>
+      <h3 className="offers__title">
+        <button type="button" className="offers__toggle" aria-expanded={open} aria-controls={listId} onClick={() => setOpen(!open)}>
+          <span>Tasks I could help with</span>
+          <span className="offers__count" aria-label={`${shown.length} ${shown.length === 1 ? 'task' : 'tasks'}`}>{shown.length}</span>
+          <span className="offers__chevron"><Icon name="chevron" size={18} /></span>
+        </button>
+      </h3>
+      <ul className="offers__list" id={listId} hidden={!open}>
         {shown.map((offer) => (
           <li key={offer.id} className="offer">
             <div className="offer__top">
