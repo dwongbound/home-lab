@@ -758,7 +758,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
       // The /talk page always does, even before Talk is tapped.
       data-talking={talking || page ? '' : undefined}
       data-page={page ? '' : undefined}
-      aria-labelledby="chat-title"
+      aria-label="Jarvis"
       // Esc closes the sheet; /talk is a page of its own with nothing to close.
       onCancel={(e) => { e.preventDefault(); if (!page) onClose() }}
       // A tap outside the sheet closes it, except on /talk where there's nothing outside.
@@ -772,9 +772,9 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
       )}
       <header className="chat__head">
         <JarvisOrb ref={orbRef} state={state} size={page ? TALK_PAGE_ORB : 64} />
-        <h2 id="chat-title" className="dialog__title">Jarvis</h2>
+        {/* No "Jarvis" title over the orb (Dylan, 2026-11-16): the orb is the name. */}
         {page ? <BackgroundTasks tasks={tasks} /> : null}
-        {/* /talk shows only "Jarvis" over the orb (Dylan, 2026-11-11); the status stays for
+        {/* /talk shows only the orb (Dylan, 2026-11-11, 2026-11-16); the status stays for
             screen readers and shows when there's something to do: a first tap, an OK, or why Talk ended. */}
         <p className="chat__status" role="status" data-quiet={quietStatus(page, tapToStart, waiting, state, notice, talking && (muted || dozing)) ? '' : undefined}>
           {sheetStatus(waiting, talking && muted, state, notice, page, tapToStart, workLabel, talking && dozing)}

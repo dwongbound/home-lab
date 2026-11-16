@@ -3,11 +3,11 @@
 // names the model with each reply; the chat shows it as a small chip over
 // the reply, orange for Claude and blue for anything local.
 
-/** The chip's text for a model name from Jarvis: "claude" → "Claude", "ornith" → "Ornith". */
+/** The chip's text (Dylan, 2026-11-16): "Jarvis (C)" for Claude, "Jarvis (O)" for Ornith, the model's initial for any other. */
 export function modelLabel(model: string): string {
   const name = model.trim()
   if (!name) return ''
-  return name[0].toUpperCase() + name.slice(1)
+  return `Jarvis (${name[0].toUpperCase()})`
 }
 
 /** The chip's colour family: Claude is orange, every local model is blue. */
