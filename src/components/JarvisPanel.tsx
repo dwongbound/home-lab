@@ -474,6 +474,24 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
   // Leaving the page stops the microphone and the voice.
   useEffect(() => () => stopTalk(), [])
 
+  // Leaving the app (home screen, another app, locking the phone) hangs up
+  // at once, so his voice doesn't carry on in the background (Dylan,
+  // 2026-11-15). Coming back shows Talk to start again.
+  useEffect(() => {
+    /** Hangs up if Talk is on while the page goes out of sight. */
+    function leave() {
+      if (document.visibilityState === 'visible' || !talking.current) return
+      stopTalk()
+      setNotice('Stopped when you left. Tap Talk to start again.')
+    }
+    document.addEventListener('visibilitychange', leave)
+    window.addEventListener('pagehide', leave)
+    return () => {
+      document.removeEventListener('visibilitychange', leave)
+      window.removeEventListener('pagehide', leave)
+    }
+  }, [])
+
   const sheet = (
     <ChatSheet
       turns={turns}
