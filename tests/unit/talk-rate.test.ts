@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { audioWasInterrupted, contextRate } from '../../src/lib/talk'
+import { audioWasInterrupted, contextRate, heardYouOut } from '../../src/lib/talk'
 
 // Talk's audio runs at the microphone's rate, or iPhones crackle.
 describe('contextRate', () => {
@@ -31,5 +31,19 @@ describe('audioWasInterrupted', () => {
   it('is false while playing or after hanging up', () => {
     expect(audioWasInterrupted('running')).toBe(false)
     expect(audioWasInterrupted('closed')).toBe(false)
+  })
+})
+
+// The "got it" sound plays once, when he stops listening and starts on an answer.
+describe('heardYouOut', () => {
+  it('is true going from listening to thinking', () => {
+    expect(heardYouOut('listening', 'thinking')).toBe(true)
+  })
+
+  it('is false for every other change', () => {
+    expect(heardYouOut('thinking', 'speaking')).toBe(false)
+    expect(heardYouOut('speaking', 'listening')).toBe(false)
+    expect(heardYouOut('dozing', 'listening')).toBe(false)
+    expect(heardYouOut('listening', 'dozing')).toBe(false)
   })
 })
