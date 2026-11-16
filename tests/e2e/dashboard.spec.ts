@@ -944,3 +944,23 @@ test('while Jarvis looks something up, the orb switches to its working sweep and
   await expect(chat.getByText(/volleyball at 7:30/).last()).toBeVisible({ timeout: 15_000 })
   await expect(chat.locator('.chat__head .orb')).not.toHaveAttribute('data-state', 'working')
 })
+
+test('Jarvis shows typing dots until his reply starts', async ({ page }) => {
+  // Held until the test lets it go, so the dots can be seen while he "thinks".
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/jarvis/chat', async (route) => {
+    await held
+    await route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"delta","text":"It is 64° and clear."}\n{"type":"done","ok":true}\n' })
+  })
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('What is the weather?')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  const typing = chat.getByLabel('Jarvis is typing')
+  await expect(typing).toBeVisible()
+  await expect(typing.locator('.chat__dot')).toHaveCount(3)
+  release()
+  await expect(chat.getByText('It is 64° and clear.')).toBeVisible()
+  await expect(chat.locator('.chat__typing')).toHaveCount(0)
+})
