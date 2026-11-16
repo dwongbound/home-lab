@@ -221,16 +221,19 @@ function routeToSpeaker(ctx: AudioContext, voice: AudioNode): HTMLAudioElement |
   return element
 }
 
-/** The slowest and fastest microphone rates the context will follow (Hz). */
-const MIN_CONTEXT_RATE = 8000
+/**
+ * The microphone rates the context follows: full-quality ones only. PR #80
+ * matched 44.1 and 48 kHz and fixed the iPhone speaker's crackle; following
+ * the 16 or 24 kHz call-quality rates too (PR #83) brought it back (Dylan,
+ * 2026-11-15 8:43 PM), so those use the browser's default again.
+ */
+const MIN_CONTEXT_RATE = 44100
 const MAX_CONTEXT_RATE = 96000
 
 /**
- * The rate the audio context should run at: the microphone's own, whatever
- * it is. iPhones crackle when the context and the open microphone run at
- * different rates. That's 44.1 vs 48 kHz on the phone's speaker, and 16 or
- * 24 kHz on AirPods or car Bluetooth, which drop to call quality while the
- * microphone is on (Dylan, 2026-11-15: "the crackling is back").
+ * The rate the audio context should run at: the microphone's own when it's
+ * a full-quality one. iPhones crackle when the context and the open
+ * microphone run at different rates (44.1 vs 48 kHz).
  * Null means use the browser's default.
  */
 export function contextRate(micRate: unknown): number | null {
@@ -252,9 +255,16 @@ export function audioWasInterrupted(state: string): boolean {
   return state === 'interrupted' || state === 'suspended'
 }
 
-/** True when the microphone now runs at a different rate than the audio context it was opened with. */
+/** The rate the microphone says it runs at, or null when it doesn't say. */
+function micRateOf(stream: MediaStream): number | null {
+  const rate = stream.getAudioTracks()[0]?.getSettings?.().sampleRate
+  if (typeof rate !== 'number') return null
+  return rate
+}
+
+/** True when the microphone now runs at a different full-quality rate than the audio context it was opened with. */
 function rateDrifted(stream: MediaStream, ctx: AudioContext): boolean {
-  const rate = contextRate(stream.getAudioTracks()[0]?.getSettings?.().sampleRate)
+  const rate = contextRate(micRateOf(stream))
   if (rate === null || rate === ctx.sampleRate) return false
   console.info(`[talk] microphone moved to ${rate} Hz, audio is ${ctx.sampleRate} Hz: starting fresh`)
   return true
@@ -497,6 +507,8 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   }
   ws.onerror = null
   ws.onclose = () => shutDown('The line to Jarvis dropped')
+  // For Jarvis's log, so a crackle report can be matched to the phone's audio rates.
+  ws.send(JSON.stringify({ type: 'client', mic_rate: micRateOf(stream), audio_rate: ctx.sampleRate, agent: navigator.userAgent }))
   ctx.onstatechange = () => {
     if (audioWasInterrupted(ctx.state)) shutDown(INTERRUPTED_MESSAGE)
   }
