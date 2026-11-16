@@ -982,6 +982,25 @@ test('a chip over each reply says who answered: Jarvis (C) in orange, Jarvis (O)
   await expect(chat.locator('.chat__model').last()).toHaveAttribute('data-model', 'claude')
 })
 
+test('a reply with Markdown shows headings, a table, a list and a divider', async ({ page }) => {
+  const reply = '## Headsets\n| Item | Price |\n|---|---|\n| A30 | $900 |\n| A20 | $650 |\n\n---\n- **GA plugs** only\n- posted this week'
+  await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: JSON.stringify({ type: 'delta', text: reply }) + '\n{"type":"done","ok":true}\n' }))
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Any headset deals?')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  const answer = chat.locator('.chat__a').last()
+  await expect(answer.getByRole('heading', { name: 'Headsets' })).toBeVisible()
+  await expect(answer.getByRole('table')).toBeVisible()
+  await expect(answer.getByRole('cell', { name: '$650' })).toBeVisible()
+  await expect(answer.getByRole('listitem')).toHaveCount(2)
+  await expect(answer.locator('strong')).toHaveText('GA plugs')
+  await expect(answer.locator('hr')).toHaveCount(1)
+  // No raw Markdown characters are left on screen.
+  await expect(answer).not.toContainText('|')
+  await expect(answer).not.toContainText('**')
+})
+
 test('the "…" after a reply says "That was wrong" and opens a pop-up for what he should have said', async ({ page }) => {
   let sent: unknown = null
   await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"delta","text":"I can only time drives from your phone."}\n{"type":"done","ok":true}\n' }))
