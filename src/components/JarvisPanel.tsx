@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
-import { answerApproval, loadApprovals, loadChatHistory, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
+import { answerApproval, loadApprovals, loadChatHistory, sendFeedback, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
 import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, RunningTask } from '../types'
 import { OfferCards } from './OfferCards'
@@ -8,6 +8,7 @@ import { canTalkUnprompted, openTalkLine, talkUrl, type TalkLine } from '../lib/
 import { outcomeText, readableSummary, settledAs, toolLabel } from '../lib/approvals'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
+import { Spinner } from './Spinner'
 
 // Talking to Jarvis from the home page. The Overview keeps a slim bar: the
 // orb, a box, Ask and Talk. Asking opens the chat: a fixed-size sheet with a
@@ -18,7 +19,7 @@ import { useScrollLock } from '../useScrollLock'
 // over him and he stops). The conversation outlives closing the sheet and
 // changing pages, for this visit.
 
-interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[] }
+interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[]; flagged?: boolean }
 /** An approval as the chat shows it: waiting, being sent, or settled (and how). */
 interface ApprovalView extends Approval {
   outcome?: ApprovalOutcome
@@ -561,6 +562,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
       muted={mutedOn}
       workLabel={workLabel}
       stalled={stalled}
+      onFlagged={(id) => setTurns((t) => t.map((x) => (x.id === id ? { ...x, flagged: true } : x)))}
       onMute={() => setMute(!muted.current)}
       onAnswer={(id, ok) => void answer(id, ok)}
       onClose={close}
@@ -649,6 +651,8 @@ interface SheetProps {
   workLabel: string
   /** His reply went quiet mid-sentence, so the typing dots show again. */
   stalled: boolean
+  /** "That was wrong" went through for this turn. */
+  onFlagged: (id: number) => void
   /** Approve (true) or Deny (false) tapped on one of Jarvis's requests. */
   onAnswer: (id: string, ok: boolean) => void
   onClose: () => void
@@ -659,7 +663,7 @@ interface SheetProps {
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, stalled, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, stalled, onFlagged, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -772,6 +776,10 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
               </p>
             ) : null}
             {typing ? <TypingDots label={state === 'working' ? workLabel : ''} /> : null}
+            {/* /talk is voice only: there he says "that's wrong" instead. */}
+            {!page && t.done && t.ok && t.answer ? (
+              <WrongReply turn={t} onFlagged={onFlagged} />
+            ) : null}
           </li>
           )
         })}
@@ -852,5 +860,56 @@ function ApprovalCard({ approval: a, talking, onAnswer }: { approval: ApprovalVi
       )}
       {a.error ? <p className="approval__error" role="alert">{a.error}</p> : null}
     </div>
+  )
+}
+
+/**
+ * "That was wrong" under one of his replies (Dylan, 2026-11-16: train Jarvis
+ * from his mistakes). Opens a short note for what he should have said, then
+ * sends both to Jarvis, who works it into a fix and a test overnight.
+ */
+function WrongReply({ turn, onFlagged }: { turn: Turn; onFlagged: (id: number) => void }) {
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+
+  /** Sends the flag; on success the turn remembers it, so the button becomes a thank-you. */
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setSending(true)
+    setError('')
+    const result = await sendFeedback({ question: turn.question, answer: turn.answer, note })
+    setSending(false)
+    if (result.ok) onFlagged(turn.id)
+    else setError(result.message)
+  }
+
+  if (turn.flagged) return <p className="wrong__done">Thanks. Jarvis will work on that tonight.</p>
+  if (!open) {
+    return (
+      <button type="button" className="wrong__open" onClick={() => setOpen(true)}>That was wrong</button>
+    )
+  }
+  return (
+    <form className="wrong" onSubmit={submit} aria-label="Tell Jarvis what was wrong">
+      <label className="wrong__label" htmlFor={`wrong-${turn.id}`}>What should he have said? (optional)</label>
+      <textarea
+        id={`wrong-${turn.id}`}
+        className="wrong__note"
+        rows={2}
+        maxLength={2000}
+        value={note}
+        disabled={sending}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      {sending ? <Spinner label="Telling Jarvis…" /> : (
+        <div className="wrong__actions">
+          <button type="button" className="btn" onClick={() => setOpen(false)}>Close</button>
+          <button type="submit" className="btn btn--primary">Send</button>
+        </div>
+      )}
+      {error ? <p className="approval__error" role="alert">{error}</p> : null}
+    </form>
   )
 }

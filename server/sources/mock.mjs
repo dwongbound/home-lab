@@ -200,6 +200,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
     facts: sampleFacts(now()),
     // Pretend tasks Jarvis offers (made up), until Start or Hide.
     offers: sampleOffers(),
+    // "That was wrong" flags sent from the chat.
+    feedback: [],
     nextFactId: 100,
     // How the pretend Jarvis sounds; the Voice section changes it.
     voice: { voice: 'bm_george', speed: 1, blend: null },
@@ -358,6 +360,12 @@ export function createMockSource({ now = () => new Date() } = {}) {
     async hideOffer(id) {
       state.offers = state.offers.filter((o) => o.id !== id)
       return { ok: true, message: 'Hidden' }
+    },
+
+    /** "That was wrong": kept in memory so a test can see it arrived. */
+    async sendFeedback(flag) {
+      state.feedback.push(flag)
+      return { ok: true, message: 'Thanks. Jarvis will work on it tonight.' }
     },
 
     /** Sample approvals still waiting. */

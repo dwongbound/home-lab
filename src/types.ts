@@ -323,6 +323,8 @@ export interface DataSource {
   answerApproval(id: string, ok: boolean, caller?: { login?: string }): Promise<ActionResult>
   /** Requests still waiting for an answer, e.g. after a reload. */
   approvals(caller?: { login?: string }): Promise<Approval[]>
+  /** "That was wrong" on one of his replies, with what he should have said (may be empty). */
+  sendFeedback(flag: JarvisFeedback, caller?: { login?: string }): Promise<ActionResult>
   /** Hides one offer for good (Hide on its card). */
   hideOffer(id: string, caller?: { login?: string }): Promise<ActionResult>
   /** What Jarvis remembers, or null when he can't be asked. */
@@ -349,3 +351,10 @@ export interface DataSource {
 
 /** Whether Jarvis is rewriting the digest, and when it last wrote one. */
 export interface DigestRefresh { running: boolean; lastWrite: string | null }
+
+/** "That was wrong" on one of Jarvis's replies: what was asked, what he said, and what Dylan wanted. */
+export interface JarvisFeedback {
+  question: string
+  answer: string
+  note: string
+}
