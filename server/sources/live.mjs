@@ -225,11 +225,29 @@ export function createLiveSource(config, deps = {}) {
     return 'down'
   }
 
-  /** The words after Jarvis's status: which brain it's using, or why it's quiet. */
+  /** The words after Jarvis's status: which brain it's using (and which build, when he says), or why it's quiet. */
   function jarvisDetail(unitState, health) {
-    if (health !== null) return health.brain ? `Thinking with ${health.brain}` : 'Answering'
+    if (health !== null) {
+      const brain = health.brain ? `Thinking with ${health.brain}` : 'Answering'
+      const version = jarvisVersion(health.version)
+      return version ? `${brain} · ${version}` : brain
+    }
     if (unitState !== 'unknown') return `systemd says ${unitState}`
     return 'Not answering'
+  }
+
+  /**
+   * "build 142" from /health's version, so Dylan can compare the running
+   * Jarvis with a pending build (2026-11-16: build numbers only, no hashes);
+   * "with unsaved edits" when the tree has uncommitted changes, "pending
+   * build 143" when the next build is staged for his OK.
+   */
+  function jarvisVersion(version) {
+    if (!version || typeof version !== 'object' || !Number.isInteger(version.build)) return ''
+    let text = `build ${version.build}`
+    if (version.dirty === true) text += ' with unsaved edits'
+    if (version.pending && typeof version.pending === 'object') text += `, pending build ${version.build + 1}`
+    return text
   }
 
   /** "up" with a model loaded, "idle" when Ollama runs with nothing loaded, else "down". */
