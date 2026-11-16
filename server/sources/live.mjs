@@ -246,7 +246,11 @@ export function createLiveSource(config, deps = {}) {
     if (!version || typeof version !== 'object' || !Number.isInteger(version.build)) return ''
     let text = `build ${version.build}`
     if (version.dirty === true) text += ' with unsaved edits'
-    if (version.pending && typeof version.pending === 'object') text += `, pending build ${version.build + 1}`
+    if (version.pending && typeof version.pending === 'object') {
+      // Jarvis names the staged build's number; older shapes only imply the next one.
+      const next = Number.isInteger(version.pending.build) ? version.pending.build : version.build + 1
+      text += `, pending build ${next}`
+    }
     return text
   }
 
