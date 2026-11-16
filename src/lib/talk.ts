@@ -5,7 +5,7 @@
 // The page sends the microphone as 16 kHz 16-bit mono audio in 20 ms
 // frames, and keeps sending while Jarvis speaks so you can talk over him
 // (he stops). Jarvis sends JSON events (state, partial, transcript, reply,
-// done, stop, approval, approval_done, working, working_done) and his voice as 16-bit audio at the rate his hello names, one
+// done, stop, approval, approval_done, working, working_done, model) and his voice as 16-bit audio at the rate his hello names, one
 // message per sentence. When his voice has finished playing the page says
 // {"type":"idle"} so he knows the speaker is quiet again.
 //
@@ -24,14 +24,16 @@ export type TalkState = 'listening' | 'thinking' | 'speaking' | 'dozing'
 export interface TalkHandlers {
   /** Jarvis's side of the line changed state. */
   onState: (state: TalkState) => void
-  /** What Whisper has heard so far while you're still talking (replaced by each newer guess). */
-  onHearing: (text: string) => void
-  /** What Whisper heard you say (one whole turn). */
-  onHeard: (text: string) => void
+  /** What Whisper has heard so far while you're still talking (replaced by each newer guess). joined: it carries on the question he was already answering. */
+  onHearing: (text: string, joined: boolean) => void
+  /** What Whisper heard you say (one whole turn). joined: the earlier words plus what you added after he thought you were done. */
+  onHeard: (text: string, joined: boolean) => void
   /** More of Jarvis's reply text. */
   onReply: (added: string) => void
   /** Jarvis started something slow (label says what, e.g. "Searching the web."), or finished it (null). */
   onWorking: (label: string | null) => void
+  /** Who is answering this reply: "claude", or "ornith" when he has fallen back to the local model. */
+  onModel: (model: string) => void
   /** Jarvis finished this reply. */
   onDone: () => void
   /** You talked over him, so the rest of the reply was dropped. */
@@ -58,6 +60,8 @@ interface TalkEvent {
   tool?: string
   summary?: string
   expires?: string
+  joined?: boolean
+  model?: string
   ok?: boolean
   by?: string
   later?: boolean
@@ -186,6 +190,9 @@ const EDGE_FADE_S = 0.004
  * True when Jarvis just decided you're done talking: he goes from listening
  * to thinking. That's when the "got it" sound plays (Dylan, 2026-11-16:
  * "so I know when Jarvis is done listening to me and is starting to respond").
+ * Since 2026-11-16 he says thinking only once the turn is final (after the
+ * short grace in which more words would be joined on), so the sound never
+ * comes before you're done (Dylan: "it made me feel rushed").
  */
 export function heardYouOut(before: TalkState, after: TalkState): boolean {
   return before === 'listening' && after === 'thinking'
@@ -482,11 +489,12 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       // Dozing by himself ("that's all"): anything still queued of his sign-off plays out.
       state = event.state
       on.onState(event.state)
-    } else if (event.type === 'partial' && event.text) on.onHearing(event.text)
-    else if (event.type === 'transcript' && event.text) on.onHeard(event.text)
+    } else if (event.type === 'partial' && event.text) on.onHearing(event.text, event.joined === true)
+    else if (event.type === 'transcript' && event.text) on.onHeard(event.text, event.joined === true)
     else if (event.type === 'reply' && event.text) on.onReply(event.text)
     else if (event.type === 'working') on.onWorking(event.label ?? '')
     else if (event.type === 'working_done') on.onWorking(null)
+    else if (event.type === 'model' && typeof event.model === 'string') on.onModel(event.model)
     else if (event.type === 'done') {
       replyDone = true
       on.onDone()

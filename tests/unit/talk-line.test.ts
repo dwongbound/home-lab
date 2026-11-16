@@ -48,7 +48,7 @@ describe('the voice line', () => {
   })
 
   it('refuses in words when the browser has no microphone', async () => {
-    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn(), onApproval: vi.fn(), onApprovalDone: vi.fn(), onWorking: vi.fn() }
+    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn(), onApproval: vi.fn(), onApprovalDone: vi.fn(), onWorking: vi.fn(), onModel: vi.fn() }
     await expect(openTalkLine('ws://x/api/jarvis/talk', on)).rejects.toThrow('This browser can’t send your voice to Jarvis')
   })
 
@@ -100,7 +100,7 @@ describe('the voice line', () => {
     URL.createObjectURL = () => 'blob:x'
     URL.revokeObjectURL = () => {}
 
-    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn(), onApproval: vi.fn(), onApprovalDone: vi.fn(), onWorking: vi.fn() }
+    const on = { onState: vi.fn(), onHearing: vi.fn(), onHeard: vi.fn(), onReply: vi.fn(), onDone: vi.fn(), onInterrupted: vi.fn(), onLevel: vi.fn(), onClosed: vi.fn(), onApproval: vi.fn(), onApprovalDone: vi.fn(), onWorking: vi.fn(), onModel: vi.fn() }
     const opening = openTalkLine('ws://x/api/jarvis/talk', on)
     await vi.waitFor(() => expect(socket).not.toBeNull())
     socket!.onopen!()
@@ -109,9 +109,17 @@ describe('the voice line', () => {
     say({ type: 'partial', text: 'turn the' })
     say({ type: 'partial', text: 'turn the big light' })
     say({ type: 'transcript', text: 'Turn the big light off.' })
+    // Who's answering: the chip over the reply follows this.
+    say({ type: 'model', model: 'ornith' })
     say({ type: 'reply', text: 'Done.' })
-    expect(on.onHearing.mock.calls).toEqual([['turn the'], ['turn the big light']])
-    expect(on.onHeard).toHaveBeenCalledWith('Turn the big light off.')
+    expect(on.onModel).toHaveBeenCalledWith('ornith')
+    expect(on.onHearing.mock.calls).toEqual([['turn the', false], ['turn the big light', false]])
+    expect(on.onHeard).toHaveBeenCalledWith('Turn the big light off.', false)
+    // Carrying on after he thought you were done: the words come back joined onto the same question.
+    say({ type: 'partial', text: 'Turn the big light off. And the', joined: true })
+    say({ type: 'transcript', text: 'Turn the big light off. And the fan.', joined: true })
+    expect(on.onHearing).toHaveBeenLastCalledWith('Turn the big light off. And the', true)
+    expect(on.onHeard).toHaveBeenLastCalledWith('Turn the big light off. And the fan.', true)
     expect(on.onReply).toHaveBeenCalledWith('Done.')
     // A slow lookup: the orb's working sweep starts with what he's doing, then stops.
     say({ type: 'working', label: 'Checking traffic to Disneyland.' })

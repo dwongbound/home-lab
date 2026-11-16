@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { answerApproval, loadApprovals, loadChatHistory, sendFeedback, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
 import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
+import { canJoin, joinHeard } from '../lib/heard'
+import { modelLabel, modelTone } from '../lib/model'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, RunningTask } from '../types'
 import { OfferCards } from './OfferCards'
 import { BackgroundTasks } from './BackgroundTasks'
@@ -19,7 +21,8 @@ import { Spinner } from './Spinner'
 // over him and he stops). The conversation outlives closing the sheet and
 // changing pages, for this visit.
 
-interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[]; flagged?: boolean }
+/** model: who wrote the answer ("claude", or "ornith" when he fell back to the local model), once Jarvis has said. */
+interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[]; flagged?: boolean; model?: string }
 /** An approval as the chat shows it: waiting, being sent, or settled (and how). */
 interface ApprovalView extends Approval {
   outcome?: ApprovalOutcome
@@ -105,6 +108,7 @@ function toTurns(lines: ChatTurn[]): Turn[] {
       turns.push({ id: turns.length, question: line.text, answer: '', ok: true, done: true })
     } else if (turns.length > 0 && turns[turns.length - 1].answer === '') {
       turns[turns.length - 1].answer = line.text
+      if (line.model) turns[turns.length - 1].model = line.model
     }
   }
   return turns
@@ -120,9 +124,15 @@ const STALL_MS = 1500
  */
 function showTyping(turn: Turn, latest: boolean, state: OrbState, stalled: boolean): boolean {
   if (!latest || turn.done) return false
-  if (!turn.answer) return true
+  // No words back yet: he's thinking, unless he went back to listening for the rest of your sentence.
+  if (!turn.answer) return state !== 'listening'
   if (state === 'thinking' || state === 'working') return true
   return stalled
+}
+
+/** The small chip over a reply naming who wrote it: Claude, or the local model. */
+function ModelChip({ model }: { model: string }) {
+  return <span className="chat__model" data-model={modelTone(model)}>{modelLabel(model)}</span>
 }
 
 /** Three dots in a reply bubble, like someone typing; label says what he's looking up, if anything. */
@@ -299,6 +309,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
         (event) => onApprovalEvent(id, event),
         onWorking,
         offerId,
+        (model) => setTurns((t) => t.map((x) => (x.id === id ? { ...x, model } : x))),
       )
     } catch (err) {
       result = { ok: false, message: err instanceof Error ? err.message : 'The request failed' }
@@ -373,15 +384,25 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
           setState(s === 'dozing' ? 'idle' : s)
         },
         // Your words as Whisper hears them, shown while you're still talking.
-        onHearing: (sofar) => { if (talking.current) setHeard(sofar) },
-        onHeard: (question) => {
+        // Carrying on past where he thought you'd finished, they update the bubble he was answering.
+        onHearing: (sofar, joined) => {
+          if (!talking.current) return
+          if (canJoin(savedTurns, talkTurn.current, joined)) setTurns((t) => joinHeard(t, talkTurn.current, sofar))
+          else setHeard(sofar)
+        },
+        onHeard: (question, joined) => {
           setHeard('')
+          if (canJoin(savedTurns, talkTurn.current, joined)) {
+            setTurns((t) => joinHeard(t, talkTurn.current, question))
+            return
+          }
           const id = savedTurns.length
           talkTurn.current = id
           setTurns((t) => [...t, { id, question, answer: '', ok: true, done: false }])
         },
         onReply: (added) => updateTalkTurn((x) => ({ ...x, answer: x.answer + added })),
         onWorking: (label) => { if (talking.current) onWorking(label) },
+        onModel: (model) => updateTalkTurn((x) => ({ ...x, model })),
         onDone: () => updateTalkTurn((x) => ({ ...x, done: true })),
         onInterrupted: () => updateTalkTurn((x) => ({ ...x, done: true })),
         onLevel: pulse,
@@ -762,12 +783,16 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
       <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
         {turns.map((t, i) => {
           const typing = showTyping(t, i === turns.length - 1, state, stalled)
+          // He's listening again with nothing said back: the bubble stays open for the rest of your words.
+          const open = i === turns.length - 1 && !t.answer && !t.done && talking && state === 'listening'
           return (
           <li key={t.id} className="chat__turn">
-            <p className="chat__q">{t.question}</p>
+            <p className={open ? 'chat__q chat__q--open' : 'chat__q'}>{t.question}</p>
             {(t.approvals ?? []).map((a) => (
               <ApprovalCard key={a.id} approval={a} talking={talking} onAnswer={onAnswer} />
             ))}
+            {/* Who's answering (Dylan, 2026-11-16): orange Claude, blue Ornith when Claude's plan is out of room. */}
+            {t.model && (t.answer || typing) ? <ModelChip model={t.model} /> : null}
             {t.answer ? (
               <p className={t.ok ? 'chat__a' : 'chat__a chat__a--error'}>
                 {t.answer}

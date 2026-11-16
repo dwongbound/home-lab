@@ -456,6 +456,9 @@ export function createLiveSource(config, deps = {}) {
             if (approval) onEvent({ type: 'approval', approval })
           } else if (event.type === 'approval_done' && typeof event.id === 'string') {
             onEvent({ type: 'approval_done', id: event.id, ok: event.ok === true, by: toApprovalBy(event.by), later: event.later === true })
+          } else if (event.type === 'model' && typeof event.model === 'string') {
+            // Who is answering: Claude, or the local model while Claude's plan is out of room.
+            onEvent({ type: 'model', model: event.model })
           }
         }
       } catch {
@@ -548,7 +551,12 @@ export function createLiveSource(config, deps = {}) {
         if (!Array.isArray(list)) return []
         return list
           .filter((t) => typeof t?.text === 'string')
-          .map((t) => ({ role: t.role === 'user' ? 'user' : 'jarvis', text: t.text, at: String(t.at ?? '') }))
+          .map((t) => {
+            const turn = { role: t.role === 'user' ? 'user' : 'jarvis', text: t.text, at: String(t.at ?? '') }
+            // Older Jarvis lines don't say who wrote them; the chip only shows when one does.
+            if (typeof t.model === 'string' && t.model) turn.model = t.model
+            return turn
+          })
       } catch {
         return []
       }
