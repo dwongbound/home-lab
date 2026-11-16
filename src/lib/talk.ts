@@ -183,6 +183,42 @@ const RECOVERY_CUSHION_S = 0.4
 const EDGE_FADE_S = 0.004
 
 /**
+ * True when Jarvis just decided you're done talking: he goes from listening
+ * to thinking. That's when the "got it" sound plays (Dylan, 2026-11-16:
+ * "so I know when Jarvis is done listening to me and is starting to respond").
+ */
+export function heardYouOut(before: TalkState, after: TalkState): boolean {
+  return before === 'listening' && after === 'thinking'
+}
+
+/** The "got it" sound's two notes (Hz), how long each lasts, and how loud (0..1). */
+const GOT_IT_NOTES = [660, 990]
+const GOT_IT_NOTE_S = 0.07
+const GOT_IT_VOLUME = 0.07
+
+/**
+ * Plays a very short, quiet two-note rise through the same path as his
+ * voice, so it shares the speaker route and the echo cancelling. Each note
+ * swells and fades, with no hard edges to click.
+ */
+function playGotIt(ctx: AudioContext, out: AudioNode) {
+  const start = ctx.currentTime + 0.01
+  GOT_IT_NOTES.forEach((hz, i) => {
+    const at = start + i * GOT_IT_NOTE_S
+    const tone = ctx.createOscillator()
+    tone.type = 'sine'
+    tone.frequency.value = hz
+    const level = ctx.createGain()
+    level.gain.setValueAtTime(0, at)
+    level.gain.linearRampToValueAtTime(GOT_IT_VOLUME, at + 0.012)
+    level.gain.exponentialRampToValueAtTime(0.0001, at + GOT_IT_NOTE_S + 0.05)
+    tone.connect(level).connect(out)
+    tone.start(at)
+    tone.stop(at + GOT_IT_NOTE_S + 0.06)
+  })
+}
+
+/**
  * Fades the first and last few milliseconds of a sentence in place. Each
  * sentence is made on its own, so it can start or stop mid-wave; a hard
  * edge there is the "pop" you hear between sentences.
@@ -441,6 +477,8 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       if (typeof event.rate === 'number') rate = event.rate
       dozes = event.wake_word === true
     } else if (event.type === 'state' && isTalkState(event.state)) {
+      // He stopped listening and started on an answer: a soft "got it" so you know you can stop.
+      if (heardYouOut(state, event.state)) playGotIt(ctx, voice)
       // Dozing by himself ("that's all"): anything still queued of his sign-off plays out.
       state = event.state
       on.onState(event.state)
