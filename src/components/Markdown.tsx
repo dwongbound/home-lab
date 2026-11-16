@@ -1,20 +1,32 @@
-import { Fragment } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { parseMarkdown, type Block, type Span } from '../lib/markdown'
 
-/** Jarvis's reply as rich text: headings, lists, tables, dividers, code (Dylan, 2026-11-16). */
-export function Markdown({ text }: { text: string }) {
-  return <>{parseMarkdown(text).map((block, i) => <BlockView key={i} block={block} />)}</>
+/**
+ * Jarvis's reply as rich text: headings, lists, tables, dividers, code
+ * (Dylan, 2026-11-16). trailing (the streaming caret) rides the end of the
+ * last paragraph, like a cursor, or follows the last block otherwise.
+ */
+export function Markdown({ text, trailing = null }: { text: string; trailing?: ReactNode }) {
+  const blocks = parseMarkdown(text)
+  const last = blocks.length - 1
+  const inLast = last >= 0 && blocks[last].kind === 'paragraph'
+  return (
+    <>
+      {blocks.map((block, i) => <BlockView key={i} block={block} trailing={inLast && i === last ? trailing : null} />)}
+      {inLast ? null : trailing}
+    </>
+  )
 }
 
 /** One block of the reply. */
-function BlockView({ block }: { block: Block }) {
+function BlockView({ block, trailing }: { block: Block; trailing: ReactNode }) {
   if (block.kind === 'heading') {
     const spans = <Spans spans={block.spans} />
     if (block.level === 1) return <h3 className="md__h md__h1">{spans}</h3>
     if (block.level === 2) return <h4 className="md__h md__h2">{spans}</h4>
     return <h5 className="md__h md__h3">{spans}</h5>
   }
-  if (block.kind === 'paragraph') return <p className="md__p"><Spans spans={block.spans} /></p>
+  if (block.kind === 'paragraph') return <p className="md__p"><Spans spans={block.spans} />{trailing}</p>
   if (block.kind === 'list') {
     const items = block.items.map((item, i) => <li key={i}><Spans spans={item} /></li>)
     return block.ordered ? <ol className="md__list">{items}</ol> : <ul className="md__list">{items}</ul>
