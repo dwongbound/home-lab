@@ -16,6 +16,7 @@
 // Whisper or his brain), then says state listening again. Talk sends
 // {"type":"wake"}. Muted, only silence goes out, so the wake word can't fire.
 
+import { readTalkDirect, writeTalkDirect } from './prefs'
 import type { Approval, ApprovalBy } from '../types'
 
 export type TalkState = 'listening' | 'thinking' | 'speaking' | 'dozing'
@@ -215,6 +216,27 @@ function routeToSpeaker(ctx: AudioContext, voice: AudioNode): HTMLAudioElement |
 }
 
 /**
+ * The audio context, running at the microphone's own rate when that's a
+ * full-quality one. iPhones crackle when the context and the open
+ * microphone run at different rates (44.1 vs 48 kHz), so match them.
+ */
+function makeContext(stream: MediaStream): AudioContext {
+  const micRate = stream.getAudioTracks()[0]?.getSettings?.().sampleRate
+  if (typeof micRate === 'number' && micRate >= 44100) {
+    try { return new AudioContext({ sampleRate: micRate }) } catch { /* rate not allowed here; use the default */ }
+  }
+  return new AudioContext()
+}
+
+/** /talk?direct=1 or ?direct=0 saves how this browser plays his voice (see readTalkDirect). */
+function rememberOutputChoice() {
+  if (typeof location === 'undefined') return
+  const direct = new URLSearchParams(location.search).get('direct')
+  if (direct === '1') writeTalkDirect(true)
+  if (direct === '0') writeTalkDirect(false)
+}
+
+/**
  * Whether Talk can start with no tap: the microphone is already allowed for
  * this page and the browser lets sound play. iOS Safari says no until the
  * first tap; a desktop browser that was allowed before usually says yes.
@@ -251,7 +273,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     throw new Error('Jarvis can’t hear you: allow the microphone for this page')
   }
 
-  const ctx = new AudioContext()
+  const ctx = makeContext(stream)
   // Safari starts a context suspended until a tap; Talk was a tap.
   if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
   const moduleUrl = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'text/javascript' }))
@@ -277,7 +299,10 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   const voiceLevel = ctx.createAnalyser()
   voiceLevel.fftSize = 512
   voice.connect(voiceLevel)
-  const speaker = routeToSpeaker(ctx, voice)
+  rememberOutputChoice()
+  let speaker: HTMLAudioElement | null = null
+  if (readTalkDirect()) voice.connect(ctx.destination)
+  else speaker = routeToSpeaker(ctx, voice)
 
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
