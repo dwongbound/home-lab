@@ -11,6 +11,7 @@ import { outcomeText, readableSummary, settledAs, toolLabel } from '../lib/appro
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
 import { Spinner } from './Spinner'
+import { Icon } from './Icon'
 
 // Talking to Jarvis from the home page. The Overview keeps a slim bar: the
 // orb, a box, Ask and Talk. Asking opens the chat: a fixed-size sheet with a
@@ -690,6 +691,8 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
   const list = useRef<HTMLOListElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const busy = state !== 'idle' || talking
+  // The reply whose "That was wrong" note is open, if any.
+  const [wrongOpen, setWrongOpen] = useState<number | null>(null)
   // Jarvis is waiting on an Approve or Deny somewhere in the chat.
   const waiting = turns.some((t) => t.approvals?.some((a) => !a.outcome))
 
@@ -798,12 +801,15 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
                 {t.answer}
                 {/* The cursor rides the reply as it streams, then keeps blinking after his latest one, like a terminal. */}
                 {!typing && (!t.done || (i === turns.length - 1 && !heard)) ? <span className="chat__caret" aria-hidden="true" /> : null}
+                {/* A quiet (!) at the end of each finished reply, here and on /talk (Dylan, 2026-11-16: the link was too noisy). */}
+                {t.done && t.ok && !t.flagged ? (
+                  <WrongButton open={wrongOpen === t.id} onClick={() => setWrongOpen(wrongOpen === t.id ? null : t.id)} />
+                ) : null}
               </p>
             ) : null}
             {typing ? <TypingDots label={state === 'working' ? workLabel : ''} /> : null}
-            {/* /talk is voice only: there he says "that's wrong" instead. */}
-            {!page && t.done && t.ok && t.answer ? (
-              <WrongReply turn={t} onFlagged={onFlagged} />
+            {t.flagged || wrongOpen === t.id ? (
+              <WrongReply turn={t} onFlagged={onFlagged} onClose={() => setWrongOpen(null)} />
             ) : null}
           </li>
           )
@@ -889,12 +895,24 @@ function ApprovalCard({ approval: a, talking, onAnswer }: { approval: ApprovalVi
 }
 
 /**
- * "That was wrong" under one of his replies (Dylan, 2026-11-16: train Jarvis
- * from his mistakes). Opens a short note for what he should have said, then
- * sends both to Jarvis, who works it into a fix and a test overnight.
+ * The small outlined (!) after one of his finished replies: "That was wrong".
+ * Low-key until hovered or focused; its tap area reaches 44 px without
+ * pushing the lines of text apart.
  */
-function WrongReply({ turn, onFlagged }: { turn: Turn; onFlagged: (id: number) => void }) {
-  const [open, setOpen] = useState(false)
+function WrongButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="wrong__open" aria-label="That was wrong" title="That was wrong" aria-expanded={open} onClick={onClick}>
+      <Icon name="alert" size={16} />
+    </button>
+  )
+}
+
+/**
+ * The note under a reply after its (!) is tapped (Dylan, 2026-11-16: train
+ * Jarvis from his mistakes): what he should have said, sent with the turn to
+ * Jarvis, who works it into a fix and a test overnight.
+ */
+function WrongReply({ turn, onFlagged, onClose }: { turn: Turn; onFlagged: (id: number) => void; onClose: () => void }) {
   const [note, setNote] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -911,11 +929,6 @@ function WrongReply({ turn, onFlagged }: { turn: Turn; onFlagged: (id: number) =
   }
 
   if (turn.flagged) return <p className="wrong__done">Thanks. Jarvis will work on that tonight.</p>
-  if (!open) {
-    return (
-      <button type="button" className="wrong__open" onClick={() => setOpen(true)}>That was wrong</button>
-    )
-  }
   return (
     <form className="wrong" onSubmit={submit} aria-label="Tell Jarvis what was wrong">
       <label className="wrong__label" htmlFor={`wrong-${turn.id}`}>What should he have said? (optional)</label>
@@ -930,7 +943,7 @@ function WrongReply({ turn, onFlagged }: { turn: Turn; onFlagged: (id: number) =
       />
       {sending ? <Spinner label="Telling Jarvis…" /> : (
         <div className="wrong__actions">
-          <button type="button" className="btn" onClick={() => setOpen(false)}>Close</button>
+          <button type="button" className="btn" onClick={onClose}>Close</button>
           <button type="submit" className="btn btn--primary">Send</button>
         </div>
       )}
