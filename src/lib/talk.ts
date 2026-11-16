@@ -173,6 +173,12 @@ function loudness(analyser: AnalyserNode, samples: Float32Array<ArrayBuffer>): n
 
 /** How far ahead his first sentence is scheduled, so later ones arrive in time (seconds). */
 const PLAYBACK_CUSHION_S = 0.15
+/**
+ * The cushion when his voice ran dry partway through a reply (a phone on a
+ * slow network): a longer one, so the rest of the reply plays smoothly
+ * instead of stopping and starting (Dylan, 2026-11-15: "it sometimes lags").
+ */
+const RECOVERY_CUSHION_S = 0.4
 /** Each sentence fades in and out over this long, so its edges don't click (seconds). */
 const EDGE_FADE_S = 0.004
 
@@ -312,6 +318,8 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   let state: TalkState = 'listening'
   let playing: AudioBufferSourceNode[] = []
   let playAt = 0
+  // True once a sentence of this reply has been scheduled, so running dry later uses the longer cushion.
+  let midReply = false
   let replyDone = false
   let closed = false
   let frame = 0
@@ -328,6 +336,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   function maybeIdle() {
     if (!replyDone || playing.length > 0) return
     replyDone = false
+    midReply = false
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'idle' }))
   }
 
@@ -343,7 +352,12 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     source.connect(voice)
     // A short cushion before the first sentence (or after running dry) so the
     // next one is usually here before this one ends: no gaps, no pops.
-    if (playAt < ctx.currentTime + 0.02) playAt = ctx.currentTime + PLAYBACK_CUSHION_S
+    if (playAt < ctx.currentTime + 0.02) {
+      let cushion = PLAYBACK_CUSHION_S
+      if (midReply) cushion = RECOVERY_CUSHION_S
+      playAt = ctx.currentTime + cushion
+    }
+    midReply = true
     source.start(playAt)
     playAt += buffer.duration
     playing.push(source)
@@ -358,6 +372,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     const queued = playing
     playing = []
     replyDone = false
+    midReply = false
     playAt = 0
     for (const s of queued) {
       s.onended = null

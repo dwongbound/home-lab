@@ -43,4 +43,16 @@ describe('/talk dozing', () => {
     expect(screen.getByRole('button', { name: 'Talk' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument()
   })
+
+  it('hangs up the moment the app goes to the background, so his voice stops (Dylan, 2026-11-15)', async () => {
+    vi.mocked(line.close).mockClear()
+    render(<JarvisPanel live page />)
+    await screen.findByRole('button', { name: 'Pause' })
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(line.close).toHaveBeenCalled()
+    visibility.mockRestore()
+    expect(screen.getByRole('status')).toHaveTextContent('Stopped when you left. Tap Talk to start again.')
+    expect(screen.getByRole('button', { name: 'Talk' })).toBeInTheDocument()
+  })
 })
