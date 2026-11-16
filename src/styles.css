@@ -600,8 +600,12 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .chat__dots { display: inline-flex; gap: 5px; }
 .chat__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--glacier); opacity: .55; }
 /* "That was wrong" under a reply: quiet until he needs it, 44 px to tap. */
-.wrong__open { justify-self: start; min-height: 44px; margin: -8px 0 -8px -6px; padding: 0 6px; border: 0; background: transparent; color: var(--frost-dim); font: inherit; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.wrong__open:hover, .wrong__open:focus-visible { color: var(--frost); }
+/* The (!) after a finished reply: sits on the last line of text, faint until
+   hovered or focused. The ::before widens the tap area to 44 px without
+   changing the line height. */
+.wrong__open { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 6px; padding: 0; vertical-align: -4px; border: 0; border-radius: 50%; background: transparent; color: var(--frost-dim); opacity: .6; cursor: pointer; }
+.wrong__open::before { content: ''; position: absolute; inset: -11px; }
+.wrong__open:hover, .wrong__open:focus-visible, .wrong__open[aria-expanded='true'] { color: var(--frost); opacity: 1; }
 .wrong__done { margin: 0; color: var(--frost-dim); font-size: 13px; }
 .wrong { display: grid; gap: 8px; max-width: 92%; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.05); }
 .wrong__label { color: var(--frost-dim); font-size: 13.5px; }

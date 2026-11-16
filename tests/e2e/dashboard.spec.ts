@@ -982,7 +982,7 @@ test('a chip over each reply says who answered: Jarvis (C) in orange, Jarvis (O)
   await expect(chat.locator('.chat__model').last()).toHaveAttribute('data-model', 'claude')
 })
 
-test('"That was wrong" under a reply sends what he should have said', async ({ page }) => {
+test('the (!) after a reply says "That was wrong" and sends what he should have said', async ({ page }) => {
   let sent: unknown = null
   await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"delta","text":"I can only time drives from your phone."}\n{"type":"done","ok":true}\n' }))
   await page.route('**/api/jarvis/feedback', async (route) => { sent = route.request().postDataJSON(); await route.fulfill({ json: { ok: true, message: 'Thanks. Jarvis will work on it tonight.' } }) })
@@ -991,12 +991,43 @@ test('"That was wrong" under a reply sends what he should have said', async ({ p
   await page.getByRole('button', { name: 'Ask', exact: true }).click()
   const chat = page.getByRole('dialog', { name: 'Jarvis' })
   await expect(chat.getByText('I can only time drives from your phone.')).toBeVisible()
+  // A small icon on the reply's last line, not a link under it; nothing else says "That was wrong".
   const wrong = chat.getByRole('button', { name: 'That was wrong' }).last()
-  expect((await wrong.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await expect(chat.getByText('That was wrong', { exact: true })).toHaveCount(0)
+  const answer = (await chat.getByText('I can only time drives from your phone.').boundingBox())!
+  const icon = (await wrong.boundingBox())!
+  expect(icon.height).toBeLessThan(30)
+  expect(icon.y).toBeGreaterThanOrEqual(answer.y)
+  expect(icon.y + icon.height).toBeLessThanOrEqual(answer.y + answer.height + 2)
+  // Its tap area still reaches 44 px: 20 px above and below its middle land on it.
+  const hits = await wrong.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    const x = r.left + r.width / 2
+    const y = r.top + r.height / 2
+    return [y - 20, y + 20, x - 20].map((v, i) => {
+      const hit = i < 2 ? document.elementFromPoint(x, v) : document.elementFromPoint(v, y)
+      return hit !== null && el.contains(hit)
+    })
+  })
+  expect(hits).toEqual([true, true, true])
   await wrong.click()
   const form = chat.getByRole('form', { name: 'Tell Jarvis what was wrong' })
   await form.getByLabel('What should he have said? (optional)').fill('Drive time works from home too.')
   await form.getByRole('button', { name: 'Send', exact: true }).click()
   await expect(chat.getByText('Thanks. Jarvis will work on that tonight.')).toBeVisible()
   expect(sent).toEqual({ question: 'How long to KTOA from home?', answer: 'I can only time drives from your phone.', note: 'Drive time works from home too.' })
+  // Sent, the (!) goes away from that reply.
+  await expect(chat.locator('.chat__turn').last().getByRole('button', { name: 'That was wrong' })).toHaveCount(0)
+})
+
+test('/talk shows the same (!) after each of his replies', async ({ page }) => {
+  await page.goto('/talk')
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  // Sample data plays a demo turn by itself.
+  const wrong = chat.getByRole('button', { name: 'That was wrong' }).first()
+  await expect(wrong).toBeVisible({ timeout: 20_000 })
+  await wrong.click()
+  await expect(chat.getByRole('form', { name: 'Tell Jarvis what was wrong' })).toBeVisible()
+  await chat.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(chat.getByRole('form', { name: 'Tell Jarvis what was wrong' })).toHaveCount(0)
 })
