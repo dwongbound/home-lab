@@ -965,6 +965,26 @@ test('Jarvis shows typing dots until his reply starts', async ({ page }) => {
   await expect(chat.locator('.chat__typing')).toHaveCount(0)
 })
 
+test('a chip over each reply says who answered: Claude in orange, Ornith in blue', async ({ page }) => {
+  await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"model","model":"ornith"}\n{"type":"delta","text":"Claude is out of room, so it is me."}\n{"type":"done","ok":true}\n' }))
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Who is this?')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  await expect(chat.getByText('Claude is out of room, so it is me.')).toBeVisible()
+  // Earlier sample turns (shared mock server) have their own chips; the newest is the one that matters.
+  const chip = chat.locator('.chat__model').last()
+  await expect(chip).toHaveText('Ornith')
+  await expect(chip).toHaveAttribute('data-model', 'local')
+  // The sample Jarvis (no route) answers as Claude.
+  await page.unroute('**/api/jarvis/chat')
+  await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
+  await chat.getByRole('textbox', { name: 'Message Jarvis' }).fill('And now?')
+  await chat.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(chat.locator('.chat__model').last()).toHaveText('Claude')
+  await expect(chat.locator('.chat__model').last()).toHaveAttribute('data-model', 'claude')
+})
+
 test('"That was wrong" under a reply sends what he should have said', async ({ page }) => {
   let sent: unknown = null
   await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"delta","text":"I can only time drives from your phone."}\n{"type":"done","ok":true}\n' }))

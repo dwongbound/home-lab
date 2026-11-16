@@ -70,6 +70,7 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
         '{"type":"approval","tool":"no id"}\n',
         '{"type":"approval_done","id":"a1","ok":true,"by":"voice"}\n',
         '{"type":"approval_done","id":"a2","ok":false,"by":"voice","later":true}\n',
+        '{"type":"model","model":"ornith"}\n{"type":"model"}\n',
         '{"type":"done"}\n',
       ]
       return new Response(new ReadableStream({ start(c) { for (const p of pieces) c.enqueue(new TextEncoder().encode(p)); c.close() } }))
@@ -83,7 +84,7 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       return Response.json({ pending: [{ id: 'a2', tool: 'edit_file', summary: '~/x.md', expires: 'z' }, { tool: 'broken' }] })
     }
     if (url === `${config.jarvisApiUrl}/chat/history?limit=50`) {
-      return Response.json({ turns: [{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'assistant', text: 'Lamp is off.', at: 'b' }, { role: 'user' }] })
+      return Response.json({ turns: [{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'assistant', text: 'Lamp is off.', at: 'b', model: 'claude' }, { role: 'user' }] })
     }
     if (url === `${config.jarvisApiUrl}/ask`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
@@ -299,6 +300,7 @@ describe('live chat with Jarvis', () => {
       { type: 'approval', approval: { id: 'a1', tool: 'run_command', summary: 'ls', expires: '2026-11-11T12:20:00Z' } },
       { type: 'approval_done', id: 'a1', ok: true, by: 'voice', later: false },
       { type: 'approval_done', id: 'a2', ok: false, by: 'voice', later: true },
+      { type: 'model', model: 'ornith' },
       { type: 'done', ok: true },
     ])
     const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/chat/stream`)!
@@ -331,7 +333,7 @@ describe('live chat with Jarvis', () => {
 
   it("reads the web chat history, naming Jarvis's lines and dropping broken ones", async () => {
     const turns = await liveWith({}).source.history({ login: 'dylan@example.com' })
-    expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b' }])
+    expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b', model: 'claude' }])
     expect(await liveWith({}).source.history({})).toEqual([])
   })
 

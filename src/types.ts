@@ -252,8 +252,10 @@ export type ChatEvent =
   /** Jarvis started a slow lookup (label: "Searching the web."), and when it's over. */
   | { type: 'working'; label: string }
   | { type: 'working_done' }
-/** One saved line of the web chat. */
-export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string }
+  /** Which brain is answering: "claude", or "ornith" when he has fallen back to the local model. */
+  | { type: 'model'; model: string }
+/** One saved line of the web chat. model: who wrote one of Jarvis's lines, when known. */
+export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string }
 export type ActionName = 'ollama-unload' | 'ollama-load'
 
 /** One thing Jarvis keeps in mind in every conversation (his notes file, never memory.md). */
