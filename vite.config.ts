@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { loadConfig, loadEnvFile } from './server/config.mjs'
@@ -18,8 +19,27 @@ function apiPlugin(): Plugin {
   }
 }
 
+/**
+ * The commit this build is from, for the footer. Docker passes GIT_SHA in
+ * (the image has no .git); elsewhere git is asked; 'dev' if neither works.
+ */
+function gitSha(): string {
+  if (process.env.GIT_SHA) return process.env.GIT_SHA
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    return 'dev'
+  }
+}
+
 export default defineConfig({
   plugins: [react(), apiPlugin()],
+  // Which build the page is (BuildFooter). BUILT_AT comes from the deploy
+  // command; otherwise the moment this build ran.
+  define: {
+    __BUILD_SHA__: JSON.stringify(gitSha()),
+    __BUILT_AT__: JSON.stringify(process.env.BUILT_AT || new Date().toISOString()),
+  },
   base: './',
   server: { port: 5180 },
   test: {

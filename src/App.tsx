@@ -21,6 +21,7 @@ import { useWakeLock } from './useWakeLock'
 import { useReveal } from './useReveal'
 import { KioskMode, useKiosk } from './useKiosk'
 import { shownPhase } from './lib/sky'
+import { BuildFooter } from './components/BuildFooter'
 
 // The whole page: backdrop, top bar, and whichever view the hash names.
 // It owns the three page-level states: waiting for the first snapshot
@@ -109,6 +110,8 @@ export function App() {
           </KioskMode.Provider>
         </DigestRefreshing.Provider>
         {data && error ? <p className="stale" role="status">Last update failed. Showing numbers from {new Date(data.generatedAt).toLocaleTimeString()}.</p> : null}
+        {/* Only once the page has its data: shown under the loader, it would jump down when the panels arrive. */}
+        {data ? <BuildFooter /> : null}
       </div>
       {toast ? <p className="toast" role="status">{toast}</p> : null}
     </>

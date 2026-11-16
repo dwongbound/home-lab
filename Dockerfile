@@ -5,7 +5,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+# Which build this is, shown in the page's footer. The image has no .git, so
+# the deploy passes them in (README, "In Docker"); without them it says 'dev'.
+ARG GIT_SHA=dev
+ARG BUILT_AT=
+RUN GIT_SHA="$GIT_SHA" BUILT_AT="$BUILT_AT" npm run build
 
 FROM node:22-slim
 WORKDIR /app
