@@ -18,15 +18,17 @@ interface Fakes {
   schedule?: unknown
   /** Jarvis's GET /jobs answer; undefined = an older Jarvis that 404s. */
   jobs?: unknown
+  /** The version block in Jarvis's /health; undefined = an older Jarvis without one. */
+  jarvisVersion?: unknown
 }
 
 /** A live source whose fetch/execFile/statfs answer as described. */
-function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 200, haStatusCode = 200, unitState = 'active', gpuFails = false, schedule, jobs }: Fakes) {
+function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 200, haStatusCode = 200, unitState = 'active', gpuFails = false, schedule, jobs, jarvisVersion }: Fakes) {
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/api/ps')) return new Response(JSON.stringify({ models: ollamaModels }))
     if (url === `${config.jarvisApiUrl}/health`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
-      return new Response(JSON.stringify({ ok: true, brain: 'claude' }), { status: jarvisStatusCode })
+      return new Response(JSON.stringify({ ok: true, brain: 'claude', version: jarvisVersion }), { status: jarvisStatusCode })
     }
     if (url === `${config.jarvisApiUrl}/jobs`) {
       if (jobs === undefined) return new Response('not found', { status: 404 })
@@ -167,6 +169,11 @@ describe('live snapshot', () => {
     const up = service(await liveWith({}).source.snapshot(), 'jarvis')
     expect(up.status).toBe('up')
     expect(up.detail).toBe('Thinking with claude')
+    // A Jarvis that reports its build (2026-11-16) shows it after the brain, with what's staged.
+    const versioned = { build: 142, hash: '7079a90abcdef', dirty: false, started_at: 'x', pending: null }
+    expect(service(await liveWith({ jarvisVersion: versioned }).source.snapshot(), 'jarvis').detail).toBe('Thinking with claude · build 142')
+    const staged = { ...versioned, dirty: true, pending: { hash: '9c1e2f0abc', summary: 'memory tidy' } }
+    expect(service(await liveWith({ jarvisVersion: staged }).source.snapshot(), 'jarvis').detail).toBe('Thinking with claude · build 142 with unsaved edits, pending build 143')
     expect(service(await liveWith({ jarvisAnswers: false }).source.snapshot(), 'jarvis').status).toBe('degraded')
     const down = service(await liveWith({ jarvisAnswers: false, unitState: 'failed' }).source.snapshot(), 'jarvis')
     expect(down.status).toBe('down')

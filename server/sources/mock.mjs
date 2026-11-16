@@ -271,7 +271,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         services: [
           { id: 'ha', name: 'Home Assistant', detail: '2026.10.2 in Docker', status: 'up', latencyMs: 14, url: 'http://192.168.68.94:8123' },
           { id: 'ollama', name: 'Ollama', detail: loaded ? 'ornith-1.5:9b loaded' : 'No model loaded', status: 'up', latencyMs: 3 },
-          { id: 'jarvis', name: 'Jarvis', detail: 'Running, code changed since start', status: 'degraded', latencyMs: 22, url: 'https://jarvis.snakebird-ph.ts.net:8443' },
+          { id: 'jarvis', name: 'Jarvis', detail: 'Running, code changed since start · build 142, pending build 143', status: 'degraded', latencyMs: 22, url: 'https://jarvis.snakebird-ph.ts.net:8443' },
         ],
         model: { name: 'ornith-1.5:9b', loaded, vramGb: loaded ? 5.7 : 0, loadSeconds: 41 },
         // Like jarvis: the one local model, unloading after 10 idle minutes.
