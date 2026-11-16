@@ -400,7 +400,7 @@ The other way to run it, with nothing installed on Ubuntu but Docker
 ```bash
 cd ~/home-lab
 cp .env.example .env        # then edit .env (see "Going live")
-docker compose up -d --build
+GIT_SHA=$(git rev-parse --short HEAD) BUILT_AT=$(date -Is) docker compose up -d --build
 curl -s http://127.0.0.1:4180/api/snapshot | head -c 300
 ```
 
@@ -409,7 +409,12 @@ curl -s http://127.0.0.1:4180/api/snapshot | head -c 300
 and Home Assistant answer at the same addresses as outside the container,
 and mounts `/mnt/c` and WSL's `nvidia-smi` read-only for the disk and GPU
 cards. `restart: unless-stopped` brings it back after a reboot, once
-Docker is up. **Updating:** `git pull && docker compose up -d --build`.
+Docker is up. **Updating:**
+`git pull && GIT_SHA=$(git rev-parse --short HEAD) BUILT_AT=$(date -Is) docker compose up -d --build`.
+The two variables stamp the build into the page: a faint line at the bottom
+of every page shows the commit (linked to GitHub) and when it was deployed.
+The image has no `.git`, so without them the footer says `dev`; `npm run
+build` outside Docker asks git itself.
 
 The unit caps the process at 200 MB (`MemoryMax`), since the local model and
 Jarvis's voice need the RAM more. It typically uses well under 100 MB.

@@ -1000,3 +1000,15 @@ test('"That was wrong" under a reply sends what he should have said', async ({ p
   await expect(chat.getByText('Thanks. Jarvis will work on that tonight.')).toBeVisible()
   expect(sent).toEqual({ question: 'How long to KTOA from home?', answer: 'I can only time drives from your phone.', note: 'Drive time works from home too.' })
 })
+
+test('a faint line at the bottom says which build this is and links its commit', async ({ page }) => {
+  await page.goto('/')
+  const footer = page.locator('footer.build')
+  await expect(footer).toContainText(/^build \S+ · deployed [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M$/)
+  // Small and quiet: one line of 11 px type.
+  const look = await footer.evaluate((el) => ({ size: getComputedStyle(el).fontSize, height: el.getBoundingClientRect().height }))
+  expect(look.size).toBe('11px')
+  expect(look.height).toBeLessThan(24)
+  // The test build runs in a git checkout, so the commit is real and links to GitHub.
+  await expect(footer.getByRole('link')).toHaveAttribute('href', /^https:\/\/github\.com\/dwongbound\/home-lab\/commit\/[0-9a-f]{7,40}$/)
+})

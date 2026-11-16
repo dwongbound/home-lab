@@ -57,6 +57,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `public/manifest.webmanifest` + Apple meta tags in `index.html`. `.shell` has no max-width (full width on TVs/kiosk, 2026-11-12). Overview one-screen layout keys off
   `.shell[data-view='overview']` (end of `styles.css`). Swipe tabs: `src/useSwipeNav.ts` (finger-follow + glide in `src/swipeMotion.ts`, `main[data-swipe]`; swipes always slide via `swipeToView`). No view transitions: a tab tap sets
   `html[data-enter=fade]` and the new panels fade in through `useReveal`; a swipe sets `next`/`prev` panel slides (translate only) (`useHashView.ts`).
+- **Build footer:** `BuildFooter` (end of `.shell` in `App.tsx`; `src/lib/build.ts`) shows `__BUILD_SHA__` (linked commit) + `__BUILT_AT__`, baked in by `define` in `vite.config.ts` from `GIT_SHA`/`BUILT_AT` env (Docker build args, see compose header) or `git rev-parse`.
 - **Views:** `src/views/{Overview,Home,Claude,Money,Services,Schedule,Settings}.tsx`, chosen by
   `src/useHashView.ts` from `#hash`. Nav in `src/components/TopNav.tsx` (`VIEWS`).
 - **Components:** `src/components/` — `StatCard` + `Sparkline`, `RequestsChart`,

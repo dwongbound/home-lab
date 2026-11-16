@@ -1,4 +1,9 @@
-# The page on jarvis, in Docker: `docker compose up -d --build`.
+# The page on jarvis, in Docker. Deploy with the build stamped in, so the
+# page's footer shows which commit is running and when it went out:
+#
+#   GIT_SHA=$(git rev-parse --short HEAD) BUILT_AT=$(date -Is) docker compose up -d --build
+#
+# (Plain `docker compose up -d --build` works too; the footer then says "dev".)
 #
 # Host networking, so 127.0.0.1 inside the container is the PC itself and
 # Ollama, Jarvis (127.0.0.1:8765) and Home Assistant answer at the same
@@ -9,7 +14,11 @@
 # Tailscale login header to Jarvis, so it must only hear from Tailscale.
 services:
   home-lab:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: "${GIT_SHA:-dev}"
+        BUILT_AT: "${BUILT_AT:-}"
     container_name: home-lab
     restart: unless-stopped
     network_mode: host
