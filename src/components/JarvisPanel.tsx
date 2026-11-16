@@ -3,6 +3,7 @@ import { answerApproval, loadApprovals, loadChatHistory, sendFeedback, streamJar
 import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
 import { canJoin, joinHeard } from '../lib/heard'
 import { modelLabel, modelTone } from '../lib/model'
+import { Markdown } from './Markdown'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, RunningTask } from '../types'
 import { OfferCards } from './OfferCards'
 import { BackgroundTasks } from './BackgroundTasks'
@@ -797,15 +798,17 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
             {/* Who's answering (Dylan, 2026-11-16): orange Claude, blue Ornith when Claude's plan is out of room. */}
             {t.model && (t.answer || typing) ? <ModelChip model={t.model} /> : null}
             {t.answer ? (
-              <p className={t.ok ? 'chat__a' : 'chat__a chat__a--error'}>
-                {t.answer}
+              <div className={t.ok ? 'chat__a' : 'chat__a chat__a--error'}>
+                {/* Rich text (headings, lists, tables, dividers) since 2026-11-16; plain replies read as before. */}
                 {/* The cursor rides the reply as it streams, then keeps blinking after his latest one, like a terminal. */}
-                {!typing && (!t.done || (i === turns.length - 1 && !heard)) ? <span className="chat__caret" aria-hidden="true" /> : null}
-                {/* A quiet "…" at the end of each finished reply, here and on /talk (Dylan, 2026-11-16: the link was too noisy). */}
-                {t.done && t.ok && !t.flagged ? (
-                  <WrongButton open={wrongOpen === t.id} onClick={() => setWrongOpen(t.id)} />
-                ) : null}
-              </p>
+                {/* Both ride the reply's last line: the caret, then the quiet "…" once it's finished (Dylan, 2026-11-16: the link was too noisy). */}
+                <Markdown text={t.answer} trailing={<>
+                  {!typing && (!t.done || (i === turns.length - 1 && !heard)) ? <span className="chat__caret" aria-hidden="true" /> : null}
+                  {t.done && t.ok && !t.flagged ? (
+                    <WrongButton open={wrongOpen === t.id} onClick={() => setWrongOpen(t.id)} />
+                  ) : null}
+                </>} />
+              </div>
             ) : null}
             {typing ? <TypingDots label={state === 'working' ? workLabel : ''} /> : null}
           </li>
