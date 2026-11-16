@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, Approval, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
+import type { ActionName, ActionResult, Approval, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -195,6 +195,25 @@ export async function hideOffer(id: string): Promise<ActionResult> {
       method: 'POST',
       headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
       body: JSON.stringify({ id }),
+    })
+    const body = await res.json().catch(() => null)
+    return { ok: res.ok, message: body?.message ?? `The server answered ${res.status}` }
+  } catch {
+    return { ok: false, message: 'The page server isn’t answering' }
+  }
+}
+
+/** "That was wrong" on one of Jarvis's replies. */
+export async function sendFeedback(flag: JarvisFeedback): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.sendFeedback(flag)
+  }
+  try {
+    const res = await fetch('/api/jarvis/feedback', {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify(flag),
     })
     const body = await res.json().catch(() => null)
     return { ok: res.ok, message: body?.message ?? `The server answered ${res.status}` }

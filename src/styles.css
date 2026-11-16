@@ -597,6 +597,14 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .chat__typing { justify-self: start; display: inline-flex; align-items: center; gap: 10px; margin: 0; padding: 10px 14px; border-radius: 18px 18px 18px 6px; background: rgba(255,255,255,.08); color: var(--frost-dim); font-size: 13px; }
 .chat__dots { display: inline-flex; gap: 5px; }
 .chat__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--glacier); opacity: .55; }
+/* "That was wrong" under a reply: quiet until he needs it, 44 px to tap. */
+.wrong__open { justify-self: start; min-height: 44px; margin: -8px 0 -8px -6px; padding: 0 6px; border: 0; background: transparent; color: var(--frost-dim); font: inherit; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.wrong__open:hover, .wrong__open:focus-visible { color: var(--frost); }
+.wrong__done { margin: 0; color: var(--frost-dim); font-size: 13px; }
+.wrong { display: grid; gap: 8px; max-width: 92%; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.05); }
+.wrong__label { color: var(--frost-dim); font-size: 13.5px; }
+.wrong__note { width: 100%; min-height: 64px; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--glass-edge); background: rgba(0,0,0,.18); color: var(--frost); font: inherit; font-size: 16px; }
+.wrong__actions { display: flex; gap: 8px; justify-content: flex-end; }
 .chat__form { display: flex; gap: 8px; }
 /* The box gives way on a narrow phone so Send and Talk always fit. */
 .chat__form .jarvis__input { flex: 1; min-width: 0; }

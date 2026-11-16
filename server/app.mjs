@@ -14,6 +14,7 @@
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
 //   GET  /api/jarvis/approvals      what Jarvis is still waiting on you to approve ({pending})
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
+//   POST /api/jarvis/feedback      {question, answer, note} -> "That was wrong" on one of his replies
 //   POST /api/jarvis/warm           starts Jarvis's web-chat engine early (the chat sheet opened)
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
@@ -237,6 +238,20 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
+  /** "That was wrong" on one of his replies: Jarvis saves it and works it into a fix and a test overnight. */
+  async function handleFeedback(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const flag = feedbackFrom(await readJson(req))
+    if (flag === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"question": "…", "answer": "…", "note": "…"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.sendFeedback(flag, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
   /** What Jarvis is still waiting on an answer for (after a reload, say). */
   async function handleApprovals(req, res) {
     const login = req.headers['tailscale-user-login'] ?? ''
@@ -331,6 +346,9 @@ export function createApi(source) {
       if (req.method === 'POST' && pathname === '/api/jarvis/offers/hide') {
         return await handleHideOffer(req, res)
       }
+      if (req.method === 'POST' && pathname === '/api/jarvis/feedback') {
+        return await handleFeedback(req, res)
+      }
       if (req.method === 'GET' && pathname === '/api/jarvis/approvals') {
         return await handleApprovals(req, res)
       }
@@ -352,4 +370,21 @@ export function createApi(source) {
       return sendJson(res, 500, { error: message })
     }
   }
+}
+
+// The longest question, answer and note a flag may carry (characters).
+const FEEDBACK_TEXT_MAX = 8000
+const FEEDBACK_NOTE_MAX = 2000
+
+/**
+ * Checks a "That was wrong" body and returns {question, answer, note}, or
+ * null when it isn't one: the answer is required, the rest may be empty.
+ */
+export function feedbackFrom(body) {
+  if (body === null || typeof body !== 'object') return null
+  const { question = '', answer, note = '' } = body
+  if (typeof question !== 'string' || typeof answer !== 'string' || typeof note !== 'string') return null
+  if (!answer.trim()) return null
+  if (question.length > FEEDBACK_TEXT_MAX || answer.length > FEEDBACK_TEXT_MAX || note.length > FEEDBACK_NOTE_MAX) return null
+  return { question: question.trim(), answer: answer.trim(), note: note.trim() }
 }

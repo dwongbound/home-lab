@@ -964,3 +964,22 @@ test('Jarvis shows typing dots until his reply starts', async ({ page }) => {
   await expect(chat.getByText('It is 64° and clear.')).toBeVisible()
   await expect(chat.locator('.chat__typing')).toHaveCount(0)
 })
+
+test('"That was wrong" under a reply sends what he should have said', async ({ page }) => {
+  let sent: unknown = null
+  await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"delta","text":"I can only time drives from your phone."}\n{"type":"done","ok":true}\n' }))
+  await page.route('**/api/jarvis/feedback', async (route) => { sent = route.request().postDataJSON(); await route.fulfill({ json: { ok: true, message: 'Thanks. Jarvis will work on it tonight.' } }) })
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('How long to KTOA from home?')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  await expect(chat.getByText('I can only time drives from your phone.')).toBeVisible()
+  const wrong = chat.getByRole('button', { name: 'That was wrong' }).last()
+  expect((await wrong.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await wrong.click()
+  const form = chat.getByRole('form', { name: 'Tell Jarvis what was wrong' })
+  await form.getByLabel('What should he have said? (optional)').fill('Drive time works from home too.')
+  await form.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(chat.getByText('Thanks. Jarvis will work on that tonight.')).toBeVisible()
+  expect(sent).toEqual({ question: 'How long to KTOA from home?', answer: 'I can only time drives from your phone.', note: 'Drive time works from home too.' })
+})

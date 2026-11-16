@@ -499,6 +499,24 @@ export function createLiveSource(config, deps = {}) {
       }
     },
 
+    /** "That was wrong" on one of his web chat replies (POST /feedback). */
+    async sendFeedback(flag, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/feedback`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify({ ...flag, at: new Date().toISOString(), chat: 'web' }),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (res.status === 404) return { ok: false, message: 'This Jarvis can’t take corrections yet' }
+        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        return { ok: true, message: 'Thanks. Jarvis will work on it tonight.' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
     /** Jarvis's requests still waiting for an answer (GET /approvals); empty if unreachable. */
     async approvals(caller = {}) {
       if (!caller.login) return []
