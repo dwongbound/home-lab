@@ -982,7 +982,7 @@ test('a chip over each reply says who answered: Jarvis (C) in orange, Jarvis (O)
   await expect(chat.locator('.chat__model').last()).toHaveAttribute('data-model', 'claude')
 })
 
-test('the (!) after a reply says "That was wrong" and sends what he should have said', async ({ page }) => {
+test('the "…" after a reply says "That was wrong" and opens a pop-up for what he should have said', async ({ page }) => {
   let sent: unknown = null
   await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"delta","text":"I can only time drives from your phone."}\n{"type":"done","ok":true}\n' }))
   await page.route('**/api/jarvis/feedback', async (route) => { sent = route.request().postDataJSON(); await route.fulfill({ json: { ok: true, message: 'Thanks. Jarvis will work on it tonight.' } }) })
@@ -1010,26 +1010,48 @@ test('the (!) after a reply says "That was wrong" and sends what he should have 
     })
   })
   expect(hits).toEqual([true, true, true])
+  // A pop-up over the chat, not a form inside it: the chat doesn't move.
+  const turnsBefore = (await chat.locator('.chat__turns').boundingBox())!
+  const scrollBefore = await chat.locator('.chat__turns').evaluate((el) => el.scrollHeight)
   await wrong.click()
-  const form = chat.getByRole('form', { name: 'Tell Jarvis what was wrong' })
-  await form.getByLabel('What should he have said? (optional)').fill('Drive time works from home too.')
-  await form.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(chat.getByText('Thanks. Jarvis will work on that tonight.')).toBeVisible()
+  const popup = page.getByRole('dialog', { name: 'That was wrong' })
+  await expect(popup).toBeVisible()
+  await expect(chat.locator('.chat__turns').getByRole('form')).toHaveCount(0)
+  expect(await chat.locator('.chat__turns').evaluate((el) => el.scrollHeight)).toBe(scrollBefore)
+  expect((await chat.locator('.chat__turns').boundingBox())!).toEqual(turnsBefore)
+  // Fixed size: the same before and after sending.
+  const size = (await popup.boundingBox())!
+  const note = popup.getByLabel('What should he have said? (optional)')
+  // 16 px, so iPhone Safari doesn't zoom in on it.
+  expect(await note.evaluate((el) => getComputedStyle(el).fontSize)).toBe('16px')
+  await note.fill('Drive time works from home too.')
+  await popup.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(popup.getByText('Thanks. Jarvis will work on that tonight.')).toBeVisible()
+  const after = (await popup.boundingBox())!
+  expect([after.width, after.height]).toEqual([size.width, size.height])
   expect(sent).toEqual({ question: 'How long to KTOA from home?', answer: 'I can only time drives from your phone.', note: 'Drive time works from home too.' })
-  // Sent, the (!) goes away from that reply.
+  // Close leaves the chat open, and the "…" has left that reply.
+  await popup.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(popup).toHaveCount(0)
+  await expect(chat).toBeVisible()
   await expect(chat.locator('.chat__turn').last().getByRole('button', { name: 'That was wrong' })).toHaveCount(0)
 })
 
-test('/talk shows the same (!) after each of his replies', async ({ page }) => {
+test('/talk shows the same "…" after each of his replies, and Esc closes only its pop-up', async ({ page }) => {
   await page.goto('/talk')
   const chat = page.getByRole('dialog', { name: 'Jarvis' })
   // Sample data plays a demo turn by itself.
   const wrong = chat.getByRole('button', { name: 'That was wrong' }).first()
   await expect(wrong).toBeVisible({ timeout: 20_000 })
   await wrong.click()
-  await expect(chat.getByRole('form', { name: 'Tell Jarvis what was wrong' })).toBeVisible()
-  await chat.getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(chat.getByRole('form', { name: 'Tell Jarvis what was wrong' })).toHaveCount(0)
+  const popup = page.getByRole('dialog', { name: 'That was wrong' })
+  await expect(popup.getByRole('form', { name: 'Tell Jarvis what was wrong' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(popup).toHaveCount(0)
+  await expect(chat).toBeVisible()
+  await wrong.click()
+  await popup.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(popup).toHaveCount(0)
 })
 
 test('a faint line at the bottom says which build this is and links its commit', async ({ page }) => {
