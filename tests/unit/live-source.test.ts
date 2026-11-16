@@ -172,7 +172,7 @@ describe('live snapshot', () => {
     // A Jarvis that reports its build (2026-11-16) shows it after the brain, with what's staged.
     const versioned = { build: 142, hash: '7079a90abcdef', dirty: false, started_at: 'x', pending: null }
     expect(service(await liveWith({ jarvisVersion: versioned }).source.snapshot(), 'jarvis').detail).toBe('Thinking with claude · build 142')
-    const staged = { ...versioned, dirty: true, pending: { hash: '9c1e2f0abc', summary: 'memory tidy' } }
+    const staged = { ...versioned, dirty: true, pending: { build: 143, hash: '9c1e2f0abc', summary: 'memory tidy' } }
     expect(service(await liveWith({ jarvisVersion: staged }).source.snapshot(), 'jarvis').detail).toBe('Thinking with claude · build 142 with unsaved edits, pending build 143')
     expect(service(await liveWith({ jarvisAnswers: false }).source.snapshot(), 'jarvis').status).toBe('degraded')
     const down = service(await liveWith({ jarvisAnswers: false, unitState: 'failed' }).source.snapshot(), 'jarvis')
