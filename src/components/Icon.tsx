@@ -28,8 +28,6 @@ const PATHS = {
   sparkle: 'M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6z',
   // Points down; turned up when a dropdown is open.
   chevron: 'M5.5 8 10 12.5 14.5 8',
-  // A circled !: "That was wrong" on one of Jarvis's replies.
-  alert: 'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM10 6.5v4M10 13.5h.01',
 } as const
 
 export type IconName = keyof typeof PATHS

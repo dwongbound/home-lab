@@ -11,7 +11,6 @@ import { outcomeText, readableSummary, settledAs, toolLabel } from '../lib/appro
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
 import { Spinner } from './Spinner'
-import { Icon } from './Icon'
 
 // Talking to Jarvis from the home page. The Overview keeps a slim bar: the
 // orb, a box, Ask and Talk. Asking opens the chat: a fixed-size sheet with a
@@ -693,6 +692,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
   const busy = state !== 'idle' || talking
   // The reply whose "That was wrong" note is open, if any.
   const [wrongOpen, setWrongOpen] = useState<number | null>(null)
+  const wrongTurn = turns.find((t) => t.id === wrongOpen)
   // Jarvis is waiting on an Approve or Deny somewhere in the chat.
   const waiting = turns.some((t) => t.approvals?.some((a) => !a.outcome))
 
@@ -801,21 +801,20 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
                 {t.answer}
                 {/* The cursor rides the reply as it streams, then keeps blinking after his latest one, like a terminal. */}
                 {!typing && (!t.done || (i === turns.length - 1 && !heard)) ? <span className="chat__caret" aria-hidden="true" /> : null}
-                {/* A quiet (!) at the end of each finished reply, here and on /talk (Dylan, 2026-11-16: the link was too noisy). */}
+                {/* A quiet "…" at the end of each finished reply, here and on /talk (Dylan, 2026-11-16: the link was too noisy). */}
                 {t.done && t.ok && !t.flagged ? (
-                  <WrongButton open={wrongOpen === t.id} onClick={() => setWrongOpen(wrongOpen === t.id ? null : t.id)} />
+                  <WrongButton open={wrongOpen === t.id} onClick={() => setWrongOpen(t.id)} />
                 ) : null}
               </p>
             ) : null}
             {typing ? <TypingDots label={state === 'working' ? workLabel : ''} /> : null}
-            {t.flagged || wrongOpen === t.id ? (
-              <WrongReply turn={t} onFlagged={onFlagged} onClose={() => setWrongOpen(null)} />
-            ) : null}
           </li>
           )
         })}
         {heard ? <li className="chat__turn"><p className="chat__q chat__q--heard">{heard}</p></li> : null}
       </ol>
+      {/* A pop-up over the chat, not a form inside it, so the chat never moves (Dylan, 2026-11-16). */}
+      {wrongTurn ? <WrongDialog turn={wrongTurn} onFlagged={onFlagged} onClose={() => setWrongOpen(null)} /> : null}
       {behind ? (
         <button type="button" className="btn chat__latest" onClick={toLatest}>Latest ↓</button>
       ) : null}
@@ -895,59 +894,92 @@ function ApprovalCard({ approval: a, talking, onAnswer }: { approval: ApprovalVi
 }
 
 /**
- * The small outlined (!) after one of his finished replies: "That was wrong".
+ * The faint "…" after one of his finished replies: "That was wrong".
  * Low-key until hovered or focused; its tap area reaches 44 px without
  * pushing the lines of text apart.
  */
 function WrongButton({ open, onClick }: { open: boolean; onClick: () => void }) {
   return (
-    <button type="button" className="wrong__open" aria-label="That was wrong" title="That was wrong" aria-expanded={open} onClick={onClick}>
-      <Icon name="alert" size={16} />
+    <button type="button" className="wrong__open" aria-label="That was wrong" title="That was wrong" aria-haspopup="dialog" aria-expanded={open} onClick={onClick}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
+        <circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" />
+      </svg>
     </button>
   )
 }
 
 /**
- * The note under a reply after its (!) is tapped (Dylan, 2026-11-16: train
- * Jarvis from his mistakes): what he should have said, sent with the turn to
- * Jarvis, who works it into a fix and a test overnight.
+ * The pop-up the "…" opens (Dylan, 2026-11-16: train Jarvis from his
+ * mistakes): what he should have said, sent with the turn to Jarvis, who
+ * works it into a fix and a test overnight. Fixed size; after sending it
+ * shows the thank-you in place, and the "…" leaves that reply.
  */
-function WrongReply({ turn, onFlagged, onClose }: { turn: Turn; onFlagged: (id: number) => void; onClose: () => void }) {
+function WrongDialog({ turn, onFlagged, onClose }: { turn: Turn; onFlagged: (id: number) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  useScrollLock()
   const [note, setNote] = useState('')
   const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
 
-  /** Sends the flag; on success the turn remembers it, so the button becomes a thank-you. */
+  // Open as a modal on mount, over the chat (jsdom has no showModal, so there it's just marked open).
+  useEffect(() => {
+    const d = ref.current
+    if (!d || d.open) return
+    if (typeof d.showModal === 'function') d.showModal()
+    else d.setAttribute('open', '')
+    return () => { if (typeof d.close === 'function') d.close() }
+  }, [])
+
+  /** Sends the flag; on success the pop-up thanks him and the turn remembers it. */
   async function submit(e: FormEvent) {
     e.preventDefault()
     setSending(true)
     setError('')
     const result = await sendFeedback({ question: turn.question, answer: turn.answer, note })
     setSending(false)
-    if (result.ok) onFlagged(turn.id)
-    else setError(result.message)
+    if (result.ok) {
+      setSent(true)
+      onFlagged(turn.id)
+    } else {
+      setError(result.message)
+    }
   }
 
-  if (turn.flagged) return <p className="wrong__done">Thanks. Jarvis will work on that tonight.</p>
   return (
-    <form className="wrong" onSubmit={submit} aria-label="Tell Jarvis what was wrong">
-      <label className="wrong__label" htmlFor={`wrong-${turn.id}`}>What should he have said? (optional)</label>
-      <textarea
-        id={`wrong-${turn.id}`}
-        className="wrong__note"
-        rows={2}
-        maxLength={2000}
-        value={note}
-        disabled={sending}
-        onChange={(e) => setNote(e.target.value)}
-      />
-      {sending ? <Spinner label="Telling Jarvis…" /> : (
-        <div className="wrong__actions">
-          <button type="button" className="btn" onClick={onClose}>Close</button>
-          <button type="submit" className="btn btn--primary">Send</button>
-        </div>
+    <dialog
+      ref={ref}
+      className="dialog glass dialog--wrong"
+      aria-labelledby="wrong-title"
+      aria-busy={sending}
+      // Esc closes just this pop-up, not the chat under it; ignored while sending.
+      onCancel={(e) => { e.preventDefault(); e.stopPropagation(); if (!sending) onClose() }}
+      // A tap on the dim area around it closes it, without reaching the chat behind.
+      onClick={(e) => { e.stopPropagation(); if (!sending && e.target === e.currentTarget) onClose() }}
+    >
+      <h2 id="wrong-title" className="dialog__title">That was wrong</h2>
+      {sent ? (
+        <p className="dialog__body">Thanks. Jarvis will work on that tonight.</p>
+      ) : (
+        <form id={`wrong-form-${turn.id}`} className="wrong" onSubmit={submit} aria-label="Tell Jarvis what was wrong">
+          <label className="wrong__label" htmlFor={`wrong-${turn.id}`}>What should he have said? (optional)</label>
+          <textarea
+            id={`wrong-${turn.id}`}
+            className="wrong__note"
+            rows={3}
+            maxLength={2000}
+            value={note}
+            disabled={sending}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          {error ? <p className="dialog__error" role="alert">{error}</p> : null}
+        </form>
       )}
-      {error ? <p className="approval__error" role="alert">{error}</p> : null}
-    </form>
+      <div className="dialog__actions">
+        <button type="button" className="btn btn--quiet" onClick={onClose} disabled={sending}>Close</button>
+        {sent ? null : <button type="submit" form={`wrong-form-${turn.id}`} className="btn btn--primary" disabled={sending}>Send</button>}
+      </div>
+      {sending ? <div className="dialog__block"><Spinner label="Telling Jarvis…" /></div> : null}
+    </dialog>
   )
 }

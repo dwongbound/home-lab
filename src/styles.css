@@ -607,18 +607,16 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .chat__typing { justify-self: start; display: inline-flex; align-items: center; gap: 10px; margin: 0; padding: 10px 14px; border-radius: 18px 18px 18px 6px; background: rgba(255,255,255,.08); color: var(--frost-dim); font-size: 13px; }
 .chat__dots { display: inline-flex; gap: 5px; }
 .chat__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--glacier); opacity: .55; }
-/* "That was wrong" under a reply: quiet until he needs it, 44 px to tap. */
-/* The (!) after a finished reply: sits on the last line of text, faint until
-   hovered or focused. The ::before widens the tap area to 44 px without
-   changing the line height. */
+/* "That was wrong": a faint "…" on the last line of a reply. The ::before
+   widens the tap area to 44 px without changing the line height. */
 .wrong__open { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 6px; padding: 0; vertical-align: -4px; border: 0; border-radius: 50%; background: transparent; color: var(--frost-dim); opacity: .6; cursor: pointer; }
 .wrong__open::before { content: ''; position: absolute; inset: -11px; }
 .wrong__open:hover, .wrong__open:focus-visible, .wrong__open[aria-expanded='true'] { color: var(--frost); opacity: 1; }
-.wrong__done { margin: 0; color: var(--frost-dim); font-size: 13px; }
-.wrong { display: grid; gap: 8px; max-width: 92%; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.05); }
+/* Its pop-up: fixed size, so an error or the thank-you never resizes it. */
+.dialog.dialog--wrong { height: 300px; }
+.wrong { display: grid; align-content: start; gap: 8px; min-height: 0; }
 .wrong__label { color: var(--frost-dim); font-size: 13.5px; }
-.wrong__note { width: 100%; min-height: 64px; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--glass-edge); background: rgba(0,0,0,.18); color: var(--frost); font: inherit; font-size: 16px; }
-.wrong__actions { display: flex; gap: 8px; justify-content: flex-end; }
+.wrong__note { width: 100%; height: 96px; resize: none; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--glass-edge); background: rgba(0,0,0,.18); color: var(--frost); font: inherit; font-size: 16px; }
 .chat__form { display: flex; gap: 8px; }
 /* The box gives way on a narrow phone so Send and Talk always fit. */
 .chat__form .jarvis__input { flex: 1; min-width: 0; }
