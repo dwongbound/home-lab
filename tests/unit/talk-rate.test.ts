@@ -8,9 +8,9 @@ describe('contextRate', () => {
     expect(contextRate(44100)).toBe(44100)
   })
 
-  it('follows Bluetooth call-quality rates too (AirPods, car)', () => {
-    expect(contextRate(16000)).toBe(16000)
-    expect(contextRate(24000)).toBe(24000)
+  it('leaves call-quality rates to the browser default (following them crackled on the iPhone speaker)', () => {
+    expect(contextRate(16000)).toBeNull()
+    expect(contextRate(24000)).toBeNull()
   })
 
   it('uses the default for a missing or odd rate', () => {
