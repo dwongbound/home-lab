@@ -221,17 +221,36 @@ function routeToSpeaker(ctx: AudioContext, voice: AudioNode): HTMLAudioElement |
   return element
 }
 
+/** The slowest and fastest microphone rates the context will follow (Hz). */
+const MIN_CONTEXT_RATE = 8000
+const MAX_CONTEXT_RATE = 96000
+
 /**
- * The audio context, running at the microphone's own rate when that's a
- * full-quality one. iPhones crackle when the context and the open
- * microphone run at different rates (44.1 vs 48 kHz), so match them.
+ * The rate the audio context should run at: the microphone's own, whatever
+ * it is. iPhones crackle when the context and the open microphone run at
+ * different rates. That's 44.1 vs 48 kHz on the phone's speaker, and 16 or
+ * 24 kHz on AirPods or car Bluetooth, which drop to call quality while the
+ * microphone is on (Dylan, 2026-11-15: "the crackling is back").
+ * Null means use the browser's default.
  */
+export function contextRate(micRate: unknown): number | null {
+  if (typeof micRate !== 'number' || !Number.isFinite(micRate)) return null
+  if (micRate < MIN_CONTEXT_RATE || micRate > MAX_CONTEXT_RATE) return null
+  return micRate
+}
+
+/** The audio context, running at the microphone's own rate (see contextRate). */
 function makeContext(stream: MediaStream): AudioContext {
   const micRate = stream.getAudioTracks()[0]?.getSettings?.().sampleRate
-  if (typeof micRate === 'number' && micRate >= 44100) {
-    try { return new AudioContext({ sampleRate: micRate }) } catch { /* rate not allowed here; use the default */ }
+  const rate = contextRate(micRate)
+  let ctx: AudioContext | null = null
+  if (rate !== null) {
+    try { ctx = new AudioContext({ sampleRate: rate }) } catch { /* rate not allowed here; use the default */ }
   }
-  return new AudioContext()
+  if (ctx === null) ctx = new AudioContext()
+  // Kept so a crackle report can be matched to the rates in Web Inspector.
+  console.info(`[talk] microphone ${String(micRate)} Hz, audio ${ctx.sampleRate} Hz`)
+  return ctx
 }
 
 /** /talk?direct=1 or ?direct=0 saves how this browser plays his voice (see readTalkDirect). */
