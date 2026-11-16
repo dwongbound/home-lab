@@ -125,6 +125,10 @@ it: the server sends /talk with its own head (`server/talk-head.mjs`), naming
 sees a second app beside the dashboard rather than the same one.
 It goes through the same Tailscale login as the rest of the page, and
 it's a different address from Jarvis's own voice page at `:8443/talk`.
+If his voice pops or crackles on a phone, open `/talk?direct=1` once: that
+browser then plays it straight from the audio engine instead of through a
+hidden audio element (`?direct=0` goes back). The audio engine also runs at
+the microphone's own rate, since iPhones crackle when the two differ.
 
 ### Ask Jarvis
 

@@ -33,3 +33,18 @@ export function readKiosk(): boolean {
 export function writeKiosk(on: boolean): void {
   try { localStorage.setItem(KIOSK_KEY, on ? 'on' : 'off') } catch { /* not saved; fine */ }
 }
+
+const TALK_DIRECT_KEY = 'home-lab:v1:talk-direct'
+
+/**
+ * Whether Talk plays Jarvis's voice straight out of the audio graph instead
+ * of through an <audio> element. A trial for iPhone pops and crackles
+ * (Dylan, 2026-11-15); set by opening /talk?direct=1 (and ?direct=0 to undo).
+ */
+export function readTalkDirect(): boolean {
+  try { return localStorage.getItem(TALK_DIRECT_KEY) === 'on' } catch { return false }
+}
+/** Saves the Talk output choice. Silently does nothing if storage is blocked. */
+export function writeTalkDirect(on: boolean): void {
+  try { localStorage.setItem(TALK_DIRECT_KEY, on ? 'on' : 'off') } catch { /* not saved; fine */ }
+}
