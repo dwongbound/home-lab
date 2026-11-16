@@ -109,6 +109,35 @@ function toTurns(lines: ChatTurn[]): Turn[] {
   return turns
 }
 
+// How long his reply can go quiet mid-sentence before the typing dots come back.
+const STALL_MS = 1500
+
+/**
+ * Whether a turn shows the typing dots: only the latest one, while it's
+ * unfinished and his words haven't started, he's thinking or looking
+ * something up, or his reply has gone quiet for a moment.
+ */
+function showTyping(turn: Turn, latest: boolean, state: OrbState, stalled: boolean): boolean {
+  if (!latest || turn.done) return false
+  if (!turn.answer) return true
+  if (state === 'thinking' || state === 'working') return true
+  return stalled
+}
+
+/** Three dots in a reply bubble, like someone typing; label says what he's looking up, if anything. */
+function TypingDots({ label }: { label: string }) {
+  return (
+    <p className="chat__typing" aria-label={label || 'Jarvis is typing'}>
+      <span className="chat__dots" aria-hidden="true">
+        <span className="chat__dot" />
+        <span className="chat__dot" />
+        <span className="chat__dot" />
+      </span>
+      {label ? <span className="chat__typing-label" aria-hidden="true">{label}</span> : null}
+    </p>
+  )
+}
+
 /** Waits ms milliseconds. */
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -148,6 +177,9 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
   const [notice, setNotice] = useState('')
   // What Jarvis is off doing while the orb shows working ("Searching the web.").
   const [workLabel, setWorkLabel] = useState('')
+  // His reply has stopped arriving for a moment mid-sentence, so the typing dots come back.
+  const [stalled, setStalled] = useState(false)
+  const stallTimer = useRef<number | undefined>(undefined)
   const barOrb = useRef<OrbHandle>(null)
   const sheetOrb = useRef<OrbHandle>(null)
   // Refs, not state, because the talk loop reads them between awaits.
@@ -223,6 +255,19 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
     sheetOrb.current?.pulse(amount)
   }
 
+  /** A piece of his reply arrived: hides the typing dots, and brings them back if nothing more comes for a moment. */
+  function watchForStall() {
+    setStalled(false)
+    window.clearTimeout(stallTimer.current)
+    stallTimer.current = window.setTimeout(() => setStalled(true), STALL_MS)
+  }
+
+  /** His reply is finished (or failed): no more typing dots for this turn. */
+  function stopStallWatch() {
+    window.clearTimeout(stallTimer.current)
+    setStalled(false)
+  }
+
   /** Sends the box's question from either form. */
   function send(e: FormEvent) {
     e.preventDefault()
@@ -245,6 +290,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
         question,
         (soFar, added) => {
           setState('speaking')
+          watchForStall()
           // Longer words land a little harder, so the pulse follows the text.
           pulse(Math.min(1, 0.45 + added.trim().length / 12))
           setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer: soFar } : x)))
@@ -256,6 +302,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
     } catch (err) {
       result = { ok: false, message: err instanceof Error ? err.message : 'The request failed' }
     }
+    stopStallWatch()
     if (result.dropped) result = await catchUp(id, question, askedAt, result.message)
     const answer = result.message
     setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer, ok: result.ok, done: true } : x)))
@@ -513,6 +560,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
       onStopTalk={stopTalk}
       muted={mutedOn}
       workLabel={workLabel}
+      stalled={stalled}
       onMute={() => setMute(!muted.current)}
       onAnswer={(id, ok) => void answer(id, ok)}
       onClose={close}
@@ -599,6 +647,8 @@ interface SheetProps {
   onMute: () => void
   /** What Jarvis is doing while the orb shows working. */
   workLabel: string
+  /** His reply went quiet mid-sentence, so the typing dots show again. */
+  stalled: boolean
   /** Approve (true) or Deny (false) tapped on one of Jarvis's requests. */
   onAnswer: (id: string, ok: boolean) => void
   onClose: () => void
@@ -609,7 +659,7 @@ interface SheetProps {
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, stalled, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -706,7 +756,9 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
         </p>
       </header>
       <ol ref={list} className="chat__turns" aria-live="polite" onScroll={onScroll}>
-        {turns.map((t, i) => (
+        {turns.map((t, i) => {
+          const typing = showTyping(t, i === turns.length - 1, state, stalled)
+          return (
           <li key={t.id} className="chat__turn">
             <p className="chat__q">{t.question}</p>
             {(t.approvals ?? []).map((a) => (
@@ -716,11 +768,13 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
               <p className={t.ok ? 'chat__a' : 'chat__a chat__a--error'}>
                 {t.answer}
                 {/* The cursor rides the reply as it streams, then keeps blinking after his latest one, like a terminal. */}
-                {!t.done || (i === turns.length - 1 && !heard) ? <span className="chat__caret" aria-hidden="true" /> : null}
+                {!typing && (!t.done || (i === turns.length - 1 && !heard)) ? <span className="chat__caret" aria-hidden="true" /> : null}
               </p>
             ) : null}
+            {typing ? <TypingDots label={state === 'working' ? workLabel : ''} /> : null}
           </li>
-        ))}
+          )
+        })}
         {heard ? <li className="chat__turn"><p className="chat__q chat__q--heard">{heard}</p></li> : null}
       </ol>
       {behind ? (

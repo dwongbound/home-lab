@@ -593,6 +593,10 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .chat__a { max-width: 92%; color: var(--frost); white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat__a--error { color: #ffc2c8; }
 .chat__caret { display: inline-block; width: .6em; height: 1.1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--glacier); }
+/* Jarvis typing: three dots in a small bubble, plus what he's looking up. Still dots without motion. */
+.chat__typing { justify-self: start; display: inline-flex; align-items: center; gap: 10px; margin: 0; padding: 10px 14px; border-radius: 18px 18px 18px 6px; background: rgba(255,255,255,.08); color: var(--frost-dim); font-size: 13px; }
+.chat__dots { display: inline-flex; gap: 5px; }
+.chat__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--glacier); opacity: .55; }
 .chat__form { display: flex; gap: 8px; }
 /* The box gives way on a narrow phone so Send and Talk always fit. */
 .chat__form .jarvis__input { flex: 1; min-width: 0; }
@@ -777,6 +781,11 @@ html[data-modal] { overflow: hidden; }
   .orb[data-state='speaking'] .orb__wave { animation: orb-wave 1.7s ease-out infinite; }
   .orb[data-state='listening'] .orb__wave { animation: orb-wave 2.4s ease-out infinite reverse; }
   .chat__caret { animation: caret 1s steps(2, jump-none) infinite; }
+  /* Opacity only: it sits inside the frosted sheet, where moving things make iOS's blur quiver. */
+  .chat__dot { will-change: opacity; animation: typing-dot 1.2s ease-in-out infinite; }
+  .chat__dot:nth-child(2) { animation-delay: .18s; }
+  .chat__dot:nth-child(3) { animation-delay: .36s; }
+  .chat__typing { animation: typing-in .25s ease both; }
   .icon-btn[data-spinning] svg { animation: spin 1s linear infinite; }
   .toast { animation: rise .35s ease both; }
 
@@ -829,6 +838,9 @@ html[data-modal] { overflow: hidden; }
   .shell .main .glass[data-reveal='in'] > * { animation: reveal 1s cubic-bezier(.4, 0, .2, 1) calc(var(--reveal-start, 250ms) + var(--reveal-i, 0) * 90ms) both; }
   .shell .main .glass[data-reveal='wait'] > * { animation-play-state: paused; }
 }
+@keyframes typing-dot { 0%, 70%, 100% { opacity: .25; } 35% { opacity: 1; } }
+@keyframes typing-in { from { opacity: 0; } to { opacity: 1; } }
+
 @media (prefers-reduced-motion: reduce) {
   .spinner__ring { border-top-color: rgba(255,255,255,.2); border-color: var(--frost); opacity: .8; }
 }
