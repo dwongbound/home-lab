@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contextRate } from '../../src/lib/talk'
+import { audioWasInterrupted, contextRate } from '../../src/lib/talk'
 
 // Talk's audio runs at the microphone's rate, or iPhones crackle.
 describe('contextRate', () => {
@@ -18,5 +18,18 @@ describe('contextRate', () => {
     expect(contextRate(0)).toBeNull()
     expect(contextRate(Number.NaN)).toBeNull()
     expect(contextRate(384000)).toBeNull()
+  })
+})
+
+// A context iOS took away comes back crackling, so the line starts fresh instead.
+describe('audioWasInterrupted', () => {
+  it('is true when iOS takes the audio away', () => {
+    expect(audioWasInterrupted('interrupted')).toBe(true)
+    expect(audioWasInterrupted('suspended')).toBe(true)
+  })
+
+  it('is false while playing or after hanging up', () => {
+    expect(audioWasInterrupted('running')).toBe(false)
+    expect(audioWasInterrupted('closed')).toBe(false)
   })
 })

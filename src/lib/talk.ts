@@ -239,6 +239,27 @@ export function contextRate(micRate: unknown): number | null {
   return micRate
 }
 
+/** Why Talk hung up by itself after the phone's audio changed under it. */
+const INTERRUPTED_MESSAGE = 'Your phone’s audio was interrupted, so Talk stopped. Tap Talk to start again.'
+
+/**
+ * True when iOS has taken the audio away (a call, another app's sound, the
+ * screen locking). A context that comes back from that often runs at the
+ * wrong rate and crackles the whole time (Dylan, 2026-11-15, a Talk line
+ * left dozing for an hour), so the line is rebuilt rather than resumed.
+ */
+export function audioWasInterrupted(state: string): boolean {
+  return state === 'interrupted' || state === 'suspended'
+}
+
+/** True when the microphone now runs at a different rate than the audio context it was opened with. */
+function rateDrifted(stream: MediaStream, ctx: AudioContext): boolean {
+  const rate = contextRate(stream.getAudioTracks()[0]?.getSettings?.().sampleRate)
+  if (rate === null || rate === ctx.sampleRate) return false
+  console.info(`[talk] microphone moved to ${rate} Hz, audio is ${ctx.sampleRate} Hz: starting fresh`)
+  return true
+}
+
 /** The audio context, running at the microphone's own rate (see contextRate). */
 function makeContext(stream: MediaStream): AudioContext {
   const micRate = stream.getAudioTracks()[0]?.getSettings?.().sampleRate
@@ -376,6 +397,11 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       if (midReply) cushion = RECOVERY_CUSHION_S
       playAt = ctx.currentTime + cushion
     }
+    // His first sentence of a reply: if the phone's audio rate moved under us, start fresh.
+    if (!midReply && rateDrifted(stream, ctx)) {
+      shutDown(INTERRUPTED_MESSAGE)
+      return
+    }
     midReply = true
     source.start(playAt)
     playAt += buffer.duration
@@ -471,6 +497,9 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   }
   ws.onerror = null
   ws.onclose = () => shutDown('The line to Jarvis dropped')
+  ctx.onstatechange = () => {
+    if (audioWasInterrupted(ctx.state)) shutDown(INTERRUPTED_MESSAGE)
+  }
   frame = requestAnimationFrame(tick)
   on.onState('listening')
 
