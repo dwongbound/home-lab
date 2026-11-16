@@ -811,12 +811,11 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   const sky = (await page.locator('.backdrop').boundingBox())!
   expect(sky.y + sky.height).toBeGreaterThanOrEqual(viewport.height)
   // The orb follows the screen: 12% of its short side, 40 to 160 px (small on a phone, big on a TV),
-  // and "Jarvis" sits clear above its orbits.
+  // with nothing written over it (the "Jarvis" title went 2026-11-16).
   const orbBox = (await chat.locator('.chat__head .orb').boundingBox())!
   const expected = Math.min(160, Math.max(40, Math.min(viewport.width, viewport.height) * 0.12))
   expect(Math.abs(orbBox.width - expected)).toBeLessThan(1.5)
-  const titleBox = (await chat.getByRole('heading', { name: 'Jarvis' }).boundingBox())!
-  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(orbBox.y - orbBox.width * 0.38)
+  await expect(chat.getByRole('heading', { name: 'Jarvis' })).toHaveCount(0)
   // Work he sent to the background sits in the empty space right of the orb, each with a spinner,
   // the next one marked "Up next". The orb stays centred.
   const tasks = chat.getByRole('list', { name: 'Working on in the background' })
@@ -848,10 +847,8 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
 
   // Talking already (sample data plays the demo, which needs no tap).
   await expect(chat.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
-  // Just "Jarvis" over the orb: the orb shows listening, thinking and speaking, so the status line is for screen readers only.
-  const title = (await chat.getByRole('heading', { name: 'Jarvis' }).boundingBox())!
-  const orb = (await chat.locator('.chat__head .orb').boundingBox())!
-  expect(title.y).toBeLessThan(orb.y)
+  // Just the orb: it shows listening, thinking and speaking, so the status line is for screen readers only.
+  await expect(chat.getByRole('heading', { name: 'Jarvis' })).toHaveCount(0)
   expect((await chat.getByRole('status').boundingBox())!.height).toBeLessThanOrEqual(1)
   // Mute stops only the microphone: Talk carries on, and the status says so.
   const mute = chat.getByRole('button', { name: 'Mute', exact: true })
@@ -965,7 +962,7 @@ test('Jarvis shows typing dots until his reply starts', async ({ page }) => {
   await expect(chat.locator('.chat__typing')).toHaveCount(0)
 })
 
-test('a chip over each reply says who answered: Claude in orange, Ornith in blue', async ({ page }) => {
+test('a chip over each reply says who answered: Jarvis (C) in orange, Jarvis (O) in blue', async ({ page }) => {
   await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"model","model":"ornith"}\n{"type":"delta","text":"Claude is out of room, so it is me."}\n{"type":"done","ok":true}\n' }))
   await page.goto('/')
   await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Who is this?')
@@ -974,14 +971,14 @@ test('a chip over each reply says who answered: Claude in orange, Ornith in blue
   await expect(chat.getByText('Claude is out of room, so it is me.')).toBeVisible()
   // Earlier sample turns (shared mock server) have their own chips; the newest is the one that matters.
   const chip = chat.locator('.chat__model').last()
-  await expect(chip).toHaveText('Ornith')
+  await expect(chip).toHaveText('Jarvis (O)')
   await expect(chip).toHaveAttribute('data-model', 'local')
   // The sample Jarvis (no route) answers as Claude.
   await page.unroute('**/api/jarvis/chat')
   await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
   await chat.getByRole('textbox', { name: 'Message Jarvis' }).fill('And now?')
   await chat.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(chat.locator('.chat__model').last()).toHaveText('Claude')
+  await expect(chat.locator('.chat__model').last()).toHaveText('Jarvis (C)')
   await expect(chat.locator('.chat__model').last()).toHaveAttribute('data-model', 'claude')
 })
 
