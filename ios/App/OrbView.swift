@@ -250,18 +250,18 @@ final class OrbAnimator {
         let input = gated * gated * (3 - 2 * gated)
         // Two cascaded one-pole filters: ~170 ms to rise, ~560 ms to fall
         // (Dylan, 2026-11-17: "a little less smooth" than 250/800).
-        // Jarvis's core: ~150 ms up / ~480 ms down.
-        let tau = input > envelope ? 0.075 : 0.24
+        // Jarvis's core: ~120 ms up / ~390 ms down.
+        let tau = input > envelope ? 0.06 : 0.195
         let k = 1 - exp(-dt / tau)
         stage1 += (input - stage1) * k
         envelope += (stage1 - envelope) * k
         // The shell, a little less smoothed so it follows his syllables
         // (Dylan, 2026-11-17: "looks more responsive", same size): the same
         // dead zone and curve, scaled so normal speech travels the whole
-        // range; one main stage (~120 ms up / ~400 ms down) and a light
+        // range; one main stage (~95 ms up / ~320 ms down) and a light
         // 40 ms second stage that only takes the edge off.
         let shellInput = min(1, input * 1.25)
-        let sk = 1 - exp(-dt / (shellInput > shellStage1 ? 0.08 : 0.32))
+        let sk = 1 - exp(-dt / (shellInput > shellStage1 ? 0.06 : 0.26))
         shellStage1 += (shellInput - shellStage1) * sk
         shellEnvelope += (shellStage1 - shellEnvelope) * (1 - exp(-dt / 0.04))
     }
