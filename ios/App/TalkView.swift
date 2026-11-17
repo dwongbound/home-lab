@@ -241,7 +241,7 @@ struct TalkView: View {
                     VStack(spacing: 14) {
                         // The orb stays put; it shrinks a little once
                         // there's a conversation to make room for it.
-                        OrbView(state: mood, size: min(area.size.width - 48, hasWords ? 200 : 300), level: Double(talk.level), tone: Double(talk.tone))
+                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone))
                             .opacity(talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1)
                             .padding(.top, hasWords ? 8 : 24)
                             .animation(.smooth(duration: 0.5), value: hasWords)
@@ -257,6 +257,15 @@ struct TalkView: View {
                 controls
             }
         }
+    }
+
+    /// The orb's size: up to 300 pt on a phone (200 once you're talking),
+    /// and larger on an iPad, where it can take up to about a third of the
+    /// shorter side (420 pt, 280 while talking).
+    private func orbSize(in area: CGSize) -> CGFloat {
+        let roomy = min(area.width, area.height) > 600
+        let cap: CGFloat = roomy ? (hasWords ? 280 : 420) : (hasWords ? 200 : 300)
+        return min(area.width - 48, cap)
     }
 
     /// Anything said yet on this call.
