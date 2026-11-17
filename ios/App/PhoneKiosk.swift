@@ -174,6 +174,13 @@ struct PhoneKioskView: View {
             }
             matters
                 .padding(.top, 6)
+            // One home line: something wanting a look, else the thermostat.
+            if let line = HomeGlance.lines(today.snapshot?.home).first {
+                Label("\(line.title) · \(line.value)", systemImage: line.symbol)
+                    .font(.headline)
+                    .foregroundStyle(line.attention ? Theme.rose : Theme.frostDim)
+                    .lineLimit(1)
+            }
         }
     }
 

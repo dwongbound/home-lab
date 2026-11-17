@@ -238,14 +238,21 @@ struct KioskView: View {
         }
     }
 
-    /// The devices that answer, as large tiles.
+    /// The home at a glance: anything wanting a look first, then the
+    /// thermostat, what's playing, lights and rooms (HomeGlance).
     private var homePanel: some View {
-        let tiles = today.snapshot?.homeTiles ?? []
-        let lights = tiles.filter { $0.kind == "light" }
-        return frame("Home", icon: "house.fill", note: lights.isEmpty ? nil : "\(lights.filter(\.isOn).count) of \(lights.count) lights on") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                ForEach(tiles.prefix(8)) { device in
-                    DeviceTile(device: device, large: true)
+        frame("Home", icon: "house.fill") {
+            ForEach(HomeGlance.lines(today.snapshot?.home, limit: 7)) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    Image(systemName: line.symbol)
+                        .foregroundStyle(line.attention ? Theme.rose : Theme.glacier)
+                        .frame(width: 30)
+                    Text(line.title).font(.title3).lineLimit(1)
+                    Spacer(minLength: 16)
+                    Text(line.value)
+                        .font(.title3.weight(line.attention ? .semibold : .regular))
+                        .foregroundStyle(line.attention ? Theme.rose : Theme.frostDim)
+                        .lineLimit(1)
                 }
             }
         }

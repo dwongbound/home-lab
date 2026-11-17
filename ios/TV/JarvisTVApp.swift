@@ -29,6 +29,10 @@ final class AlwaysOnModel: ObservableObject {
 
     /// Fetches the snapshot; keeps the last one on screen if this fails.
     func load() async {
+        #if DEBUG
+        // `-demoSnapshot` shows the sample data even when Jarvis answers.
+        if let demo = DemoSnapshot.snapshot { snapshot = demo; reachable = true; return }
+        #endif
         do {
             snapshot = try await client.snapshot()
             reachable = true
@@ -163,6 +167,12 @@ struct AlwaysOnView: View {
                             .labelStyle(TintedIconLabel(icon: warm))
                             .padding(.top, 6)
                     }
+                    if let extra = HomeGlance.weatherExtra(model.snapshot?.home?.weather) {
+                        Label(extra, systemImage: "wind")
+                            .font(.callout)
+                            .foregroundStyle(inkDim)
+                            .labelStyle(TintedIconLabel(icon: accent))
+                    }
                     if let sun = model.snapshot?.home?.sun,
                        let line = TodayWording.sunLine(rising: sun.rising, setting: sun.setting, now: context.date) {
                         Label(line, systemImage: "sun.horizon.fill")
@@ -288,17 +298,21 @@ struct AlwaysOnView: View {
                 }
             }
         case .home:
+            // Thermostat, what's playing, lights, rooms, and anything that
+            // wants a look first (HomeGlance in JarvisKit).
             card("Home", icon: "house.fill") {
-                if let thermostat = snapshot.thermostat {
-                    row(thermostat.name, TodayWording.deviceState(thermostat), symbol: TodayWording.deviceSymbol(thermostat))
-                }
-                let on = snapshot.homeTiles.filter { $0.isOn && $0.kind != "climate" }
-                let lights = snapshot.homeTiles.filter { $0.kind == "light" }
-                if !lights.isEmpty {
-                    row("Lights", "\(lights.filter(\.isOn).count) of \(lights.count) on", symbol: "lightbulb.fill")
-                }
-                ForEach(on.filter { $0.kind != "light" }.prefix(3)) { device in
-                    row(device.name, TodayWording.deviceState(device), symbol: TodayWording.deviceSymbol(device))
+                ForEach(HomeGlance.lines(snapshot.home, limit: 7)) { line in
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Image(systemName: line.symbol)
+                            .foregroundStyle(line.attention ? palette.alert.color : accent)
+                            .frame(width: 44)
+                        Text(line.title).lineLimit(1)
+                        Spacer(minLength: 24)
+                        Text(line.value)
+                            .foregroundStyle(line.attention ? palette.alert.color : inkDim)
+                            .fontWeight(line.attention ? .semibold : .regular)
+                            .lineLimit(1)
+                    }
                 }
             }
         case .work:
@@ -363,20 +377,6 @@ struct AlwaysOnView: View {
         // at night, with an edge that shows against the sky (3:1).
         .background(RoundedRectangle(cornerRadius: 34, style: .continuous).fill(palette.panel.color))
         .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).strokeBorder(palette.panelEdge.color, lineWidth: 2))
-    }
-
-    /// An icon, a name on the left, its value on the right.
-    private func row(_ name: String, _ value: String, symbol: String? = nil) -> some View {
-        HStack(spacing: 18) {
-            if let symbol {
-                Image(systemName: symbol)
-                    .foregroundStyle(warm)
-                    .frame(width: 36)
-            }
-            Text(name)
-            Spacer()
-            Text(value).foregroundStyle(inkDim)
-        }
     }
 
     /// An icon, a big number, and a caption.

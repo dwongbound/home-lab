@@ -18,6 +18,10 @@ final class TodayModel: ObservableObject {
     /// Fetches the snapshot; keeps the last one on screen if this fails.
     func load(app: AppModel) async {
         loading = true
+        #if DEBUG
+        // `-demoSnapshot` shows the sample data even when Jarvis answers.
+        if let demo = DemoSnapshot.snapshot { snapshot = demo; loading = false; return }
+        #endif
         do {
             snapshot = try await app.client.snapshot()
             problem = nil

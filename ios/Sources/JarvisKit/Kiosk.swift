@@ -61,7 +61,7 @@ public enum KioskPlan {
     public static func panels(snapshot: Snapshot?) -> [KioskPanel] {
         guard let snapshot else { return [] }
         var out: [KioskPanel] = [.schedule]
-        if !snapshot.homeTiles.isEmpty { out.append(.home) }
+        if !HomeGlance.lines(snapshot.home).isEmpty { out.append(.home) }
         if !(snapshot.jobs?.running.isEmpty ?? true) { out.append(.work) }
         if snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.offers) }
