@@ -26,13 +26,17 @@ struct OrbView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Everything that moves, carried from frame to frame.
     @State private var animator = OrbAnimator()
+    /// How quickly the dots and the core rise with a voice, in ms; set in
+    /// Settings → Orb feel (Dylan, 2026-11-17). Settling takes ~3.5× as long.
+    @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
+    @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
 
     /// Redraws every frame (or once, with Reduce Motion on).
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             Canvas { canvas, area in
-                animator.step(to: OrbLook.of(state), speaking: state == .speaking, level: reduceMotion ? 0 : level, tone: reduceMotion ? 0 : tone, at: t)
+                animator.step(to: OrbLook.of(state), speaking: state == .speaking, level: reduceMotion ? 0 : level, dotsRiseMs: dotsRiseMs, coreRiseMs: coreRiseMs, at: t)
                 draw(in: &canvas, area: area)
             }
         }
@@ -234,7 +238,7 @@ final class OrbAnimator {
     /// Jarvis's voice, as the core sees it.
     var coreVoice: Double { envelope * speakingMix }
 
-    func step(to target: OrbLook, speaking: Bool, level: Double, tone: Double = 0, at t: Double) {
+    func step(to target: OrbLook, speaking: Bool, level: Double, dotsRiseMs: Double = OrbTuning.dotsDefault, coreRiseMs: Double = OrbTuning.coreDefault, at t: Double) {
         let dt = min(max(t - (last ?? t), 0), 0.1)
         last = t
         let ease = 1 - exp(-dt / 0.75)
@@ -250,19 +254,32 @@ final class OrbAnimator {
         let input = gated * gated * (3 - 2 * gated)
         // Two cascaded one-pole filters: ~170 ms to rise, ~560 ms to fall
         // (Dylan, 2026-11-17: "a little less smooth" than 250/800).
-        // Jarvis's core: ~90 ms up / ~290 ms down.
-        let tau = input > envelope ? 0.045 : 0.145
+        // Jarvis's core: rises in about coreRiseMs, settles ~3.3× slower.
+        let coreRise = max(coreRiseMs, 20) / 1800
+        let tau = input > envelope ? coreRise : coreRise * 3.3
         let k = 1 - exp(-dt / tau)
         stage1 += (input - stage1) * k
         envelope += (stage1 - envelope) * k
         // The shell, a little less smoothed so it follows his syllables
         // (Dylan, 2026-11-17: "looks more responsive", same size): the same
         // dead zone and curve, scaled so normal speech travels the whole
-        // range; one main stage (~55 ms up / ~200 ms down) and a light
-        // 40 ms second stage that only takes the edge off.
+        // range; one main stage (rise set in Settings, settle ~3.6× that)
+        // and a light 30 ms second stage that only takes the edge off.
         let shellInput = min(1, input * 1.25)
-        let sk = 1 - exp(-dt / (shellInput > shellStage1 ? 0.032 : 0.16))
+        let dotsRise = max(dotsRiseMs, 20) / 1800
+        let sk = 1 - exp(-dt / (shellInput > shellStage1 ? dotsRise : dotsRise * 3.6))
         shellStage1 += (shellInput - shellStage1) * sk
-        shellEnvelope += (shellStage1 - shellEnvelope) * (1 - exp(-dt / 0.04))
+        // De-jitter: enough that a single audio chunk can't make it flicker.
+        shellEnvelope += (shellStage1 - shellEnvelope) * (1 - exp(-dt / 0.03))
     }
+}
+
+/// The orb's feel, tunable in Settings → Orb feel.
+enum OrbTuning {
+    static let dotsKey = "orb.dotsRiseMs"
+    static let coreKey = "orb.coreRiseMs"
+    /// About 50 ms up / 180 ms down for the dots.
+    static let dotsDefault: Double = 50
+    /// About 85 ms up / 275 ms down for the core.
+    static let coreDefault: Double = 85
 }

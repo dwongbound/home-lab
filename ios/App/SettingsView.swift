@@ -6,6 +6,8 @@ struct SettingsView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var checking = false
+    @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
+    @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
 
     /// Connection section with a Check button; Close in the corner.
     var body: some View {
@@ -30,6 +32,18 @@ struct SettingsView: View {
                     Text("Jarvis")
                 } footer: {
                     Text("Reached through Tailscale. Tailscale signs you in, so there's no password. Turn on VPN On Demand in the Tailscale app so it reconnects by itself.")
+                }
+                Section {
+                    tuning("Dots (your voice)", value: $dotsRiseMs)
+                    tuning("Inner orb (Jarvis)", value: $coreRiseMs)
+                    Button("Reset to defaults") {
+                        dotsRiseMs = OrbTuning.dotsDefault
+                        coreRiseMs = OrbTuning.coreDefault
+                    }
+                } header: {
+                    Text("Orb feel")
+                } footer: {
+                    Text("How fast the orb follows a voice. Lower is snappier and moves more with each syllable; higher is calmer and smoother. Changes show on the Talk orb straight away.")
                 }
             }
             .navigationTitle("Settings")
@@ -72,5 +86,26 @@ struct SettingsView: View {
             }
             checking = false
         }
+    }
+
+    /// One smoothing slider: 20 ms (snappy) to 250 ms (calm), with the value shown.
+    private func tuning(_ title: String, value: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(Int(value.wrappedValue)) ms")
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.frostDim)
+            }
+            Slider(value: value, in: 20...250, step: 5) {
+                Text(title)
+            } minimumValueLabel: {
+                Text("Snappy").font(.caption2)
+            } maximumValueLabel: {
+                Text("Calm").font(.caption2)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
