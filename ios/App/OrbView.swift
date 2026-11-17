@@ -53,7 +53,7 @@ struct OrbView: View {
         let breath = 1 + look.breathe * sin(a.breathPhase)
         // Up to ~11% from his voice.
         let radius = side * look.radius * breath * (1 + a.shellVoice * 0.11)
-        let points = Self.sphere(count: Self.count, angle: a.angle)
+        let points = a.orient(Self.base)
         let color = look.color.color
         let shellGlow = a.shellVoice
 
@@ -84,6 +84,10 @@ struct OrbView: View {
             canvas.stroke(path, with: .color(color.opacity(min(opacity, 0.5))), lineWidth: 0.6 + near * 0.4)
         }
     }
+
+    /// The shell's points before any turning: the golden spiral, tilted
+    /// toward the viewer.
+    static let base = sphere(count: count, angle: 0)
 
     /// How many points make the shell.
     static let count = 60
@@ -221,7 +225,17 @@ struct OrbLook {
 /// update it while drawing without redrawing the view.
 final class OrbAnimator {
     private(set) var look = OrbLook.of(.listening)
-    private(set) var angle: Double = 0
+    /// The shell's orientation, a rotation matrix (rows), turned a little
+    /// every frame by `spin`. Never reset, so nothing ever jumps.
+    private var rotation: [[Double]] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    /// The current angular velocity (x, y, z, radians per second), eased
+    /// toward each mood's: about the vertical while he thinks or speaks,
+    /// still while Dylan is talking, and a slow wandering tumble when idle.
+    private var spin: (Double, Double, Double) = (0, 0.35, 0)
+    /// How recently Dylan was audible (0..1), slow to fall so the orb
+    /// doesn't start turning in the gaps between words.
+    private var hearing: Double = 0
+    private var clock: Double = 0
     private(set) var breathPhase: Double = 0
     /// How much the voice belongs to Jarvis (1) rather than Dylan (0), eased.
     private var speakingMix: Double = 0
@@ -244,7 +258,8 @@ final class OrbAnimator {
         let ease = 1 - exp(-dt / 0.75)
         look = look.toward(target, ease)
         speakingMix += ((speaking ? 1 : 0) - speakingMix) * (1 - exp(-dt / 0.5))
-        angle += look.speed * dt
+        clock += dt
+        turn(dt: dt, speaking: speaking, level: level)
         breathPhase += 2.4 * dt
 
         // Dead zone and soft knee: below 0.08 is room noise; above it the
@@ -282,4 +297,71 @@ enum OrbTuning {
     static let dotsDefault: Double = 50
     /// About 85 ms up / 275 ms down for the core.
     static let coreDefault: Double = 85
+}
+
+extension OrbAnimator {
+    /// Turns the shell for one frame (Dylan, 2026-11-17): while he's
+    /// talking it holds still; when nothing is being said (listening in
+    /// silence, or paused waiting for "Hey Jarvis") it tumbles slowly
+    /// about an axis that keeps wandering; while Jarvis thinks or speaks
+    /// it spins about the vertical as before. The velocity eases between
+    /// these over about 0.7 s, so a change never jerks.
+    fileprivate func turn(dt: Double, speaking: Bool, level: Double) {
+        // Audible = above the noise floor; rises fast, fades over ~1.2 s.
+        let audible = (!speaking && level > 0.08) ? 1.0 : 0.0
+        hearing += (audible - hearing) * (1 - exp(-dt / (audible > hearing ? 0.08 : 1.2)))
+
+        let target: (Double, Double, Double)
+        if speaking || look.speed > 0.45 {
+            // Thinking, working or speaking: the vertical spin.
+            target = (0, look.speed, 0)
+        } else {
+            // Idle tumble: an axis drifting smoothly over the sphere.
+            let a = clock * 0.11, b = clock * 0.07 + 1.3
+            let axis = (sin(a) * cos(b), cos(a) * 0.6 + 0.4, sin(b) * cos(a))
+            let len = max(1e-6, (axis.0 * axis.0 + axis.1 * axis.1 + axis.2 * axis.2).squareRoot())
+            let rate = 0.32 * (1 - hearing)
+            target = (axis.0 / len * rate, axis.1 / len * rate, axis.2 / len * rate)
+        }
+        let k = 1 - exp(-dt / 0.7)
+        spin = (spin.0 + (target.0 - spin.0) * k, spin.1 + (target.1 - spin.1) * k, spin.2 + (target.2 - spin.2) * k)
+
+        let speed = (spin.0 * spin.0 + spin.1 * spin.1 + spin.2 * spin.2).squareRoot()
+        guard speed > 1e-6 else { return }
+        let angle = speed * dt
+        let (x, y, z) = (spin.0 / speed, spin.1 / speed, spin.2 / speed)
+        let c = cos(angle), s = sin(angle), t = 1 - c
+        // Rodrigues: the small rotation for this frame, applied on top.
+        let r: [[Double]] = [
+            [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+            [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+            [t * x * z - s * y, t * y * z + s * x, t * z * z + c],
+        ]
+        var next = [[Double]](repeating: [0, 0, 0], count: 3)
+        for i in 0..<3 { for j in 0..<3 { next[i][j] = r[i][0] * rotation[0][j] + r[i][1] * rotation[1][j] + r[i][2] * rotation[2][j] } }
+        rotation = Self.orthonormal(next)
+    }
+
+    /// The shell's points turned to the current orientation.
+    func orient(_ points: [(x: Double, y: Double, z: Double)]) -> [(x: Double, y: Double, z: Double)] {
+        let m = rotation
+        return points.map { p in
+            (m[0][0] * p.x + m[0][1] * p.y + m[0][2] * p.z,
+             m[1][0] * p.x + m[1][1] * p.y + m[1][2] * p.z,
+             m[2][0] * p.x + m[2][1] * p.y + m[2][2] * p.z)
+        }
+    }
+
+    /// Keeps the matrix a pure rotation as tiny rounding errors build up.
+    private static func orthonormal(_ m: [[Double]]) -> [[Double]] {
+        func norm(_ v: [Double]) -> [Double] {
+            let l = max(1e-9, (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).squareRoot())
+            return [v[0] / l, v[1] / l, v[2] / l]
+        }
+        let a = norm(m[0])
+        let dot = a[0] * m[1][0] + a[1] * m[1][1] + a[2] * m[1][2]
+        let b = norm([m[1][0] - dot * a[0], m[1][1] - dot * a[1], m[1][2] - dot * a[2]])
+        let c = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+        return [a, b, c]
+    }
 }
