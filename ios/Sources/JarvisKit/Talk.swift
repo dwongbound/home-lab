@@ -1,0 +1,207 @@
+// Talk: the voice line to Jarvis's own voice pipeline on the PC, the same
+// one the web page's Talk uses (src/lib/talk.ts, server/talk.mjs). Keep the
+// two in step.
+//
+// The app sends the microphone as 16 kHz 16-bit mono audio in 20 ms frames
+// (640 bytes), and keeps sending while Jarvis speaks so Dylan can talk over
+// him. Jarvis sends JSON events as text messages and his voice as 16-bit
+// audio (one binary message per sentence) at the rate his hello names. When
+// his voice has finished playing the app says {"type":"idle"}.
+import Foundation
+
+/// Jarvis's side of the line.
+public enum TalkState: String, Equatable, Sendable {
+    case listening, thinking, speaking, dozing
+}
+
+/// One JSON event from the voice line.
+public enum TalkEvent: Equatable, Sendable {
+    /// First thing on the line: his voice's sample rate, and whether he can
+    /// doze and wake on "Hey Jarvis" (older ones can only hang up).
+    case hello(rate: Double, wakeWord: Bool)
+    case state(TalkState)
+    /// What Whisper has heard so far while Dylan is still talking.
+    case partial(String, joined: Bool)
+    /// One whole turn heard. joined: carries on the question he was answering.
+    case transcript(String, joined: Bool)
+    /// More of his reply's text.
+    case reply(String)
+    case working(String)
+    case workingDone
+    case model(String)
+    /// He finished this reply.
+    case done
+    /// Dylan talked over him: drop the rest of his voice.
+    case stop
+    case approval(Approval)
+    case approvalDone(id: String, ok: Bool, by: String, later: Bool)
+
+    /// Reads one text message. Unknown or broken ones come back nil, so a
+    /// newer Jarvis never breaks an older app.
+    public static func parse(_ text: String) -> TalkEvent? {
+        guard let data = text.data(using: .utf8) else { return nil }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        guard let type = object["type"] as? String else { return nil }
+        let words = object["text"] as? String ?? ""
+        let joined = object["joined"] as? Bool ?? false
+
+        switch type {
+        case "hello":
+            let rate = (object["rate"] as? NSNumber)?.doubleValue ?? 22050
+            return .hello(rate: rate, wakeWord: object["wake_word"] as? Bool ?? false)
+        case "state":
+            guard let raw = object["state"] as? String, let state = TalkState(rawValue: raw) else { return nil }
+            return .state(state)
+        case "partial":
+            if words.isEmpty { return nil }
+            return .partial(words, joined: joined)
+        case "transcript":
+            if words.isEmpty { return nil }
+            return .transcript(words, joined: joined)
+        case "reply":
+            if words.isEmpty { return nil }
+            return .reply(words)
+        case "working":
+            return .working(object["label"] as? String ?? "")
+        case "working_done":
+            return .workingDone
+        case "model":
+            guard let model = object["model"] as? String else { return nil }
+            return .model(model)
+        case "done":
+            return .done
+        case "stop":
+            return .stop
+        case "approval":
+            // On the talk line the approval's fields sit on the event itself.
+            guard let id = object["id"] as? String, let summary = object["summary"] as? String else { return nil }
+            let tool = object["tool"] as? String ?? ""
+            let expires = object["expires"] as? String ?? ""
+            return .approval(Approval(id: id, tool: tool, summary: summary, expires: expires))
+        case "approval_done":
+            guard let id = object["id"] as? String else { return nil }
+            return .approvalDone(
+                id: id,
+                ok: object["ok"] as? Bool ?? false,
+                by: object["by"] as? String ?? "timeout",
+                later: object["later"] as? Bool ?? false
+            )
+        default:
+            return nil
+        }
+    }
+}
+
+/// What the app tells Jarvis about the line.
+public enum TalkMessage {
+    /// His whole reply has played; the speaker is quiet.
+    public static let idle = #"{"type":"idle"}"#
+    /// Pause without hanging up: he listens only for "Hey Jarvis".
+    public static let doze = #"{"type":"doze"}"#
+    /// Talk again after dozing.
+    public static let wake = #"{"type":"wake"}"#
+
+    /// For Jarvis's log, so a crackle report can be matched to the phone's audio.
+    public static func client(micRate: Double, audioRate: Double) -> String {
+        let object: [String: Any] = ["type": "client", "mic_rate": micRate, "audio_rate": audioRate, "agent": "Jarvis iOS"]
+        let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// Sound helpers for the line, kept free of AVFoundation so they're tested
+/// on any Mac.
+public enum TalkAudio {
+    /// Samples per 20 ms frame at 16 kHz.
+    public static let frameSamples = 320
+
+    /// True when Jarvis just decided Dylan's done talking (listening to
+    /// thinking): that's when the soft "got it" plays.
+    public static func heardYouOut(before: TalkState, after: TalkState) -> Bool {
+        before == .listening && after == .thinking
+    }
+
+    /// 16-bit little-endian samples as the -1..1 floats the speaker plays.
+    public static func floats(fromPCM16 data: Data) -> [Float] {
+        let count = data.count / 2
+        var out = [Float](repeating: 0, count: count)
+        data.withUnsafeBytes { raw in
+            for i in 0..<count {
+                let lo = UInt16(raw[i * 2])
+                let hi = UInt16(raw[i * 2 + 1])
+                out[i] = Float(Int16(bitPattern: lo | hi << 8)) / 32768
+            }
+        }
+        return out
+    }
+
+    /// -1..1 floats as 16-bit little-endian bytes (clipped).
+    public static func pcm16(fromFloats floats: [Float]) -> Data {
+        var data = Data(capacity: floats.count * 2)
+        for sample in floats {
+            let clipped = max(-1, min(1, sample))
+            let value = UInt16(bitPattern: Int16((clipped * 32767).rounded()))
+            data.append(UInt8(value & 0xff))
+            data.append(UInt8(value >> 8))
+        }
+        return data
+    }
+
+    /// Fades the first and last 4 ms of a sentence, so its edges don't click.
+    public static func softenEdges(_ floats: inout [Float], rate: Double) {
+        let n = min(Int(rate * 0.004), floats.count / 2)
+        guard n > 0 else { return }
+        for i in 0..<n {
+            let gain = Float(i) / Float(n)
+            floats[i] *= gain
+            floats[floats.count - 1 - i] *= gain
+        }
+    }
+
+    /// Root-mean-square loudness, scaled so speech lands around 0.5-1 (like the page's orb).
+    public static func loudness(_ samples: UnsafeBufferPointer<Float>) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        var sum: Float = 0
+        for s in samples { sum += s * s }
+        return min(1, (sum / Float(samples.count)).squareRoot() * 9)
+    }
+}
+
+/// Cuts a stream of 16 kHz samples into 20 ms frames of 16-bit bytes.
+/// Feed it chunks in order; it hands back each frame as it fills.
+public struct FrameCutter {
+    private var pending: [Float] = []
+
+    public init() {}
+
+    /// Adds samples; returns the whole 640-byte frames finished so far.
+    public mutating func add(_ samples: [Float]) -> [Data] {
+        pending += samples
+        var frames: [Data] = []
+        while pending.count >= TalkAudio.frameSamples {
+            frames.append(TalkAudio.pcm16(fromFloats: Array(pending.prefix(TalkAudio.frameSamples))))
+            pending.removeFirst(TalkAudio.frameSamples)
+        }
+        return frames
+    }
+}
+
+extension JarvisClient {
+    /// The voice line's address: wss on the server's own host.
+    public var talkURL: URL {
+        var parts = URLComponents(url: base, resolvingAgainstBaseURL: false) ?? URLComponents()
+        parts.scheme = base.scheme == "http" ? "ws" : "wss"
+        parts.path = "/api/jarvis/talk"
+        parts.query = nil
+        return parts.url ?? base
+    }
+
+    /// The upgrade request, with the same-origin Origin the server insists on
+    /// (server/talk.mjs talkRefusal).
+    public var talkRequest: URLRequest {
+        var request = URLRequest(url: talkURL)
+        request.setValue(origin, forHTTPHeaderField: "Origin")
+        request.setValue("1", forHTTPHeaderField: "x-home-lab")
+        return request
+    }
+}

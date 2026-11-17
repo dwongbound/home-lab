@@ -1,0 +1,388 @@
+// The phone's end of the voice line: the microphone out, Jarvis's voice in,
+// over the WebSocket at /api/jarvis/talk. The native twin of the page's
+// openTalkLine (src/lib/talk.ts); the wire format lives in JarvisKit/Talk.
+//
+// Audio runs through one AVAudioEngine with Apple's voice processing on,
+// which cancels his voice out of the microphone so he doesn't hear himself.
+// The session is play-and-record with the background audio mode, so the
+// line keeps going with the screen locked.
+import AVFoundation
+import JarvisKit
+
+/// What the line tells the screen. Always called on the main thread.
+struct TalkHandlers {
+    var onEvent: @MainActor (TalkEvent) -> Void
+    /// How loud the voice that matters now is (Dylan's while he listens), 0..1.
+    var onLevel: @MainActor (Float) -> Void
+    /// The line dropped; the message says why, in words for the screen.
+    var onClosed: @MainActor (String) -> Void
+}
+
+/// Runs `body` on the main thread, after anything already sent there, so
+/// events reach the screen in the order they came off the line.
+private func onMain(_ body: @escaping @MainActor () -> Void) {
+    DispatchQueue.main.async {
+        MainActor.assumeIsolated { body() }
+    }
+}
+
+/// Why opening the line failed, worded for the screen.
+enum TalkError: LocalizedError {
+    case microphone
+    case audio(String)
+    case noAnswer
+
+    var errorDescription: String? {
+        switch self {
+        case .microphone: return "Jarvis can’t hear you: allow the microphone in Settings › Jarvis."
+        case .audio(let why): return "The phone’s audio wouldn’t start (\(why))."
+        case .noAnswer: return "Jarvis didn’t pick up. Is Tailscale on and Jarvis running on the PC?"
+        }
+    }
+}
+
+// The engine, socket and counters are touched from the audio thread, the
+// socket's callbacks and the main thread; `queue` keeps them in order.
+final class TalkLine: @unchecked Sendable {
+    private let handlers: TalkHandlers
+    private let engine = AVAudioEngine()
+    private let voice = AVAudioPlayerNode()
+    private let chime = AVAudioPlayerNode()
+    private let socket: URLSessionWebSocketTask
+    private let queue = DispatchQueue(label: "jarvis.talk")
+    private let capture = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+
+    private var converter: AVAudioConverter?
+    private var cutter = FrameCutter()
+    private var voiceRate: Double = 22050
+    private var voiceFormat: AVAudioFormat?
+    private var state: TalkState = .listening
+    /// Sentences scheduled and not yet heard.
+    private var queued = 0
+    /// Bumped on every "stop", so sentences dropped then don't count down later.
+    private var generation = 0
+    private var replyDone = false
+    private var muted = false
+    private var closed = false
+    private(set) var canDoze = false
+    private var observers: [NSObjectProtocol] = []
+
+    /// Builds the line; nothing starts until `open()`.
+    init(request: URLRequest, handlers: TalkHandlers) {
+        self.handlers = handlers
+        socket = URLSession.shared.webSocketTask(with: request)
+    }
+
+    /// Asks for the microphone, starts the audio, dials Jarvis and waits for
+    /// his hello. Throws a TalkError whose words can go straight on screen.
+    func open() async throws {
+        guard await AVAudioApplication.requestRecordPermission() else { throw TalkError.microphone }
+        try startAudio()
+        socket.resume()
+        // His hello is the first message; until it comes the line isn't up.
+        do {
+            let first = try await socket.receive()
+            queue.sync { handle(first) }
+        } catch {
+            shutDown(message: nil)
+            throw TalkError.noAnswer
+        }
+        send(text: TalkMessage.client(micRate: engine.inputNode.outputFormat(forBus: 0).sampleRate, audioRate: voiceRate))
+        listen()
+        watchAudio()
+    }
+
+    /// Hangs up: microphone, voice and socket all stop.
+    func close() {
+        shutDown(message: nil)
+    }
+
+    /// Muted, he hears only silence; the line and his voice carry on.
+    func setMuted(_ value: Bool) {
+        queue.async { self.muted = value }
+    }
+
+    /// Pause without hanging up: his voice stops and he listens only for "Hey Jarvis".
+    func doze() {
+        queue.async {
+            self.silence()
+            self.send(text: TalkMessage.doze)
+            self.state = .dozing
+        }
+    }
+
+    /// Talk again after dozing, same as saying "Hey Jarvis".
+    func wake() {
+        queue.async {
+            self.send(text: TalkMessage.wake)
+            self.state = .listening
+        }
+    }
+
+    // MARK: Audio
+
+    /// Play-and-record for a voice call, out of the loudspeaker unless
+    /// AirPods or a car are connected, with echo cancelling on.
+    private func startAudio() throws {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true)
+            try engine.inputNode.setVoiceProcessingEnabled(true)
+        } catch {
+            throw TalkError.audio(error.localizedDescription)
+        }
+        engine.attach(voice)
+        engine.attach(chime)
+        connectNodes()
+        do {
+            try engine.start()
+        } catch {
+            throw TalkError.audio(error.localizedDescription)
+        }
+        voice.play()
+        chime.play()
+    }
+
+    /// Wires the microphone tap and the two players. Called again when the
+    /// route changes (AirPods in or out), since the formats change with it.
+    private func connectNodes() {
+        let input = engine.inputNode
+        let micFormat = input.outputFormat(forBus: 0)
+        converter = AVAudioConverter(from: micFormat, to: capture)
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1024, format: micFormat) { [weak self] buffer, _ in
+            self?.heard(buffer)
+        }
+        let format = playFormat()
+        engine.connect(voice, to: engine.mainMixerNode, format: format)
+        engine.connect(chime, to: engine.mainMixerNode, format: format)
+    }
+
+    /// Mono floats at his voice's rate; the mixer converts to the speaker's.
+    private func playFormat() -> AVAudioFormat {
+        if let voiceFormat, voiceFormat.sampleRate == voiceRate { return voiceFormat }
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: voiceRate, channels: 1, interleaved: false)!
+        voiceFormat = format
+        return format
+    }
+
+    /// One chunk from the microphone: down to 16 kHz, into 20 ms frames, out
+    /// to Jarvis. Runs on the audio thread.
+    private func heard(_ buffer: AVAudioPCMBuffer) {
+        guard let converter else { return }
+        let ratio = capture.sampleRate / buffer.format.sampleRate
+        let room = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
+        guard let out = AVAudioPCMBuffer(pcmFormat: capture, frameCapacity: room) else { return }
+        var fed = false
+        var error: NSError?
+        converter.convert(to: out, error: &error) { _, status in
+            if fed {
+                status.pointee = .noDataNow
+                return nil
+            }
+            fed = true
+            status.pointee = .haveData
+            return buffer
+        }
+        guard error == nil, let channel = out.floatChannelData?[0] else { return }
+        let samples = Array(UnsafeBufferPointer(start: channel, count: Int(out.frameLength)))
+        let level = samples.withUnsafeBufferPointer { TalkAudio.loudness($0) }
+        queue.async {
+            guard !self.closed else { return }
+            for frame in self.cutter.add(samples) {
+                // Muted, a frame of silence goes instead, so his listening
+                // clock keeps running and a half-finished turn still ends.
+                let bytes = self.muted ? Data(count: frame.count) : frame
+                self.socket.send(.data(bytes)) { _ in }
+            }
+            if self.state == .listening {
+                let shown = self.muted ? 0 : level
+                onMain { self.handlers.onLevel(shown) }
+            }
+        }
+    }
+
+    /// Queues one sentence of his voice after the one before it.
+    private func play(_ data: Data) {
+        var floats = TalkAudio.floats(fromPCM16: data)
+        guard !floats.isEmpty else { return }
+        TalkAudio.softenEdges(&floats, rate: voiceRate)
+        let format = playFormat()
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(floats.count)) else { return }
+        buffer.frameLength = AVAudioFrameCount(floats.count)
+        floats.withUnsafeBufferPointer { source in
+            buffer.floatChannelData?[0].update(from: source.baseAddress!, count: floats.count)
+        }
+        let level = floats.withUnsafeBufferPointer { TalkAudio.loudness($0) }
+        onMain { self.handlers.onLevel(level) }
+        queued += 1
+        let mine = generation
+        voice.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            guard let self else { return }
+            self.queue.async {
+                guard mine == self.generation else { return }
+                self.queued -= 1
+                self.maybeIdle()
+            }
+        }
+        if !voice.isPlaying { voice.play() }
+    }
+
+    /// Tells Jarvis the speaker's quiet, once his whole reply has played.
+    private func maybeIdle() {
+        guard replyDone, queued <= 0 else { return }
+        replyDone = false
+        queued = 0
+        send(text: TalkMessage.idle)
+    }
+
+    /// Drops whatever of his voice is still queued (Dylan talked over him).
+    private func silence() {
+        generation += 1
+        queued = 0
+        replyDone = false
+        voice.stop()
+        voice.play()
+    }
+
+    /// A very short, quiet two-note rise when he's heard Dylan out, so Dylan
+    /// knows he can stop talking (the page's playGotIt).
+    private func playGotIt() {
+        let format = playFormat()
+        let rate = format.sampleRate
+        let noteLength = Int(rate * 0.07)
+        let tail = Int(rate * 0.05)
+        let total = noteLength * 2 + tail
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(total)) else { return }
+        buffer.frameLength = AVAudioFrameCount(total)
+        guard let out = buffer.floatChannelData?[0] else { return }
+        for i in 0..<total { out[i] = 0 }
+        for (index, hz) in [660.0, 990.0].enumerated() {
+            let start = index * noteLength
+            let length = min(noteLength + tail, total - start)
+            for i in 0..<length {
+                let t = Double(i) / rate
+                // Swell over 12 ms, then fade, so no edge clicks.
+                let swell = min(1, t / 0.012)
+                let fade = exp(-t / 0.035)
+                out[start + i] += Float(sin(2 * .pi * hz * t) * swell * fade * 0.07)
+            }
+        }
+        chime.scheduleBuffer(buffer, completionHandler: nil)
+    }
+
+    // MARK: Socket
+
+    /// Reads messages until the line drops.
+    private func listen() {
+        socket.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let message):
+                self.queue.async {
+                    self.handle(message)
+                    self.listen()
+                }
+            case .failure:
+                self.shutDown(message: "The line to Jarvis dropped. Tap Talk to call again.")
+            }
+        }
+    }
+
+    /// One message: his voice (binary) or an event (text).
+    private func handle(_ message: URLSessionWebSocketTask.Message) {
+        switch message {
+        case .data(let data):
+            play(data)
+        case .string(let text):
+            guard let event = TalkEvent.parse(text) else { return }
+            apply(event)
+            onMain { self.handlers.onEvent(event) }
+        @unknown default:
+            break
+        }
+    }
+
+    /// What an event changes on the line itself (the screen gets it too).
+    private func apply(_ event: TalkEvent) {
+        switch event {
+        case .hello(let rate, let wakeWord):
+            voiceRate = rate
+            canDoze = wakeWord
+            if engine.isRunning, voiceFormat?.sampleRate != rate {
+                let format = playFormat()
+                engine.connect(voice, to: engine.mainMixerNode, format: format)
+                engine.connect(chime, to: engine.mainMixerNode, format: format)
+                voice.play()
+                chime.play()
+            }
+        case .state(let next):
+            if TalkAudio.heardYouOut(before: state, after: next) { playGotIt() }
+            state = next
+        case .done:
+            replyDone = true
+            maybeIdle()
+        case .stop:
+            silence()
+        default:
+            break
+        }
+    }
+
+    /// Sends one JSON message if the line's still open.
+    private func send(text: String) {
+        guard !closed else { return }
+        socket.send(.string(text)) { _ in }
+    }
+
+    // MARK: Phone audio changes
+
+    /// A call or Siri takes the audio: hang up and say so. AirPods in or out:
+    /// rewire and carry on.
+    private func watchAudio() {
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] note in
+            let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            if raw == AVAudioSession.InterruptionType.began.rawValue {
+                self?.shutDown(message: "Your phone’s audio was interrupted, so Talk stopped. Tap Talk to start again.")
+            }
+        })
+        observers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
+            self?.queue.async { self?.rewire() }
+        })
+    }
+
+    /// Restarts the engine on the new route.
+    private func rewire() {
+        guard !closed else { return }
+        engine.stop()
+        connectNodes()
+        do {
+            try engine.start()
+            voice.play()
+            chime.play()
+        } catch {
+            shutDown(message: "The phone’s audio changed and Talk couldn’t carry on. Tap Talk to start again.")
+        }
+    }
+
+    /// Stops everything once; the message goes to the screen unless Dylan hung up.
+    private func shutDown(message: String?) {
+        queue.async {
+            guard !self.closed else { return }
+            self.closed = true
+            for observer in self.observers { NotificationCenter.default.removeObserver(observer) }
+            self.observers = []
+            self.engine.inputNode.removeTap(onBus: 0)
+            self.voice.stop()
+            self.chime.stop()
+            self.engine.stop()
+            self.socket.cancel(with: .normalClosure, reason: nil)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            if let message {
+                onMain { self.handlers.onClosed(message) }
+            }
+        }
+    }
+}

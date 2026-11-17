@@ -56,6 +56,11 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: Dark
+        # Talk: the microphone, and background audio so a call keeps going
+        # with the screen locked.
+        NSMicrophoneUsageDescription: Jarvis listens while you talk to him on the Talk tab.
+        UIBackgroundModes:
+          - audio
         # No encryption beyond HTTPS: skips the export-compliance question
         # on every TestFlight upload.
         ITSAppUsesNonExemptEncryption: false
