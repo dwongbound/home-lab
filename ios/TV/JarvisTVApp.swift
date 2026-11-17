@@ -43,18 +43,26 @@ struct AlwaysOnView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Which turn of the panel rotation is showing.
     @State private var turn = 0
+    /// The sun lamp right now (Dylan, 2026-11-17): the background follows
+    /// the real sunrise and sunset; see SunLamp in JarvisKit.
+    @State private var lamp = SunLampState(phase: .night, brightness: SunLamp.nightBrightness, warmth: 0)
+    /// A few points of slow drift, so an OLED never holds one picture.
+    @State private var drift = CGSize.zero
 
     /// The orb and the time on the left; one roomy panel at a time on the
     /// right, cross-fading every 20 s (Dylan, 2026-11-17: the right was
     /// cluttered and not dynamic enough for a kiosk).
     var body: some View {
         ZStack {
-            Theme.sky.ignoresSafeArea()
+            LampSky(lamp: lamp).ignoresSafeArea()
             HStack(alignment: .center, spacing: 80) {
                 left.frame(maxWidth: .infinity)
                 right.frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(80)
+            // Dim at night so the bedroom stays dark; full in daylight.
+            .opacity(0.35 + 0.65 * min(1, lamp.brightness * 3))
+            .offset(drift)
         }
         .fontDesign(.rounded)
         .task {
@@ -69,9 +77,47 @@ struct AlwaysOnView: View {
                 withAnimation(reduceMotion ? nil : .smooth(duration: 1.2)) { turn += 1 }
             }
         }
+        // The lamp follows the clock: checked every 30 s, each change eased
+        // over 20 s so it never jumps; the layout drifts a few points.
+        .task {
+            let preview = SunLampPreview.enabled
+            while !Task.isCancelled {
+                let now = SunLampPreview.now()
+                let next = lampState(at: now)
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: preview ? 0.5 : 20)) {
+                    lamp = next
+                    let minutes = now.timeIntervalSinceReferenceDate / 60
+                    drift = CGSize(width: 10 * sin(minutes / 7), height: 8 * cos(minutes / 11))
+                }
+                try? await Task.sleep(for: .seconds(preview ? 0.5 : 30))
+            }
+        }
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
     }
+
+    // MARK: Sun lamp
+
+    /// The lamp at `now`, from the snapshot's sun times or an LA estimate.
+    private func lampState(at now: Date) -> SunLampState {
+        let format = ISO8601DateFormatter()
+        let sun = model.snapshot?.home?.sun
+        let estimate = SunLamp.estimate(for: now)
+        let rise = sun?.rising.flatMap { format.date(from: $0) } ?? estimate.sunrise
+        let set = sun?.setting.flatMap { format.date(from: $0) } ?? estimate.sunset
+        return SunLamp.state(now: now, sunrise: rise, sunset: set)
+    }
+
+    /// Text colour for the lamp: dark ink on a bright sky, light otherwise.
+    private var ink: Color {
+        lamp.brightness > 0.55 ? Theme.basalt : Theme.frost
+    }
+
+    /// Secondary text.
+    private var inkDim: Color { ink.opacity(0.68) }
+
+    /// Faint text.
+    private var inkFaint: Color { ink.opacity(0.45) }
 
     // MARK: Left
 
@@ -79,34 +125,35 @@ struct AlwaysOnView: View {
     /// connection line.
     private var left: some View {
         VStack(spacing: 26) {
-            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 400, work: model.snapshot?.jobs?.running ?? [], tappable: false)
-            TimelineView(.everyMinute) { context in
+            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 360, work: model.snapshot?.jobs?.running ?? [], tappable: false)
+            TimelineView(.periodic(from: .now, by: SunLampPreview.enabled ? 0.5 : 30)) { tick in
+                let context = (date: SunLampPreview.now(at: tick.date), ())
                 VStack(spacing: 8) {
                     Text(context.date, format: .dateTime.hour().minute())
-                        .font(.system(size: 104, weight: .light, design: .rounded))
+                        .font(.system(size: 88, weight: .light, design: .rounded))
                         .monospacedDigit()
                     Text(context.date, format: .dateTime.weekday(.wide).month(.wide).day())
-                        .font(.title3)
-                        .foregroundStyle(Theme.frostDim)
+                        .font(.headline)
+                        .foregroundStyle(inkDim)
                     if let weather = model.snapshot?.home?.weather {
                         Label(weatherText(weather), systemImage: TodayWording.weatherSymbol(weather.condition))
-                            .font(.headline)
-                            .foregroundStyle(Theme.frostDim)
+                            .font(.callout)
+                            .foregroundStyle(inkDim)
                             .symbolRenderingMode(.multicolor)
                             .padding(.top, 6)
                     }
                     if let sun = model.snapshot?.home?.sun,
                        let line = TodayWording.sunLine(rising: sun.rising, setting: sun.setting, now: context.date) {
                         Label(line, systemImage: "sun.horizon.fill")
-                            .font(.headline)
-                            .foregroundStyle(Theme.frostDim)
+                            .font(.callout)
+                            .foregroundStyle(inkDim)
                             .symbolRenderingMode(.multicolor)
                     }
                 }
             }
             Text(connectionWords)
                 .font(.caption)
-                .foregroundStyle(model.reachable == false ? Theme.rose : Theme.frostFaint)
+                .foregroundStyle(model.reachable == false ? Theme.rose : inkFaint)
         }
     }
 
@@ -134,17 +181,19 @@ struct AlwaysOnView: View {
                     HStack(spacing: 10) {
                         ForEach(Array(panels.enumerated()), id: \.offset) { index, _ in
                             Circle()
-                                .fill(index == turn % panels.count ? Theme.frost : Theme.frostFaint.opacity(0.5))
+                                .fill(index == turn % panels.count ? ink : inkFaint.opacity(0.5))
                                 .frame(width: 10, height: 10)
                         }
                     }
+                    // Centred under the panel, however many there are.
+                    .frame(maxWidth: .infinity)
                     .accessibilityHidden(true)
                 }
             }
         } else {
             HStack(spacing: 16) {
                 ProgressView()
-                Text("Jarvis is thinking…").foregroundStyle(Theme.frostDim)
+                Text("Jarvis is thinking…").foregroundStyle(inkDim)
             }
         }
     }
@@ -155,15 +204,19 @@ struct AlwaysOnView: View {
         switch KioskPlan.hero(snapshot: snapshot, pending: []) {
         case .alert(let name, let status):
             Label("\(name) is \(status)", systemImage: "exclamationmark.triangle.fill")
-                .font(.title2.weight(.semibold))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(Theme.ember)
         case .soon(let title, let minutes):
             Label(minutes <= 0 ? "\(title) is starting" : "\(title) in \(minutes) min", systemImage: "calendar.badge.clock")
-                .font(.title2.weight(.semibold))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(Theme.glacier)
         default:
             if let greeting = snapshot.offers?.greeting {
-                Text(greeting).font(.title2).foregroundStyle(Theme.frost.opacity(0.9))
+                // One modest line (two at most): the panel is the star.
+                Text(greeting)
+                    .font(.headline)
+                    .foregroundStyle(inkDim)
+                    .lineLimit(2)
             }
         }
     }
@@ -175,7 +228,7 @@ struct AlwaysOnView: View {
         case .schedule:
             card("Today", icon: "calendar") {
                 if snapshot.today.isEmpty {
-                    Text("Nothing booked").foregroundStyle(Theme.frostDim)
+                    Text("Nothing booked").foregroundStyle(inkDim)
                 }
                 ForEach(snapshot.today.prefix(5)) { item in
                     HStack(alignment: .firstTextBaseline, spacing: 28) {
@@ -208,7 +261,7 @@ struct AlwaysOnView: View {
                         Circle().fill(OrbView.workAmber).frame(width: 14, height: 14)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(task.label).lineLimit(2)
-                            Text(task.runningWords()).font(.callout).foregroundStyle(Theme.frostDim)
+                            Text(task.runningWords()).font(.callout).foregroundStyle(inkDim)
                         }
                     }
                 }
@@ -247,7 +300,7 @@ struct AlwaysOnView: View {
         VStack(alignment: .leading, spacing: 22) {
             Label(title, systemImage: icon)
                 .font(.headline)
-                .foregroundStyle(Theme.frostDim)
+                .foregroundStyle(inkDim)
             rows()
                 .font(.title2)
         }
@@ -261,7 +314,7 @@ struct AlwaysOnView: View {
         HStack {
             Text(name)
             Spacer()
-            Text(value).foregroundStyle(Theme.frostDim)
+            Text(value).foregroundStyle(inkDim)
         }
     }
 
@@ -269,7 +322,7 @@ struct AlwaysOnView: View {
     private func stat(_ value: String, _ caption: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(value).font(.system(size: 64, weight: .bold, design: .rounded)).monospacedDigit()
-            Text(caption).font(.headline).foregroundStyle(Theme.frostDim)
+            Text(caption).font(.headline).foregroundStyle(inkDim)
         }
     }
 
@@ -277,5 +330,57 @@ struct AlwaysOnView: View {
     private func weatherText(_ weather: Weather) -> String {
         guard let temperature = weather.temperature else { return weather.condition.capitalized }
         return "\(weather.condition.capitalized), \(Int(temperature.rounded()))\(weather.unit)"
+    }
+}
+
+/// The sky behind everything, lit by the lamp: near-black at night, deep
+/// red to amber to gold through dawn, a warm white daylight sky by day, and
+/// amber back to dark at dusk.
+struct LampSky: View {
+    let lamp: SunLampState
+
+    /// A top-to-bottom gradient mixed from the lamp's brightness and warmth.
+    var body: some View {
+        LinearGradient(colors: [color(top: true), color(top: false)], startPoint: .top, endPoint: .bottom)
+    }
+
+    /// One end of the gradient.
+    private func color(top: Bool) -> Color {
+        let b = lamp.brightness, w = lamp.warmth
+        // Night ink, daylight sky, and the warm glow, as RGB.
+        let night = top ? (0.02, 0.025, 0.04) : (0.035, 0.045, 0.07)
+        let day = top ? (0.86, 0.91, 0.96) : (0.97, 0.94, 0.88)
+        // Warm runs deep red when dim, amber, then gold as it brightens.
+        let warm = (min(1, 0.55 + b * 0.5), 0.12 + b * 0.62, 0.04 + b * 0.32)
+        func mix(_ a: Double, _ c: Double, _ t: Double) -> Double { a + (c - a) * t }
+        let base = (mix(night.0, day.0, b), mix(night.1, day.1, b), mix(night.2, day.2, b))
+        let glow = w * (top ? 0.75 : 1)
+        let lit = min(1, b * 3)
+        return Color(
+            red: mix(base.0, warm.0 * lit, glow),
+            green: mix(base.1, warm.1 * lit, glow),
+            blue: mix(base.2, warm.2 * lit, glow)
+        )
+    }
+}
+
+/// A fast-forward clock for checking the lamp: debug builds launched with
+/// `-sunLampPreview` run a whole day in two minutes from 5:30 AM.
+enum SunLampPreview {
+    static let started = Date()
+
+    static var enabled: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-sunLampPreview")
+        #else
+        return false
+        #endif
+    }
+
+    /// Now, or the fast-forward clock's now.
+    static func now(at real: Date = Date()) -> Date {
+        guard enabled else { return real }
+        let dawn = Calendar.current.date(bySettingHour: 5, minute: 30, second: 0, of: started) ?? started
+        return dawn.addingTimeInterval(real.timeIntervalSince(started) * 720)
     }
 }
