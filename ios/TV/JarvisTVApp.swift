@@ -25,6 +25,8 @@ final class AlwaysOnModel: ObservableObject {
     @Published private(set) var snapshot: Snapshot?
     /// nil until the first answer; then whether the PC answered last time.
     @Published private(set) var reachable: Bool?
+    /// How many approvals are waiting: a count for the chip, never what.
+    @Published private(set) var approvals = 0
     private let client = JarvisClient()
 
     /// Fetches the snapshot; keeps the last one on screen if this fails.
@@ -36,6 +38,7 @@ final class AlwaysOnModel: ObservableObject {
         do {
             snapshot = try await client.snapshot()
             reachable = true
+            approvals = (try? await client.pendingApprovals().count) ?? approvals
         } catch {
             reachable = false
             #if DEBUG
@@ -57,6 +60,10 @@ struct AlwaysOnView: View {
     @State private var drift = CGSize.zero
     /// True while the Ask Jarvis screen is up.
     @State private var asking = false
+    /// Guest-friendly (on by default): people walking in see this screen,
+    /// so it leaves out sleep, steps, Jarvis's suggestions and the private
+    /// half of the greeting (TVBoard in JarvisKit).
+    @AppStorage("tv.guestFriendly") private var guest = true
 
     /// The orb and the time on the left; one roomy panel at a time on the
     /// right, cross-fading every 20 s (Dylan, 2026-11-17: the right was
@@ -64,6 +71,8 @@ struct AlwaysOnView: View {
     var body: some View {
         ZStack {
             LampSky(lamp: lamp).ignoresSafeArea()
+            SkyLayers(lamp: lamp, arc: arc, condition: model.snapshot?.home?.weather?.condition, palette: palette)
+                .ignoresSafeArea()
             HStack(alignment: .center, spacing: 80) {
                 left.frame(maxWidth: .infinity)
                 right.frame(maxWidth: .infinity, alignment: .leading)
@@ -80,8 +89,8 @@ struct AlwaysOnView: View {
         }
         .task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(KioskPlan.turnSeconds))
-                withAnimation(reduceMotion ? nil : .smooth(duration: 1.2)) { turn += 1 }
+                try? await Task.sleep(for: .seconds(TVBoard.turnSeconds))
+                withAnimation(reduceMotion ? nil : .smooth(duration: 1.0)) { turn += 1 }
             }
         }
         // The lamp follows the clock: checked every 30 s, each change eased
@@ -128,6 +137,17 @@ struct AlwaysOnView: View {
         return SunLamp.state(now: now, sunrise: rise, sunset: set)
     }
 
+    /// The sun or moon's place on its arc right now.
+    private var arc: SkyArc {
+        let format = ISO8601DateFormatter()
+        let now = SunLampPreview.now()
+        let sun = model.snapshot?.home?.sun
+        let estimate = SunLamp.estimate(for: now)
+        let rise = sun?.rising.flatMap { format.date(from: $0) } ?? estimate.sunrise
+        let set = sun?.setting.flatMap { format.date(from: $0) } ?? estimate.sunset
+        return SkyArc.at(now: now, sunrise: rise, sunset: set)
+    }
+
     /// Every colour for the lamp right now, each measured against the sky
     /// and panels behind it (LampPalette in JarvisKit): near-black ink by
     /// day, dimmed frost by night, swapped at the crossover.
@@ -157,6 +177,9 @@ struct AlwaysOnView: View {
                         .lineLimit(1)
                         .fixedSize()
                         .foregroundStyle(ink)
+                        // Each minute rolls over rather than snapping.
+                        .contentTransition(.numericText())
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.8), value: context.date.formatted(.dateTime.hour().minute()))
                     Text(context.date, format: .dateTime.weekday(.wide).month(.wide).day())
                         .font(.title3)
                         .foregroundStyle(inkDim)
@@ -165,6 +188,7 @@ struct AlwaysOnView: View {
                             .font(.headline)
                             .foregroundStyle(inkDim)
                             .labelStyle(TintedIconLabel(icon: warm))
+                            .symbolEffect(.breathe, options: .repeating, isActive: !reduceMotion)
                             .padding(.top, 6)
                     }
                     if let extra = HomeGlance.weatherExtra(model.snapshot?.home?.weather) {
@@ -182,14 +206,27 @@ struct AlwaysOnView: View {
                     }
                 }
             }
-            // The one focusable thing here, so Select anywhere opens it.
-            Button {
-                asking = true
-            } label: {
-                Label("Ask Jarvis", systemImage: "mic.fill")
-                    .font(.callout)
+            // The two focusable things: Ask Jarvis (Select opens it straight
+            // away) and the guest-friendly switch beside it.
+            HStack(spacing: 24) {
+                Button {
+                    asking = true
+                } label: {
+                    Label("Ask Jarvis", systemImage: "mic.fill")
+                        .font(.callout)
+                }
+                .accessibilityHint("Type or hold the mic button to ask him something")
+                Button {
+                    withAnimation(.smooth) { guest.toggle() }
+                } label: {
+                    Label(guest ? "Guest view" : "Full view", systemImage: guest ? "person.2.fill" : "person.fill")
+                        .labelStyle(.iconOnly)
+                        .font(.callout)
+                        .foregroundStyle(ink)
+                }
+                .accessibilityLabel(guest ? "Guest-friendly view is on" : "Guest-friendly view is off")
+                .accessibilityHint("Hides sleep, steps and Jarvis's suggestions when on")
             }
-            .accessibilityHint("Type or hold the mic button to ask him something")
             Text(connectionWords)
                 .font(.caption)
                 .foregroundStyle(model.reachable == false ? palette.alert.color : inkDim)
@@ -198,36 +235,41 @@ struct AlwaysOnView: View {
 
     // MARK: Right
 
-    /// A hero line when something's pressing, then one panel, then where in
-    /// the rotation it is.
+    /// From the top: status chips, the greeting, the Now/Next hero card,
+    /// then one card at a time cross-fading on a timer, with page dots that
+    /// fill while each card is up. A fixed card height, so nothing below
+    /// jumps when the card changes and nothing is ever cut off.
     @ViewBuilder
     private var right: some View {
         if let snapshot = model.snapshot {
-            let panels = KioskPlan.panels(snapshot: snapshot)
-            let showing = KioskPlan.showing(panels, turn: turn, count: 1)
-            VStack(alignment: .leading, spacing: 32) {
-                hero(snapshot)
-                ZStack(alignment: .topLeading) {
-                    ForEach(showing, id: \.self) { panel in
-                        bigPanel(panel, snapshot: snapshot)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .offset(x: 24)),
-                                removal: .opacity.combined(with: .offset(x: -24))
-                            ))
+            let cards = TVBoard.cards(snapshot, guest: guest)
+            let active = cards.isEmpty ? 0 : turn % cards.count
+            TimelineView(.periodic(from: .now, by: SunLampPreview.enabled ? 0.5 : 15)) { tick in
+                let now = SunLampPreview.now(at: tick.date)
+                let hero = NowNext.pick(events: snapshot.events, agenda: snapshot.today, now: now)
+                VStack(alignment: .leading, spacing: 26) {
+                    ChipRow(chips: StatusChips.chips(snapshot, approvals: model.approvals), palette: palette)
+                    greeting(snapshot, showBody: hero == nil)
+                    if let hero {
+                        NowNextCard(item: hero, now: now, palette: palette)
+                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
                     }
-                }
-                if panels.count > 1 {
-                    HStack(spacing: 10) {
-                        ForEach(Array(panels.enumerated()), id: \.offset) { index, _ in
-                            Circle()
-                                .fill(index == turn % panels.count ? ink : palette.dot.color)
-                                .frame(width: 10, height: 10)
+                    if !cards.isEmpty {
+                        ZStack(alignment: .topLeading) {
+                            boardCard(cards[active], snapshot: snapshot, now: now)
+                                .id(cards[active])
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .offset(x: 40)),
+                                    removal: .opacity.combined(with: .offset(x: -40))
+                                ))
+                        }
+                        .frame(height: hero == nil ? 470 : 400, alignment: .top)
+                        if cards.count > 1 {
+                            CardDots(count: cards.count, active: active, seconds: TVBoard.turnSeconds, palette: palette)
                         }
                     }
-                    // Centred under the panel, however many there are.
-                    .frame(maxWidth: .infinity)
-                    .accessibilityHidden(true)
                 }
+                .animation(.smooth(duration: 0.8), value: hero?.title)
             }
         } else {
             HStack(spacing: 16) {
@@ -237,71 +279,40 @@ struct AlwaysOnView: View {
         }
     }
 
-    /// An alert or something starting soon, above the rotating panel.
+    /// "🌙 Good evening, Dylan" and, when there's no hero card and it isn't
+    /// guest-friendly, the rest of his greeting.
     @ViewBuilder
-    private func hero(_ snapshot: Snapshot) -> some View {
-        switch KioskPlan.hero(snapshot: snapshot, pending: []) {
-        case .alert(let name, let status):
-            Label("\(name) is \(status)", systemImage: "exclamationmark.triangle.fill")
-                .font(.headline)
-                .foregroundStyle(palette.alert.color)
-        case .soon(let title, let minutes):
-            Label(minutes <= 0 ? "\(title) is starting" : "\(title) in \(minutes) min", systemImage: "calendar.badge.clock")
-                .font(.headline)
-                .foregroundStyle(accent)
-        default:
-            if let greeting = snapshot.offers?.greeting {
-                // A short headline ("Late night, Dylan"), then the rest
-                // smaller and dimmer, clamped (TodayWording.greetingParts).
-                let parts = TodayWording.greetingParts(greeting)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(KioskIcons.greetingEmoji(hour: Calendar.current.component(.hour, from: SunLampPreview.now()))) \(parts.headline)")
-                        .font(.headline.weight(.medium))
-                        .foregroundStyle(ink)
-                    if let body = parts.body {
-                        Text(body)
-                            .font(.callout)
-                            .foregroundStyle(inkDim)
-                            .lineLimit(3)
-                            .frame(maxWidth: 760, alignment: .leading)
-                    }
+    private func greeting(_ snapshot: Snapshot, showBody: Bool) -> some View {
+        if let parts = TVBoard.greeting(snapshot, guest: guest) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("\(KioskIcons.greetingEmoji(hour: Calendar.current.component(.hour, from: SunLampPreview.now()))) \(parts.headline)")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(ink)
+                if showBody, let body = parts.body {
+                    Text(body)
+                        .font(.callout)
+                        .foregroundStyle(inkDim)
+                        .lineLimit(2)
+                        .frame(maxWidth: 780, alignment: .leading)
                 }
             }
         }
     }
 
-    /// One panel, roomy and readable from the couch. Never money.
+    /// One rotating card. Never money; private cards never reach here in
+    /// guest-friendly mode (TVBoard.cards).
     @ViewBuilder
-    private func bigPanel(_ panel: KioskPanel, snapshot: Snapshot) -> some View {
-        switch panel {
-        case .schedule:
-            card("Today", icon: "calendar") {
-                if snapshot.today.isEmpty {
-                    Text("Nothing booked").foregroundStyle(inkDim)
-                }
-                ForEach(snapshot.today.prefix(7)) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 22) {
-                        Image(systemName: KioskIcons.agendaSymbol(item.title))
-                            .foregroundStyle(accent)
-                            .frame(width: 36)
-                        Text(AgendaTime.label(at: item.at, allDay: item.allDay ?? false))
-                            .foregroundStyle(accent)
-                            .monospacedDigit()
-                            .frame(width: 140, alignment: .leading)
-                        Text(item.title)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                if snapshot.today.count > 7 {
-                    Text("+\(snapshot.today.count - 7) more").foregroundStyle(inkDim)
+    private func boardCard(_ which: TVCard, snapshot: Snapshot, now: Date) -> some View {
+        switch which {
+        case .today:
+            card(which) {
+                ForEach(Array(TodayTimeline.rows(snapshot.today, now: now, limit: 6).enumerated()), id: \.element.id) { index, row in
+                    timelineRow(row).staggered(index)
                 }
             }
         case .home:
-            // Thermostat, what's playing, lights, rooms, and anything that
-            // wants a look first (HomeGlance in JarvisKit).
-            card("Home", icon: "house.fill") {
-                ForEach(HomeGlance.lines(snapshot.home, limit: 7)) { line in
+            card(which) {
+                ForEach(Array(HomeGlance.lines(snapshot.home, limit: 6).enumerated()), id: \.element.id) { index, line in
                     HStack(alignment: .firstTextBaseline, spacing: 18) {
                         Image(systemName: line.symbol)
                             .foregroundStyle(line.attention ? palette.alert.color : accent)
@@ -313,22 +324,80 @@ struct AlwaysOnView: View {
                             .fontWeight(line.attention ? .semibold : .regular)
                             .lineLimit(1)
                     }
+                    .staggered(index)
                 }
             }
-        case .work:
-            card("Jarvis is working on", icon: "sparkles") {
-                ForEach((snapshot.jobs?.running ?? []).prefix(3)) { task in
-                    HStack(alignment: .firstTextBaseline, spacing: 16) {
-                        Circle().fill(warm).frame(width: 14, height: 14)
+        case .playing:
+            card(which) {
+                ForEach(Array(TVBoard.playing(snapshot.home).prefix(3).enumerated()), id: \.element.id) { index, device in
+                    HStack(spacing: 24) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(accent.opacity(0.14)).frame(width: 84, height: 84)
+                            Image(systemName: TodayWording.deviceSymbol(device)).font(.title2).foregroundStyle(accent)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(device.detail ?? (device.state == "playing" ? "Playing" : "Paused"))
+                                .font(.headline.weight(.semibold)).lineLimit(1)
+                            Text(device.name).font(.callout).foregroundStyle(inkDim)
+                        }
+                        Spacer()
+                        Image(systemName: device.state == "playing" ? "waveform" : "pause.fill")
+                            .font(.title2)
+                            .foregroundStyle(warm)
+                            .symbolEffect(.variableColor.iterative, options: .repeating, isActive: device.state == "playing" && !reduceMotion)
+                    }
+                    .staggered(index)
+                }
+            }
+        case .forecast:
+            card(which) {
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(Array((snapshot.home?.forecast ?? []).prefix(7).enumerated()), id: \.offset) { index, hour in
+                        VStack(spacing: 14) {
+                            Text(hourLabel(hour.at)).font(.callout).foregroundStyle(inkDim)
+                            Image(systemName: TodayWording.weatherSymbol(hour.condition))
+                                .font(.title2)
+                                .foregroundStyle(warm)
+                                .frame(height: 50)
+                            Text(hour.temperature.map { "\(Int($0.rounded()))°" } ?? "–")
+                                .font(.headline.weight(.semibold))
+                            Text((hour.rain ?? 0) >= 20 ? "\(Int(hour.rain!))%" : " ")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(accent)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .staggered(index)
+                    }
+                }
+            }
+        case .jarvis:
+            card(which) {
+                let running = snapshot.jobs?.running ?? []
+                ForEach(Array(running.prefix(2).enumerated()), id: \.element.id) { index, task in
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Image(systemName: "gearshape.2.fill")
+                            .foregroundStyle(warm)
+                            .symbolEffect(.rotate, options: .repeating, isActive: !reduceMotion)
+                            .frame(width: 44)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(task.label).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             Text(task.runningWords()).font(.caption).foregroundStyle(inkDim)
                         }
                     }
+                    .staggered(index)
                 }
+                HStack(spacing: 28) {
+                    ForEach(snapshot.services) { service in
+                        Label(service.name, systemImage: service.status == "down" ? "xmark.circle.fill" : service.status == "degraded" ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                            .labelStyle(TintedIconLabel(icon: service.status == "down" || service.status == "degraded" ? palette.alert.color : accent))
+                            .font(.callout)
+                            .foregroundStyle(inkDim)
+                    }
+                }
+                .staggered(running.count)
             }
         case .health:
-            card("You", icon: "heart.fill") {
+            card(which) {
                 HStack(spacing: 60) {
                     if let asleep = snapshot.health?.sleep?.asleepMin {
                         stat(TodayWording.hours(asleep), "asleep last night", symbol: "bed.double.fill")
@@ -337,17 +406,54 @@ struct AlwaysOnView: View {
                         stat(steps.formatted(), "steps yesterday", symbol: "figure.walk")
                     }
                 }
+                .staggered(0)
             }
-        case .offers:
-            card("From Jarvis", icon: "lightbulb.fill") {
-                ForEach((snapshot.offers?.offers ?? []).prefix(4)) { offer in
+        case .suggestions:
+            card(which) {
+                ForEach(Array((snapshot.offers?.offers ?? []).prefix(4).enumerated()), id: \.element.id) { index, offer in
                     HStack(alignment: .firstTextBaseline, spacing: 18) {
                         Image(systemName: "sparkle").foregroundStyle(warm).frame(width: 36)
                         Text(offer.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     }
+                    .staggered(index)
                 }
             }
         }
+    }
+
+    /// One row of the Today timeline: a marker on a rail, the time, what.
+    private func timelineRow(_ row: TimelineRow) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 20) {
+            Group {
+                switch row.state {
+                case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(inkDim)
+                case .now: Image(systemName: "record.circle.fill").foregroundStyle(accent).symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                case .next: Image(systemName: "circle.inset.filled").foregroundStyle(accent)
+                case .later: Image(systemName: "circle").foregroundStyle(inkDim)
+                }
+            }
+            .frame(width: 36)
+            Text(row.time)
+                .foregroundStyle(row.state == .done ? inkDim : accent)
+                .monospacedDigit()
+                .frame(width: 140, alignment: .leading)
+            Text(row.title)
+                .foregroundStyle(row.state == .done ? inkDim : ink)
+                .fontWeight(row.state == .next || row.state == .now ? .semibold : .regular)
+                .lineLimit(1)
+            if row.jarvis {
+                Image(systemName: "sparkles").font(.caption).foregroundStyle(warm)
+            }
+        }
+    }
+
+    /// "3 PM" for the forecast strip.
+    private func hourLabel(_ iso: String) -> String {
+        guard let date = ISO8601DateFormatter().date(from: iso) else { return "" }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US")
+        format.dateFormat = "h a"
+        return format.string(from: date)
     }
 
     /// "On Tailscale · jarvis", or what's wrong.
@@ -359,16 +465,17 @@ struct AlwaysOnView: View {
         }
     }
 
-    /// A roomy titled glass panel with large type.
-    private func card<Rows: View>(_ title: String, icon: String, @ViewBuilder rows: () -> Rows) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label(title, systemImage: icon)
-                .font(.callout.weight(.semibold))
+    /// A roomy titled card on a real surface, large type.
+    private func card<Rows: View>(_ which: TVCard, @ViewBuilder rows: () -> Rows) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Label(which.title, systemImage: which.symbol)
+                .font(.callout.weight(.bold))
                 .foregroundStyle(inkDim)
+                .labelStyle(TintedIconLabel(icon: accent))
             rows()
                 .font(.body)
                 .foregroundStyle(ink)
-                // Shrinks a step rather than clipping when a panel is full.
+                // Shrinks a step rather than clipping when a card is full.
                 .minimumScaleFactor(0.85)
         }
         .padding(34)

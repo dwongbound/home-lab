@@ -15,11 +15,27 @@ public struct Snapshot: Decodable, Sendable {
     public var money: Money?
     /// Sleep and steps from the cloud digest (Apple Health by way of the PC).
     public var health: Health?
+    /// Calendar events from the cloud digest, with their end and place.
+    public var events: [CalendarEvent] = []
 
     enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud }
 
     /// The cloud digest; the app only reads its money section.
-    private struct Cloud: Decodable { let money: Money?; let health: Health? }
+    private struct Cloud: Decodable {
+        let money: Money?
+        let health: Health?
+        let calendar: [CalendarEvent]?
+
+        enum CodingKeys: String, CodingKey { case money, health, calendar }
+
+        /// Any section that won't decode is left out.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            money = try? c.decodeIfPresent(Money.self, forKey: .money)
+            health = try? c.decodeIfPresent(Health.self, forKey: .health)
+            calendar = try? c.decodeIfPresent([CalendarEvent].self, forKey: .calendar)
+        }
+    }
 
     /// Decodes what's there and leaves out what isn't.
     public init(from decoder: Decoder) throws {
@@ -32,6 +48,7 @@ public struct Snapshot: Decodable, Sendable {
         jobs = try? c.decodeIfPresent(Jobs.self, forKey: .jobs)
         let cloud = try? c.decodeIfPresent(Cloud.self, forKey: .cloud)
         money = cloud?.money
+        events = cloud?.calendar ?? []
         health = cloud?.health
     }
 
@@ -84,6 +101,47 @@ public struct Home: Decodable, Sendable {
     /// Sensor readings, the ones needing a look first. Missing on an older
     /// server.
     public let readings: [Reading]?
+    /// Hourly forecast, up to 12 hours. Missing on an older server.
+    public let forecast: [ForecastHour]?
+    /// What the lights draw right now, in watts.
+    public let powerWatts: Int?
+
+    enum CodingKeys: String, CodingKey { case devices, weather, sun, readings, forecast, powerWatts }
+
+    /// A section that won't decode reads as missing, not as a failure.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        devices = (try? c.decodeIfPresent([Device].self, forKey: .devices)) ?? []
+        weather = try? c.decodeIfPresent(Weather.self, forKey: .weather)
+        sun = try? c.decodeIfPresent(Sun.self, forKey: .sun)
+        readings = try? c.decodeIfPresent([Reading].self, forKey: .readings)
+        forecast = try? c.decodeIfPresent([ForecastHour].self, forKey: .forecast)
+        powerWatts = (try? c.decodeIfPresent(Int.self, forKey: .powerWatts)) ?? (try? c.decodeIfPresent(Double.self, forKey: .powerWatts)).flatMap { $0.map { Int($0.rounded()) } }
+    }
+}
+
+/// One hour of the forecast.
+public struct ForecastHour: Decodable, Sendable, Equatable {
+    public let at: String
+    public let condition: String
+    public let temperature: Double?
+    public let low: Double?
+    /// Chance of rain, percent.
+    public let rain: Double?
+}
+
+/// One calendar event (the cloud digest's calendar).
+public struct CalendarEvent: Decodable, Identifiable, Sendable, Equatable {
+    public let id: String
+    public let title: String
+    public let start: String
+    public let end: String?
+    public let allDay: Bool?
+    public let location: String?
+
+    public init(id: String, title: String, start: String, end: String?, allDay: Bool? = false, location: String? = nil) {
+        self.id = id; self.title = title; self.start = start; self.end = end; self.allDay = allDay; self.location = location
+    }
 }
 
 /// One Home Assistant sensor: a room's temperature or humidity, a door or
@@ -130,6 +188,8 @@ public struct Device: Decodable, Identifiable, Sendable {
     public let detail: String?
     public let current: Double?
     public let target: Double?
+    /// Indoor humidity, percent (thermostats that report it).
+    public let humidity: Double?
 
     /// True when it's on, playing, or (a thermostat) running a mode.
     /// Home Assistant can reach it.

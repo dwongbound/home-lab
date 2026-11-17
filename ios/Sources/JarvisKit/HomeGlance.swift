@@ -41,9 +41,10 @@ public enum HomeGlance {
         let lights = devices.filter { $0.kind == "light" }
         let lit = lights.filter(\.isOn)
         if !lit.isEmpty {
-            let value = lit.count <= nameLightsUpTo
+            var value = lit.count <= nameLightsUpTo
                 ? lit.map(\.name).joined(separator: ", ")
                 : "\(lit.count) of \(lights.count) on"
+            if let watts = home.powerWatts, watts > 0 { value += " · \(watts) W" }
             out.append(HomeLine(symbol: "lightbulb.fill", title: lit.count == 1 ? "Light on" : "Lights on", value: value, attention: false))
         }
         out += rooms(home.readings ?? [])
@@ -106,8 +107,9 @@ public enum HomeGlance {
         if let target = device.target, device.state != "off" {
             parts.append("\(doing) to \(Int(target.rounded()))°")
         } else {
-            parts.append(doing)
+            parts.append(doing.prefix(1).uppercased() + doing.dropFirst())
         }
+        if let humidity = device.humidity { parts.append("\(Int(humidity.rounded()))% humidity") }
         return parts.joined(separator: " · ")
     }
 
