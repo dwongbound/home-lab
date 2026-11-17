@@ -98,3 +98,34 @@ public enum PhoneKiosk {
         return (showing && !dismissed, dismissed)
     }
 }
+
+/// Icons for the kiosk screens (Dylan, 2026-11-17: "for a kiosk the more
+/// icons and images / emojis the better"). One emoji, for the greeting;
+/// SF Symbols everywhere else, so the TV, iPad kiosk and bedside display
+/// match.
+public enum KioskIcons {
+    /// 🌙 late night, 🌅 early morning, ☀️ day, 🌇 evening.
+    public static func greetingEmoji(hour: Int) -> String {
+        switch hour {
+        case 5..<8: return "🌅"
+        case 8..<17: return "☀️"
+        case 17..<20: return "🌇"
+        default: return "🌙"
+        }
+    }
+
+    /// A symbol for a schedule item, from the words in its title.
+    public static func agendaSymbol(_ title: String) -> String {
+        let t = title.lowercased()
+        func has(_ words: [String]) -> Bool { words.contains { t.contains($0) } }
+        if has(["flight", "fly ", "flying", "pilot", "airport", "ground school", "checkride"]) { return "airplane" }
+        if has(["church", "worship", "service", "rehearsal", "practice", "sow", "cg "]) { return "music.note.house.fill" }
+        if has(["remind", "reminder", "nag"]) { return "bell.fill" }
+        if has(["jarvis", "pickup run", "lookout", "nightly"]) { return "sparkles" }
+        if has(["volleyball", "gym", "run ", "workout", "golf", "hike"]) { return "figure.run" }
+        if has(["study", "test", "exam", "class", "homework"]) { return "book.fill" }
+        if has(["dinner", "lunch", "breakfast", "coffee"]) { return "fork.knife" }
+        if has(["call", "meeting", "1:1", "interview"]) { return "person.2.fill" }
+        return "calendar"
+    }
+}

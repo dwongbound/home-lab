@@ -75,6 +75,8 @@ final class TalkLine: @unchecked Sendable {
     private var closed = false
     private(set) var canDoze = false
     private var observers: [NSObjectProtocol] = []
+    /// True once startAudio has attached the players and installed taps.
+    private var audioStarted = false
     /// Microphone frames sent so far, for the debug log.
     private var framesSent = 0
 
@@ -158,6 +160,7 @@ final class TalkLine: @unchecked Sendable {
         engine.attach(voice)
         engine.attach(chime)
         connectNodes()
+        audioStarted = true
         do {
             try engine.start()
         } catch {
@@ -432,8 +435,13 @@ final class TalkLine: @unchecked Sendable {
             self.closed = true
             for observer in self.observers { NotificationCenter.default.removeObserver(observer) }
             self.observers = []
-            self.engine.inputNode.removeTap(onBus: 0)
-            self.voice.removeTap(onBus: 0)
+            // Only an engine that started has taps to remove; removing one
+            // from a player that was never attached throws (and crashed
+            // the app when Talk couldn't reach Jarvis).
+            if self.audioStarted {
+                self.engine.inputNode.removeTap(onBus: 0)
+                self.voice.removeTap(onBus: 0)
+            }
             self.voice.stop()
             self.chime.stop()
             self.engine.stop()

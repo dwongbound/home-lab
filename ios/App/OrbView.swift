@@ -33,6 +33,9 @@ struct OrbView: View {
     /// How bright the orb itself is drawn (paused or off: dimmer); a work
     /// callout stays fully opaque.
     var dim: Double = 1
+    /// True on a bright background (the TV's daytime sun lamp): the dots
+    /// and lines are drawn in dark slate so they still show.
+    var onLight = false
     /// The work whose callout is open, if any.
     @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -130,7 +133,7 @@ struct OrbView: View {
         // Up to ~11% from his voice.
         let radius = side * look.radius * breath * (1 + a.shellVoice * 0.11)
         let points = a.orient(Self.base)
-        let color = look.color.color
+        let color = onLight ? Color(red: 0.16, green: 0.22, blue: 0.30) : look.color.color
         let shellGlow = a.shellVoice
         a.remember(points: points, center: center, radius: radius)
         let litDots = Set(lit.map(\.index))
