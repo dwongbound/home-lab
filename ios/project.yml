@@ -59,8 +59,12 @@ targets:
           UIColorName: ""
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
+        # Landscape is only used by the iPhone's bedside kiosk; the tabs stay
+        # portrait (OrientationLock in App/PhoneKiosk.swift).
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
