@@ -47,7 +47,7 @@ struct OrbView: View {
         let side = min(area.width, area.height)
         let center = CGPoint(x: area.width / 2, y: area.height / 2)
         let breath = 1 + look.breathe * sin(a.breathPhase)
-        let radius = side * look.radius * breath * (1 + a.shellVoice * 0.11)
+        let radius = side * look.radius * breath * (1 + a.shellVoice * 0.14)
         let points = Self.sphere(count: Self.count, angle: a.angle)
         let color = look.color.color
         let shellGlow = a.shellVoice
@@ -222,10 +222,14 @@ final class OrbAnimator {
     private var speakingMix: Double = 0
     private var stage1: Double = 0
     private var envelope: Double = 0
+    /// Dylan's own, quicker envelope for the shell (Dylan, 2026-11-17:
+    /// "a little more responsive"); Jarvis's core keeps the slower one.
+    private var shellStage1: Double = 0
+    private var shellEnvelope: Double = 0
     private var last: Double?
 
     /// Dylan's voice, as the shell sees it.
-    var shellVoice: Double { envelope * (1 - speakingMix) }
+    var shellVoice: Double { shellEnvelope * (1 - speakingMix) }
     /// Jarvis's voice, as the core sees it.
     var coreVoice: Double { envelope * speakingMix }
 
@@ -249,5 +253,12 @@ final class OrbAnimator {
         let k = 1 - exp(-dt / tau)
         stage1 += (input - stage1) * k
         envelope += (stage1 - envelope) * k
+        // The shell: a lower noise floor and ~110 ms up / ~400 ms down.
+        let shellGated = max(0, (raw - 0.05) / 0.95)
+        let shellInput = shellGated * shellGated * (3 - 2 * shellGated)
+        let shellTau = shellInput > shellEnvelope ? 0.055 : 0.2
+        let sk = 1 - exp(-dt / shellTau)
+        shellStage1 += (shellInput - shellStage1) * sk
+        shellEnvelope += (shellStage1 - shellEnvelope) * sk
     }
 }
