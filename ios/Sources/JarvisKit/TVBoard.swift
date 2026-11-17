@@ -25,7 +25,7 @@ public enum Countdown {
         let minutes = max(1, Int((end.timeIntervalSince(now) / 60).rounded(.up)))
         if minutes < 60 { return "\(minutes) min left" }
         let hours = minutes / 60, rest = minutes % 60
-        return rest == 0 ? "\(hours) h left" : "\(hours) h \(rest) min left"
+        return rest == 0 || hours >= 3 ? "\(hours) h left" : "\(hours) h \(rest) min left"
     }
 }
 
@@ -159,16 +159,25 @@ public struct TimelineRow: Equatable, Identifiable, Sendable {
 }
 
 public enum TodayTimeline {
-    /// The day in order: what's done (only the last couple), what's on, the
-    /// next one, then later. At most `limit` rows, keeping the future.
-    public static func rows(_ agenda: [AgendaItem], now: Date, limit: Int = 6, timeZone: TimeZone = .current) -> [TimelineRow] {
-        let dated = agenda.compactMap { item -> (AgendaItem, Date?) in (item, AgendaTime.parse(item.at)) }
+    /// The day in order: calendar events and the agenda together, what's
+    /// done (only the last couple), what's on, the next one, then later. At
+    /// most `limit` rows, keeping the future. Guest-friendly mode leaves out
+    /// Jarvis's own jobs: they're private reminders, not plans.
+    public static func rows(_ agenda: [AgendaItem], events: [CalendarEvent] = [], now: Date, guest: Bool = false, limit: Int = 6, timeZone: TimeZone = .current, calendar: Calendar = .current) -> [TimelineRow] {
+        var items = agenda.filter { !(guest && NowNext.isJarvisJob($0)) }
+        for event in events where !items.contains(where: { $0.title == event.title }) {
+            guard let start = AgendaTime.parse(event.start), calendar.isDate(start, inSameDayAs: now) || event.allDay == true else { continue }
+            items.append(AgendaItem(id: "event-" + event.id, at: event.start, title: event.title, detail: nil, allDay: event.allDay))
+        }
+        let ends = Dictionary(events.compactMap { e in e.end.flatMap(AgendaTime.parse).map { (e.title, $0) } }, uniquingKeysWith: { a, _ in a })
+        let dated = items.map { item -> (AgendaItem, Date?) in (item, AgendaTime.parse(item.at)) }
         let sorted = dated.sorted { ($0.1 ?? .distantPast) < ($1.1 ?? .distantPast) }
         var sawNext = false
         let rows: [TimelineRow] = sorted.map { item, start in
             let state: TimelineRow.State
             if let start, start <= now {
-                state = now.timeIntervalSince(start) < NowNext.assumedLength && !NowNext.isJarvisJob(item) ? .now : .done
+                let end = ends[item.title] ?? start.addingTimeInterval(NowNext.assumedLength)
+                state = end > now && !NowNext.isJarvisJob(item) ? .now : .done
             } else if !sawNext {
                 sawNext = true
                 state = .next
@@ -238,7 +247,7 @@ public enum TVBoard {
     public static func cards(_ snapshot: Snapshot?, guest: Bool) -> [TVCard] {
         guard let snapshot else { return [] }
         var out: [TVCard] = []
-        if !snapshot.today.isEmpty { out.append(.today) }
+        if !TodayTimeline.rows(snapshot.today, events: snapshot.events, now: Date(), guest: guest).isEmpty { out.append(.today) }
         if !HomeGlance.lines(snapshot.home).isEmpty { out.append(.home) }
         if !playing(snapshot.home).isEmpty { out.append(.playing) }
         if (snapshot.home?.forecast?.count ?? 0) >= 3 { out.append(.forecast) }
@@ -251,6 +260,26 @@ public enum TVBoard {
     /// Media playing or on, most recent first as Home Assistant lists them.
     public static func playing(_ home: Home?) -> [Device] {
         (home?.devices ?? []).filter { $0.kind == "media" && $0.isAvailable && ($0.state == "playing" || $0.state == "paused") }
+    }
+
+    /// The forecast icon for an hour: a moon after dark where the weather
+    /// service still says "sunny" or "clear".
+    public static func forecastSymbol(_ hour: ForecastHour, sunrise: Date?, sunset: Date?) -> String {
+        let symbol = TodayWording.weatherSymbol(hour.condition)
+        guard let at = AgendaTime.parse(hour.at), let sunrise, let sunset else { return symbol }
+        let arc = SkyArc.at(now: at, sunrise: sunrise, sunset: sunset)
+        guard !arc.sun else { return symbol }
+        switch symbol {
+        case "sun.max.fill": return "moon.stars.fill"
+        case "cloud.sun.fill": return "cloud.moon.fill"
+        default: return symbol
+        }
+    }
+
+    /// The hero card as the TV shows it: guests don't see where.
+    public static func hero(_ snapshot: Snapshot, now: Date, guest: Bool) -> NowNext? {
+        guard let pick = NowNext.pick(events: snapshot.events, agenda: snapshot.today, now: now) else { return nil }
+        return guest ? NowNext(kind: pick.kind, title: pick.title, start: pick.start, end: pick.end, location: nil) : pick
     }
 
     /// The greeting as the TV shows it. Guests get the headline only: the
