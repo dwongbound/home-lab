@@ -70,12 +70,7 @@ struct TodayView: View {
             }
         }
         .fontDesign(.rounded)
-        .task {
-            while !Task.isCancelled {
-                await today.load(app: app)
-                try? await Task.sleep(for: .seconds(15))
-            }
-        }
+
     }
 
     /// The cards, or a labelled spinner on the very first load.

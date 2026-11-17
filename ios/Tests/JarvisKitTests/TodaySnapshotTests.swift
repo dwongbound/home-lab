@@ -54,3 +54,17 @@ final class TodaySnapshotTests: XCTestCase {
         XCTAssertTrue(s.homeTiles.isEmpty)
     }
 }
+
+final class RunningTaskTests: XCTestCase {
+    func testDecodesStartAndWords() throws {
+        let json = #"{"running":[{"id":"a","label":"Changing my code","state":"running","startedAt":"2026-11-17T10:00:00Z"},{"id":"b","label":"Lookout sweep","state":"queued"}]}"#
+        let jobs = try JSONDecoder().decode(Jobs.self, from: Data(json.utf8))
+        let now = ISO8601DateFormatter().date(from: "2026-11-17T11:05:30Z")!
+        XCTAssertEqual(jobs.running.count, 2)
+        XCTAssertEqual(jobs.running[0].runningWords(now: now), "Running for 1 h 5 min")
+        XCTAssertEqual(jobs.running[1].runningWords(now: now), "Queued")
+        let fresh = RunningTask(id: "c", label: "x", state: "running", startedAt: "2026-11-17T11:05:00Z")
+        XCTAssertEqual(fresh.runningWords(now: now), "Just started")
+        XCTAssertEqual(RunningTask(id: "d", label: "x", state: "running").runningWords(now: now), "Running")
+    }
+}

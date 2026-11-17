@@ -235,7 +235,30 @@ public struct Jobs: Decodable, Sendable {
 public struct RunningTask: Decodable, Identifiable, Sendable {
     public let id: String
     public let label: String
+    /// "running" or "queued".
     public let state: String
+    /// When it started (ISO), if Jarvis said.
+    public let startedAt: String?
+
+    public init(id: String, label: String, state: String, startedAt: String? = nil) {
+        self.id = id
+        self.label = label
+        self.state = state
+        self.startedAt = startedAt
+    }
+
+    /// "Queued", "Just started", "Running for 4 min", "Running for 1 h 5 min".
+    public func runningWords(now: Date = Date()) -> String {
+        if state == "queued" { return "Queued" }
+        let plain = ISO8601DateFormatter()
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let startedAt, let start = fractional.date(from: startedAt) ?? plain.date(from: startedAt) else { return "Running" }
+        let minutes = Int(now.timeIntervalSince(start) / 60)
+        if minutes < 1 { return "Just started" }
+        if minutes < 60 { return "Running for \(minutes) min" }
+        return "Running for \(minutes / 60) h \(minutes % 60) min"
+    }
 }
 
 public enum AgendaTime {
