@@ -2,7 +2,7 @@
 // that it refuses plainly when there's no microphone, and which of
 // Jarvis's events reach which handler.
 import { describe, expect, it, vi } from 'vitest'
-import { canTalkUnprompted, makeResampler, openTalkLine, pcm16ToFloat, softenEdges, talkUrl } from '../../src/lib/talk'
+import { BYE_MESSAGE, canTalkUnprompted, makeResampler, openTalkLine, pcm16ToFloat, softenEdges, talkUrl } from '../../src/lib/talk'
 
 describe('the voice line', () => {
   it('uses wss on the https page and ws on plain http', () => {
@@ -168,8 +168,17 @@ describe('the voice line', () => {
     say({ type: 'woke', by: 'voice' })
     say({ type: 'state', state: 'listening' })
     expect(on.onState).toHaveBeenLastCalledWith('listening')
-    line.close()
+    // "Goodbye": the call ends for good. Mic off, speaker stopped, and a
+    // plain note rather than "the line dropped", even when the socket closes after.
+    say({ type: 'bye' })
+    expect(track.stop).toHaveBeenCalled()
     expect(players[0].paused).toBe(true)
+    expect(on.onClosed).toHaveBeenCalledTimes(1)
+    expect(on.onClosed).toHaveBeenCalledWith(BYE_MESSAGE)
+    const closing = socket as unknown as { onclose?: () => void }
+    closing.onclose?.()
+    expect(on.onClosed).toHaveBeenCalledTimes(1)
+    line.close()
     vi.unstubAllGlobals()
   })
 })

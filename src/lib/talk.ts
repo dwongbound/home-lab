@@ -286,6 +286,8 @@ export function contextRate(micRate: unknown): number | null {
 }
 
 /** Why Talk hung up by itself after the phone's audio changed under it. */
+/** What the page says after a goodbye ended the call for good. */
+export const BYE_MESSAGE = 'Goodbye. Tap Talk when you want him again.'
 const INTERRUPTED_MESSAGE = 'Your phone’s audio was interrupted, so Talk stopped. Tap Talk to start again.'
 
 /**
@@ -502,6 +504,12 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     } else if (event.type === 'stop') {
       silence()
       on.onInterrupted()
+    } else if (event.type === 'bye') {
+      // "Goodbye", "talk to you later" (Dylan, 2026-11-17): the call is over,
+      // not paused. His sign-off has already played (he sends this after our
+      // idle), so hang up: mic off, no "Hey Jarvis", and a plain note instead
+      // of "the line dropped". Only Talk starts it again.
+      shutDown(BYE_MESSAGE)
     } else if (event.type === 'approval' && typeof event.id === 'string' && typeof event.summary === 'string') {
       on.onApproval({ id: event.id, tool: event.tool ?? '', summary: event.summary, expires: event.expires ?? '' })
     } else if (event.type === 'approval_done' && typeof event.id === 'string') {
