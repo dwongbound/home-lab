@@ -62,3 +62,22 @@ final class PhoneKioskTests: XCTestCase {
         XCTAssertFalse(unplugged.dismissed)
     }
 }
+
+final class SunLineTests: XCTestCase {
+    private let la = TimeZone(identifier: "America/Los_Angeles")!
+
+    func testNextFirstAndRollsPastTimesToTomorrow() {
+        // 14:28Z = 6:28 AM PT sunrise, 00:48Z next day = 4:48 PM PT sunset.
+        let rising = "2026-11-17T14:28:00Z", setting = "2026-11-18T00:48:00Z"
+        let afternoon = ISO8601DateFormatter().date(from: "2026-11-17T20:00:00Z")!
+        XCTAssertEqual(TodayWording.sunLine(rising: rising, setting: setting, now: afternoon, timeZone: la), "Sunset 4:48 PM · Sunrise 6:28 AM")
+        let morning = ISO8601DateFormatter().date(from: "2026-11-17T12:00:00Z")!
+        XCTAssertEqual(TodayWording.sunLine(rising: rising, setting: setting, now: morning, timeZone: la), "Sunrise 6:28 AM · Sunset 4:48 PM")
+        XCTAssertNil(TodayWording.sunLine(rising: nil, setting: nil, timeZone: la))
+    }
+
+    func testOffersPanelOnlyWithOffers() throws {
+        let s = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","services":[],"today":[],"offers":{"greeting":null,"offers":[{"id":"o","title":"Draft the RSVP","body":"b","startText":"s"}]}}"#.utf8))
+        XCTAssertEqual(KioskPlan.panels(snapshot: s), [.schedule, .offers])
+    }
+}

@@ -200,6 +200,7 @@ struct KioskView: View {
         case .home: homePanel
         case .work: workPanel
         case .health: healthPanel
+        case .offers: offersPanel
         }
     }
 
@@ -247,6 +248,15 @@ struct KioskView: View {
                         Text(task.runningWords()).font(.subheadline).foregroundStyle(Theme.frostDim)
                     }
                 }
+            }
+        }
+    }
+
+    /// Jarvis's suggestions, titles only (Start them from Home).
+    private var offersPanel: some View {
+        frame("From Jarvis", icon: "sparkles") {
+            ForEach((today.snapshot?.offers?.offers ?? []).prefix(3)) { offer in
+                Text(offer.title).font(.title3).lineLimit(2)
             }
         }
     }
