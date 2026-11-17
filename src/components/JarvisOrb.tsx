@@ -1,5 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, type CSSProperties } from 'react'
-import { ORB_POINTS, ORB_REACH, orbDot, orbLook, orbPoints } from '../lib/orb'
+import { ORB_POINTS, ORB_REACH, orbDot, orbLinks, orbLook, orbPoints, orbRipple } from '../lib/orb'
+
+/** The constellation's lines never change (turning keeps distances), so they're worked out once. */
+const LINKS = orbLinks(orbPoints(ORB_POINTS, 0))
 
 // Jarvis's orb, design D (Dylan, 2026-11-16, the iPhone app's orb): a
 // see-through glass core inside a constellation of points that turns in 3D
@@ -41,7 +44,10 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
   const el = useRef<HTMLSpanElement>(null)
   const back = useRef<HTMLCanvasElement>(null)
   const front = useRef<HTMLCanvasElement>(null)
+  // What the voice is doing (target) and what the orb shows (level), which
+  // glides toward it, so loudness changes read as smooth swells, not jumps.
   const level = useRef(0)
+  const target = useRef(0)
   const angle = useRef(0)
   const frame = useRef(0)
   const last = useRef(0)
@@ -59,8 +65,18 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
     const look = orbLook(stateRef.current)
     const ratio = Math.min(window.devicePixelRatio || 1, 2)
     const side = b.getBoundingClientRect().width
-    const reach = core * ORB_REACH * look.spread * (1 + level.current * 0.12)
-    const points = orbPoints(ORB_POINTS, angle.current)
+    const reach = core * ORB_REACH * look.spread
+    const t = performance.now() / 1000
+    const state = stateRef.current
+    // The dots react to your voice only; his voice moves just the core.
+    const dotLevel = state === 'listening' ? level.current : 0
+    // Each point where it sits this frame, rippled by the voice.
+    const placed = orbPoints(ORB_POINTS, angle.current).map((p, i) => {
+      const r = reach * orbRipple(state, i, level.current, t)
+      return { x: side / 2 + p.x * r, y: side / 2 + p.y * r, z: p.z }
+    })
+    const [r, g, bl] = look.color
+    const lineWidth = Math.max(core / 160, 0.5)
     for (const canvas of [b, f]) {
       const px = Math.round(side * ratio)
       if (canvas.width !== px) {
@@ -72,13 +88,28 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
       ctx.clearRect(0, 0, side, side)
       const inFront = canvas === f
-      const [r, g, bl] = look.color
-      for (const p of points) {
+      // Faint lines between neighbouring points, brighter nearer you and
+      // while a voice is moving it.
+      ctx.lineWidth = lineWidth
+      for (const [i, j] of LINKS) {
+        const a = placed[i]
+        const c = placed[j]
+        const z = (a.z + c.z) / 2
+        if ((z >= 0) !== inFront) continue
+        const near = (z + 1) / 2
+        const alpha = (0.05 + near * 0.16) * (1 + dotLevel * 0.8)
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${bl}, ${alpha.toFixed(3)})`
+        ctx.beginPath()
+        ctx.moveTo(a.x, a.y)
+        ctx.lineTo(c.x, c.y)
+        ctx.stroke()
+      }
+      for (const p of placed) {
         if ((p.z >= 0) !== inFront) continue
         const dot = orbDot(p, core)
         ctx.fillStyle = `rgba(${r}, ${g}, ${bl}, ${dot.alpha.toFixed(3)})`
         ctx.beginPath()
-        ctx.arc(side / 2 + p.x * reach, side / 2 + p.y * reach, dot.radius, 0, Math.PI * 2)
+        ctx.arc(p.x, p.y, dot.radius * (1 + dotLevel * 0.4), 0, Math.PI * 2)
         ctx.fill()
       }
     }
@@ -95,10 +126,18 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
     last.current = now
     const look = orbLook(stateRef.current)
     angle.current += look.speed * dt
-    level.current *= 0.9
-    if (level.current < 0.01) level.current = 0
+    // Eases back toward silence quickly, so it follows each rise and fall of the voice.
+    // The voice's loudness fades on its own; the orb glides after it, rising
+    // a little faster than it falls (like breath), framerate-independent.
+    target.current *= Math.pow(0.04, dt)
+    const rate = target.current > level.current ? 4.5 : 2.5
+    level.current += (target.current - level.current) * (1 - Math.exp(-rate * dt))
+    if (target.current < 0.005 && level.current < 0.005) {
+      target.current = 0
+      level.current = 0
+    }
     draw()
-    if (look.speed > 0 || level.current > 0) frame.current = requestAnimationFrame(tick)
+    if (look.speed > 0 || level.current > 0 || target.current > 0) frame.current = requestAnimationFrame(tick)
     else stop()
   }
 
@@ -119,7 +158,7 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
   useImperativeHandle(ref, () => ({
     pulse(amount = 1) {
       if (prefersLessMotion()) return
-      level.current = Math.min(1, Math.max(level.current, amount))
+      target.current = Math.min(1, Math.max(target.current, amount))
       start()
     },
   }), [])

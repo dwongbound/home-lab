@@ -82,7 +82,7 @@ export function VoicePanel() {
   const { data: settings, error, isLoading, mutate } = useVoice()
   let body
   if (isLoading) {
-    body = <div className="memory__wait"><Spinner label="Asking Jarvis how he sounds…" /></div>
+    body = <div className="memory__wait"><Spinner label="Jarvis is thinking…" /></div>
   } else if (error || !settings) {
     body = <p className="empty">Jarvis isn’t answering, so his voice can’t be changed right now. Open this page through Tailscale, with Jarvis running on the PC.</p>
   } else {

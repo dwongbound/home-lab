@@ -6,6 +6,7 @@ import SwiftUI
 @main
 struct JarvisApp: App {
     @StateObject private var app = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Starts the Watch bridge, so the Watch can ask Jarvis through this phone.
     init() {
@@ -20,30 +21,57 @@ struct JarvisApp: App {
                 .preferredColorScheme(.dark)
                 .tint(Theme.glacier)
         }
+        // Money hides again the moment the app leaves the screen.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .background else { return }
+            app.lockMoney()
+            // Paused (dozing) and leaving the app: hang up, so the mic goes
+            // off. A live call keeps going in the background, mic on
+            // (Dylan, 2026-11-17).
+            if app.talk.phase == .on(.dozing) { app.talk.hangUp() }
+        }
     }
 }
 
-/// Chat, Talk and Today as tabs, with the Settings sheet over them.
+/// Chat, Talk and Today as pages, with the Settings sheet over them.
+///
+/// The pages are a paging TabView rather than a tab-bar one (Dylan,
+/// 2026-11-17: tab changes must glide). A swipe follows the finger and
+/// springs to the next page; tapping the bar slides there the same way.
+/// The bar is drawn here, on glass, since a paging TabView has none.
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
 
-    /// The tab bar; each tab draws its own status line instead of a big title
+    /// Each page draws its own status line instead of a big title
     /// (Dylan, 2026-11-16: no "Chat"/"Talk" headings).
     var body: some View {
         TabView(selection: $app.tab) {
             ChatView(chat: app.chat)
-                .tabItem { Label("Chat", systemImage: "bubble.left") }
-                .badge(app.chat.pendingCount)
+                .roomForTabBar()
                 .tag(AppTab.chat)
             TalkView(talk: app.talk)
-                .tabItem { Label("Talk", systemImage: "waveform") }
+                .roomForTabBar()
                 .tag(AppTab.talk)
             TodayView(today: app.today)
-                .tabItem { Label("Today", systemImage: "calendar") }
+                .roomForTabBar()
                 .tag(AppTab.today)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .background(Theme.sky.ignoresSafeArea())
+        // The bar floats over the pages; each page keeps room for it, so
+        // lists scroll up from under it and buttons sit above it.
+        .overlay(alignment: .bottom) {
+            TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount)
         }
         .sheet(isPresented: $app.showSettings) {
             SettingsView()
+        }
+        // The app opens on Talk, so the call starts with the app; onChange
+        // below only sees later switches.
+        .task {
+            if app.tab == .talk && !app.talk.started {
+                await app.talk.start(app: app)
+            }
         }
         // Opening Talk the first time starts the call, like the page's /talk.
         .onChange(of: app.tab) { _, tab in
@@ -102,5 +130,67 @@ struct StatusLine: View {
         case .some(false): return "Can’t reach Jarvis. Is Tailscale on?"
         case .none: return "Connecting…"
         }
+    }
+}
+
+/// The bar along the bottom: Chat, Talk and Today on a glass capsule, the
+/// current one lit. Tapping slides to that page with the same spring a
+/// swipe uses.
+struct TabBar: View {
+    @Binding var tab: AppTab
+    var chatBadge: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            item(.chat, "Chat", "bubble.left.fill", badge: chatBadge)
+            item(.talk, "Talk", "waveform", badge: 0)
+            item(.today, "Today", "square.grid.2x2.fill", badge: 0)
+        }
+        .padding(5)
+        .glassPanel(radius: 32)
+        .padding(.horizontal, 40)
+        .padding(.bottom, 6)
+    }
+
+    /// One tab: symbol over label, a soft pill behind the current one.
+    private func item(_ target: AppTab, _ title: String, _ symbol: String, badge: Int) -> some View {
+        let on = tab == target
+        return Button {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { tab = target }
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: symbol)
+                    .font(.system(size: 19, weight: .semibold))
+                    .overlay(alignment: .topTrailing) {
+                        if badge > 0 {
+                            Text("\(badge)")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .background(Capsule().fill(Theme.rose))
+                                .offset(x: 10, y: -6)
+                        }
+                    }
+                Text(title).font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(on ? Theme.glacier : Theme.frostDim)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background {
+                if on {
+                    Capsule().fill(Color.white.opacity(0.10))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+extension View {
+    /// Keeps a page's content clear of the floating tab bar.
+    func roomForTabBar() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: 66) }
     }
 }

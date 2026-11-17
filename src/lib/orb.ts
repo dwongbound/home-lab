@@ -55,6 +55,48 @@ export function orbPoints(count: number, angle: number): OrbPoint[] {
   return out
 }
 
+/**
+ * Which points are joined by the constellation's faint lines: each pair of
+ * neighbours on the sphere (closer than `reach`, at most `perPoint` lines
+ * from any one point). Turning doesn't change distances, so this is worked
+ * out once.
+ */
+export function orbLinks(points: OrbPoint[], reach = 0.56, perPoint = 3): Array<[number, number]> {
+  const links: Array<[number, number]> = []
+  const count = new Array<number>(points.length).fill(0)
+  for (let i = 0; i < points.length; i++) {
+    const near: Array<{ j: number; d: number }> = []
+    for (let j = i + 1; j < points.length; j++) {
+      const d = Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y, points[i].z - points[j].z)
+      if (d < reach) near.push({ j, d })
+    }
+    near.sort((a, b) => a.d - b.d)
+    for (const { j } of near) {
+      if (count[i] >= perPoint) break
+      if (count[j] >= perPoint) continue
+      links.push([i, j])
+      count[i] += 1
+      count[j] += 1
+    }
+  }
+  return links
+}
+
+/**
+ * How far out a point sits right now, as a share of the normal reach: the
+ * voice that matters (yours while he listens, his while he speaks) ripples
+ * the constellation, each point on its own beat, so it follows the rise and
+ * fall of the voice rather than just swelling. Only while he listens.
+ */
+export function orbRipple(state: OrbState, index: number, level: number, t: number): number {
+  // Only your voice moves the dots; while he speaks just the core follows
+  // him (Dylan, 2026-11-17).
+  if (level <= 0 || state !== 'listening') return 1
+  // A slow, gentle wave, so the ripple rolls rather than jolts.
+  const wave = 0.5 + 0.5 * Math.sin(index * 1.7 + t * 2.4)
+  return 1 - level * 0.04 + level * 0.14 * wave
+}
+
 /** A point's dot: bigger and brighter the nearer it is (radius in px for a given core size, and opacity). */
 export function orbDot(point: OrbPoint, core: number): { radius: number; alpha: number } {
   const near = (point.z + 1) / 2

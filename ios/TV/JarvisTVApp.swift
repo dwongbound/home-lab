@@ -123,7 +123,7 @@ struct AlwaysOnView: View {
         } else {
             HStack(spacing: 16) {
                 ProgressView()
-                Text("Asking Jarvis…").foregroundStyle(Theme.frostDim)
+                Text("Jarvis is thinking…").foregroundStyle(Theme.frostDim)
             }
         }
     }

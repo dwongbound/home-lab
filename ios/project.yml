@@ -29,8 +29,11 @@ targets:
     platform: iOS
     sources:
       - path: App
+      - path: Shared
     dependencies:
       - package: JarvisKit
+      # Talk's Live Activity (Dynamic Island), drawn by this extension.
+      - target: JarvisLiveActivity
       # The Watch app ships inside the iPhone app (it asks Jarvis through
       # the phone, since Tailscale doesn't run on the Watch).
       - target: JarvisWatch
@@ -49,6 +52,9 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
+        NSFaceIDUsageDescription: Face ID unlocks your money details on the Today tab.
+        # Talk shows in the Dynamic Island while the app is in the background.
+        NSSupportsLiveActivities: true
         UILaunchScreen:
           UIColorName: ""
         UIApplicationSceneManifest:
@@ -69,6 +75,28 @@ targets:
         # No encryption beyond HTTPS: skips the export-compliance question
         # on every TestFlight upload.
         ITSAppUsesNonExemptEncryption: false
+
+  # The Dynamic Island / Lock Screen view of a Talk call.
+  JarvisLiveActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LiveActivity
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis.LiveActivity
+        PRODUCT_NAME: JarvisLiveActivity
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+    info:
+      path: LiveActivity/Info.plist
+      properties:
+        CFBundleDisplayName: Jarvis
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
   # Apple Watch: ask by voice, see the answer, approve or deny. Talks to
   # Jarvis through the iPhone app (App/WatchBridge.swift).

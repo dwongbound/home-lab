@@ -70,4 +70,17 @@ final class TalkTests: XCTestCase {
         XCTAssertEqual(client.talkURL.absoluteString, "wss://jarvis.snakebird-ph.ts.net/api/jarvis/talk")
         XCTAssertEqual(client.talkRequest.value(forHTTPHeaderField: "Origin"), "https://jarvis.snakebird-ph.ts.net")
     }
+
+    func testBrightnessRisesWithPitch() {
+        let rate = 16000.0
+        func tone(_ hz: Double) -> [Float] {
+            (0..<1600).map { Float(sin(2 * .pi * hz * Double($0) / rate) * 0.5) }
+        }
+        let low = tone(200).withUnsafeBufferPointer { TalkAudio.brightness($0, rate: rate) }
+        let high = tone(1200).withUnsafeBufferPointer { TalkAudio.brightness($0, rate: rate) }
+        let quiet = [Float](repeating: 0.001, count: 1600).withUnsafeBufferPointer { TalkAudio.brightness($0, rate: rate) }
+        XCTAssertLessThan(low, high)
+        XCTAssertGreaterThan(high, 0.5)
+        XCTAssertEqual(quiet, 0)
+    }
 }

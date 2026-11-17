@@ -158,6 +158,21 @@ public enum TalkAudio {
         }
     }
 
+    /// How bright (high) a voice sounds right now, 0..1, from how often the
+    /// wave crosses zero: about 300 crossings a second reads as low, 3000 as
+    /// high. A cheap stand-in for intonation that drives the orb's ripples.
+    /// Near-silence comes back 0, so room hiss doesn't read as a high voice.
+    public static func brightness(_ samples: UnsafeBufferPointer<Float>, rate: Double) -> Float {
+        guard samples.count > 1, rate > 0 else { return 0 }
+        guard loudness(samples) > 0.05 else { return 0 }
+        var crossings = 0
+        for i in 1..<samples.count where (samples[i - 1] < 0) != (samples[i] < 0) {
+            crossings += 1
+        }
+        let perSecond = Double(crossings) * rate / Double(samples.count)
+        return Float(min(1, max(0, (perSecond - 300) / 2700)))
+    }
+
     /// Root-mean-square loudness, scaled so speech lands around 0.5-1 (like the page's orb).
     public static func loudness(_ samples: UnsafeBufferPointer<Float>) -> Float {
         guard !samples.isEmpty else { return 0 }

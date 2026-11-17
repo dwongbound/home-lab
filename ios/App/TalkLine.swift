@@ -12,8 +12,9 @@ import JarvisKit
 /// What the line tells the screen. Always called on the main thread.
 struct TalkHandlers {
     var onEvent: @MainActor (TalkEvent) -> Void
-    /// How loud the voice that matters now is (Dylan's while he listens), 0..1.
-    var onLevel: @MainActor (Float) -> Void
+    /// The voice that matters now (Dylan's while Jarvis listens, Jarvis's
+    /// while he speaks): how loud it is and how bright it sounds, both 0..1.
+    var onLevel: @MainActor (_ level: Float, _ tone: Float) -> Void
     /// The line dropped; the message says why, in words for the screen.
     var onClosed: @MainActor (String) -> Void
 }
@@ -24,6 +25,14 @@ private func onMain(_ body: @escaping @MainActor () -> Void) {
     DispatchQueue.main.async {
         MainActor.assumeIsolated { body() }
     }
+}
+
+/// A line in the Xcode console for debug builds, so a dead microphone can
+/// be traced on the phone; silent in release builds.
+func talkLog(_ message: @autoclosure () -> String) {
+    #if DEBUG
+    print("[talk] \(message())")
+    #endif
 }
 
 /// Why opening the line failed, worded for the screen.
@@ -66,6 +75,8 @@ final class TalkLine: @unchecked Sendable {
     private var closed = false
     private(set) var canDoze = false
     private var observers: [NSObjectProtocol] = []
+    /// Microphone frames sent so far, for the debug log.
+    private var framesSent = 0
 
     /// Builds the line; nothing starts until `open()`.
     init(request: URLRequest, handlers: TalkHandlers) {
@@ -76,16 +87,28 @@ final class TalkLine: @unchecked Sendable {
     /// Asks for the microphone, starts the audio, dials Jarvis and waits for
     /// his hello. Throws a TalkError whose words can go straight on screen.
     func open() async throws {
-        guard await AVAudioApplication.requestRecordPermission() else { throw TalkError.microphone }
-        try startAudio()
+        guard await AVAudioApplication.requestRecordPermission() else {
+            talkLog("microphone permission refused")
+            throw TalkError.microphone
+        }
+        // Dial first and wait for his hello, so his voice's rate is known
+        // before the speaker is wired and no microphone frame goes out on a
+        // socket that isn't open yet.
         socket.resume()
-        // His hello is the first message; until it comes the line isn't up.
         do {
             let first = try await socket.receive()
             queue.sync { handle(first) }
         } catch {
+            talkLog("no hello: \(error)")
             shutDown(message: nil)
             throw TalkError.noAnswer
+        }
+        do {
+            try startAudio()
+        } catch {
+            talkLog("audio failed: \(error)")
+            shutDown(message: nil)
+            throw error
         }
         send(text: TalkMessage.client(micRate: engine.inputNode.outputFormat(forBus: 0).sampleRate, audioRate: voiceRate))
         listen()
@@ -150,6 +173,7 @@ final class TalkLine: @unchecked Sendable {
         let input = engine.inputNode
         let micFormat = input.outputFormat(forBus: 0)
         converter = AVAudioConverter(from: micFormat, to: capture)
+        talkLog("mic format \(micFormat), converter \(converter == nil ? "missing" : "ok")")
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 1024, format: micFormat) { [weak self] buffer, _ in
             self?.heard(buffer)
@@ -157,6 +181,23 @@ final class TalkLine: @unchecked Sendable {
         let format = playFormat()
         engine.connect(voice, to: engine.mainMixerNode, format: format)
         engine.connect(chime, to: engine.mainMixerNode, format: format)
+        tapVoice()
+    }
+
+    /// Listens to his voice as it actually plays, so the orb follows each
+    /// word's loudness and pitch instead of one number per sentence.
+    private func tapVoice() {
+        voice.removeTap(onBus: 0)
+        voice.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
+            guard let self, let channel = buffer.floatChannelData?[0] else { return }
+            let samples = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
+            let level = TalkAudio.loudness(samples)
+            let tone = TalkAudio.brightness(samples, rate: buffer.format.sampleRate)
+            self.queue.async {
+                guard !self.closed, self.state == .speaking else { return }
+                onMain { self.handlers.onLevel(level, tone) }
+            }
+        }
     }
 
     /// Mono floats at his voice's rate; the mixer converts to the speaker's.
@@ -185,20 +226,31 @@ final class TalkLine: @unchecked Sendable {
             status.pointee = .haveData
             return buffer
         }
-        guard error == nil, let channel = out.floatChannelData?[0] else { return }
+        guard error == nil, let channel = out.floatChannelData?[0] else {
+            talkLog("mic convert failed: \(String(describing: error))")
+            return
+        }
         let samples = Array(UnsafeBufferPointer(start: channel, count: Int(out.frameLength)))
         let level = samples.withUnsafeBufferPointer { TalkAudio.loudness($0) }
+        let tone = samples.withUnsafeBufferPointer { TalkAudio.brightness($0, rate: capture.sampleRate) }
         queue.async {
             guard !self.closed else { return }
             for frame in self.cutter.add(samples) {
                 // Muted, a frame of silence goes instead, so his listening
                 // clock keeps running and a half-finished turn still ends.
                 let bytes = self.muted ? Data(count: frame.count) : frame
-                self.socket.send(.data(bytes)) { _ in }
+                self.socket.send(.data(bytes)) { error in
+                    if let error { talkLog("mic frame not sent: \(error)") }
+                }
+                self.framesSent += 1
+                if self.framesSent == 1 || self.framesSent % 500 == 0 {
+                    talkLog("mic frames sent: \(self.framesSent), level \(level)")
+                }
             }
             if self.state == .listening {
                 let shown = self.muted ? 0 : level
-                onMain { self.handlers.onLevel(shown) }
+                let shownTone = self.muted ? 0 : tone
+                onMain { self.handlers.onLevel(shown, shownTone) }
             }
         }
     }
@@ -214,8 +266,6 @@ final class TalkLine: @unchecked Sendable {
         floats.withUnsafeBufferPointer { source in
             buffer.floatChannelData?[0].update(from: source.baseAddress!, count: floats.count)
         }
-        let level = floats.withUnsafeBufferPointer { TalkAudio.loudness($0) }
-        onMain { self.handlers.onLevel(level) }
         queued += 1
         let mine = generation
         voice.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
@@ -284,7 +334,8 @@ final class TalkLine: @unchecked Sendable {
                     self.handle(message)
                     self.listen()
                 }
-            case .failure:
+            case .failure(let error):
+                talkLog("line dropped: \(error)")
                 self.shutDown(message: "The line to Jarvis dropped. Tap Talk to call again.")
             }
         }
@@ -296,7 +347,11 @@ final class TalkLine: @unchecked Sendable {
         case .data(let data):
             play(data)
         case .string(let text):
-            guard let event = TalkEvent.parse(text) else { return }
+            guard let event = TalkEvent.parse(text) else {
+                talkLog("unread event: \(text.prefix(200))")
+                return
+            }
+            if case .transcript(let words, _) = event { talkLog("heard: \(words)") }
             apply(event)
             onMain { self.handlers.onEvent(event) }
         @unknown default:
@@ -314,10 +369,12 @@ final class TalkLine: @unchecked Sendable {
                 let format = playFormat()
                 engine.connect(voice, to: engine.mainMixerNode, format: format)
                 engine.connect(chime, to: engine.mainMixerNode, format: format)
+                tapVoice()
                 voice.play()
                 chime.play()
             }
         case .state(let next):
+            talkLog("state \(next)")
             if TalkAudio.heardYouOut(before: state, after: next) { playGotIt() }
             state = next
         case .done:
@@ -356,6 +413,7 @@ final class TalkLine: @unchecked Sendable {
     /// Restarts the engine on the new route.
     private func rewire() {
         guard !closed else { return }
+        talkLog("audio route changed, rewiring")
         engine.stop()
         connectNodes()
         do {
@@ -375,6 +433,7 @@ final class TalkLine: @unchecked Sendable {
             for observer in self.observers { NotificationCenter.default.removeObserver(observer) }
             self.observers = []
             self.engine.inputNode.removeTap(onBus: 0)
+            self.voice.removeTap(onBus: 0)
             self.voice.stop()
             self.chime.stop()
             self.engine.stop()
