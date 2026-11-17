@@ -11,7 +11,7 @@ import SwiftUI
 import JarvisKit
 
 @MainActor
-final class AskModel: ObservableObject {
+final class AskModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     enum Phase { case asking, thinking, answering, done }
 
     @Published var question = ""
@@ -21,8 +21,39 @@ final class AskModel: ObservableObject {
     @Published private(set) var problem: String?
     /// Approvals Jarvis asked for during this answer, and how each ended.
     @Published private(set) var approvals: [(approval: Approval, outcome: String?)] = []
+    /// True while the answer is being read aloud.
+    @Published private(set) var speaking = false
+    /// A stand-in voice level for the orb: a lift on every word read.
+    @Published private(set) var level: Double = 0
     private let client = JarvisClient()
     private let voice = AVSpeechSynthesizer()
+
+    override init() {
+        super.init()
+        voice.delegate = self
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.speaking = true }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.speaking = false; self.level = 0 }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.speaking = false; self.level = 0 }
+    }
+
+    /// Each word lifts the orb, longer words a little more, then it falls.
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+        let lift = min(1, 0.45 + Double(characterRange.length) * 0.06)
+        Task { @MainActor in
+            self.level = lift
+            try? await Task.sleep(for: .milliseconds(180))
+            self.level = lift * 0.35
+        }
+    }
 
     /// Sends the question through the chat stream and fills in the reply.
     func send() async {
@@ -97,7 +128,9 @@ struct AskJarvisView: View {
         ZStack {
             Theme.sky.ignoresSafeArea()
             HStack(alignment: .center, spacing: 70) {
-                OrbView(state: orbMood, size: 360, tappable: false)
+                // Thinking while he works it out, speaking (and moving with
+                // each word) while the answer is read.
+                OrbView(state: orbMood, size: 360, level: ask.level, tappable: false)
                 VStack(alignment: .leading, spacing: 28) {
                     TextField("Ask Jarvis (hold the mic button to speak)", text: $ask.question)
                         .focused($typing)
@@ -171,6 +204,7 @@ struct AskJarvisView: View {
 
     /// The orb follows the answer: thinking, working, then speaking.
     private var orbMood: OrbView.Mood {
+        if ask.speaking { return .speaking }
         switch ask.phase {
         case .thinking: return ask.working == nil ? .thinking : .working
         case .answering: return .speaking

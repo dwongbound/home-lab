@@ -139,3 +139,49 @@ final class TVBoardTests: XCTestCase {
         XCTAssertEqual(TVBoard.forecastSymbol(cloudyNight, sunrise: rise, sunset: set), "cloud.moon.fill")
     }
 }
+
+final class NightCalmTests: XCTestCase {
+    private var la: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        return c
+    }
+    private func at(_ h: Int, _ m: Int = 0) -> Date {
+        la.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: h, minute: m))!
+    }
+    private func iso(_ d: Date) -> String { ISO8601DateFormatter().string(from: d) }
+
+    func testCalmFromMidnightToHalfAnHourBeforeSunrise() {
+        let rise = at(6, 30)
+        XCTAssertFalse(NightCalm.isCalm(now: at(23, 30), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
+        XCTAssertTrue(NightCalm.isCalm(now: at(0, 5), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
+        XCTAssertTrue(NightCalm.isCalm(now: at(5, 59), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
+        XCTAssertFalse(NightCalm.isCalm(now: at(6, 0), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
+        // Yesterday's sunrise time still works.
+        XCTAssertTrue(NightCalm.isCalm(now: at(3), sunrise: rise.addingTimeInterval(-86_400), enabled: true, wokenUntil: nil, calendar: la))
+    }
+
+    func testOffSwitchAndARemotePressWakeIt() {
+        XCTAssertFalse(NightCalm.isCalm(now: at(3), sunrise: at(6, 30), enabled: false, wokenUntil: nil, calendar: la))
+        XCTAssertFalse(NightCalm.isCalm(now: at(3), sunrise: at(6, 30), enabled: true, wokenUntil: at(3, 1), calendar: la))
+        XCTAssertTrue(NightCalm.isCalm(now: at(3, 2), sunrise: at(6, 30), enabled: true, wokenUntil: at(3, 1), calendar: la))
+    }
+
+    func testMorningLineOnlyBeforeTen() {
+        let events = [CalendarEvent(id: "d", title: "Dentist", start: iso(at(9)), end: nil),
+                      CalendarEvent(id: "l", title: "Lunch", start: iso(at(12)), end: nil)]
+        XCTAssertEqual(NightCalm.morningLine(events: events, agenda: [], now: at(2), guest: true, calendar: la, timeZone: la.timeZone), "Dentist at 9:00 AM")
+        XCTAssertNil(NightCalm.morningLine(events: [events[1]], agenda: [], now: at(2), guest: true, calendar: la, timeZone: la.timeZone))
+    }
+
+    func testLookoutCardIsPrivateAndCountsMessages() throws {
+        let json = #"{"generatedAt":"x","services":[],"today":[],"jobs":{"running":[],"lookout":{"checks":["calendar"],"watching":["Flight prices to Tokyo"],"heldBack":[{"text":"private","reason":null}]},"messenger":{"sentToday":3,"cap":8,"quiet":"10 PM–7 AM"}}}"#
+        let s = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(s.jobs?.lookout?.watching, ["Flight prices to Tokyo"])
+        XCTAssertEqual(s.jobs?.lookout?.heldBackCount, 1)
+        XCTAssertTrue(TVBoard.cards(s, guest: false).contains(.lookout))
+        XCTAssertFalse(TVBoard.cards(s, guest: true).contains(.lookout))
+        XCTAssertEqual(LookoutCard.messagesLine(s.jobs?.messenger), "3 of 8 messages today")
+        XCTAssertEqual(LookoutCard.messagesLine(Messenger(sentToday: 0, cap: 8, quiet: nil)), "No messages today")
+    }
+}

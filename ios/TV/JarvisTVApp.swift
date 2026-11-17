@@ -64,6 +64,13 @@ struct AlwaysOnView: View {
     /// so it leaves out sleep, steps, Jarvis's suggestions and the private
     /// half of the greeting (TVBoard in JarvisKit).
     @AppStorage("tv.guestFriendly") private var guest = true
+    /// The calm bedroom layout from midnight to just before sunrise (on by
+    /// default; the moon button beside Ask Jarvis turns it off).
+    @AppStorage("tv.nightCalm") private var nightCalmOn = true
+    /// True while the calm layout shows.
+    @State private var calm = false
+    /// A remote press shows the full board until then.
+    @State private var wokenUntil: Date?
 
     /// The orb and the time on the left; one roomy panel at a time on the
     /// right, cross-fading every 20 s (Dylan, 2026-11-17: the right was
@@ -73,14 +80,25 @@ struct AlwaysOnView: View {
             LampSky(lamp: lamp).ignoresSafeArea()
             SkyLayers(lamp: lamp, arc: arc, condition: model.snapshot?.home?.weather?.condition, palette: palette)
                 .ignoresSafeArea()
-            HStack(alignment: .center, spacing: 80) {
-                left.frame(maxWidth: .infinity)
-                right.frame(maxWidth: .infinity, alignment: .leading)
+            if calm {
+                calmLayout
+                    .offset(drift)
+                    .transition(.opacity)
+            } else {
+                HStack(alignment: .center, spacing: 80) {
+                    left.frame(maxWidth: .infinity)
+                    right.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(80)
+                .offset(drift)
+                .transition(.opacity)
             }
-            .padding(80)
-            .offset(drift)
         }
         .fontDesign(.rounded)
+        // The two layouts fade into each other slowly, never a cut.
+        .animation(reduceMotion ? nil : .easeInOut(duration: 2.5), value: calm)
+        // Any swipe on the remote while it's calm brings the board back.
+        .onMoveCommand { _ in if calm { wake() } }
         .task {
             while !Task.isCancelled {
                 await model.load()
@@ -108,6 +126,7 @@ struct AlwaysOnView: View {
                     drift = CGSize(width: 10 * sin(minutes / 7), height: 8 * cos(minutes / 11))
                 }
                 first = false
+                updateCalm()
                 try? await Task.sleep(for: .seconds(preview ? 0.5 : 30))
             }
         }
@@ -135,6 +154,63 @@ struct AlwaysOnView: View {
         let rise = sun?.rising.flatMap { format.date(from: $0) } ?? estimate.sunrise
         let set = sun?.setting.flatMap { format.date(from: $0) } ?? estimate.sunset
         return SunLamp.state(now: now, sunrise: rise, sunset: set)
+    }
+
+    // MARK: Night calm
+
+    /// Clock, date, the dimmed orb and one line if something's on before
+    /// 10 AM, under the moon and stars. One big invisible button takes the
+    /// first press, so Select wakes the board instead of opening Ask Jarvis.
+    private var calmLayout: some View {
+        Button(action: wake) {
+            VStack(spacing: 22) {
+                OrbView(state: .listening, size: 240, tappable: false, onLight: false)
+                    .opacity(0.3)
+                TimelineView(.periodic(from: .now, by: 30)) { tick in
+                    let now = SunLampPreview.now(at: tick.date)
+                    VStack(spacing: 10) {
+                        Text(now, format: .dateTime.hour().minute())
+                            .font(.system(size: 150, weight: .regular, design: .rounded))
+                            .monospacedDigit()
+                            .fixedSize()
+                            .foregroundStyle(ink)
+                            .contentTransition(.numericText())
+                            .animation(reduceMotion ? nil : .smooth(duration: 0.8), value: now.formatted(.dateTime.hour().minute()))
+                        Text(now, format: .dateTime.weekday(.wide).month(.wide).day())
+                            .font(.title3)
+                            .foregroundStyle(inkDim)
+                        if let snapshot = model.snapshot,
+                           let line = NightCalm.morningLine(events: snapshot.events, agenda: snapshot.today, now: now, guest: guest) {
+                            Label(line, systemImage: "alarm.fill")
+                                .font(.headline)
+                                .foregroundStyle(inkDim)
+                                .labelStyle(TintedIconLabel(icon: accent))
+                                .padding(.top, 8)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CalmButtonStyle())
+        .accessibilityLabel("Show the full screen")
+    }
+
+    /// Shows the full board for a minute, then lets it settle again.
+    private func wake() {
+        wokenUntil = SunLampPreview.now().addingTimeInterval(NightCalm.pressSeconds)
+        updateCalm()
+        Task {
+            try? await Task.sleep(for: .seconds(NightCalm.pressSeconds + 1))
+            updateCalm()
+        }
+    }
+
+    /// Works out whether the calm layout should show right now.
+    private func updateCalm() {
+        let next = NightCalm.isCalm(now: SunLampPreview.now(), sunrise: sunTimes.rise, enabled: nightCalmOn, wokenUntil: wokenUntil)
+        if next != calm { calm = next }
     }
 
     /// The sun or moon's place on its arc right now.
@@ -226,6 +302,18 @@ struct AlwaysOnView: View {
                 }
                 .accessibilityLabel(guest ? "Guest-friendly view is on" : "Guest-friendly view is off")
                 .accessibilityHint("Hides sleep, steps and Jarvis's suggestions when on")
+                Button {
+                    nightCalmOn.toggle()
+                    // Turning it on shows the board for a minute first.
+                    if nightCalmOn { wokenUntil = SunLampPreview.now().addingTimeInterval(NightCalm.pressSeconds) }
+                    updateCalm()
+                } label: {
+                    Label(nightCalmOn ? "Night calm on" : "Night calm off", systemImage: nightCalmOn ? "moon.zzz.fill" : "moon.zzz")
+                        .labelStyle(.iconOnly)
+                        .font(.callout)
+                        .foregroundStyle(ink)
+                }
+                .accessibilityHint("From midnight until just before sunrise, shows only the clock")
             }
             Text(connectionWords)
                 .font(.caption)
@@ -263,7 +351,10 @@ struct AlwaysOnView: View {
                                     removal: .opacity.combined(with: .offset(x: -40))
                                 ))
                         }
-                        .frame(height: hero == nil ? 470 : 400, alignment: .top)
+                        // With three or more cards the height holds still so
+                        // nothing below jumps; with fewer, the card takes
+                        // its own height and the column centres itself.
+                        .frame(height: cards.count >= 3 ? (hero == nil ? 470 : 400) : nil, alignment: .top)
                         if cards.count > 1 {
                             CardDots(count: cards.count, active: active, seconds: TVBoard.turnSeconds, palette: palette)
                         }
@@ -395,6 +486,34 @@ struct AlwaysOnView: View {
                     }
                 }
                 .staggered(running.count)
+            }
+        case .lookout:
+            card(which) {
+                let lookout = snapshot.jobs?.lookout
+                ForEach(Array((lookout?.watching ?? []).prefix(3).enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Image(systemName: "eye.fill").foregroundStyle(accent).frame(width: 44)
+                        Text(item).lineLimit(1)
+                    }
+                    .staggered(index)
+                }
+                if let line = LookoutCard.messagesLine(snapshot.jobs?.messenger) {
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Image(systemName: "envelope.fill").foregroundStyle(warm).frame(width: 44)
+                        Text(line)
+                        if let quiet = snapshot.jobs?.messenger?.quiet, !quiet.isEmpty {
+                            Text("· quiet \(quiet)").foregroundStyle(inkDim)
+                        }
+                    }
+                    .staggered(3)
+                }
+                if let held = lookout?.heldBackCount, held > 0 {
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Image(systemName: "hand.raised.fill").foregroundStyle(inkDim).frame(width: 44)
+                        Text(held == 1 ? "1 thing held back" : "\(held) things held back").foregroundStyle(inkDim)
+                    }
+                    .staggered(4)
+                }
             }
         case .health:
             card(which) {
@@ -576,5 +695,13 @@ enum SunLampPreview {
         guard enabled else { return real }
         let dawn = Calendar.current.date(bySettingHour: 5, minute: 30, second: 0, of: started) ?? started
         return dawn.addingTimeInterval(real.timeIntervalSince(started) * 720)
+    }
+}
+
+/// The calm layout's whole-screen button: no focus halo or lift, so the
+/// screen stays dark and still until a press.
+struct CalmButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
     }
 }
