@@ -1,7 +1,7 @@
 // Home Assistant control: which devices show, and that the page can only
 // send the few commands it's meant to, to the kinds of device it's meant to.
 import { describe, expect, it, vi } from 'vitest'
-import { createHomeReader, toDevice } from '../../server/sources/home.mjs'
+import { createHomeReader, toDevice, toReading } from '../../server/sources/home.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
 import { loadConfig } from '../../server/config.mjs'
 
@@ -110,6 +110,40 @@ describe('home reader', () => {
 
   it('leaves out anything that is not a device', () => {
     expect(toDevice({ entity_id: 'sensor.x', state: '1', attributes: {} })).toBeNull()
+  })
+
+  it('reads room temperatures and humidity as readings with their unit', () => {
+    const temp = { entity_id: 'sensor.bed_temp', state: '70.46', attributes: { friendly_name: 'Bedroom', device_class: 'temperature', unit_of_measurement: '°F' } }
+    expect(toReading(temp)).toEqual({ id: 'sensor.bed_temp', name: 'Bedroom', kind: 'temperature', value: '70.5', unit: '°F' })
+  })
+
+  it('reports an open door, motion and a low battery, and nothing for the quiet ones', () => {
+    const door = (state: string) => ({ entity_id: 'binary_sensor.door', state, attributes: { friendly_name: 'Door', device_class: 'door' } })
+    expect(toReading(door('on'))?.value).toBe('open')
+    expect(toReading(door('off'))).toBeNull()
+    expect(toReading({ entity_id: 'binary_sensor.hall', state: 'on', attributes: { device_class: 'motion' } })?.value).toBe('detected')
+    const battery = (state: string) => ({ entity_id: 'sensor.remote_battery', state, attributes: { device_class: 'battery', unit_of_measurement: '%' } })
+    expect(toReading(battery('12'))?.value).toBe('12')
+    expect(toReading(battery('80'))).toBeNull()
+  })
+
+  it('skips sensors with no reading, no class, or a class the page does not show', () => {
+    expect(toReading({ entity_id: 'sensor.x', state: 'unavailable', attributes: { device_class: 'temperature' } })).toBeNull()
+    expect(toReading({ entity_id: 'sensor.x', state: '3', attributes: {} })).toBeNull()
+    expect(toReading({ entity_id: 'sensor.x', state: '3', attributes: { device_class: 'power' } })).toBeNull()
+    expect(toReading({ entity_id: 'light.x', state: 'on', attributes: { device_class: 'door' } })).toBeNull()
+  })
+
+  it('sends readings with what needs a look first, and weather with humidity and wind', async () => {
+    const states = [
+      { entity_id: 'sensor.bed_temp', state: '70', attributes: { friendly_name: 'Bedroom', device_class: 'temperature', unit_of_measurement: '°F' } },
+      { entity_id: 'binary_sensor.door', state: 'on', attributes: { friendly_name: 'Door', device_class: 'door' } },
+      { entity_id: 'weather.home', state: 'sunny', attributes: { temperature: 61, temperature_unit: '°F', humidity: 40, wind_speed: 6, wind_speed_unit: 'mph' } },
+    ]
+    const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith('/api/template') ? [] : states)))
+    const home = await createHomeReader(config, { fetch }).read()
+    expect(home?.readings.map((r: { kind: string }) => r.kind)).toEqual(['door', 'temperature'])
+    expect(home?.weather).toEqual({ condition: 'sunny', temperature: 61, unit: '°F', humidity: 40, wind: 6, windUnit: 'mph' })
   })
 })
 
