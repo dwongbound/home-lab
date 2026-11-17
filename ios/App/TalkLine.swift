@@ -385,6 +385,10 @@ final class TalkLine: @unchecked Sendable {
             maybeIdle()
         case .stop:
             silence()
+        case .bye:
+            // He's said goodbye and is closing the line: hang up quietly
+            // (no "line dropped" message), mic and audio off, no reconnect.
+            shutDown(message: nil)
         default:
             break
         }

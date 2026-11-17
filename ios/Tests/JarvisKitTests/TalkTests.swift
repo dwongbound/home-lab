@@ -83,4 +83,8 @@ final class TalkTests: XCTestCase {
         XCTAssertGreaterThan(high, 0.5)
         XCTAssertEqual(quiet, 0)
     }
+
+    func testParsesBye() {
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"bye"}"#), .bye)
+    }
 }
