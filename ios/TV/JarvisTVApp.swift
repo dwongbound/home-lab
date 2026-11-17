@@ -246,7 +246,7 @@ struct AlwaysOnView: View {
             let active = cards.isEmpty ? 0 : turn % cards.count
             TimelineView(.periodic(from: .now, by: SunLampPreview.enabled ? 0.5 : 15)) { tick in
                 let now = SunLampPreview.now(at: tick.date)
-                let hero = NowNext.pick(events: snapshot.events, agenda: snapshot.today, now: now)
+                let hero = TVBoard.hero(snapshot, now: now, guest: guest)
                 VStack(alignment: .leading, spacing: 26) {
                     ChipRow(chips: StatusChips.chips(snapshot, approvals: model.approvals), palette: palette)
                     greeting(snapshot, showBody: hero == nil)
@@ -306,7 +306,7 @@ struct AlwaysOnView: View {
         switch which {
         case .today:
             card(which) {
-                ForEach(Array(TodayTimeline.rows(snapshot.today, now: now, limit: 6).enumerated()), id: \.element.id) { index, row in
+                ForEach(Array(TodayTimeline.rows(snapshot.today, events: snapshot.events, now: now, guest: guest, limit: 6).enumerated()), id: \.element.id) { index, row in
                     timelineRow(row).staggered(index)
                 }
             }
@@ -355,7 +355,7 @@ struct AlwaysOnView: View {
                     ForEach(Array((snapshot.home?.forecast ?? []).prefix(7).enumerated()), id: \.offset) { index, hour in
                         VStack(spacing: 14) {
                             Text(hourLabel(hour.at)).font(.callout).foregroundStyle(inkDim)
-                            Image(systemName: TodayWording.weatherSymbol(hour.condition))
+                            Image(systemName: TVBoard.forecastSymbol(hour, sunrise: sunTimes.rise, sunset: sunTimes.set))
                                 .font(.title2)
                                 .foregroundStyle(warm)
                                 .frame(height: 50)
@@ -445,6 +445,15 @@ struct AlwaysOnView: View {
                 Image(systemName: "sparkles").font(.caption).foregroundStyle(warm)
             }
         }
+    }
+
+    /// Today's sunrise and sunset, from the snapshot or the estimate.
+    private var sunTimes: (rise: Date, set: Date) {
+        let format = ISO8601DateFormatter()
+        let now = SunLampPreview.now()
+        let sun = model.snapshot?.home?.sun
+        let estimate = SunLamp.estimate(for: now)
+        return (sun?.rising.flatMap { format.date(from: $0) } ?? estimate.sunrise, sun?.setting.flatMap { format.date(from: $0) } ?? estimate.sunset)
     }
 
     /// "3 PM" for the forecast strip.

@@ -106,4 +106,36 @@ final class TVBoardTests: XCTestCase {
         let busy = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","services":[{"id":"o","name":"Ollama","detail":"","status":"down"}],"today":[],"jobs":{"running":[{"id":"j","label":"x","state":"running"}]}}"#.utf8))
         XCTAssertEqual(StatusChips.chips(busy, approvals: 2).map(\.text), ["Ollama down", "2 approvals waiting", "Jarvis is working"])
     }
+
+    func testLongStretchesLeftInWholeHours() {
+        XCTAssertEqual(Countdown.left(from: at(15, 11), to: at(19, 30)), "4 h left")
+    }
+
+    func testTimelineMergesCalendarEventsAndGuestsDontSeeJarvisJobs() {
+        let agenda = [AgendaItem(id: "jarvis-a@1800", at: iso(at(18)), title: "Follow up with Aditya", detail: "Jarvis: reminder", allDay: nil)]
+        let events = [CalendarEvent(id: "v", title: "Varda", start: iso(at(11)), end: iso(at(19, 30)), location: "555 Somewhere")]
+        let full = TodayTimeline.rows(agenda, events: events, now: at(15), timeZone: la.timeZone, calendar: la)
+        XCTAssertEqual(full.map(\.title), ["Varda", "Follow up with Aditya"])
+        XCTAssertEqual(full.map(\.state), [.now, .next])
+        let guest = TodayTimeline.rows(agenda, events: events, now: at(15), guest: true, timeZone: la.timeZone, calendar: la)
+        XCTAssertEqual(guest.map(\.title), ["Varda"])
+    }
+
+    func testGuestsDontSeeWhereTheHeroIs() throws {
+        let json = #"{"generatedAt":"x","services":[],"today":[],"cloud":{"calendar":[{"id":"v","title":"Varda","start":"\#(iso(at(11)))","end":"\#(iso(at(19, 30)))","location":"555 Somewhere"}]}}"#
+        let s = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(TVBoard.hero(s, now: at(15), guest: false)?.location, "555 Somewhere")
+        XCTAssertNil(TVBoard.hero(s, now: at(15), guest: true)?.location)
+        XCTAssertEqual(TVBoard.hero(s, now: at(15), guest: true)?.title, "Varda")
+    }
+
+    func testForecastShowsTheMoonAfterDark() {
+        let rise = at(6, 30), set = at(16, 48)
+        let evening = ForecastHour(at: iso(at(20)), condition: "sunny", temperature: 60, low: nil, rain: nil)
+        let afternoon = ForecastHour(at: iso(at(14)), condition: "sunny", temperature: 66, low: nil, rain: nil)
+        let cloudyNight = ForecastHour(at: iso(at(21)), condition: "partlycloudy", temperature: 58, low: nil, rain: nil)
+        XCTAssertEqual(TVBoard.forecastSymbol(evening, sunrise: rise, sunset: set), "moon.stars.fill")
+        XCTAssertEqual(TVBoard.forecastSymbol(afternoon, sunrise: rise, sunset: set), "sun.max.fill")
+        XCTAssertEqual(TVBoard.forecastSymbol(cloudyNight, sunrise: rise, sunset: set), "cloud.moon.fill")
+    }
 }
