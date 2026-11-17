@@ -65,8 +65,6 @@ struct AlwaysOnView: View {
                 right.frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(80)
-            // Dim at night so the bedroom stays dark; full in daylight.
-            .opacity(0.35 + 0.65 * min(1, lamp.brightness * 3))
             .offset(drift)
         }
         .fontDesign(.rounded)
@@ -126,21 +124,14 @@ struct AlwaysOnView: View {
         return SunLamp.state(now: now, sunrise: rise, sunset: set)
     }
 
-    /// Text colour for the lamp: dark ink on a bright sky, light otherwise.
-    private var ink: Color {
-        lamp.brightness > 0.55 ? Theme.basalt : Theme.frost
-    }
-
-    /// Secondary text.
-    private var inkDim: Color { ink.opacity(0.68) }
-
-    /// The blue accent: Jarvis's glacier blue at night, a deeper blue by day.
-    private var accent: Color {
-        lamp.brightness > 0.55 ? Color(red: 0.12, green: 0.38, blue: 0.62) : Theme.glacier
-    }
-
-    /// Faint text.
-    private var inkFaint: Color { ink.opacity(0.45) }
+    /// Every colour for the lamp right now, each measured against the sky
+    /// and panels behind it (LampPalette in JarvisKit): near-black ink by
+    /// day, dimmed frost by night, swapped at the crossover.
+    private var palette: LampPalette { LampPalette.at(lamp) }
+    private var ink: Color { palette.ink.color }
+    private var inkDim: Color { palette.inkDim.color }
+    private var accent: Color { palette.accent.color }
+    private var warm: Color { palette.warm.color }
 
     // MARK: Left
 
@@ -148,12 +139,15 @@ struct AlwaysOnView: View {
     /// connection line.
     private var left: some View {
         VStack(spacing: 26) {
-            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 400, work: model.snapshot?.jobs?.running ?? [], tappable: false, onLight: lamp.brightness > 0.55)
+            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 400, work: model.snapshot?.jobs?.running ?? [], tappable: false, onLight: palette.darkInk)
+                // Dim at night so the bedroom stays dark (the text is dimmed
+                // by the palette instead, only as far as it stays readable).
+                .opacity(0.35 + 0.65 * min(1, lamp.brightness * 3))
             TimelineView(.periodic(from: .now, by: SunLampPreview.enabled ? 0.5 : 30)) { tick in
                 let context = (date: SunLampPreview.now(at: tick.date), ())
                 VStack(spacing: 8) {
                     Text(context.date, format: .dateTime.hour().minute())
-                        .font(.system(size: 104, weight: .light, design: .rounded))
+                        .font(.system(size: 104, weight: .regular, design: .rounded))
                         .monospacedDigit()
                         // Never clipped: the clock always shows in full.
                         .lineLimit(1)
@@ -162,12 +156,11 @@ struct AlwaysOnView: View {
                     Text(context.date, format: .dateTime.weekday(.wide).month(.wide).day())
                         .font(.title3)
                         .foregroundStyle(inkDim)
-                        .foregroundStyle(inkDim)
                     if let weather = model.snapshot?.home?.weather {
                         Label(weatherText(weather), systemImage: TodayWording.weatherSymbol(weather.condition))
                             .font(.headline)
                             .foregroundStyle(inkDim)
-                            .symbolRenderingMode(.multicolor)
+                            .labelStyle(TintedIconLabel(icon: warm))
                             .padding(.top, 6)
                     }
                     if let sun = model.snapshot?.home?.sun,
@@ -175,7 +168,7 @@ struct AlwaysOnView: View {
                         Label(line, systemImage: "sun.horizon.fill")
                             .font(.headline)
                             .foregroundStyle(inkDim)
-                            .symbolRenderingMode(.multicolor)
+                            .labelStyle(TintedIconLabel(icon: warm))
                     }
                 }
             }
@@ -189,7 +182,7 @@ struct AlwaysOnView: View {
             .accessibilityHint("Type or hold the mic button to ask him something")
             Text(connectionWords)
                 .font(.caption)
-                .foregroundStyle(model.reachable == false ? Theme.rose : inkFaint)
+                .foregroundStyle(model.reachable == false ? palette.alert.color : inkDim)
         }
     }
 
@@ -217,7 +210,7 @@ struct AlwaysOnView: View {
                     HStack(spacing: 10) {
                         ForEach(Array(panels.enumerated()), id: \.offset) { index, _ in
                             Circle()
-                                .fill(index == turn % panels.count ? ink : inkFaint.opacity(0.5))
+                                .fill(index == turn % panels.count ? ink : palette.dot.color)
                                 .frame(width: 10, height: 10)
                         }
                     }
@@ -241,7 +234,7 @@ struct AlwaysOnView: View {
         case .alert(let name, let status):
             Label("\(name) is \(status)", systemImage: "exclamationmark.triangle.fill")
                 .font(.headline)
-                .foregroundStyle(Theme.ember)
+                .foregroundStyle(palette.alert.color)
         case .soon(let title, let minutes):
             Label(minutes <= 0 ? "\(title) is starting" : "\(title) in \(minutes) min", systemImage: "calendar.badge.clock")
                 .font(.headline)
@@ -312,7 +305,7 @@ struct AlwaysOnView: View {
             card("Jarvis is working on", icon: "sparkles") {
                 ForEach((snapshot.jobs?.running ?? []).prefix(3)) { task in
                     HStack(alignment: .firstTextBaseline, spacing: 16) {
-                        Circle().fill(OrbView.workAmber).frame(width: 14, height: 14)
+                        Circle().fill(warm).frame(width: 14, height: 14)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(task.label).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             Text(task.runningWords()).font(.caption).foregroundStyle(inkDim)
@@ -335,7 +328,7 @@ struct AlwaysOnView: View {
             card("From Jarvis", icon: "lightbulb.fill") {
                 ForEach((snapshot.offers?.offers ?? []).prefix(4)) { offer in
                     HStack(alignment: .firstTextBaseline, spacing: 18) {
-                        Image(systemName: "sparkle").foregroundStyle(Theme.ember).frame(width: 36)
+                        Image(systemName: "sparkle").foregroundStyle(warm).frame(width: 36)
                         Text(offer.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -366,13 +359,10 @@ struct AlwaysOnView: View {
         }
         .padding(34)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            // Frosted white by day so dark text reads; glass at night.
-            if lamp.brightness > 0.55 {
-                RoundedRectangle(cornerRadius: 34, style: .continuous).fill(Color.white.opacity(0.55))
-            }
-        }
-        .glassPanel(radius: 34)
+        // A real surface, measured like the text: paper by day, a faint lift
+        // at night, with an edge that shows against the sky (3:1).
+        .background(RoundedRectangle(cornerRadius: 34, style: .continuous).fill(palette.panel.color))
+        .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).strokeBorder(palette.panelEdge.color, lineWidth: 2))
     }
 
     /// An icon, a name on the left, its value on the right.
@@ -380,7 +370,7 @@ struct AlwaysOnView: View {
         HStack(spacing: 18) {
             if let symbol {
                 Image(systemName: symbol)
-                    .foregroundStyle(Theme.ember)
+                    .foregroundStyle(warm)
                     .frame(width: 36)
             }
             Text(name)
@@ -411,28 +401,29 @@ struct AlwaysOnView: View {
 struct LampSky: View {
     let lamp: SunLampState
 
-    /// A top-to-bottom gradient mixed from the lamp's brightness and warmth.
+    /// A top-to-bottom gradient, from the palette (so the contrast checks
+    /// measure exactly this sky).
     var body: some View {
-        LinearGradient(colors: [color(top: true), color(top: false)], startPoint: .top, endPoint: .bottom)
+        let palette = LampPalette.at(lamp)
+        LinearGradient(colors: [palette.skyTop.color, palette.skyBottom.color], startPoint: .top, endPoint: .bottom)
     }
+}
 
-    /// One end of the gradient.
-    private func color(top: Bool) -> Color {
-        let b = lamp.brightness, w = lamp.warmth
-        // Night ink, daylight sky, and the warm glow, as RGB.
-        let night = top ? (0.02, 0.025, 0.04) : (0.035, 0.045, 0.07)
-        let day = top ? (0.86, 0.91, 0.96) : (0.97, 0.94, 0.88)
-        // Warm runs deep red when dim, amber, then gold as it brightens.
-        let warm = (min(1, 0.55 + b * 0.5), 0.12 + b * 0.62, 0.04 + b * 0.32)
-        func mix(_ a: Double, _ c: Double, _ t: Double) -> Double { a + (c - a) * t }
-        let base = (mix(night.0, day.0, b), mix(night.1, day.1, b), mix(night.2, day.2, b))
-        let glow = w * (top ? 0.75 : 1)
-        let lit = min(1, b * 3)
-        return Color(
-            red: mix(base.0, warm.0 * lit, glow),
-            green: mix(base.1, warm.1 * lit, glow),
-            blue: mix(base.2, warm.2 * lit, glow)
-        )
+extension RGB {
+    /// As a SwiftUI colour (sRGB).
+    var color: Color { Color(.sRGB, red: r, green: g, blue: b) }
+}
+
+/// A label whose icon is one solid measured colour (multicolour symbols
+/// put a pale yellow sun on a pale sky).
+struct TintedIconLabel: LabelStyle {
+    let icon: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.icon.foregroundStyle(icon)
+            configuration.title
+        }
     }
 }
 
@@ -449,8 +440,23 @@ enum SunLampPreview {
         #endif
     }
 
+    /// `-lampAt 13:00` (debug builds) holds the clock at that time today,
+    /// for screenshots of one light.
+    static var pinned: Date? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-lampAt"), i + 1 < args.count else { return nil }
+        let parts = args[i + 1].split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        return Calendar.current.date(bySettingHour: parts[0], minute: parts[1], second: 0, of: started)
+        #else
+        return nil
+        #endif
+    }
+
     /// Now, or the fast-forward clock's now.
     static func now(at real: Date = Date()) -> Date {
+        if let pinned { return pinned }
         guard enabled else { return real }
         let dawn = Calendar.current.date(bySettingHour: 5, minute: 30, second: 0, of: started) ?? started
         return dawn.addingTimeInterval(real.timeIntervalSince(started) * 720)
