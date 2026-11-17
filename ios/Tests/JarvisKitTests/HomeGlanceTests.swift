@@ -66,3 +66,14 @@ final class HomeGlanceTests: XCTestCase {
         XCTAssertEqual(HomeGlance.lines(h), [])
     }
 }
+
+final class HomeGlancePowerTests: XCTestCase {
+    func testLightsShowTheirWattsAndTheThermostatItsHumidity() throws {
+        let h = try JSONDecoder().decode(Home.self, from: Data("""
+        {"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"cool","current":72,"target":70,"humidity":45.4},
+                    {"id":"a","name":"Desk","kind":"light","state":"on"}],"powerWatts":43}
+        """.utf8))
+        let lines = HomeGlance.lines(h)
+        XCTAssertEqual(lines.map(\.value), ["72° · cool to 70° · 45% humidity", "Desk · 43 W"])
+    }
+}
