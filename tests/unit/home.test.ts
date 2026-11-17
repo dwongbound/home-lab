@@ -1,7 +1,7 @@
 // Home Assistant control: which devices show, and that the page can only
 // send the few commands it's meant to, to the kinds of device it's meant to.
 import { describe, expect, it, vi } from 'vitest'
-import { createHomeReader, toDevice, toForecast, toReading } from '../../server/sources/home.mjs'
+import { createHomeReader, toDevice, powerWatts, toForecast, toReading } from '../../server/sources/home.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
 import { loadConfig } from '../../server/config.mjs'
 
@@ -177,6 +177,19 @@ describe('home reader', () => {
     clock = 16 * 60_000
     expect((await reader.read())?.forecast).toEqual([])
     expect(asked).toBe(2)
+  })
+
+  it('adds up what the power sensors draw, in watts, and reads a thermostat humidity', async () => {
+    const power = (id: string, state: string, unit = 'W') => ({ entity_id: `sensor.${id}`, state, attributes: { device_class: 'power', unit_of_measurement: unit } })
+    expect(powerWatts(power('a', '4.5'))).toBe(4.5)
+    expect(powerWatts(power('a', '0.2', 'kW'))).toBe(200)
+    expect(powerWatts(power('a', 'unavailable'))).toBeNull()
+    expect(powerWatts({ entity_id: 'sensor.t', state: '70', attributes: { device_class: 'temperature' } })).toBeNull()
+    const states = [power('a', '4.4'), power('b', '9.3'), { entity_id: 'climate.t', state: 'heat', attributes: { current_temperature: 68, current_humidity: 44 } }]
+    const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith('/api/template') ? [] : states)))
+    const home = await createHomeReader(config, { fetch }).read()
+    expect((home as { powerWatts?: number } | null)?.powerWatts).toBe(14)
+    expect((home?.devices[0] as { humidity?: number }).humidity).toBe(44)
   })
 })
 
