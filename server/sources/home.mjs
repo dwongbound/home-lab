@@ -125,6 +125,17 @@ export function toReading(entity) {
   return reading
 }
 
+/** What one power sensor reads in watts, or null for anything else or no reading. */
+export function powerWatts(entity) {
+  const a = entity.attributes ?? {}
+  if (!entity.entity_id.startsWith('sensor.') || a.device_class !== 'power') return null
+  const value = Number(entity.state)
+  if (!Number.isFinite(value)) return null
+  if (a.unit_of_measurement === 'kW') return value * 1000
+  if (a.unit_of_measurement === 'W') return value
+  return null
+}
+
 /** The outside weather, with humidity and wind when Home Assistant has them. */
 function toWeather(entity) {
   const a = entity.attributes ?? {}
@@ -164,6 +175,7 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 function climateFields(a) {
   const fields = {
     current: num(a.current_temperature),
+    humidity: num(a.current_humidity),
     target: num(a.temperature),
     min: num(a.min_temp),
     max: num(a.max_temp),
@@ -249,10 +261,18 @@ export function createHomeReader(config, deps = {}) {
         const readings = []
         let weather = null
         let weatherId = ''
+        // Watts drawn right now, added up over every power sensor (the smart bulbs report one each).
+        let watts = 0
+        let hasPower = false
         const sun = { rising: null, setting: null }
         for (const e of states) {
           const device = toDevice(e)
           if (device && !hidden.has(device.id)) devices.push(device)
+          const drawn = powerWatts(e)
+          if (drawn !== null) {
+            watts += drawn
+            hasPower = true
+          }
           const reading = toReading(e)
           if (reading) readings.push(reading)
           if (weather === null && e.entity_id.startsWith('weather.')) {
@@ -269,7 +289,9 @@ export function createHomeReader(config, deps = {}) {
         const readingOrder = ['door', 'window', 'battery', 'motion', 'temperature', 'humidity']
         readings.sort((x, y) => readingOrder.indexOf(x.kind) - readingOrder.indexOf(y.kind) || x.name.localeCompare(y.name))
         const hours = weatherId ? await forecast(weatherId) : []
-        return { devices, readings: readings.slice(0, MAX_READINGS), weather, forecast: hours, sun }
+        const home = { devices, readings: readings.slice(0, MAX_READINGS), weather, forecast: hours, sun }
+        if (hasPower) home.powerWatts = Math.round(watts)
+        return home
       } catch {
         return null
       }

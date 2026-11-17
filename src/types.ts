@@ -119,6 +119,8 @@ export interface Device {
   /** Thermostats only: the room's temperature and the one it's set to, in HA's unit. */
   current?: number
   target?: number
+  /** Thermostats only: the room's humidity, percent, when it reports one. */
+  humidity?: number
   /** Thermostats only: the lowest and highest target, and how far one press moves it. */
   min?: number
   max?: number
@@ -156,6 +158,8 @@ export interface HomeState {
   devices: Device[]
   /** Sensor readings, the ones needing a look first; missing on an older server. */
   readings?: Reading[]
+  /** Watts the smart bulbs and plugs draw right now, added up; missing when nothing reports power. */
+  powerWatts?: number
   /** The coming hours, soonest first; empty when the weather service has none, missing on an older server. */
   forecast?: ForecastHour[]
   /** Outside now. Humidity is a percent; wind is in Home Assistant's own unit. */
