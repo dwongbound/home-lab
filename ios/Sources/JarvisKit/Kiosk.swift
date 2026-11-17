@@ -19,6 +19,8 @@ public enum KioskHero: Equatable, Sendable {
 /// The panels that take turns beside the hero.
 public enum KioskPanel: String, CaseIterable, Sendable {
     case schedule, home, work, health
+    /// Jarvis's suggestions (offers), titles only.
+    case offers
 }
 
 public enum KioskPlan {
@@ -62,6 +64,7 @@ public enum KioskPlan {
         if !snapshot.homeTiles.isEmpty { out.append(.home) }
         if !(snapshot.jobs?.running.isEmpty ?? true) { out.append(.work) }
         if snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil { out.append(.health) }
+        if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.offers) }
         return out
     }
 
