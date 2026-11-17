@@ -594,7 +594,8 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .chat__tapstart { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; border: 0; padding: 0; background: transparent; cursor: pointer; }
 .chat__status { color: var(--frost-dim); font-size: 14px; }
 .chat__turns { list-style: none; margin: 0; padding: 0 2px 0 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
-.chat__turn { display: grid; gap: 8px; }
+/* minmax(0, 1fr): the column may be narrower than its content, so a wide table scrolls inside its bubble instead of stretching the turn. */
+.chat__turn { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .chat__q, .chat__a { font-family: var(--font-mono); font-size: 14px; line-height: 1.55; letter-spacing: -0.01em; }
 .chat__q { justify-self: end; max-width: 80%; padding: 9px 15px; border-radius: 18px 18px 6px 18px; background: rgba(255,255,255,.14); overflow-wrap: anywhere; }
 .chat__a { max-width: 92%; color: var(--frost); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -610,7 +611,7 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .chat__a .md__list { margin: 6px 0; padding-left: 22px; white-space: normal; }
 .chat__a .md__list li { margin: 2px 0; }
 .chat__a .md__rule { margin: 12px 0; border: 0; border-top: 1px solid var(--glass-edge); }
-.chat__a .md__scroll { margin: 8px 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.chat__a .md__scroll { margin: 8px 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .chat__a .md__table { border-collapse: collapse; font-size: 13px; white-space: nowrap; }
 .chat__a .md__table th, .chat__a .md__table td { padding: 5px 10px; border: 1px solid var(--glass-edge); text-align: left; vertical-align: top; }
 .chat__a .md__table th { font-weight: 600; background: rgba(255,255,255,.08); }
