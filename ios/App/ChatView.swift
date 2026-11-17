@@ -9,6 +9,9 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var flagging: ChatItem?
     @FocusState private var typing: Bool
+    /// Whether the newest line is on screen; when it isn't, "Scroll to
+    /// bottom" shows (Dylan, 2026-11-17).
+    @State private var atBottom = true
 
     /// Status line, the scrolling chat, then the composer.
     var body: some View {
@@ -53,10 +56,19 @@ struct ChatView: View {
                     if showDots {
                         TypingDots(label: chat.working).id("dots")
                     }
+                    // An invisible marker after the last line: on screen
+                    // means the chat is scrolled to the bottom.
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottom")
+                        .onAppear { atBottom = true }
+                        .onDisappear { atBottom = false }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            // Opens on the newest message, like Messages.
+            .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await chat.load(app: app) }
             .onChange(of: chat.items) {
@@ -64,6 +76,27 @@ struct ChatView: View {
                     scroller.scrollTo(chat.items.last?.id, anchor: .bottom)
                 }
             }
+            .overlay(alignment: .bottom) {
+                if !atBottom {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            scroller.scrollTo("bottom", anchor: .bottom)
+                        }
+                    } label: {
+                        Label("Scroll to bottom", systemImage: "arrow.down")
+                            .font(.footnote.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(Theme.glass))
+                            .overlay(Capsule().strokeBorder(Theme.glassEdge))
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    .foregroundStyle(Theme.frost)
+                    .padding(.bottom, 10)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: atBottom)
         }
     }
 

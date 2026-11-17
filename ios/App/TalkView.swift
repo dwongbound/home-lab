@@ -1,8 +1,17 @@
 // The Talk tab: hands-free voice with Jarvis, like the page's /talk. The
 // orb in the middle, what he heard and what he's saying under it, and one
 // Talk/Pause button plus Mute. Keeps going with the screen locked.
+import ActivityKit
 import SwiftUI
 import JarvisKit
+
+/// One finished exchange on the call: what Dylan said and what Jarvis said back.
+struct TalkTurn: Identifiable {
+    let id = UUID()
+    let heard: String
+    let reply: String
+    let model: String?
+}
 
 @MainActor
 final class TalkModel: ObservableObject {
@@ -13,8 +22,14 @@ final class TalkModel: ObservableObject {
         case on(TalkState)
     }
 
-    @Published private(set) var phase: Phase = .off
-    @Published private(set) var muted = false
+    @Published private(set) var phase: Phase = .off {
+        didSet { syncActivity() }
+    }
+    @Published private(set) var muted = false {
+        didSet { syncActivity() }
+    }
+    /// The call in the Dynamic Island, while it's live.
+    private var activity: Activity<TalkActivityAttributes>?
     /// What Whisper is hearing right now, or the last thing it heard.
     @Published private(set) var heard = ""
     /// His reply so far.
@@ -24,6 +39,11 @@ final class TalkModel: ObservableObject {
     @Published private(set) var working: String?
     @Published private(set) var approvals: [(approval: Approval, outcome: String?)] = []
     @Published private(set) var level: Float = 0
+    /// How bright the voice sounds (0..1), for the orb's ripples.
+    @Published private(set) var tone: Float = 0
+    /// Earlier exchanges on this call, oldest first, drawn as chat bubbles
+    /// above the current one (Dylan, 2026-11-17: the left/right chat look).
+    @Published private(set) var turns: [TalkTurn] = []
     @Published var problem: String?
     /// True once Talk has been started from this tab, so it only auto-starts once.
     private(set) var started = false
@@ -37,7 +57,7 @@ final class TalkModel: ObservableObject {
         phase = .connecting
         let handlers = TalkHandlers(
             onEvent: { [weak self] event in self?.apply(event, app: app) },
-            onLevel: { [weak self] level in self?.level = level },
+            onLevel: { [weak self] level, tone in self?.hear(level: level, tone: tone) },
             onClosed: { [weak self] message in self?.closed(message) }
         )
         let line = TalkLine(request: app.client.talkRequest, handlers: handlers)
@@ -98,15 +118,46 @@ final class TalkModel: ObservableObject {
         }
     }
 
+    /// Keeps the Dynamic Island in step with the call (Dylan, 2026-11-17):
+    /// there while the line is live, gone once it's off or paused.
+    private func syncActivity() {
+        let state: String
+        switch phase {
+        case .on(.listening): state = "listening"
+        case .on(.thinking): state = "thinking"
+        case .on(.speaking): state = "speaking"
+        default:
+            endActivity()
+            return
+        }
+        let content = ActivityContent(state: TalkActivityAttributes.ContentState(state: state, muted: muted), staleDate: nil)
+        if let activity {
+            Task { await activity.update(content) }
+        } else if ActivityAuthorizationInfo().areActivitiesEnabled {
+            activity = try? Activity.request(attributes: TalkActivityAttributes(), content: content)
+        }
+    }
+
+    /// Takes the call out of the Dynamic Island.
+    private func endActivity() {
+        guard let activity else { return }
+        self.activity = nil
+        Task { await activity.end(nil, dismissalPolicy: .immediate) }
+    }
+
     /// One event from the line onto the screen.
     private func apply(_ event: TalkEvent, app: AppModel) {
         switch event {
         case .state(let state):
             phase = .on(state)
-            if state == .listening { level = 0 }
+            // Listening starts quiet; dozing (paused by him or by Jarvis on
+            // "that's all") drops the voice so the orb settles.
+            if state == .listening || state == .dozing { level = 0; tone = 0 }
         case .partial(let words, _), .transcript(let words, _):
             if reply.isEmpty == false && !isJoining(event) {
-                // A new question: clear the last answer.
+                // A new question: the last exchange moves up into the transcript.
+                archiveTurn()
+                heard = ""
                 reply = ""
                 model = nil
             }
@@ -136,6 +187,20 @@ final class TalkModel: ObservableObject {
         }
     }
 
+    /// The latest reading, raw: the orb smooths it per display frame
+    /// (OrbView.Glide), which is what keeps it from quivering.
+    private func hear(level new: Float, tone newTone: Float) {
+        level = new
+        if newTone > 0 { tone = newTone }
+    }
+
+    /// Moves the finished exchange into the transcript, keeping the last few.
+    private func archiveTurn() {
+        guard !heard.isEmpty || !reply.isEmpty else { return }
+        turns.append(TalkTurn(heard: heard, reply: reply, model: model))
+        if turns.count > 6 { turns.removeFirst(turns.count - 6) }
+    }
+
     /// Whether words carry on the question he's already answering.
     private func isJoining(_ event: TalkEvent) -> Bool {
         switch event {
@@ -163,6 +228,8 @@ final class TalkModel: ObservableObject {
 struct TalkView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject var talk: TalkModel
+    /// Whether the newest line is on screen; false once he scrolls up.
+    @State private var following = true
 
     /// Status line, the orb and words in the middle, the buttons at the bottom.
     var body: some View {
@@ -171,60 +238,126 @@ struct TalkView: View {
             VStack(spacing: 0) {
                 StatusLine()
                 GeometryReader { area in
-                    ScrollView {
-                        VStack(spacing: 18) {
-                            OrbView(state: mood, size: min(area.size.width - 48, 300), level: Double(talk.level))
-                                .opacity(talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1)
-                                .padding(.top, 24)
-                            Text(statusWords)
-                                .font(.headline)
-                                .foregroundStyle(statusColor)
-                                .accessibilityAddTraits(.updatesFrequently)
-                            words
-                            ForEach(talk.approvals, id: \.approval.id) { entry in
-                                ApprovalCard(approval: entry.approval, outcome: entry.outcome) { ok in
-                                    Task { await talk.answer(entry.approval, ok: ok, app: app) }
-                                }
-                            }
-                            if let problem = talk.problem {
-                                Text(problem)
-                                    .font(.footnote)
-                                    .foregroundStyle(Theme.rose)
-                                    .multilineTextAlignment(.center)
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 16)
-                        .frame(maxWidth: 560)
-                        .frame(maxWidth: .infinity)
+                    VStack(spacing: 14) {
+                        // The orb stays put; it shrinks a little once
+                        // there's a conversation to make room for it.
+                        OrbView(state: mood, size: min(area.size.width - 48, hasWords ? 200 : 300), level: Double(talk.level), tone: Double(talk.tone))
+                            .opacity(talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1)
+                            .padding(.top, hasWords ? 8 : 24)
+                            .animation(.smooth(duration: 0.5), value: hasWords)
+                        Text(statusWords)
+                            .font(.headline)
+                            .foregroundStyle(statusColor)
+                            .accessibilityAddTraits(.updatesFrequently)
+                        transcript
                     }
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
                 }
                 controls
             }
         }
     }
 
-    /// What he heard (dim) and what he's saying back, with his chip.
+    /// Anything said yet on this call.
+    private var hasWords: Bool {
+        !talk.turns.isEmpty || !talk.heard.isEmpty || !talk.reply.isEmpty
+    }
+
+    /// The conversation under the orb, following the newest line as it
+    /// arrives (Dylan, 2026-11-17) unless he has scrolled up to read; it
+    /// picks up again when he scrolls back down or a new turn starts.
+    private var transcript: some View {
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(spacing: 12) {
+                    words
+                    ForEach(talk.approvals, id: \.approval.id) { entry in
+                        ApprovalCard(approval: entry.approval, outcome: entry.outcome) { ok in
+                            Task { await talk.answer(entry.approval, ok: ok, app: app) }
+                        }
+                    }
+                    if let problem = talk.problem {
+                        Text(problem)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.rose)
+                            .multilineTextAlignment(.center)
+                    }
+                    Color.clear
+                        .frame(height: 1)
+                        .id("talk-bottom")
+                        .onAppear { following = true }
+                        .onDisappear { following = false }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+            }
+            .defaultScrollAnchor(.bottom)
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: talk.heard) { follow(scroller) }
+            .onChange(of: talk.reply) { follow(scroller) }
+            .onChange(of: talk.working) { follow(scroller) }
+            .onChange(of: talk.approvals.count) { follow(scroller) }
+            .onChange(of: talk.turns.count) {
+                // A new turn always brings the view back to the bottom.
+                following = true
+                follow(scroller)
+            }
+        }
+    }
+
+    /// Glides to the newest line if he's following along.
+    private func follow(_ scroller: ScrollViewProxy) {
+        guard following else { return }
+        withAnimation(.smooth(duration: 0.35)) {
+            scroller.scrollTo("talk-bottom", anchor: .bottom)
+        }
+    }
+
+    /// The call as a chat: Dylan's words on the right, Jarvis's on the
+    /// left, earlier exchanges above the current one.
     @ViewBuilder
     private var words: some View {
-        if !talk.heard.isEmpty {
-            Text(talk.heard)
-                .font(.body)
-                .foregroundStyle(Theme.frostDim)
-                .multilineTextAlignment(.center)
-        }
-        if !talk.reply.isEmpty {
-            VStack(spacing: 6) {
-                if let model = talk.model {
-                    Text(ModelWording.label(model))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(ModelWording.isClaude(model) ? Theme.ember : Theme.glacier)
-                }
-                Text(talk.reply)
-                    .font(.title3)
-                    .foregroundStyle(Theme.frost)
-                    .multilineTextAlignment(.center)
+        VStack(spacing: 12) {
+            ForEach(talk.turns) { turn in
+                bubbles(heard: turn.heard, reply: turn.reply, model: turn.model)
+                    .opacity(0.7)
             }
+            bubbles(heard: talk.heard, reply: talk.reply, model: talk.model)
+        }
+    }
+
+    /// One exchange as two bubbles (either may be missing yet).
+    @ViewBuilder
+    private func bubbles(heard: String, reply: String, model: String?) -> some View {
+        if !heard.isEmpty {
+            Text(heard)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.leading, 48)
+        }
+        if !reply.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                if let model, !ModelWording.label(model).isEmpty {
+                    let chip = ModelWording.isClaude(model) ? Theme.ember : Theme.glacier
+                    Text(ModelWording.label(model))
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .foregroundStyle(chip)
+                        .background(Capsule().fill(chip.opacity(0.14)))
+                }
+                Text(reply)
+                    .foregroundStyle(Theme.frost)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6, bottomTrailingRadius: 20, topTrailingRadius: 20).fill(Theme.glass))
+                    .overlay(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6, bottomTrailingRadius: 20, topTrailingRadius: 20).strokeBorder(Theme.glassEdge))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.trailing, 32)
         }
     }
 
@@ -302,7 +435,7 @@ struct TalkView: View {
         case .off: return "Tap Talk to start"
         case .connecting: return "Calling Jarvis…"
         case .on(.listening): return talk.muted ? "Muted" : "Listening"
-        case .on(.thinking): return "Thinking…"
+        case .on(.thinking): return "Jarvis is thinking…"
         case .on(.speaking): return "Speaking"
         case .on(.dozing): return "Paused. Say “Hey Jarvis” or tap Talk."
         }

@@ -11,8 +11,15 @@ public struct Snapshot: Decodable, Sendable {
     public var home: Home?
     public var services: [Service]
     public var jobs: Jobs?
+    /// Money from the cloud digest (Copilot), nil until the digest has read it.
+    public var money: Money?
+    /// Sleep and steps from the cloud digest (Apple Health by way of the PC).
+    public var health: Health?
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud }
+
+    /// The cloud digest; the app only reads its money section.
+    private struct Cloud: Decodable { let money: Money?; let health: Health? }
 
     /// Decodes what's there and leaves out what isn't.
     public init(from decoder: Decoder) throws {
@@ -23,6 +30,9 @@ public struct Snapshot: Decodable, Sendable {
         home = try? c.decodeIfPresent(Home.self, forKey: .home)
         services = (try? c.decodeIfPresent([Service].self, forKey: .services)) ?? []
         jobs = try? c.decodeIfPresent(Jobs.self, forKey: .jobs)
+        let cloud = try? c.decodeIfPresent(Cloud.self, forKey: .cloud)
+        money = cloud?.money
+        health = cloud?.health
     }
 
     /// Services that are down or struggling: the app's alert banner.
@@ -31,6 +41,13 @@ public struct Snapshot: Decodable, Sendable {
     }
 
     /// The first thermostat Home Assistant knows about, if any.
+    /// Devices worth a tile on Today: answering, and not scenes or scripts.
+    public var homeTiles: [Device] {
+        (home?.devices ?? []).filter { device in
+            device.isAvailable && ["climate", "light", "media", "switch", "fan", "lock", "cover"].contains(device.kind)
+        }
+    }
+
     public var thermostat: Device? {
         home?.devices.first { $0.kind == "climate" }
     }
@@ -63,6 +80,13 @@ public struct Offer: Decodable, Identifiable, Sendable {
 public struct Home: Decodable, Sendable {
     public let devices: [Device]
     public let weather: Weather?
+    public let sun: Sun?
+}
+
+/// Today's sunrise and sunset (ISO times).
+public struct Sun: Decodable, Sendable {
+    public let rising: String?
+    public let setting: String?
 }
 
 /// The outside weather.
@@ -72,14 +96,118 @@ public struct Weather: Decodable, Sendable {
     public let unit: String
 }
 
-/// One Home Assistant device (the app only reads thermostats for now).
+/// One Home Assistant device: a light, switch, fan, speaker, scene or thermostat.
 public struct Device: Decodable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let kind: String
     public let state: String
+    /// False when Home Assistant can't reach it.
+    public let available: Bool?
+    /// Lights only, 0..1.
+    public let brightness: Double?
+    /// What's playing, or what a thermostat is doing ("heating").
+    public let detail: String?
     public let current: Double?
     public let target: Double?
+
+    /// True when it's on, playing, or (a thermostat) running a mode.
+    /// Home Assistant can reach it.
+    public var isAvailable: Bool {
+        (available ?? true) && state != "unavailable" && state != "unknown"
+    }
+
+    public var isOn: Bool {
+        if kind == "climate" { return state != "off" }
+        return state == "on" || state == "playing"
+    }
+}
+
+/// Money from Copilot, by way of the cloud digest. Amounts are US dollars;
+/// a credit or loan balance is what's owed.
+public struct Money: Decodable, Sendable {
+    public let netWorth: Double?
+    public let accounts: [Account]
+    public let spending: Spending?
+    /// Spending by category this month, with any budget set for it.
+    public let categories: [Category]
+    /// Anything worth a look: a big charge, a new subscription, a low balance.
+    public let flags: [Flag]
+    /// Newest first; a negative amount is money coming in.
+    public let recent: [Transaction]
+
+    enum CodingKeys: String, CodingKey { case netWorth, accounts, spending, categories, flags, recent }
+
+    /// Any missing list reads as empty.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        netWorth = try? c.decodeIfPresent(Double.self, forKey: .netWorth)
+        accounts = (try? c.decodeIfPresent([Account].self, forKey: .accounts)) ?? []
+        spending = try? c.decodeIfPresent(Spending.self, forKey: .spending)
+        categories = (try? c.decodeIfPresent([Category].self, forKey: .categories)) ?? []
+        flags = (try? c.decodeIfPresent([Flag].self, forKey: .flags)) ?? []
+        recent = (try? c.decodeIfPresent([Transaction].self, forKey: .recent)) ?? []
+    }
+
+    /// Cash on hand: every cash account added up.
+    public var cash: Double {
+        accounts.filter { $0.kind == "cash" }.reduce(0) { $0 + $1.balance }
+    }
+
+    /// Owed on cards right now.
+    public var cardDebt: Double {
+        accounts.filter { $0.kind == "credit" }.reduce(0) { $0 + $1.balance }
+    }
+
+    /// Budgeted categories already past their budget, worst first.
+    public var overBudget: [Category] {
+        categories
+            .filter { ($0.budget ?? 0) > 0 && $0.spent > ($0.budget ?? 0) }
+            .sorted { $0.spent / ($0.budget ?? 1) > $1.spent / ($1.budget ?? 1) }
+    }
+
+    public struct Category: Decodable, Sendable {
+        public let name: String
+        public let spent: Double
+        public let budget: Double?
+    }
+
+    public struct Account: Decodable, Identifiable, Sendable {
+        public let id: String
+        public let name: String
+        public let kind: String
+        public let balance: Double
+    }
+
+    public struct Spending: Decodable, Sendable {
+        public let thisMonth: Double
+        public let lastMonthToDate: Double?
+        public let budget: Double?
+    }
+
+    public struct Flag: Decodable, Identifiable, Sendable {
+        public let id: String
+        public let text: String
+    }
+
+    public struct Transaction: Decodable, Identifiable, Sendable {
+        public let id: String
+        public let date: String
+        public let merchant: String
+        public let amount: Double
+    }
+}
+
+/// "$1,234" (no cents), for money on a small screen.
+public enum MoneyText {
+    public static func dollars(_ amount: Double) -> String {
+        let format = NumberFormatter()
+        format.numberStyle = .currency
+        format.currencyCode = "USD"
+        format.locale = Locale(identifier: "en_US")
+        format.maximumFractionDigits = 0
+        return format.string(from: NSNumber(value: amount.rounded())) ?? "$\(Int(amount))"
+    }
 }
 
 /// One service on the PC and how it's doing.
@@ -130,5 +258,26 @@ public enum AgendaTime {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return fractional.date(from: text)
+    }
+}
+
+/// Sleep and activity from the digest (Apple Health by way of the PC).
+public struct Health: Decodable, Sendable {
+    public let yesterday: Day?
+    public let sleep: Sleep?
+
+    public struct Day: Decodable, Sendable {
+        public let steps: Int?
+        public let activeKcal: Int?
+    }
+
+    public struct Sleep: Decodable, Sendable {
+        public let asleepMin: Int?
+        public let deepMin: Int?
+        public let remMin: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case asleepMin = "asleep_min", deepMin = "deep_min", remMin = "rem_min"
+        }
     }
 }

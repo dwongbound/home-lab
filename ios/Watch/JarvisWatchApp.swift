@@ -122,7 +122,7 @@ struct WatchHome: View {
                 OrbView(state: model.phase == .asking ? .thinking : .listening, size: 70)
                     .opacity(model.phase == .asking ? 1 : 0.8)
                 if model.phase == .asking {
-                    Text("Asking Jarvis…").font(.footnote).foregroundStyle(Theme.frostDim)
+                    Text("Jarvis is thinking…").font(.footnote).foregroundStyle(Theme.frostDim)
                 } else {
                     // Tapping offers dictation first, so it's one tap and talk.
                     TextFieldLink(prompt: Text("Ask Jarvis")) {

@@ -85,7 +85,7 @@ export function MemoryPanel({ now }: { now: Date }) {
 
   let body
   if (isLoading) {
-    body = <div className="memory__wait"><Spinner label="Asking Jarvis what he remembers…" /></div>
+    body = <div className="memory__wait"><Spinner label="Jarvis is thinking…" /></div>
   } else if (error || memory === null || memory === undefined) {
     body = <p className="empty">Jarvis isn’t answering, so his memory can’t be shown right now. Open this page through Tailscale, with Jarvis running on the PC.</p>
   } else {

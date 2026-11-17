@@ -35,25 +35,41 @@ enum Theme {
     )
 }
 
-/// A frosted panel like the home page's `.glass`.
+/// A frosted panel like the home page's `.glass`. On iOS 26 and later it's
+/// Apple's Liquid Glass (it bends the sky behind it); before that, a
+/// translucent material with a hairline edge.
 struct GlassPanel: ViewModifier {
     var tint: Color? = nil
+    var radius: CGFloat = 22
 
-    /// Rounded glass with a hairline edge; tinted for approvals and offers.
+    /// Rounded glass; tinted for approvals and offers.
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        // Liquid Glass only exists in the iOS 26 SDK (Swift 6.2 and later),
+        // so older Xcodes, like CI's, must not even see the call.
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+            content
+                .glassEffect(.regular.tint(tint.map { $0.opacity(0.18) } ?? Color.white.opacity(0.02)), in: shape)
+                .overlay(shape.strokeBorder(tint.map { $0.opacity(0.35) } ?? Theme.glassEdge.opacity(0.6), lineWidth: 0.5))
+        } else {
+            frosted(content, shape: shape)
+        }
+        #else
+        frosted(content, shape: shape)
+        #endif
+    }
+
+    /// The look before Liquid Glass: a translucent material with a hairline edge.
+    private func frosted(_ content: Content, shape: RoundedRectangle) -> some View {
         content
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(tint.map { $0.opacity(0.10) } ?? Theme.glass)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(tint.map { $0.opacity(0.45) } ?? Theme.glassEdge)
-            )
+            .background(shape.fill(tint.map { $0.opacity(0.10) } ?? Theme.glass))
+            .background(.ultraThinMaterial.opacity(0.6), in: shape)
+            .overlay(shape.strokeBorder(tint.map { $0.opacity(0.45) } ?? Theme.glassEdge))
     }
 }
 
 extension View {
     /// Wraps the view in a glass panel.
-    func glassPanel(tint: Color? = nil) -> some View { modifier(GlassPanel(tint: tint)) }
+    func glassPanel(tint: Color? = nil, radius: CGFloat = 22) -> some View { modifier(GlassPanel(tint: tint, radius: radius)) }
 }

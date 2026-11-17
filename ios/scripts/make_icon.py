@@ -31,6 +31,30 @@ def sphere(count, turn, tilt=0.45):
     return out
 
 
+def lines(img, points, front):
+    """Faint lines between neighbouring points (same rule as orbLinks in src/lib/orb.ts)."""
+    layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    c, r = SIZE / 2, SIZE * 0.36
+    count = [0] * len(points)
+    for i, a in enumerate(points):
+        near = sorted((math.dist(a, b), j) for j, b in enumerate(points) if j > i and math.dist(a, b) < 0.56)
+        for _, j in near:
+            if count[i] >= 3:
+                break
+            if count[j] >= 3:
+                continue
+            count[i] += 1
+            count[j] += 1
+            b = points[j]
+            z = (a[2] + b[2]) / 2
+            if (z >= 0) != front:
+                continue
+            alpha = int(255 * (0.08 + (z + 1) / 2 * 0.22))
+            d.line([(c + a[0] * r, c + a[1] * r), (c + b[0] * r, c + b[1] * r)], fill=(185, 220, 243, alpha), width=3)
+    img.alpha_composite(layer)
+
+
 def dots(img, points, front):
     """Glowing points, either the half behind the core or the half in front."""
     glow = Image.new('RGBA', img.size, (0, 0, 0, 0))
@@ -51,24 +75,44 @@ def dots(img, points, front):
 
 
 def core(img):
-    """The see-through glass core: faint blue fill, soft rim, a highlight."""
+    """The glass core, nearly solid (Dylan, 2026-11-17, twice: "too transparent"):
+    a lit blue body brighter toward the upper left, a soft rim, a highlight.
+    Only a hint of the constellation's back points shows through it."""
     layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
     c, r = SIZE / 2, SIZE * 0.2
-    for i in range(40):
-        f = i / 40
-        rr = r * (1 - f)
-        d.ellipse([c - rr, c - rr, c + rr, c + rr], fill=(142, 197, 234, int(30 + 70 * f)))
-    d.ellipse([c - r, c - r, c + r, c + r], outline=(255, 255, 255, 110), width=4)
-    d.ellipse([c - r * 0.55, c - r * 0.78, c + r * 0.25, c - r * 0.33], fill=(255, 255, 255, 80))
+    light = (c - r * 0.35, c - r * 0.4)
+    px = layer.load()
+    for y in range(int(c - r) - 1, int(c + r) + 2):
+        for x in range(int(c - r) - 1, int(c + r) + 2):
+            d = math.hypot(x - c, y - c)
+            if d > r:
+                continue
+            # 0 at the lit spot, 1 at the far edge.
+            f = min(1.0, math.hypot(x - light[0], y - light[1]) / (r * 1.6))
+            col = tuple(int(a + (b - a) * f) for a, b in zip((214, 236, 250), (63, 120, 163)))
+            edge = d / r
+            alpha = int(248 - 18 * (1 - edge))
+            px[x, y] = col + (alpha,)
+    # Rim and highlight on their own layer: drawing straight onto the body
+    # would replace its pixels (and their opacity) instead of lighting them.
+    shine = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(shine)
+    d.ellipse([c - r, c - r, c + r, c + r], outline=(255, 255, 255, 150), width=5)
+    d.ellipse([c - r * 0.55, c - r * 0.78, c + r * 0.2, c - r * 0.36], fill=(255, 255, 255, 120))
+    layer.alpha_composite(shine.filter(ImageFilter.GaussianBlur(3)))
+    glow = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(glow).ellipse([c - r * 1.35, c - r * 1.35, c + r * 1.35, c + r * 1.35], fill=(142, 197, 234, 70))
+    img.alpha_composite(glow.filter(ImageFilter.GaussianBlur(40)))
     img.alpha_composite(layer.filter(ImageFilter.GaussianBlur(2)))
 
 
 def main():
     img = sky().convert('RGBA')
     points = sphere(70, 0.6)
+    lines(img, points, front=False)
     dots(img, points, front=False)
     core(img)
+    lines(img, points, front=True)
     dots(img, points, front=True)
     img.convert('RGB').save(OUT)
 

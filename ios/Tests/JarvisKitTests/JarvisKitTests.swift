@@ -103,6 +103,27 @@ final class SnapshotTests: XCTestCase {
     }
 
     /// Agenda times in Pacific time; all-day and odd values read sensibly.
+    /// Money comes from the cloud digest; cash and card totals add up.
+    func testDecodesMoney() throws {
+        let json = #"{"generatedAt":"x","today":[],"services":[],"cloud":{"updatedAt":"y","threads":[],"money":{"netWorth":12000.4,"accounts":[{"id":"a","name":"Checking","institution":"Chase","kind":"cash","balance":1500},{"id":"b","name":"Forbright","institution":"F","kind":"cash","balance":25000},{"id":"c","name":"Amex","institution":"A","kind":"credit","balance":420.5}],"spending":{"thisMonth":1834,"lastMonthToDate":2100,"budget":null},"categories":[],"recent":[{"id":"t","date":"2026-11-16","merchant":"Trader Joe's","category":"Groceries","amount":54.2}],"flags":[{"id":"f","text":"New subscription: Netflix"}]}}}"#
+        let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+        let money = try XCTUnwrap(snapshot.money)
+        XCTAssertEqual(money.cash, 26500)
+        XCTAssertEqual(money.cardDebt, 420.5)
+        XCTAssertEqual(money.flags.first?.text, "New subscription: Netflix")
+        XCTAssertEqual(money.recent.first?.merchant, "Trader Joe's")
+        XCTAssertEqual(MoneyText.dollars(26500), "$26,500")
+    }
+
+    /// Devices read their on/off and extra fields; a broken cloud section is just no money.
+    func testDevicesAndBrokenCloud() throws {
+        let json = #"{"generatedAt":"x","today":[],"services":[],"cloud":{"money":"oops"},"home":{"devices":[{"id":"l","name":"Desk lamp","kind":"light","state":"on","available":true,"brightness":0.6},{"id":"t","name":"Thermostat","kind":"climate","state":"heat","current":68,"target":70}],"weather":null}}"#
+        let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+        XCTAssertNil(snapshot.money)
+        XCTAssertEqual(snapshot.home?.devices.first?.brightness, 0.6)
+        XCTAssertEqual(snapshot.home?.devices.map(\.isOn), [true, true])
+    }
+
     func testAgendaTimeLabels() {
         let pacific = TimeZone(identifier: "America/Los_Angeles")!
         XCTAssertEqual(AgendaTime.label(at: "2026-11-17T06:00:00Z", allDay: false, timeZone: pacific), "10:00 PM")
