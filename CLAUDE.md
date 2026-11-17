@@ -75,6 +75,10 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   (its `merge` job rebase-merges a passing non-draft PR into `dev`, then it and
   `promote` fast-forward `main` to `dev`).
 
+## iPhone/iPad app
+
+`ios/`: native SwiftUI Jarvis app (private, TestFlight internal only). `Sources/JarvisKit` = chat events, approval/model wording ported from `src/lib/approvals.ts` + `src/lib/model.ts` (keep them in step), snapshot slice, `JarvisClient` (sends `x-home-lab: 1` + same-origin `Origin`); `App/` = SwiftUI (Chat, Today, Settings; no big screen titles, Dylan 2026-11-16; orb design D in `OrbView`); `project.yml` (XcodeGen, project not committed); CI job `ios` (`swift test` + simulator build) gates merges. Details in `ios/README.md`.
+
 ## The PC
 
 jarvis: Windows 11 + Ubuntu 24.04 in WSL 2 (user `dwong`, systemd on, mirrored
