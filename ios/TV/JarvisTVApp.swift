@@ -51,6 +51,8 @@ struct AlwaysOnView: View {
     @State private var lamp = SunLampState(phase: .night, brightness: SunLamp.nightBrightness, warmth: 0)
     /// A few points of slow drift, so an OLED never holds one picture.
     @State private var drift = CGSize.zero
+    /// True while the Ask Jarvis screen is up.
+    @State private var asking = false
 
     /// The orb and the time on the left; one roomy panel at a time on the
     /// right, cross-fading every 20 s (Dylan, 2026-11-17: the right was
@@ -84,18 +86,31 @@ struct AlwaysOnView: View {
         // over 20 s so it never jumps; the layout drifts a few points.
         .task {
             let preview = SunLampPreview.enabled
+            var first = true
             while !Task.isCancelled {
                 let now = SunLampPreview.now()
                 let next = lampState(at: now)
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: preview ? 0.5 : 20)) {
+                // Opens straight at the right light; only later changes ease.
+                withAnimation(reduceMotion || first ? nil : .easeInOut(duration: preview ? 0.5 : 20)) {
                     lamp = next
                     let minutes = now.timeIntervalSinceReferenceDate / 60
                     drift = CGSize(width: 10 * sin(minutes / 7), height: 8 * cos(minutes / 11))
                 }
+                first = false
                 try? await Task.sleep(for: .seconds(preview ? 0.5 : 30))
             }
         }
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+        .fullScreenCover(isPresented: $asking) {
+            AskJarvisView()
+                .preferredColorScheme(.dark)
+        }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            #if DEBUG
+            // Screenshot check: `-openAsk` opens Ask Jarvis at launch.
+            if ProcessInfo.processInfo.arguments.contains("-openAsk") { asking = true }
+            #endif
+        }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
     }
 
@@ -118,6 +133,11 @@ struct AlwaysOnView: View {
 
     /// Secondary text.
     private var inkDim: Color { ink.opacity(0.68) }
+
+    /// The blue accent: Jarvis's glacier blue at night, a deeper blue by day.
+    private var accent: Color {
+        lamp.brightness > 0.55 ? Color(red: 0.12, green: 0.38, blue: 0.62) : Theme.glacier
+    }
 
     /// Faint text.
     private var inkFaint: Color { ink.opacity(0.45) }
@@ -159,6 +179,14 @@ struct AlwaysOnView: View {
                     }
                 }
             }
+            // The one focusable thing here, so Select anywhere opens it.
+            Button {
+                asking = true
+            } label: {
+                Label("Ask Jarvis", systemImage: "mic.fill")
+                    .font(.callout)
+            }
+            .accessibilityHint("Type or hold the mic button to ask him something")
             Text(connectionWords)
                 .font(.caption)
                 .foregroundStyle(model.reachable == false ? Theme.rose : inkFaint)
@@ -217,7 +245,7 @@ struct AlwaysOnView: View {
         case .soon(let title, let minutes):
             Label(minutes <= 0 ? "\(title) is starting" : "\(title) in \(minutes) min", systemImage: "calendar.badge.clock")
                 .font(.headline)
-                .foregroundStyle(Theme.glacier)
+                .foregroundStyle(accent)
         default:
             if let greeting = snapshot.offers?.greeting {
                 // A short headline ("Late night, Dylan"), then the rest
@@ -251,10 +279,10 @@ struct AlwaysOnView: View {
                 ForEach(snapshot.today.prefix(7)) { item in
                     HStack(alignment: .firstTextBaseline, spacing: 22) {
                         Image(systemName: KioskIcons.agendaSymbol(item.title))
-                            .foregroundStyle(Theme.glacier)
+                            .foregroundStyle(accent)
                             .frame(width: 36)
                         Text(AgendaTime.label(at: item.at, allDay: item.allDay ?? false))
-                            .foregroundStyle(Theme.glacier)
+                            .foregroundStyle(accent)
                             .monospacedDigit()
                             .frame(width: 140, alignment: .leading)
                         Text(item.title)
@@ -364,7 +392,7 @@ struct AlwaysOnView: View {
     /// An icon, a big number, and a caption.
     private func stat(_ value: String, _ caption: String, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: symbol).font(.title3).foregroundStyle(Theme.glacier)
+            Image(systemName: symbol).font(.title3).foregroundStyle(accent)
             Text(value).font(.system(size: 52, weight: .bold, design: .rounded)).monospacedDigit()
             Text(caption).font(.callout).foregroundStyle(inkDim)
         }
