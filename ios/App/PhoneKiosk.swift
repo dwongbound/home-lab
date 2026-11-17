@@ -191,7 +191,7 @@ struct PhoneKioskView: View {
                 .foregroundStyle(Theme.glacier)
         default:
             if let next = nextUp {
-                Label("\(AgendaTime.label(at: next.at, allDay: next.allDay ?? false)) · \(next.title)", systemImage: "calendar")
+                Label("\(AgendaTime.label(at: next.at, allDay: next.allDay ?? false)) · \(next.title)", systemImage: KioskIcons.agendaSymbol(next.title))
                     .font(.headline)
                     .foregroundStyle(Theme.frostDim)
                     .lineLimit(1)
@@ -211,7 +211,7 @@ struct PhoneKioskView: View {
 
     /// "Cloudy, 58°F".
     private func weatherText(_ weather: Weather) -> String {
-        guard let temperature = weather.temperature else { return weather.condition.capitalized }
-        return "\(weather.condition.capitalized), \(Int(temperature.rounded()))\(weather.unit)"
+        guard let temperature = weather.temperature else { return TodayWording.weatherWords(weather.condition) }
+        return "\(TodayWording.weatherWords(weather.condition)), \(Int(temperature.rounded()))\(weather.unit)"
     }
 }

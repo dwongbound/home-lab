@@ -34,6 +34,9 @@ final class AlwaysOnModel: ObservableObject {
             reachable = true
         } catch {
             reachable = false
+            #if DEBUG
+            if snapshot == nil, let demo = DemoSnapshot.snapshot { snapshot = demo }
+            #endif
         }
     }
 }
@@ -125,19 +128,24 @@ struct AlwaysOnView: View {
     /// connection line.
     private var left: some View {
         VStack(spacing: 26) {
-            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 360, work: model.snapshot?.jobs?.running ?? [], tappable: false)
+            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 400, work: model.snapshot?.jobs?.running ?? [], tappable: false, onLight: lamp.brightness > 0.55)
             TimelineView(.periodic(from: .now, by: SunLampPreview.enabled ? 0.5 : 30)) { tick in
                 let context = (date: SunLampPreview.now(at: tick.date), ())
                 VStack(spacing: 8) {
                     Text(context.date, format: .dateTime.hour().minute())
-                        .font(.system(size: 88, weight: .light, design: .rounded))
+                        .font(.system(size: 104, weight: .light, design: .rounded))
                         .monospacedDigit()
+                        // Never clipped: the clock always shows in full.
+                        .lineLimit(1)
+                        .fixedSize()
+                        .foregroundStyle(ink)
                     Text(context.date, format: .dateTime.weekday(.wide).month(.wide).day())
-                        .font(.headline)
+                        .font(.title3)
+                        .foregroundStyle(inkDim)
                         .foregroundStyle(inkDim)
                     if let weather = model.snapshot?.home?.weather {
                         Label(weatherText(weather), systemImage: TodayWording.weatherSymbol(weather.condition))
-                            .font(.callout)
+                            .font(.headline)
                             .foregroundStyle(inkDim)
                             .symbolRenderingMode(.multicolor)
                             .padding(.top, 6)
@@ -145,7 +153,7 @@ struct AlwaysOnView: View {
                     if let sun = model.snapshot?.home?.sun,
                        let line = TodayWording.sunLine(rising: sun.rising, setting: sun.setting, now: context.date) {
                         Label(line, systemImage: "sun.horizon.fill")
-                            .font(.callout)
+                            .font(.headline)
                             .foregroundStyle(inkDim)
                             .symbolRenderingMode(.multicolor)
                     }
@@ -204,19 +212,29 @@ struct AlwaysOnView: View {
         switch KioskPlan.hero(snapshot: snapshot, pending: []) {
         case .alert(let name, let status):
             Label("\(name) is \(status)", systemImage: "exclamationmark.triangle.fill")
-                .font(.title3.weight(.semibold))
+                .font(.headline)
                 .foregroundStyle(Theme.ember)
         case .soon(let title, let minutes):
             Label(minutes <= 0 ? "\(title) is starting" : "\(title) in \(minutes) min", systemImage: "calendar.badge.clock")
-                .font(.title3.weight(.semibold))
+                .font(.headline)
                 .foregroundStyle(Theme.glacier)
         default:
             if let greeting = snapshot.offers?.greeting {
-                // One modest line (two at most): the panel is the star.
-                Text(greeting)
-                    .font(.headline)
-                    .foregroundStyle(inkDim)
-                    .lineLimit(2)
+                // A short headline ("Late night, Dylan"), then the rest
+                // smaller and dimmer, clamped (TodayWording.greetingParts).
+                let parts = TodayWording.greetingParts(greeting)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(KioskIcons.greetingEmoji(hour: Calendar.current.component(.hour, from: SunLampPreview.now()))) \(parts.headline)")
+                        .font(.headline.weight(.medium))
+                        .foregroundStyle(ink)
+                    if let body = parts.body {
+                        Text(body)
+                            .font(.callout)
+                            .foregroundStyle(inkDim)
+                            .lineLimit(3)
+                            .frame(maxWidth: 760, alignment: .leading)
+                    }
+                }
             }
         }
     }
@@ -230,28 +248,36 @@ struct AlwaysOnView: View {
                 if snapshot.today.isEmpty {
                     Text("Nothing booked").foregroundStyle(inkDim)
                 }
-                ForEach(snapshot.today.prefix(5)) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 28) {
+                ForEach(snapshot.today.prefix(7)) { item in
+                    HStack(alignment: .firstTextBaseline, spacing: 22) {
+                        Image(systemName: KioskIcons.agendaSymbol(item.title))
+                            .foregroundStyle(Theme.glacier)
+                            .frame(width: 36)
                         Text(AgendaTime.label(at: item.at, allDay: item.allDay ?? false))
                             .foregroundStyle(Theme.glacier)
                             .monospacedDigit()
-                            .frame(width: 190, alignment: .leading)
-                        Text(item.title).lineLimit(1)
+                            .frame(width: 140, alignment: .leading)
+                        Text(item.title)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                if snapshot.today.count > 7 {
+                    Text("+\(snapshot.today.count - 7) more").foregroundStyle(inkDim)
                 }
             }
         case .home:
             card("Home", icon: "house.fill") {
                 if let thermostat = snapshot.thermostat {
-                    row(thermostat.name, TodayWording.deviceState(thermostat))
+                    row(thermostat.name, TodayWording.deviceState(thermostat), symbol: TodayWording.deviceSymbol(thermostat))
                 }
                 let on = snapshot.homeTiles.filter { $0.isOn && $0.kind != "climate" }
                 let lights = snapshot.homeTiles.filter { $0.kind == "light" }
                 if !lights.isEmpty {
-                    row("Lights", "\(lights.filter(\.isOn).count) of \(lights.count) on")
+                    row("Lights", "\(lights.filter(\.isOn).count) of \(lights.count) on", symbol: "lightbulb.fill")
                 }
                 ForEach(on.filter { $0.kind != "light" }.prefix(3)) { device in
-                    row(device.name, TodayWording.deviceState(device))
+                    row(device.name, TodayWording.deviceState(device), symbol: TodayWording.deviceSymbol(device))
                 }
             }
         case .work:
@@ -260,8 +286,8 @@ struct AlwaysOnView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 16) {
                         Circle().fill(OrbView.workAmber).frame(width: 14, height: 14)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(task.label).lineLimit(2)
-                            Text(task.runningWords()).font(.callout).foregroundStyle(inkDim)
+                            Text(task.label).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            Text(task.runningWords()).font(.caption).foregroundStyle(inkDim)
                         }
                     }
                 }
@@ -270,17 +296,20 @@ struct AlwaysOnView: View {
             card("You", icon: "heart.fill") {
                 HStack(spacing: 60) {
                     if let asleep = snapshot.health?.sleep?.asleepMin {
-                        stat(TodayWording.hours(asleep), "asleep last night")
+                        stat(TodayWording.hours(asleep), "asleep last night", symbol: "bed.double.fill")
                     }
                     if let steps = snapshot.health?.yesterday?.steps {
-                        stat(steps.formatted(), "steps yesterday")
+                        stat(steps.formatted(), "steps yesterday", symbol: "figure.walk")
                     }
                 }
             }
         case .offers:
             card("From Jarvis", icon: "lightbulb.fill") {
-                ForEach((snapshot.offers?.offers ?? []).prefix(3)) { offer in
-                    Text(offer.title).lineLimit(2)
+                ForEach((snapshot.offers?.offers ?? []).prefix(4)) { offer in
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Image(systemName: "sparkle").foregroundStyle(Theme.ember).frame(width: 36)
+                        Text(offer.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
@@ -297,39 +326,54 @@ struct AlwaysOnView: View {
 
     /// A roomy titled glass panel with large type.
     private func card<Rows: View>(_ title: String, icon: String, @ViewBuilder rows: () -> Rows) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 16) {
             Label(title, systemImage: icon)
-                .font(.headline)
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(inkDim)
             rows()
-                .font(.title2)
+                .font(.body)
+                .foregroundStyle(ink)
+                // Shrinks a step rather than clipping when a panel is full.
+                .minimumScaleFactor(0.85)
         }
-        .padding(40)
+        .padding(34)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            // Frosted white by day so dark text reads; glass at night.
+            if lamp.brightness > 0.55 {
+                RoundedRectangle(cornerRadius: 34, style: .continuous).fill(Color.white.opacity(0.55))
+            }
+        }
         .glassPanel(radius: 34)
     }
 
-    /// A name on the left, its value on the right.
-    private func row(_ name: String, _ value: String) -> some View {
-        HStack {
+    /// An icon, a name on the left, its value on the right.
+    private func row(_ name: String, _ value: String, symbol: String? = nil) -> some View {
+        HStack(spacing: 18) {
+            if let symbol {
+                Image(systemName: symbol)
+                    .foregroundStyle(Theme.ember)
+                    .frame(width: 36)
+            }
             Text(name)
             Spacer()
             Text(value).foregroundStyle(inkDim)
         }
     }
 
-    /// A big number over a caption.
-    private func stat(_ value: String, _ caption: String) -> some View {
+    /// An icon, a big number, and a caption.
+    private func stat(_ value: String, _ caption: String, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(value).font(.system(size: 64, weight: .bold, design: .rounded)).monospacedDigit()
-            Text(caption).font(.headline).foregroundStyle(inkDim)
+            Image(systemName: symbol).font(.title3).foregroundStyle(Theme.glacier)
+            Text(value).font(.system(size: 52, weight: .bold, design: .rounded)).monospacedDigit()
+            Text(caption).font(.callout).foregroundStyle(inkDim)
         }
     }
 
     /// "Clear, 61°F", or just the condition when there's no number.
     private func weatherText(_ weather: Weather) -> String {
-        guard let temperature = weather.temperature else { return weather.condition.capitalized }
-        return "\(weather.condition.capitalized), \(Int(temperature.rounded()))\(weather.unit)"
+        guard let temperature = weather.temperature else { return TodayWording.weatherWords(weather.condition) }
+        return "\(TodayWording.weatherWords(weather.condition)), \(Int(temperature.rounded()))\(weather.unit)"
     }
 }
 

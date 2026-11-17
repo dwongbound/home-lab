@@ -89,4 +89,43 @@ public enum TodayWording {
             .map { "\($0.0) \(clock.string(from: $0.1))" }
             .joined(separator: " · ")
     }
+
+    /// Jarvis's greeting as a headline and the rest (Dylan, 2026-11-17:
+    /// "put emphasis on the beginning thing like late night, Dylan"). Splits
+    /// at the first sentence break or dash; failing that, at the comma after
+    /// the name ("Late night, Dylan, you've …"). No rest → body is nil.
+    public static func greetingParts(_ text: String) -> (headline: String, body: String?) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let breaks = [". ", "! ", "? ", " — ", " – ", " - ", ": "]
+        let first = breaks.compactMap { mark in trimmed.range(of: mark).map { (mark, $0) } }
+            .min { $0.1.lowerBound < $1.1.lowerBound }
+        if let (mark, range) = first, trimmed.distance(from: trimmed.startIndex, to: range.lowerBound) <= 60 {
+            var head = String(trimmed[..<range.lowerBound])
+            if mark.hasPrefix("!") || mark.hasPrefix("?") { head += String(mark.first!) }
+            let body = trimmed[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            return (head, body.isEmpty ? nil : body)
+        }
+        let commas = trimmed.indices.filter { trimmed[$0] == "," }
+        if commas.count >= 2, trimmed.distance(from: trimmed.startIndex, to: commas[1]) <= 40 {
+            let body = trimmed[trimmed.index(after: commas[1])...].trimmingCharacters(in: .whitespaces)
+            if !body.isEmpty {
+                return (String(trimmed[..<commas[1]]), body.prefix(1).uppercased() + body.dropFirst())
+            }
+        }
+        var head = trimmed
+        if head.hasSuffix(".") { head.removeLast() }
+        return (head, nil)
+    }
+
+    /// Home Assistant's weather word as words: "partlycloudy" → "Partly cloudy",
+    /// "clear-night" → "Clear", "lightning-rainy" → "Lightning, rainy".
+    public static func weatherWords(_ condition: String) -> String {
+        let known = [
+            "partlycloudy": "Partly cloudy", "clear-night": "Clear", "lightning-rainy": "Thunderstorms",
+            "snowy-rainy": "Sleet", "windy-variant": "Windy", "exceptional": "Unusual weather",
+        ]
+        if let words = known[condition.lowercased()] { return words }
+        let spaced = condition.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
+        return spaced.prefix(1).uppercased() + spaced.dropFirst()
+    }
 }

@@ -133,11 +133,22 @@ struct KioskView: View {
         case .soon(let title, let minutes):
             heroLine(minutes <= 0 ? "\(title) is starting" : "\(title) in \(minutes) min", symbol: "calendar.badge.clock", tint: Theme.glacier)
         case .calm:
-            Text(today.snapshot?.offers?.greeting ?? TodayWording.greeting(for: .now))
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(Theme.frost.opacity(0.9))
-                .multilineTextAlignment(.center)
-                .transition(.opacity)
+            // A short headline, then the rest smaller (TodayWording.greetingParts).
+            let parts = TodayWording.greetingParts(today.snapshot?.offers?.greeting ?? TodayWording.greeting(for: .now))
+            VStack(spacing: 6) {
+                Text("\(KioskIcons.greetingEmoji(hour: Calendar.current.component(.hour, from: .now))) \(parts.headline)")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(Theme.frost.opacity(0.95))
+                if let body = parts.body {
+                    Text(body)
+                        .font(.body)
+                        .foregroundStyle(Theme.frostDim)
+                        .lineLimit(3)
+                        .frame(maxWidth: 520)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .transition(.opacity)
         }
     }
 
@@ -213,6 +224,9 @@ struct KioskView: View {
             }
             ForEach(items.prefix(5)) { item in
                 HStack(alignment: .firstTextBaseline, spacing: 18) {
+                    Image(systemName: KioskIcons.agendaSymbol(item.title))
+                        .foregroundStyle(Theme.glacier)
+                        .frame(width: 28)
                     Text(AgendaTime.label(at: item.at, allDay: item.allDay ?? false))
                         .font(.title3.weight(.medium))
                         .monospacedDigit()
@@ -315,7 +329,7 @@ struct KioskView: View {
 
     /// "Cloudy, 58°F".
     private func weatherText(_ weather: Weather) -> String {
-        guard let temperature = weather.temperature else { return weather.condition.capitalized }
-        return "\(weather.condition.capitalized), \(Int(temperature.rounded()))\(weather.unit)"
+        guard let temperature = weather.temperature else { return TodayWording.weatherWords(weather.condition) }
+        return "\(TodayWording.weatherWords(weather.condition)), \(Int(temperature.rounded()))\(weather.unit)"
     }
 }

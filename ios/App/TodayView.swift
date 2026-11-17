@@ -396,8 +396,8 @@ struct TodayView: View {
 
     /// "Cloudy, 58°F".
     private func weatherText(_ weather: Weather) -> String {
-        guard let temperature = weather.temperature else { return weather.condition.capitalized }
-        return "\(weather.condition.capitalized), \(Int(temperature.rounded()))\(weather.unit)"
+        guard let temperature = weather.temperature else { return TodayWording.weatherWords(weather.condition) }
+        return "\(TodayWording.weatherWords(weather.condition)), \(Int(temperature.rounded()))\(weather.unit)"
     }
 
     /// A glass card with a small header (symbol, title, optional note).
@@ -457,29 +457,3 @@ struct DeviceTile: View {
         .accessibilityElement(children: .combine)
     }
 }
-
-#if DEBUG
-/// A sample snapshot for checking layouts in the simulator without the PC:
-/// debug builds launched with `-demoSnapshot` only.
-enum DemoSnapshot {
-    static var snapshot: Snapshot? {
-        guard ProcessInfo.processInfo.arguments.contains("-demoSnapshot") else { return nil }
-        let soon = ISO8601DateFormatter().string(from: Date().addingTimeInterval(25 * 60))
-        let later = ISO8601DateFormatter().string(from: Date().addingTimeInterval(3 * 3600))
-        let started = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-9 * 60))
-        let json = """
-        {"generatedAt":"x","services":[],
-         "today":[{"id":"1","at":"\(soon)","title":"Volleyball at the Y"},{"id":"2","at":"\(later)","title":"Study block: written test"}],
-         "offers":{"greeting":"Good evening, Dylan","offers":[]},
-         "home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"heat","current":68,"target":70},
-            {"id":"a","name":"Entrance","kind":"light","state":"on"},{"id":"b","name":"Hall","kind":"light","state":"off"},
-            {"id":"c","name":"Living Room TV","kind":"media","state":"playing"},{"id":"d","name":"Dylan asleep","kind":"switch","state":"off"}],
-          "weather":{"condition":"cloudy","temperature":58,"unit":"°F"},"sun":{"setting":"\(later)"}},
-         "jobs":{"running":[{"id":"j1","label":"Changing my code so reminders repeat","state":"running","startedAt":"\(started)"}]},
-         "cloud":{"health":{"yesterday":{"steps":9580},"sleep":{"asleep_min":422}},
-                  "money":{"netWorth":1}}}
-        """
-        return try? JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
-    }
-}
-#endif

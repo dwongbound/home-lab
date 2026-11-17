@@ -81,3 +81,51 @@ final class SunLineTests: XCTestCase {
         XCTAssertEqual(KioskPlan.panels(snapshot: s), [.schedule, .offers])
     }
 }
+
+final class GreetingPartsTests: XCTestCase {
+    func testSplits() {
+        let a = TodayWording.greetingParts("Late night, Dylan. You've got volleyball at 7:30 tomorrow and a study block after.")
+        XCTAssertEqual(a.headline, "Late night, Dylan")
+        XCTAssertEqual(a.body, "You've got volleyball at 7:30 tomorrow and a study block after.")
+        let b = TodayWording.greetingParts("Late night, Dylan, you've still got the RSVP to send.")
+        XCTAssertEqual(b.headline, "Late night, Dylan")
+        XCTAssertEqual(b.body, "You've still got the RSVP to send.")
+        let c = TodayWording.greetingParts("Morning, Dylan — rain until noon.")
+        XCTAssertEqual(c.headline, "Morning, Dylan")
+        XCTAssertEqual(c.body, "rain until noon.")
+        let d = TodayWording.greetingParts("Good evening, Dylan.")
+        XCTAssertEqual(d.headline, "Good evening, Dylan")
+        XCTAssertNil(d.body)
+        let e = TodayWording.greetingParts("Hey Dylan! Big day.")
+        XCTAssertEqual(e.headline, "Hey Dylan!")
+        XCTAssertEqual(e.body, "Big day.")
+    }
+}
+
+final class KioskIconsTests: XCTestCase {
+    func testGreetingEmoji() {
+        XCTAssertEqual(KioskIcons.greetingEmoji(hour: 2), "🌙")
+        XCTAssertEqual(KioskIcons.greetingEmoji(hour: 6), "🌅")
+        XCTAssertEqual(KioskIcons.greetingEmoji(hour: 12), "☀️")
+        XCTAssertEqual(KioskIcons.greetingEmoji(hour: 18), "🌇")
+        XCTAssertEqual(KioskIcons.greetingEmoji(hour: 22), "🌙")
+    }
+
+    func testAgendaSymbols() {
+        XCTAssertEqual(KioskIcons.agendaSymbol("Flight lesson KSMO"), "airplane")
+        XCTAssertEqual(KioskIcons.agendaSymbol("CG x SOW rehearsal"), "music.note.house.fill")
+        XCTAssertEqual(KioskIcons.agendaSymbol("Reminder: pay rent"), "bell.fill")
+        XCTAssertEqual(KioskIcons.agendaSymbol("Volleyball at the Y"), "figure.run")
+        XCTAssertEqual(KioskIcons.agendaSymbol("Study block: written test"), "book.fill")
+        XCTAssertEqual(KioskIcons.agendaSymbol("Ryan + Claire"), "calendar")
+    }
+}
+
+final class WeatherWordsTests: XCTestCase {
+    func testWords() {
+        XCTAssertEqual(TodayWording.weatherWords("partlycloudy"), "Partly cloudy")
+        XCTAssertEqual(TodayWording.weatherWords("clear-night"), "Clear")
+        XCTAssertEqual(TodayWording.weatherWords("cloudy"), "Cloudy")
+        XCTAssertEqual(TodayWording.weatherWords("rainy"), "Rainy")
+    }
+}
