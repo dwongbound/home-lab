@@ -1001,6 +1001,23 @@ test('a reply with Markdown shows headings, a table, a list and a divider', asyn
   await expect(answer).not.toContainText('**')
 })
 
+test('a wide table in a reply scrolls inside the bubble instead of spilling out', async ({ page }) => {
+  const reply = '| Headset | Price | Noise reduction | Plug | Seller | Posted |\n|---|---|---|---|---|---|\n| Bose A30 | $900 | Active | GA dual | Torrance pilot shop | This week |\n| Lightspeed Zulu 3 | $650 | Active | GA dual | Marketplace | Yesterday |'
+  await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: JSON.stringify({ type: 'delta', text: reply }) + '\n{"type":"done","ok":true}\n' }))
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Compare headsets')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  const answer = chat.locator('.chat__a').last()
+  await expect(answer.getByRole('table')).toBeVisible()
+  // The scroll box stays inside the bubble, and the bubble inside the chat, at every width.
+  const bubble = (await answer.boundingBox())!
+  const scroller = (await answer.locator('.md__scroll').boundingBox())!
+  const sheet = (await chat.boundingBox())!
+  expect(scroller.x + scroller.width).toBeLessThanOrEqual(bubble.x + bubble.width + 1)
+  expect(bubble.x + bubble.width).toBeLessThanOrEqual(sheet.x + sheet.width + 1)
+})
+
 test('the "…" after a reply says "That was wrong" and opens a pop-up for what he should have said', async ({ page }) => {
   let sent: unknown = null
   await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"delta","text":"I can only time drives from your phone."}\n{"type":"done","ok":true}\n' }))
