@@ -162,9 +162,8 @@ struct TabBar: View {
         HStack(spacing: 4) {
             item(.chat, "Chat", "bubble.left.fill", badge: chatBadge)
             item(.talk, "Talk", "waveform", badge: 0)
-            // On iPad it's the home screen of the house, so it's "Home"
-            // (Dylan, 2026-11-17); the phone keeps "Today".
-            item(.today, UIDevice.current.userInterfaceIdiom == .pad ? "Home" : "Today", "square.grid.2x2.fill", badge: 0)
+            // "Home" on iPhone and iPad alike (Dylan, 2026-11-17).
+            item(.today, "Home", "square.grid.2x2.fill", badge: 0)
         }
         .padding(5)
         .glassPanel(radius: 32)

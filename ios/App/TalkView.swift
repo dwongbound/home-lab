@@ -144,7 +144,14 @@ final class TalkModel: ObservableObject {
         if let activity {
             Task { await activity.update(content) }
         } else if ActivityAuthorizationInfo().areActivitiesEnabled {
-            activity = try? Activity.request(attributes: TalkActivityAttributes(), content: content)
+            do {
+                activity = try Activity.request(attributes: TalkActivityAttributes(), content: content)
+                talkLog("live activity started")
+            } catch {
+                talkLog("live activity refused: \(error)")
+            }
+        } else {
+            talkLog("live activities are off in Settings › Jarvis")
         }
     }
 
