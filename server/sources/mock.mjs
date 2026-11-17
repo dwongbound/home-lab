@@ -287,6 +287,12 @@ export function createMockSource({ now = () => new Date() } = {}) {
             { id: 'sensor.bedroom_humidity', name: 'Bedroom', kind: 'humidity', value: '46', unit: '%' },
           ],
           weather: { condition: 'partlycloudy', temperature: 61, unit: '°F', humidity: 58, wind: 7, windUnit: 'mph' },
+          forecast: [0, 1, 2, 3, 4, 5].map((h) => ({
+            at: new Date(Math.floor(t.getTime() / 3_600_000 + 1 + h) * 3_600_000).toISOString(),
+            condition: h < 3 ? 'partlycloudy' : 'rainy',
+            temperature: 61 - h,
+            rain: h < 3 ? 10 : 60,
+          })),
           sun: { rising: atPacificTime(t, 6, 41), setting: atPacificTime(t, 16, 52) },
         },
         jobs: mockJobs(t, minutesAgo),
