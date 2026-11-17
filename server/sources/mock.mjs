@@ -281,7 +281,12 @@ export function createMockSource({ now = () => new Date() } = {}) {
         cloud,
         home: {
           devices: state.home.map((d) => ({ ...d })),
-          weather: { condition: 'partlycloudy', temperature: 61, unit: '°F' },
+          readings: [
+            { id: 'binary_sensor.balcony_door', name: 'Balcony door', kind: 'door', value: 'open' },
+            { id: 'sensor.bedroom_temperature', name: 'Bedroom', kind: 'temperature', value: '70.5', unit: '°F' },
+            { id: 'sensor.bedroom_humidity', name: 'Bedroom', kind: 'humidity', value: '46', unit: '%' },
+          ],
+          weather: { condition: 'partlycloudy', temperature: 61, unit: '°F', humidity: 58, wind: 7, windUnit: 'mph' },
           sun: { rising: atPacificTime(t, 6, 41), setting: atPacificTime(t, 16, 52) },
         },
         jobs: mockJobs(t, minutesAgo),

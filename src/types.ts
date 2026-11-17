@@ -126,9 +126,26 @@ export interface Device {
   /** Thermostats only: the modes it offers ("off", "heat", "cool", "heat_cool"...). */
   modes?: string[]
 }
+/** What a read-only sensor reading is about. */
+export type ReadingKind = 'temperature' | 'humidity' | 'door' | 'window' | 'motion' | 'battery'
+
+/** One read-only sensor reading from Home Assistant: a room's temperature, an open door, a low battery. */
+export interface Reading {
+  id: string
+  name: string
+  kind: ReadingKind
+  /** A number as text ("71.5"), or "open", "detected", "low". */
+  value: string
+  /** The sensor's own unit ("°F", "%"), numbers only. */
+  unit?: string
+}
+
 export interface HomeState {
   devices: Device[]
-  weather: { condition: string; temperature: number | null; unit: string } | null
+  /** Sensor readings, the ones needing a look first; missing on an older server. */
+  readings?: Reading[]
+  /** Outside now. Humidity is a percent; wind is in Home Assistant's own unit. */
+  weather: { condition: string; temperature: number | null; unit: string; humidity?: number; wind?: number; windUnit?: string } | null
   sun: { rising: string | null; setting: string | null }
 }
 export type HomeCommand = 'toggle' | 'brightness' | 'power' | 'playpause' | 'volume' | 'run' | 'target' | 'mode'

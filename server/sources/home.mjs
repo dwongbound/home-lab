@@ -71,6 +71,66 @@ export function toDevice(entity) {
   return device
 }
 
+/** Sensor device classes worth showing as a reading, and what each is called on the page. */
+const READING_KINDS = {
+  temperature: 'temperature',
+  humidity: 'humidity',
+  door: 'door',
+  garage_door: 'door',
+  window: 'window',
+  opening: 'door',
+  motion: 'motion',
+  occupancy: 'motion',
+  battery: 'battery',
+}
+
+/** The most readings sent, so a house full of sensors can't flood the page. */
+const MAX_READINGS = 12
+
+/** A battery is only worth a line when it's this low (percent) or lower. */
+const LOW_BATTERY = 20
+
+/**
+ * A read-only reading from one sensor (a room's temperature, an open door, a
+ * low battery), or null for everything else. Nothing here can be commanded.
+ */
+export function toReading(entity) {
+  const domain = entity.entity_id.split('.')[0]
+  if (domain !== 'sensor' && domain !== 'binary_sensor') return null
+  const a = entity.attributes ?? {}
+  const kind = READING_KINDS[a.device_class]
+  if (!kind) return null
+  if (entity.state === 'unavailable' || entity.state === 'unknown') return null
+  /** @type {{ id: string, name: string, kind: string, value: string, unit?: string }} */
+  const reading = { id: entity.entity_id, name: a.friendly_name ?? entity.entity_id, kind, value: '' }
+  if (domain === 'binary_sensor') {
+    // A battery binary sensor is "on" when low; a closed door or still room is not news.
+    if (entity.state !== 'on') return null
+    if (kind === 'battery') reading.value = 'low'
+    else if (kind === 'motion') reading.value = 'detected'
+    else reading.value = 'open'
+    return reading
+  }
+  const value = Number(entity.state)
+  if (!Number.isFinite(value)) return null
+  if (kind === 'battery' && value > LOW_BATTERY) return null
+  reading.value = String(Math.round(value * 10) / 10)
+  if (typeof a.unit_of_measurement === 'string') reading.unit = a.unit_of_measurement
+  return reading
+}
+
+/** The outside weather, with humidity and wind when Home Assistant has them. */
+function toWeather(entity) {
+  const a = entity.attributes ?? {}
+  const weather = { condition: entity.state, temperature: a.temperature ?? null, unit: a.temperature_unit ?? '' }
+  if (num(a.humidity) !== undefined) weather.humidity = a.humidity
+  if (num(a.wind_speed) !== undefined) {
+    weather.wind = a.wind_speed
+    weather.windUnit = a.wind_speed_unit ?? ''
+  }
+  return weather
+}
+
 /** A number, or undefined when Home Assistant didn't give one. */
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
@@ -138,21 +198,25 @@ export function createHomeReader(config, deps = {}) {
         if (!res.ok) return null
         const states = await res.json()
         const devices = []
+        const readings = []
         let weather = null
         const sun = { rising: null, setting: null }
         for (const e of states) {
           const device = toDevice(e)
           if (device && !hidden.has(device.id)) devices.push(device)
-          if (weather === null && e.entity_id.startsWith('weather.')) {
-            weather = { condition: e.state, temperature: e.attributes?.temperature ?? null, unit: e.attributes?.temperature_unit ?? '' }
-          }
+          const reading = toReading(e)
+          if (reading) readings.push(reading)
+          if (weather === null && e.entity_id.startsWith('weather.')) weather = toWeather(e)
           if (e.entity_id === 'sensor.sun_next_rising') sun.rising = e.state
           if (e.entity_id === 'sensor.sun_next_setting') sun.setting = e.state
         }
         // The thermostat first, then things you can switch, media, scenes and scripts; A-Z within.
         const order = ['climate', 'light', 'switch', 'fan', 'media', 'scene', 'script']
         devices.sort((x, y) => order.indexOf(x.kind) - order.indexOf(y.kind) || x.name.localeCompare(y.name))
-        return { devices, weather, sun }
+        // Things that need a look first (open doors, low batteries, motion), then the rooms; A-Z within.
+        const readingOrder = ['door', 'window', 'battery', 'motion', 'temperature', 'humidity']
+        readings.sort((x, y) => readingOrder.indexOf(x.kind) - readingOrder.indexOf(y.kind) || x.name.localeCompare(y.name))
+        return { devices, readings: readings.slice(0, MAX_READINGS), weather, sun }
       } catch {
         return null
       }
