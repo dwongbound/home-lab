@@ -7,6 +7,7 @@ import JarvisKit
 /// The tabs along the bottom (a sidebar on iPad).
 enum AppTab: Hashable {
     case chat
+    case talk
     case today
 }
 
@@ -25,6 +26,7 @@ final class AppModel: ObservableObject {
 
     let chat = ChatModel()
     let today = TodayModel()
+    let talk = TalkModel()
     private var relay: AnyCancellable?
 
     /// Reads the saved address, or the one the app ships with.

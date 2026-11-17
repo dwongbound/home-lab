@@ -18,7 +18,7 @@ struct JarvisApp: App {
     }
 }
 
-/// Chat and Today as tabs, with the Settings sheet over them.
+/// Chat, Talk and Today as tabs, with the Settings sheet over them.
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
 
@@ -30,12 +30,21 @@ struct RootView: View {
                 .tabItem { Label("Chat", systemImage: "bubble.left") }
                 .badge(app.chat.pendingCount)
                 .tag(AppTab.chat)
+            TalkView(talk: app.talk)
+                .tabItem { Label("Talk", systemImage: "waveform") }
+                .tag(AppTab.talk)
             TodayView(today: app.today)
                 .tabItem { Label("Today", systemImage: "calendar") }
                 .tag(AppTab.today)
         }
         .sheet(isPresented: $app.showSettings) {
             SettingsView()
+        }
+        // Opening Talk the first time starts the call, like the page's /talk.
+        .onChange(of: app.tab) { _, tab in
+            if tab == .talk && !app.talk.started {
+                Task { await app.talk.start(app: app) }
+            }
         }
     }
 }

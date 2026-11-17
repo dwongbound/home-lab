@@ -11,6 +11,8 @@ struct OrbView: View {
 
     var state: Mood
     var size: CGFloat
+    /// How loud the voice that matters is (0..1); the constellation swells with it.
+    var level: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Redraws every frame (or once, with Reduce Motion on).
@@ -41,7 +43,7 @@ struct OrbView: View {
         let look = look
         let side = min(area.width, area.height)
         let center = CGPoint(x: area.width / 2, y: area.height / 2)
-        let scale = 1 + look.breathe * sin(t * 5)
+        let scale = 1 + look.breathe * sin(t * 5) + min(level, 1) * 0.1
         let points = Self.sphere(count: 60, t: t, speed: look.speed)
 
         for point in points where point.z < 0 {

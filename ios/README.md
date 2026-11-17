@@ -16,18 +16,23 @@ Review) or straight from Xcode. It never goes to the App Store.
   cards (Approve/Deny), and the faint "…" for "That was wrong".
 - **Today:** Jarvis's greeting and offers (Hide/Start), the agenda, weather
   and thermostat, service alerts, background work.
+- **Talk:** hands-free voice, like the page's `/talk`: the orb, what he
+  heard and what he's saying, Talk/Pause and Mute, approval cards. Opening
+  the tab the first time starts the call. Keeps going with the screen
+  locked (background audio); Apple's voice processing cancels his voice out
+  of the mic. Pause dozes when Jarvis supports "Hey Jarvis", else hangs up.
 - **Settings:** the server address and a connection check.
 - The orb (design D: a glass core in a 3D constellation) and the app icon.
 
-Next: Talk, push notifications, Siri and widgets, the always-on view.
+Next: push notifications, Siri and widgets, the always-on view.
 
 ## Layout
 
 | Path | What |
 | --- | --- |
-| `Package.swift`, `Sources/JarvisKit/` | Chat events, wording, snapshot, HTTP client. No UI, so `swift test` runs on any Mac. |
+| `Package.swift`, `Sources/JarvisKit/` | Chat and Talk events, Talk audio helpers, wording, snapshot, HTTP client. No UI, so `swift test` runs on any Mac. |
 | `Tests/JarvisKitTests/` | Unit tests for the above. |
-| `App/` | The SwiftUI app: `JarvisApp` (tabs), `ChatView` + `ChatModel`, `TodayView`, `SettingsView`, `ApprovalCard`, `OrbView`, `Theme`. |
+| `App/` | The SwiftUI app: `JarvisApp` (tabs), `ChatView` + `ChatModel`, `TalkView` + `TalkLine` (AVAudioEngine + WebSocket), `TodayView`, `SettingsView`, `ApprovalCard`, `OrbView`, `Theme`. |
 | `project.yml` | XcodeGen spec; the `.xcodeproj` is generated, not committed. |
 | `scripts/make_icon.py` | Draws the app icon (`python3 scripts/make_icon.py`, needs Pillow). |
 
