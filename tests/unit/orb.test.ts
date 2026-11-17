@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { ORB_POINTS, orbDot, orbLinks, orbLook, orbPoints, orbRipple } from '../../src/lib/orb'
+import { ORB_POINTS, OrbMotion, orbDot, orbLinks, orbLook, orbPoints, type OrbInput } from '../../src/lib/orb'
+
+/** Steps a motion for `seconds` at 60 frames a second. */
+function run(motion: OrbMotion, input: OrbInput, seconds: number) {
+  for (let i = 0; i < seconds * 60; i++) motion.step(input, 1 / 60)
+}
+
+/** How far the shell's points moved between two snapshots. */
+function moved(a: ReturnType<OrbMotion['points']>, b: ReturnType<OrbMotion['points']>): number {
+  return Math.max(...a.map((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y, p.z - b[i].z)))
+}
 
 describe('orb design D', () => {
   it('spreads its points on a unit sphere', () => {
@@ -45,11 +55,70 @@ describe('orb design D', () => {
     expect(Math.max(...per)).toBeLessThanOrEqual(3)
   })
 
-  it('ripples with your voice only: still when quiet, and still while he speaks', () => {
-    expect(orbRipple('listening', 4, 0, 1)).toBe(1)
-    expect(orbRipple('speaking', 4, 1, 1)).toBe(1)
-    const heard = Array.from({ length: 20 }, (_, i) => orbRipple('listening', i, 1, 0.3))
-    expect(Math.max(...heard) - Math.min(...heard)).toBeGreaterThan(0.08)
-    expect(Math.max(...heard)).toBeLessThan(1.15)
+  it('swells the shell with your voice and the core with his, never both', () => {
+    const yours = new OrbMotion('listening')
+    run(yours, { state: 'listening', waiting: false, level: 0.9 }, 1)
+    expect(yours.shellVoice).toBeGreaterThan(0.8)
+    expect(yours.coreVoice).toBeLessThan(0.01)
+    const his = new OrbMotion('speaking')
+    run(his, { state: 'speaking', waiting: false, level: 0.9 }, 1)
+    expect(his.coreVoice).toBeGreaterThan(0.8)
+    expect(his.shellVoice).toBeLessThan(0.01)
+  })
+
+  it('ignores room noise', () => {
+    const motion = new OrbMotion('listening')
+    run(motion, { state: 'listening', waiting: false, level: 0.06 }, 1)
+    expect(motion.shellVoice).toBe(0)
+  })
+
+  it('holds still while you talk and tumbles in any direction when it is quiet', () => {
+    const motion = new OrbMotion('listening')
+    const talking: OrbInput = { state: 'listening', waiting: false, level: 0.9 }
+    // Long enough for the turning to run down.
+    run(motion, talking, 6)
+    const before = motion.points()
+    run(motion, talking, 1)
+    expect(moved(before, motion.points())).toBeLessThan(0.01)
+    // Quiet: it turns again, and not just about the vertical (y changes too).
+    run(motion, { state: 'listening', waiting: false, level: 0 }, 6)
+    const after = motion.points()
+    expect(moved(before, after)).toBeGreaterThan(0.2)
+    expect(Math.max(...after.map((p, i) => Math.abs(p.y - before[i].y)))).toBeGreaterThan(0.05)
+    for (const p of after) expect(Math.hypot(p.x, p.y, p.z)).toBeCloseTo(1, 6)
+  })
+
+  it('spins upright while he speaks: heights stay put', () => {
+    const motion = new OrbMotion('speaking')
+    const before = motion.points()
+    run(motion, { state: 'speaking', waiting: false, level: 0 }, 3)
+    const after = motion.points()
+    expect(moved(before, after)).toBeGreaterThan(0.2)
+    expect(Math.max(...after.map((p, i) => Math.abs(p.y - before[i].y)))).toBeLessThan(1e-6)
+  })
+
+  it('eases between looks instead of cutting', () => {
+    const motion = new OrbMotion('listening')
+    const from = orbLook('listening').color[0]
+    const to = orbLook('thinking').color[0]
+    motion.step({ state: 'thinking', waiting: false, level: 0 }, 1 / 60)
+    expect(motion.color[0]).toBeGreaterThan(from)
+    expect(motion.color[0]).toBeLessThan(from + (to - from) * 0.1)
+    run(motion, { state: 'thinking', waiting: false, level: 0 }, 5)
+    expect(motion.color[0]).toBeCloseTo(to, 0)
+  })
+
+  it('comes to rest when idle, but keeps tumbling while waiting for "Hey Jarvis"', () => {
+    const motion = new OrbMotion('speaking')
+    const idle: OrbInput = { state: 'idle', waiting: false, level: 0 }
+    run(motion, { state: 'speaking', waiting: false, level: 0.8 }, 1)
+    expect(motion.resting(idle)).toBe(false)
+    run(motion, idle, 8)
+    expect(motion.resting(idle)).toBe(true)
+    const waiting: OrbInput = { state: 'idle', waiting: true, level: 0 }
+    expect(motion.resting(waiting)).toBe(false)
+    const before = motion.points()
+    run(motion, waiting, 4)
+    expect(moved(before, motion.points())).toBeGreaterThan(0.1)
   })
 })
