@@ -605,7 +605,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
   return (
     <section className="glass panel jarvis" aria-labelledby="jarvis-title">
       <h2 id="jarvis-title" className="jarvis__label">Ask Jarvis</h2>
-      <JarvisOrb ref={barOrb} state={state} size={30} />
+      <JarvisOrb ref={barOrb} state={state} size={30} waiting={dozing} />
       <form className="jarvis__form" onSubmit={send}>
         <label htmlFor="jarvis-input" className="jarvis__label">Question for Jarvis</label>
         <input
@@ -775,7 +775,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
         </button>
       )}
       <header className="chat__head">
-        <JarvisOrb ref={orbRef} state={state} size={page ? TALK_PAGE_ORB : 64} />
+        <JarvisOrb ref={orbRef} state={state} size={page ? TALK_PAGE_ORB : 64} waiting={talking && dozing} />
         {/* No "Jarvis" title over the orb (Dylan, 2026-11-16): the orb is the name. */}
         {page ? <BackgroundTasks tasks={tasks} /> : null}
         {/* /talk shows only the orb (Dylan, 2026-11-11, 2026-11-16); the status stays for
