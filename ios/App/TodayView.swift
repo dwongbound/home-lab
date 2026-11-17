@@ -54,6 +54,8 @@ struct TodayView: View {
     @ObservedObject var today: TodayModel
     /// True while the iPad's full-screen kiosk is up.
     @State private var kiosk = false
+    /// True once the greeting's body has been tapped open.
+    @State private var greetingOpen = false
 
     /// Status line over a scrolling column of cards. Refreshes every 15 s
     /// while showing, like the page.
@@ -161,9 +163,7 @@ struct TodayView: View {
                     .accessibilityLabel("Open kiosk mode")
                 }
             }
-            Text(snapshot.offers?.greeting ?? TodayWording.greeting(for: .now))
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .foregroundStyle(Theme.frost)
+            greetingBlock(snapshot.offers?.greeting ?? TodayWording.greeting(for: .now))
             if let weather = snapshot.home?.weather {
                 HStack(spacing: 14) {
                     Label(weatherText(weather), systemImage: TodayWording.weatherSymbol(weather.condition))
@@ -179,6 +179,26 @@ struct TodayView: View {
         .padding(.horizontal, 4)
         .padding(.top, 6)
         .padding(.bottom, 4)
+    }
+
+    /// Jarvis's greeting as an emoji and a short headline, with the rest
+    /// smaller and dimmer underneath, three lines until tapped (Dylan,
+    /// 2026-11-17: "very wordy"; same split as the TV, TodayWording.greetingParts).
+    private func greetingBlock(_ text: String) -> some View {
+        let parts = TodayWording.greetingParts(text)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("\(KioskIcons.greetingEmoji(hour: Calendar.current.component(.hour, from: .now))) \(parts.headline)")
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundStyle(Theme.frost)
+            if let body = parts.body {
+                Text(body)
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.frostDim)
+                    .lineLimit(greetingOpen ? nil : 3)
+                    .onTapGesture { withAnimation(.smooth) { greetingOpen.toggle() } }
+                    .accessibilityHint(greetingOpen ? "Shows less" : "Shows the rest")
+            }
+        }
     }
 
     // MARK: Suggestions
