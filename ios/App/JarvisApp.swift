@@ -7,6 +7,11 @@ import SwiftUI
 struct JarvisApp: App {
     @StateObject private var app = AppModel()
 
+    /// Starts the Watch bridge, so the Watch can ask Jarvis through this phone.
+    init() {
+        WatchBridge.shared.start()
+    }
+
     /// One window: the tabs, over the night sky, always dark like the page.
     var body: some Scene {
         WindowGroup {

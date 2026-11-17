@@ -43,6 +43,10 @@ jobs:
           xcodebuild build -project Jarvis.xcodeproj -scheme Jarvis
           -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO
+      - run: >-
+          xcodebuild build -project Jarvis.xcodeproj -scheme JarvisTV
+          -destination 'generic/platform=tvOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
 
   # Merges a passing pull request into dev with a rebase, then deletes its
   # branch. Skipped for drafts (mark a PR as draft to hold it), for PRs into
