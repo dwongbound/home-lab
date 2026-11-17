@@ -32,13 +32,19 @@ final class TalkModel: ObservableObject {
     }
     /// The call in the Dynamic Island, while it's live.
     private var activity: Activity<TalkActivityAttributes>?
+    /// The island orb's stepped motion (JarvisKit IslandPose).
+    private var islandPose = IslandPose()
+    /// The once-a-second tick that turns the island orb during a call.
+    private var islandTicker: Task<Void, Never>?
     /// What Whisper is hearing right now, or the last thing it heard.
     @Published private(set) var heard = ""
     /// His reply so far.
     @Published private(set) var reply = ""
     @Published private(set) var model: String?
     /// The slow lookup he's doing ("Searching the web."), or nil.
-    @Published private(set) var working: String?
+    @Published private(set) var working: String? {
+        didSet { if (working == nil) != (oldValue == nil) { syncActivity() } }
+    }
     /// Approvals on this call: the exchange each was asked in, and how it
     /// ended as a one-line history entry (nil while it's still waiting).
     @Published private(set) var approvals: [(approval: Approval, outcome: String?, exchange: Int)] = []
@@ -143,13 +149,20 @@ final class TalkModel: ObservableObject {
             endActivity()
             return
         }
-        let content = ActivityContent(state: TalkActivityAttributes.ContentState(state: state, muted: muted), staleDate: nil)
+        let shown = working != nil ? "working" : state
+        let content = ActivityContent(state: TalkActivityAttributes.ContentState(state: shown, muted: muted, pulse: islandPose.pulse, beat: islandPose.beat), staleDate: nil)
         if let activity {
             Task { await activity.update(content) }
         } else if ActivityAuthorizationInfo().areActivitiesEnabled {
             do {
                 activity = try Activity.request(attributes: TalkActivityAttributes(), content: content)
                 talkLog("live activity started")
+                islandTicker = Task { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(1))
+                        self?.tickIsland()
+                    }
+                }
             } catch {
                 talkLog("live activity refused: \(error)")
             }
@@ -160,6 +173,8 @@ final class TalkModel: ObservableObject {
 
     /// Takes the call out of the Dynamic Island.
     private func endActivity() {
+        islandTicker?.cancel()
+        islandTicker = nil
         guard let activity else { return }
         self.activity = nil
         Task { await activity.end(nil, dismissalPolicy: .immediate) }
@@ -222,6 +237,18 @@ final class TalkModel: ObservableObject {
         if newTone > 0 { tone = newTone }
     }
 
+    /// Turns the island orb a step about once a second while the call is
+    /// live, swelling with the voice (Dylan, 2026-11-17: animate it). The
+    /// island can only animate between updates, so this is the motion.
+    private func tickIsland() {
+        guard activity != nil else { return }
+        let live: Bool
+        if case .on(let state) = phase { live = state != .dozing && !muted } else { live = false }
+        if islandPose.tick(level: Double(level), turning: live, now: Date(), reduceMotion: UIAccessibility.isReduceMotionEnabled) {
+            syncActivity()
+        }
+    }
+
     /// Moves the finished exchange into the transcript, keeping the last few.
     private func archiveTurn() {
         guard !heard.isEmpty || !reply.isEmpty else { return }
@@ -247,6 +274,25 @@ final class TalkModel: ObservableObject {
             approvals[index].outcome = line
         }
     }
+
+    #if DEBUG
+    /// Simulator check for the island (`-demoIsland`): a pretend call with
+    /// no line, cycling listening → thinking → speaking with a fake voice.
+    func demoIsland() {
+        started = true
+        phase = .on(.listening)
+        Task { [weak self] in
+            var t = 0.0
+            while let self, !Task.isCancelled {
+                t += 0.25
+                let cycle = Int(t / 6) % 3
+                self.phase = .on([TalkState.listening, .thinking, .speaking][cycle])
+                self.level = cycle == 1 ? 0 : Float(0.5 + 0.45 * sin(t * 2.3))
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+    }
+    #endif
 
     /// Approvals still waiting: pinned above the buttons.
     var pendingApprovals: [Approval] {

@@ -9,9 +9,16 @@ import Foundation
 /// What the island shows about a Talk call.
 struct TalkActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
-        /// "listening", "thinking", "speaking".
+        /// "listening", "thinking", "working" (a slow lookup), "speaking".
         var state: String
         var muted: Bool
+        /// How loud the voice is right now, 0 (quiet) … 3 (loud): the mini
+        /// orb swells with it. Sent at most about once a second, since iOS
+        /// limits how often an app may update the island.
+        var pulse: Int = 0
+        /// Counts up with each update, so the orb's ring of dots turns a
+        /// little every time and iOS animates the step.
+        var beat: Int = 0
 
         /// "Listening", "Thinking", "Speaking", or "Muted".
         var words: String {
