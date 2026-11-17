@@ -301,14 +301,47 @@ public struct Service: Decodable, Identifiable, Sendable {
 /// Background work Dylan sent Jarvis off to do.
 public struct Jobs: Decodable, Sendable {
     public let running: [RunningTask]
+    /// What Lookout is keeping an eye on.
+    public let lookout: Lookout?
+    /// How many messages Jarvis has sent today.
+    public let messenger: Messenger?
 
-    enum CodingKeys: String, CodingKey { case running }
+    enum CodingKeys: String, CodingKey { case running, lookout, messenger }
 
-    /// An older Jarvis has no `running` list; read that as none.
+    /// An older Jarvis has no `running` list; read that as none. Lookout and
+    /// Messenger are optional and skipped if they won't decode.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         running = try c.decodeIfPresent([RunningTask].self, forKey: .running) ?? []
+        lookout = try? c.decodeIfPresent(Lookout.self, forKey: .lookout)
+        messenger = try? c.decodeIfPresent(Messenger.self, forKey: .messenger)
     }
+}
+
+/// Lookout: what it checked last, what it's watching, what it held back.
+public struct Lookout: Decodable, Sendable {
+    public let checks: [String]
+    public let watching: [String]
+    /// How many things it decided not to bother Dylan with (the texts are
+    /// private and never shown on the TV).
+    public let heldBackCount: Int
+
+    enum CodingKeys: String, CodingKey { case checks, watching, heldBack }
+    private struct Held: Decodable {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        checks = (try? c.decodeIfPresent([String].self, forKey: .checks)) ?? []
+        watching = (try? c.decodeIfPresent([String].self, forKey: .watching)) ?? []
+        heldBackCount = ((try? c.decodeIfPresent([Held].self, forKey: .heldBack)) ?? []).count
+    }
+}
+
+/// Messenger: messages sent today against the daily cap, and quiet hours.
+public struct Messenger: Decodable, Sendable {
+    public let sentToday: Int
+    public let cap: Int?
+    public let quiet: String?
 }
 
 /// One piece of background work, until it finishes.

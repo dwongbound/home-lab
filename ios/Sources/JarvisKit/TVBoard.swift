@@ -205,7 +205,7 @@ public enum TodayTimeline {
 
 /// The rotating cards on the TV's right side.
 public enum TVCard: String, CaseIterable, Sendable {
-    case today, home, playing, forecast, jarvis, health, suggestions
+    case today, home, playing, forecast, jarvis, lookout, health, suggestions
 
     /// The card's title.
     public var title: String {
@@ -215,6 +215,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .playing: return "Now playing"
         case .forecast: return "Next hours"
         case .jarvis: return "Jarvis"
+        case .lookout: return "Lookout"
         case .health: return "You"
         case .suggestions: return "From Jarvis"
         }
@@ -228,6 +229,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .playing: return "play.circle.fill"
         case .forecast: return "cloud.sun.fill"
         case .jarvis: return "sparkles"
+        case .lookout: return "binoculars.fill"
         case .health: return "heart.fill"
         case .suggestions: return "lightbulb.fill"
         }
@@ -235,7 +237,9 @@ public enum TVCard: String, CaseIterable, Sendable {
 
     /// Private to Dylan: hidden in guest-friendly mode (sleep, steps and
     /// Jarvis's suggestions, which can quote personal things).
-    public var isPrivate: Bool { self == .health || self == .suggestions }
+    /// Lookout says what Jarvis is watching for Dylan and how often he's
+    /// messaged him: private too.
+    public var isPrivate: Bool { self == .health || self == .suggestions || self == .lookout }
 }
 
 public enum TVBoard {
@@ -252,6 +256,9 @@ public enum TVBoard {
         if !playing(snapshot.home).isEmpty { out.append(.playing) }
         if (snapshot.home?.forecast?.count ?? 0) >= 3 { out.append(.forecast) }
         if !(snapshot.jobs?.running.isEmpty ?? true) || !snapshot.services.isEmpty { out.append(.jarvis) }
+        if let lookout = snapshot.jobs?.lookout, !lookout.watching.isEmpty || (snapshot.jobs?.messenger?.sentToday ?? 0) > 0 || !lookout.checks.isEmpty {
+            out.append(.lookout)
+        }
         if snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.suggestions) }
         return guest ? out.filter { !$0.isPrivate } : out
@@ -327,5 +334,58 @@ public enum StatusChips {
             out.append(StatusChip(symbol: "checkmark.seal.fill", text: "All systems normal", tone: .calm))
         }
         return out
+    }
+}
+
+// MARK: Night
+
+/// The TV's calm bedroom layout (Dylan, 2026-11-17): from midnight until
+/// half an hour before sunrise, only the clock, the date, the moon and
+/// stars, the dimmed orb and one line if something's on before 10 AM. Any
+/// press on the remote brings the full board back for a minute.
+public enum NightCalm {
+    /// Minutes before sunrise the full board comes back.
+    public static let wakeLead: Double = 30
+    /// How long a remote press shows the full board.
+    public static let pressSeconds: Double = 60
+    /// Things starting before this hour get the small morning line.
+    public static let morningHour = 10
+
+    /// True when the calm layout should show.
+    public static func isCalm(now: Date, sunrise: Date, enabled: Bool, wokenUntil: Date?, calendar: Calendar = .current) -> Bool {
+        guard enabled else { return false }
+        if let wokenUntil, now < wokenUntil { return false }
+        let midnight = calendar.startOfDay(for: now)
+        // Today's sunrise, whatever day the snapshot's time is from.
+        let parts = calendar.dateComponents([.hour, .minute, .second], from: sunrise)
+        let rise = calendar.date(bySettingHour: parts.hour ?? 6, minute: parts.minute ?? 30, second: parts.second ?? 0, of: now) ?? midnight
+        return now >= midnight && now < rise.addingTimeInterval(-wakeLead * 60)
+    }
+
+    /// The small line for the calm layout: what's on before 10 AM today
+    /// ("Dentist at 9:00 AM"), or nil.
+    public static func morningLine(events: [CalendarEvent], agenda: [AgendaItem], now: Date, guest: Bool, calendar: Calendar = .current, timeZone: TimeZone = .current) -> String? {
+        let cutoff = calendar.date(bySettingHour: morningHour, minute: 0, second: 0, of: now) ?? now
+        var starts: [(String, Date)] = events.compactMap { e in
+            guard e.allDay != true, let start = AgendaTime.parse(e.start) else { return nil }
+            return (e.title, start)
+        }
+        starts += agenda.filter { !NowNext.isJarvisJob($0) && $0.allDay != true }.compactMap { item in AgendaTime.parse(item.at).map { (item.title, $0) } }
+        guard let first = starts.filter({ $0.1 > now && $0.1 < cutoff }).min(by: { $0.1 < $1.1 }) else { return nil }
+        _ = guest // titles are fine for guests; the place is never shown here
+        return "\(first.0) at \(NowNext.clock(first.1, timeZone: timeZone))"
+    }
+}
+
+// MARK: Lookout
+
+public enum LookoutCard {
+    /// "3 of 8 messages today", "No messages today".
+    public static func messagesLine(_ messenger: Messenger?) -> String? {
+        guard let messenger else { return nil }
+        if messenger.sentToday == 0 { return "No messages today" }
+        let noun = messenger.sentToday == 1 ? "message" : "messages"
+        if let cap = messenger.cap, cap > 0 { return "\(messenger.sentToday) of \(cap) \(noun) today" }
+        return "\(messenger.sentToday) \(noun) today"
     }
 }
