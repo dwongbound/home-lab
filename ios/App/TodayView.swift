@@ -25,6 +25,9 @@ final class TodayModel: ObservableObject {
         } catch {
             problem = error.localizedDescription
             app.noteReach(error)
+            #if DEBUG
+            if snapshot == nil, let demo = DemoSnapshot.snapshot { snapshot = demo }
+            #endif
         }
         loading = false
     }
@@ -49,6 +52,8 @@ final class TodayModel: ObservableObject {
 struct TodayView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject var today: TodayModel
+    /// True while the iPad's full-screen kiosk is up.
+    @State private var kiosk = false
 
     /// Status line over a scrolling column of cards. Refreshes every 15 s
     /// while showing, like the page.
@@ -70,6 +75,13 @@ struct TodayView: View {
             }
         }
         .fontDesign(.rounded)
+        #if DEBUG
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("-openKiosk") { kiosk = true } }
+        #endif
+        .fullScreenCover(isPresented: $kiosk) {
+            KioskView(today: today, chat: app.chat, talk: app.talk)
+                .environmentObject(app)
+        }
 
     }
 
@@ -130,10 +142,25 @@ struct TodayView: View {
     /// "Good evening" in large type, the date, and the weather with sunset.
     private func hero(_ snapshot: Snapshot) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
-                .font(.caption.weight(.semibold))
-                .tracking(1.2)
-                .foregroundStyle(Theme.glacier)
+            HStack {
+                Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
+                    .font(.caption.weight(.semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(Theme.glacier)
+                Spacer()
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    // The iPad's always-on room display.
+                    Button { kiosk = true } label: {
+                        Label("Kiosk", systemImage: "rectangle.expand.vertical")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 44)
+                            .glassPanel(radius: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open kiosk mode")
+                }
+            }
             Text(snapshot.offers?.greeting ?? TodayWording.greeting(for: .now))
                 .font(.system(size: 32, weight: .bold, design: .rounded))
                 .foregroundStyle(Theme.frost)
@@ -220,38 +247,10 @@ struct TodayView: View {
         return card("Home", icon: "house.fill", trailing: lights.isEmpty ? nil : "\(lit) of \(lights.count) lights on") {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
                 ForEach(devices) { device in
-                    deviceTile(device)
+                    DeviceTile(device: device)
                 }
             }
         }
-    }
-
-    /// One device: its symbol, name and state.
-    private func deviceTile(_ device: Device) -> some View {
-        let on = device.isOn
-        return HStack(spacing: 10) {
-            Image(systemName: TodayWording.deviceSymbol(device))
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(on ? Theme.ember : Theme.frostFaint)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(on ? Theme.ember.opacity(0.18) : Color.white.opacity(0.06)))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(device.name)
-                    .font(.footnote.weight(.semibold))
-                    .lineLimit(1)
-                Text(TodayWording.deviceState(device))
-                    .font(.caption)
-                    .foregroundStyle(Theme.frostDim)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(on ? Theme.ember.opacity(0.08) : Color.white.opacity(0.04))
-        )
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: Money
@@ -492,3 +491,65 @@ enum TodayWording {
         return device.state.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }
+
+/// One Home Assistant device as a small tile: its symbol, name and state,
+/// glowing amber when it's on. Shared by Today and the kiosk.
+struct DeviceTile: View {
+    let device: Device
+    /// Bigger type for the kiosk across the room.
+    var large = false
+
+    /// Symbol in a circle, then the name over the state.
+    var body: some View {
+        let on = device.isOn
+        HStack(spacing: large ? 14 : 10) {
+            Image(systemName: TodayWording.deviceSymbol(device))
+                .font(.system(size: large ? 22 : 17, weight: .semibold))
+                .foregroundStyle(on ? Theme.ember : Theme.frostFaint)
+                .frame(width: large ? 40 : 30, height: large ? 40 : 30)
+                .background(Circle().fill(on ? Theme.ember.opacity(0.18) : Color.white.opacity(0.06)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(device.name)
+                    .font(large ? .body.weight(.semibold) : .footnote.weight(.semibold))
+                    .lineLimit(1)
+                Text(TodayWording.deviceState(device))
+                    .font(large ? .subheadline : .caption)
+                    .foregroundStyle(Theme.frostDim)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(large ? 14 : 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(on ? Theme.ember.opacity(0.08) : Color.white.opacity(0.04))
+        )
+        .accessibilityElement(children: .combine)
+    }
+}
+
+#if DEBUG
+/// A sample snapshot for checking layouts in the simulator without the PC:
+/// debug builds launched with `-demoSnapshot` only.
+enum DemoSnapshot {
+    static var snapshot: Snapshot? {
+        guard ProcessInfo.processInfo.arguments.contains("-demoSnapshot") else { return nil }
+        let soon = ISO8601DateFormatter().string(from: Date().addingTimeInterval(25 * 60))
+        let later = ISO8601DateFormatter().string(from: Date().addingTimeInterval(3 * 3600))
+        let started = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-9 * 60))
+        let json = """
+        {"generatedAt":"x","services":[],
+         "today":[{"id":"1","at":"\(soon)","title":"Volleyball at the Y"},{"id":"2","at":"\(later)","title":"Study block: written test"}],
+         "offers":{"greeting":"Good evening, Dylan","offers":[]},
+         "home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"heat","current":68,"target":70},
+            {"id":"a","name":"Entrance","kind":"light","state":"on"},{"id":"b","name":"Hall","kind":"light","state":"off"},
+            {"id":"c","name":"Living Room TV","kind":"media","state":"playing"},{"id":"d","name":"Dylan asleep","kind":"switch","state":"off"}],
+          "weather":{"condition":"cloudy","temperature":58,"unit":"°F"},"sun":{"setting":"\(later)"}},
+         "jobs":{"running":[{"id":"j1","label":"Changing my code so reminders repeat","state":"running","startedAt":"\(started)"}]},
+         "cloud":{"health":{"yesterday":{"steps":9580},"sleep":{"asleep_min":422}},
+                  "money":{"netWorth":1}}}
+        """
+        return try? JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+    }
+}
+#endif
