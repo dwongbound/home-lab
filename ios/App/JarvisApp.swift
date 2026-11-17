@@ -5,6 +5,8 @@ import SwiftUI
 
 @main
 struct JarvisApp: App {
+    /// Keeps the iPhone's tabs portrait and lets the bedside kiosk turn sideways.
+    @UIApplicationDelegateAdaptor(OrientationLock.self) private var orientation
     @StateObject private var app = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -41,6 +43,8 @@ struct JarvisApp: App {
 /// The bar is drawn here, on glass, since a paging TabView has none.
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
+    /// The iPhone's bedside kiosk: up while sideways and charging.
+    @StateObject private var bedside = PhoneKioskMonitor()
 
     /// Each page draws its own status line instead of a big title
     /// (Dylan, 2026-11-16: no "Chat"/"Talk" headings).
@@ -63,6 +67,12 @@ struct RootView: View {
         .overlay(alignment: .bottom) {
             TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount)
         }
+        .fullScreenCover(isPresented: Binding(get: { bedside.showing }, set: { if !$0 { bedside.dismiss() } })) {
+            PhoneKioskView(today: app.today, talk: app.talk) { bedside.dismiss() }
+        }
+        .onAppear { bedside.start() }
+        // The Settings switch can turn it on or off at any time.
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in bedside.update() }
         .sheet(isPresented: $app.showSettings) {
             SettingsView()
         }

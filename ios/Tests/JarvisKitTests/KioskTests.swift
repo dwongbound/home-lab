@@ -34,3 +34,31 @@ final class KioskTests: XCTestCase {
         XCTAssertEqual(KioskPlan.showing([], turn: 3, count: 2), [])
     }
 }
+
+final class PhoneKioskTests: XCTestCase {
+    func testEntersOnlySidewaysAndCharging() {
+        XCTAssertTrue(PhoneKiosk.decide(enabled: true, orientation: .landscape, power: .charging, dismissed: false, showing: false).showing)
+        XCTAssertTrue(PhoneKiosk.decide(enabled: true, orientation: .landscape, power: .full, dismissed: false, showing: false).showing)
+        XCTAssertFalse(PhoneKiosk.decide(enabled: true, orientation: .landscape, power: .unplugged, dismissed: false, showing: false).showing)
+        XCTAssertFalse(PhoneKiosk.decide(enabled: true, orientation: .portrait, power: .charging, dismissed: false, showing: false).showing)
+        XCTAssertFalse(PhoneKiosk.decide(enabled: false, orientation: .landscape, power: .charging, dismissed: false, showing: false).showing)
+    }
+
+    func testLeavesWhenUprightOrUnplugged() {
+        XCTAssertFalse(PhoneKiosk.decide(enabled: true, orientation: .portrait, power: .charging, dismissed: false, showing: true).showing)
+        XCTAssertFalse(PhoneKiosk.decide(enabled: true, orientation: .landscape, power: .unplugged, dismissed: false, showing: true).showing)
+        // Laid flat on a table keeps it up.
+        XCTAssertTrue(PhoneKiosk.decide(enabled: true, orientation: .flat, power: .charging, dismissed: false, showing: true).showing)
+        XCTAssertFalse(PhoneKiosk.decide(enabled: true, orientation: .flat, power: .charging, dismissed: false, showing: false).showing)
+    }
+
+    func testCloseHoldsUntilNextRotateOrPlugIn() {
+        let closed = PhoneKiosk.decide(enabled: true, orientation: .landscape, power: .charging, dismissed: true, showing: false)
+        XCTAssertFalse(closed.showing)
+        XCTAssertTrue(closed.dismissed)
+        let upright = PhoneKiosk.decide(enabled: true, orientation: .portrait, power: .charging, dismissed: true, showing: false)
+        XCTAssertFalse(upright.dismissed)
+        let unplugged = PhoneKiosk.decide(enabled: true, orientation: .landscape, power: .unplugged, dismissed: true, showing: false)
+        XCTAssertFalse(unplugged.dismissed)
+    }
+}

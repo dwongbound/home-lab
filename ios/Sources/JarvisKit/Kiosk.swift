@@ -72,3 +72,26 @@ public enum KioskPlan {
         return (0..<n).map { panels[(turn * n + $0) % panels.count] }
     }
 }
+
+/// The iPhone's StandBy-style kiosk (Dylan, 2026-11-17: "a simple kiosk mode
+/// for iphone too, when it's horizontal + charging"): when it comes up by
+/// itself, and when it goes away.
+public enum PhoneKiosk {
+    /// Which way the phone is held. Flat (on a table) and unknown keep
+    /// whatever was showing.
+    public enum Orientation: Sendable { case portrait, landscape, flat, unknown }
+    /// Whether it's on power.
+    public enum Power: Sendable { case unplugged, charging, full, unknown }
+
+    /// The next state from the current one. Turning it upright or unplugging
+    /// it always leaves the kiosk and forgets a Close, so the next sideways
+    /// charge brings it back; Close keeps it away until then.
+    public static func decide(enabled: Bool, orientation: Orientation, power: Power, dismissed: Bool, showing: Bool) -> (showing: Bool, dismissed: Bool) {
+        if orientation == .portrait || power == .unplugged { return (false, false) }
+        guard enabled else { return (false, dismissed) }
+        if orientation == .landscape && (power == .charging || power == .full) {
+            return (!dismissed, dismissed)
+        }
+        return (showing && !dismissed, dismissed)
+    }
+}

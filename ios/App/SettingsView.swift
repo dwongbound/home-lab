@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var checking = false
+    @AppStorage(PhoneKioskMonitor.enabledKey) private var bedside = true
     @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
     @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
 
@@ -32,6 +33,14 @@ struct SettingsView: View {
                     Text("Jarvis")
                 } footer: {
                     Text("Reached through Tailscale. Tailscale signs you in, so there's no password. Turn on VPN On Demand in the Tailscale app so it reconnects by itself.")
+                }
+                if UIDevice.current.userInterfaceIdiom == .phone {
+                    Section {
+                        Toggle("Bedside display", isOn: $bedside)
+                            .frame(minHeight: 44)
+                    } footer: {
+                        Text("Turn the phone on its side while it's charging and Jarvis shows a big clock, the orb and what's next. Tap it for Close. Never shows money.")
+                    }
                 }
                 Section {
                     tuning("Dots (your voice)", value: $dotsRiseMs)
