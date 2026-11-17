@@ -49,12 +49,29 @@ export function settledAs(ok: boolean, later: boolean): ApprovalOutcome {
   return 'denied'
 }
 
-/** What a settled approval says: the answer, and who gave it if not this page. */
-export function outcomeText(a: { outcome?: ApprovalOutcome; by?: ApprovalBy }): string {
-  if (a.outcome === 'later') return 'Holding this for later. Say “go ahead” when you’re ready.'
-  if (a.by === 'timeout') return 'No answer in time, so he left it alone'
+/**
+ * A settled approval as one line in the conversation (Dylan, 2026-11-17: it
+ * goes up into the history as a line, not a card): "Approved: …", "Denied
+ * out loud: …", "Timed out: …", "Holding for later: …". The same words as
+ * the app's ApprovalWording.settledLine (keep them in step).
+ */
+export function settledLine(a: { outcome?: ApprovalOutcome; by?: ApprovalBy; summary: string }): string {
+  const what = readableSummary(a.summary)
+  if (a.outcome === 'later') return `Holding for later: ${what}`
+  if (a.by === 'timeout') return `Timed out: ${what}`
   const verb = a.outcome === 'approved' ? 'Approved' : 'Denied'
-  if (a.by === 'telegram') return `${verb} on Telegram`
-  if (a.by === 'voice') return `${verb} out loud`
-  return verb
+  if (a.by === 'telegram') return `${verb} on Telegram: ${what}`
+  if (a.by === 'voice') return `${verb} out loud: ${what}`
+  return `${verb}: ${what}`
+}
+
+/**
+ * How long until an approval's `expires` time, in ms (0 once it has passed).
+ * An unreadable or missing time gives null: it never times out here, and
+ * Jarvis's own timeout still settles it.
+ */
+export function msUntilExpiry(expires: string, now: number = Date.now()): number | null {
+  const at = Date.parse(expires)
+  if (Number.isNaN(at)) return null
+  return Math.max(0, at - now)
 }

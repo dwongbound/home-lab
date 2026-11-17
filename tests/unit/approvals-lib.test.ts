@@ -1,6 +1,6 @@
 // Approval tool names in words.
 import { describe, expect, it } from 'vitest'
-import { outcomeText, readableSummary, settledAs, toolLabel } from '../../src/lib/approvals'
+import { msUntilExpiry, readableSummary, settledAs, settledLine, toolLabel } from '../../src/lib/approvals'
 
 describe('toolLabel', () => {
   it('names each of Jarvis’s PC tools, and anything else plainly', () => {
@@ -22,11 +22,23 @@ describe('how a settled approval reads', () => {
     expect(settledAs(false, true)).toBe('later')
   })
 
-  it('says who answered, and that a held one waits for "go ahead"', () => {
-    expect(outcomeText({ outcome: 'approved', by: 'voice' })).toBe('Approved out loud')
-    expect(outcomeText({ outcome: 'denied', by: 'page' })).toBe('Denied')
-    expect(outcomeText({ outcome: 'later', by: 'voice' })).toBe('Holding this for later. Say “go ahead” when you’re ready.')
-    expect(outcomeText({ outcome: 'denied', by: 'timeout' })).toBe('No answer in time, so he left it alone')
+  it('writes a settled approval as one line: the answer, who gave it, and what it was', () => {
+    const summary = 'Restart Jarvis'
+    expect(settledLine({ outcome: 'approved', by: 'voice', summary })).toBe('Approved out loud: Restart Jarvis')
+    expect(settledLine({ outcome: 'approved', by: 'telegram', summary })).toBe('Approved on Telegram: Restart Jarvis')
+    expect(settledLine({ outcome: 'denied', by: 'page', summary })).toBe('Denied: Restart Jarvis')
+    expect(settledLine({ outcome: 'later', by: 'voice', summary })).toBe('Holding for later: Restart Jarvis')
+    expect(settledLine({ outcome: 'denied', by: 'timeout', summary })).toBe('Timed out: Restart Jarvis')
+    // A raw tool call is still cleaned up.
+    expect(settledLine({ outcome: 'approved', by: 'page', summary: 'Google Calendar delete_event (eventId=abc)' })).toBe('Approved: Google Calendar: delete event')
+  })
+
+  it('knows how long an approval has left, and never times out an unreadable time', () => {
+    const now = Date.parse('2026-11-17T12:00:00Z')
+    expect(msUntilExpiry('2026-11-17T12:00:30Z', now)).toBe(30_000)
+    expect(msUntilExpiry('2026-11-17T11:59:00Z', now)).toBe(0)
+    expect(msUntilExpiry('', now)).toBeNull()
+    expect(msUntilExpiry('soon', now)).toBeNull()
   })
 })
 

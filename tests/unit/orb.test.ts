@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ORB_POINTS, OrbMotion, orbDot, orbLinks, orbLook, orbPoints, type OrbInput } from '../../src/lib/orb'
+import { ORB_POINTS, ORB_WORK_DOTS, OrbMotion, orbDot, orbLinks, orbLook, orbPoints, orbWorkDots, type OrbInput } from '../../src/lib/orb'
 
 /** Steps a motion for `seconds` at 60 frames a second. */
 function run(motion: OrbMotion, input: OrbInput, seconds: number) {
@@ -120,5 +120,31 @@ describe('orb design D', () => {
     const before = motion.points()
     run(motion, waiting, 4)
     expect(moved(before, motion.points())).toBeGreaterThan(0.1)
+  })
+
+  it('eases to a stop while a work dot\'s note is open, and turns again after', () => {
+    const motion = new OrbMotion('thinking')
+    const thinking: OrbInput = { state: 'thinking', waiting: false, level: 0 }
+    run(motion, thinking, 2)
+    run(motion, { ...thinking, held: true }, 6)
+    const still = motion.points()
+    run(motion, { ...thinking, held: true }, 1)
+    expect(moved(still, motion.points())).toBeLessThan(0.01)
+    run(motion, thinking, 2)
+    expect(moved(still, motion.points())).toBeGreaterThan(0.1)
+    // Held while waiting for "Hey Jarvis", the orb can come to rest.
+    const waiting = new OrbMotion('idle')
+    run(waiting, { state: 'idle', waiting: true, level: 0, held: true }, 8)
+    expect(waiting.resting({ state: 'idle', waiting: true, level: 0, held: true })).toBe(true)
+  })
+
+  it('gives each of the first three jobs its own dot', () => {
+    expect(orbWorkDots([])).toEqual([])
+    expect(orbWorkDots(['a', 'b', 'c', 'd'])).toEqual([
+      { task: 'a', index: ORB_WORK_DOTS[0] },
+      { task: 'b', index: ORB_WORK_DOTS[1] },
+      { task: 'c', index: ORB_WORK_DOTS[2] },
+    ])
+    expect(Math.max(...ORB_WORK_DOTS)).toBeLessThan(ORB_POINTS)
   })
 })

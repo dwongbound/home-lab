@@ -582,7 +582,9 @@ test('before Jarvis runs a command the chat asks, and Approve or Deny decides it
   const approve = card.getByRole('button', { name: 'Approve' })
   expect((await approve.boundingBox())!.height).toBeGreaterThanOrEqual(44)
   await approve.click()
-  await expect(card.getByText('Approved', { exact: true })).toBeVisible()
+  // Settled, it shrinks to one line in the history.
+  await expect(chat.getByText(/^Approved: /).last()).toBeVisible()
+  await expect(card).toBeHidden()
   await expect(chat.getByText('Sample data: done. Jarvis restarted.').last()).toBeVisible({ timeout: 10_000 })
 
   // Deny leaves it alone.
@@ -592,7 +594,7 @@ test('before Jarvis runs a command the chat asks, and Approve or Deny decides it
   const edit = chat.getByRole('group', { name: 'Jarvis asks: Edit a file' }).last()
   await expect(edit).toBeVisible({ timeout: 10_000 })
   await edit.getByRole('button', { name: 'Deny' }).click()
-  await expect(edit.getByText('Denied', { exact: true })).toBeVisible()
+  await expect(chat.getByText(/^Denied: /).last()).toBeVisible()
   await expect(chat.getByText('Sample data: okay, I left it alone.').last()).toBeVisible({ timeout: 10_000 })
 
   // Changing himself: one plain question, and the answer shows in the card.
@@ -603,7 +605,7 @@ test('before Jarvis runs a command the chat asks, and Approve or Deny decides it
   await expect(change).toBeVisible({ timeout: 10_000 })
   await expect(change.getByText('Is it OK if I change my code so drive times mention parking?')).toBeVisible()
   await change.getByRole('button', { name: 'Approve' }).click()
-  await expect(change.getByText('Approved', { exact: true })).toBeVisible()
+  await expect(chat.getByText('Approved: Is it OK if I change my code so drive times mention parking?').last()).toBeVisible()
   await expect(chat.getByText(/Starting that now/).last()).toBeVisible({ timeout: 10_000 })
   // Everything fits inside the sheet, Talk included, even on a narrow phone.
   const sheet = (await chat.boundingBox())!
@@ -826,6 +828,21 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   expect(tasksBox.x).toBeGreaterThanOrEqual(orbBox.x + orbBox.width)
   expect(tasksBox.x + tasksBox.width).toBeLessThanOrEqual(viewport.width)
   expect(Math.abs(orbBox.x + orbBox.width / 2 - viewport.width / 2)).toBeLessThan(2)
+  // Each job also lights a dark amber dot on the orb. Tapping it (it rides on a turning dot, hence
+  // force) opens a note with what the work is and how long it has run; Close shuts it.
+  const workDot = chat.getByRole('button', { name: 'Jarvis is working: Making drive times mention parking' })
+  expect((await workDot.boundingBox())!.width).toBeGreaterThanOrEqual(44)
+  await workDot.click({ force: true })
+  const note = chat.locator('.orb__note')
+  await expect(note).toContainText('Making drive times mention parking')
+  await expect(note).toContainText(/Running for \d+ min|Just started/)
+  const noteBox = (await note.boundingBox())!
+  expect(noteBox.x).toBeGreaterThanOrEqual(0)
+  expect(noteBox.x + noteBox.width).toBeLessThanOrEqual(viewport.width)
+  const closeNote = note.getByRole('button', { name: 'Close' })
+  expect((await closeNote.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await closeNote.click()
+  await expect(note).toHaveCount(0)
   // Words fade out under the orb instead of a hard edge.
   const mask = await chat.locator('.chat__turns').evaluate((el) => getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage)
   expect(mask).toContain('linear-gradient')
