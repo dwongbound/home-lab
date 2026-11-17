@@ -33,6 +33,10 @@ public enum TalkEvent: Equatable, Sendable {
     case done
     /// Dylan talked over him: drop the rest of his voice.
     case stop
+    /// He said goodbye (Dylan said "talk to you later"): his goodbye has
+    /// played and he's hanging up for good, not dozing. Even "Hey Jarvis"
+    /// won't wake him; only a tap on Talk starts a new call.
+    case bye
     case approval(Approval)
     case approvalDone(id: String, ok: Bool, by: String, later: Bool)
 
@@ -72,6 +76,8 @@ public enum TalkEvent: Equatable, Sendable {
             return .done
         case "stop":
             return .stop
+        case "bye":
+            return .bye
         case "approval":
             // On the talk line the approval's fields sit on the event itself.
             guard let id = object["id"] as? String, let summary = object["summary"] as? String else { return nil }

@@ -51,6 +51,8 @@ final class TalkModel: ObservableObject {
     /// above the current one (Dylan, 2026-11-17: the left/right chat look).
     @Published private(set) var turns: [TalkTurn] = []
     @Published var problem: String?
+    /// A quiet line under the orb ("Goodbye. Tap Talk…"), not an error.
+    @Published private(set) var notice: String?
     /// True once Talk has been started from this tab, so it only auto-starts once.
     private(set) var started = false
     private var line: TalkLine?
@@ -60,6 +62,7 @@ final class TalkModel: ObservableObject {
         guard phase == .off else { return }
         started = true
         problem = nil
+        notice = nil
         phase = .connecting
         let handlers = TalkHandlers(
             onEvent: { [weak self] event in self?.apply(event, app: app) },
@@ -193,6 +196,14 @@ final class TalkModel: ObservableObject {
             Task { await app.chat.load(app: app) }
         case .stop:
             break
+        case .bye:
+            // Goodbye: the call is over until Dylan taps Talk.
+            line = nil
+            phase = .off
+            level = 0
+            working = nil
+            problem = nil
+            notice = "Goodbye. Tap Talk when you want him again."
         case .approval(let approval):
             if !approvals.contains(where: { $0.approval.id == approval.id }) {
                 approvals.append((approval, nil, exchange))
@@ -336,6 +347,12 @@ struct TalkView: View {
                         Text(problem)
                             .font(.footnote)
                             .foregroundStyle(Theme.rose)
+                            .multilineTextAlignment(.center)
+                    }
+                    if let notice = talk.notice {
+                        Text(notice)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.frostDim)
                             .multilineTextAlignment(.center)
                     }
                     Color.clear
