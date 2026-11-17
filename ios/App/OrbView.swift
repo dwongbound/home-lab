@@ -11,6 +11,7 @@
 // shell swells calmly as one (a doubly smoothed envelope, with a dead zone
 // for room noise); while Jarvis talks only the core swells and brightens.
 import SwiftUI
+import JarvisKit
 
 struct OrbView: View {
     enum Mood {
@@ -23,6 +24,17 @@ struct OrbView: View {
     var level: Double = 0
     /// How bright that voice sounds (0..1); kept for callers, not drawn.
     var tone: Double = 0
+    /// Background work Jarvis is doing: each lights one dot dark amber
+    /// (at most 3). Tapping a lit dot pauses the turning and says what it
+    /// is (Dylan, 2026-11-17).
+    var work: [RunningTask] = []
+    /// False on the TV, where there's nothing to tap.
+    var tappable = true
+    /// How bright the orb itself is drawn (paused or off: dimmer); a work
+    /// callout stays fully opaque.
+    var dim: Double = 1
+    /// The work whose callout is open, if any.
+    @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Everything that moves, carried from frame to frame.
     @State private var animator = OrbAnimator()
@@ -35,17 +47,81 @@ struct OrbView: View {
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            Canvas { canvas, area in
-                animator.step(to: OrbLook.of(state), speaking: state == .speaking, level: reduceMotion ? 0 : level, dotsRiseMs: dotsRiseMs, coreRiseMs: coreRiseMs, at: t)
-                draw(in: &canvas, area: area)
+            ZStack {
+                Canvas { canvas, area in
+                    animator.held = opened != nil
+                    animator.step(to: OrbLook.of(state), speaking: state == .speaking, level: reduceMotion ? 0 : level, dotsRiseMs: dotsRiseMs, coreRiseMs: coreRiseMs, at: t)
+                    draw(in: &canvas, area: area, t: t)
+                }
+                .opacity(dim)
+                .accessibilityHidden(true)
+                if tappable {
+                    workTargets
+                }
             }
         }
         .frame(width: size, height: size)
-        .accessibilityHidden(true)
+        .overlay {
+            if let entry = lit.first(where: { $0.task.id == opened }) {
+                // The orb holds still while this is open, so the card can sit
+                // just under its dot.
+                WorkCallout(task: entry.task) { close() }
+                    .position(x: size / 2, y: animator.screen(entry.index).y + 44)
+                    .frame(width: size, height: size)
+                    .background {
+                        // Tapping anywhere else closes it.
+                        Color.clear
+                            .frame(width: 3000, height: 3000)
+                            .contentShape(Rectangle())
+                            .onTapGesture { close() }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+            }
+        }
+        .animation(.smooth(duration: 0.3), value: opened)
+        #if DEBUG
+        // Screenshot check: `-openWork` opens the first work callout.
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("-openWork"), tappable { opened = work.first?.id }
+        }
+        #endif
+        // A finished job closes its callout and lets the orb turn again.
+        .onChange(of: work.map(\.id)) { _, ids in
+            if let opened, !ids.contains(opened) { close() }
+        }
     }
 
-    /// Back lines and points, the glass core, then front lines and points.
-    private func draw(in canvas: inout GraphicsContext, area: CGSize) {
+    /// The lit dots: up to three jobs, each on a fixed dot spread round the
+    /// shell, so a job keeps its dot while it runs.
+    private var lit: [(task: RunningTask, index: Int)] {
+        let spots = [7, 29, 48]
+        return Array(work.prefix(3)).enumerated().map { ($0.element, spots[$0.offset]) }
+    }
+
+    /// One 44 pt tap target over each lit dot, following it as it turns.
+    private var workTargets: some View {
+        ForEach(lit, id: \.task.id) { entry in
+            let spot = animator.screen(entry.index)
+            Button {
+                opened = opened == entry.task.id ? nil : entry.task.id
+            } label: {
+                Color.clear.frame(width: 44, height: 44).contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .position(spot)
+            .accessibilityLabel("Jarvis is working: \(entry.task.label)")
+            .accessibilityHint("Shows what he's doing")
+        }
+    }
+
+    /// Closes the callout; the orb eases back into turning.
+    private func close() {
+        opened = nil
+    }
+
+    /// Back lines and points, the glass core, then front lines and points,
+    /// with the work dots lit amber among them.
+    private func draw(in canvas: inout GraphicsContext, area: CGSize, t: Double) {
         let a = animator
         let look = a.look
         let side = min(area.width, area.height)
@@ -56,16 +132,38 @@ struct OrbView: View {
         let points = a.orient(Self.base)
         let color = look.color.color
         let shellGlow = a.shellVoice
+        a.remember(points: points, center: center, radius: radius)
+        let litDots = Set(lit.map(\.index))
 
         lines(points, back: true, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow, alpha: look.lineAlpha)
-        for point in points where point.z < 0 {
-            dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow)
+        for (i, point) in points.enumerated() where point.z < 0 {
+            if litDots.contains(i) { workDot(point, in: &canvas, center: center, radius: radius, t: t, open: lit.first { $0.index == i }?.task.id == opened) }
+            else { dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow) }
         }
         core(in: &canvas, center: center, radius: side * 0.2 * look.coreScale * (1 + a.coreVoice * 0.2), glow: look.glow.color, voice: min(1, look.coreBright + a.coreVoice))
         lines(points, back: false, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow, alpha: look.lineAlpha)
-        for point in points where point.z >= 0 {
-            dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow)
+        for (i, point) in points.enumerated() where point.z >= 0 {
+            if litDots.contains(i) { workDot(point, in: &canvas, center: center, radius: radius, t: t, open: lit.first { $0.index == i }?.task.id == opened) }
+            else { dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow) }
         }
+    }
+
+    /// The dark amber of a work dot (#E0A020).
+    static let workAmber = Color(red: 0xE0 / 255, green: 0xA0 / 255, blue: 0x20 / 255)
+
+    /// A lit work dot: bigger, dark amber, with a soft halo that breathes;
+    /// brighter while its callout is open.
+    private func workDot(_ p: (x: Double, y: Double, z: Double), in canvas: inout GraphicsContext, center: CGPoint, radius: Double, t: Double, open: Bool) {
+        let near = (p.z + 1) / 2
+        let pulse = reduceMotion ? 0.5 : 0.5 + 0.5 * sin(t * 2.2)
+        let at = CGPoint(x: center.x + p.x * radius, y: center.y + p.y * radius)
+        let core = (7 + near * 4) * (open ? 1.3 : 1)
+        let halo = core * (3.2 + pulse * 1.4)
+        canvas.fill(Path(ellipseIn: CGRect(x: at.x - halo / 2, y: at.y - halo / 2, width: halo, height: halo)), with: .radialGradient(
+            Gradient(colors: [Self.workAmber.opacity(0.75 * (0.6 + near * 0.4)), Self.workAmber.opacity(0)]),
+            center: at, startRadius: 0, endRadius: halo / 2
+        ))
+        canvas.fill(Path(ellipseIn: CGRect(x: at.x - core / 2, y: at.y - core / 2, width: core, height: core)), with: .color(Self.workAmber.opacity(0.85 + near * 0.15)))
     }
 
     /// Faint lines from each point to its nearest neighbours: the ones
@@ -236,6 +334,26 @@ final class OrbAnimator {
     /// doesn't start turning in the gaps between words.
     private var hearing: Double = 0
     private var clock: Double = 0
+    /// True while a work dot's callout is open: the turning eases to a stop.
+    var held = false
+    /// Where the dots were last drawn, so tap targets can follow them.
+    private var lastPoints: [(x: Double, y: Double, z: Double)] = []
+    private var lastCenter = CGPoint.zero
+    private var lastRadius: Double = 0
+
+    /// Notes where this frame drew the dots.
+    func remember(points: [(x: Double, y: Double, z: Double)], center: CGPoint, radius: Double) {
+        lastPoints = points
+        lastCenter = center
+        lastRadius = radius
+    }
+
+    /// Where dot `index` sits on screen, as last drawn.
+    func screen(_ index: Int) -> CGPoint {
+        guard index < lastPoints.count else { return lastCenter }
+        let p = lastPoints[index]
+        return CGPoint(x: lastCenter.x + p.x * lastRadius, y: lastCenter.y + p.y * lastRadius)
+    }
     private(set) var breathPhase: Double = 0
     /// How much the voice belongs to Jarvis (1) rather than Dylan (0), eased.
     private var speakingMix: Double = 0
@@ -312,7 +430,10 @@ extension OrbAnimator {
         hearing += (audible - hearing) * (1 - exp(-dt / (audible > hearing ? 0.08 : 1.2)))
 
         let target: (Double, Double, Double)
-        if speaking || look.speed > 0.45 {
+        if held {
+            // A work callout is open: hold still so the dot stays put.
+            target = (0, 0, 0)
+        } else if speaking || look.speed > 0.45 {
             // Thinking, working or speaking: the vertical spin.
             target = (0, look.speed, 0)
         } else {
@@ -363,5 +484,42 @@ extension OrbAnimator {
         let b = norm([m[1][0] - dot * a[0], m[1][1] - dot * a[1], m[1][2] - dot * a[2]])
         let c = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
         return [a, b, c]
+    }
+}
+
+/// The little card a lit work dot opens: what Jarvis is doing and for how
+/// long, with Close. Tapping the dot again closes it too.
+struct WorkCallout: View {
+    let task: RunningTask
+    let onClose: () -> Void
+
+    /// The label, how long, and Close, on amber-tinted glass.
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle().fill(OrbView.workAmber).frame(width: 10, height: 10).padding(.top, 5)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(task.label)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.frost)
+                    .fixedSize(horizontal: false, vertical: true)
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    Text(task.runningWords(now: context.date))
+                        .font(.caption)
+                        .foregroundStyle(Theme.frostDim)
+                }
+            }
+            Button("Close", action: onClose)
+                .font(.footnote.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44)
+                .tint(Theme.glacier)
+        }
+        .padding(.leading, 12)
+        .padding(.vertical, 4)
+        .frame(maxWidth: 300)
+        // Solid, so the words under it don't show through.
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(red: 0.13, green: 0.16, blue: 0.21)))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(OrbView.workAmber.opacity(0.55), lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

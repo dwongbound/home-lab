@@ -62,7 +62,7 @@ struct AlwaysOnView: View {
     /// The orb, the time and the date, and the connection line.
     private var left: some View {
         VStack(spacing: 28) {
-            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 420)
+            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 420, work: model.snapshot?.jobs?.running ?? [], tappable: false)
             TimelineView(.everyMinute) { context in
                 VStack(spacing: 6) {
                     Text(context.date, format: .dateTime.hour().minute())

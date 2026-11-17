@@ -276,8 +276,9 @@ struct TalkView: View {
                     VStack(spacing: 14) {
                         // The orb stays put; it shrinks a little once
                         // there's a conversation to make room for it.
-                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone))
-                            .opacity(talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1)
+                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone), work: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1)
+                            // Above the words below it, so a work callout isn't covered.
+                            .zIndex(1)
                             .padding(.top, hasWords ? 8 : 24)
                             .animation(.smooth(duration: 0.5), value: hasWords)
                         Text(statusWords)
@@ -523,5 +524,22 @@ struct TalkView: View {
         if talk.working != nil { return Theme.ember }
         if talk.muted && isOpen { return Theme.rose }
         return Theme.frostDim
+    }
+}
+
+/// Sample background work for checking the orb's lit dots without a PC:
+/// debug builds launched with `-demoWork` only; empty otherwise.
+enum DemoWork {
+    static var jobs: [RunningTask] {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoWork") {
+            let started = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-7 * 60))
+            return [
+                RunningTask(id: "demo-1", label: "Changing my code so reminders repeat", state: "running", startedAt: started),
+                RunningTask(id: "demo-2", label: "Looking up tonight's volleyball time", state: "running", startedAt: started),
+            ]
+        }
+        #endif
+        return []
     }
 }

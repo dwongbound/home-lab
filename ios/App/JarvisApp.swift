@@ -66,6 +66,14 @@ struct RootView: View {
         .sheet(isPresented: $app.showSettings) {
             SettingsView()
         }
+        // The snapshot (Today, and the orb's work dots on Talk) refreshes
+        // every 15 s, whichever page is showing, like the home page.
+        .task {
+            while !Task.isCancelled {
+                await app.today.load(app: app)
+                try? await Task.sleep(for: .seconds(15))
+            }
+        }
         // The app opens on Talk, so the call starts with the app; onChange
         // below only sees later switches.
         .task {
@@ -144,7 +152,9 @@ struct TabBar: View {
         HStack(spacing: 4) {
             item(.chat, "Chat", "bubble.left.fill", badge: chatBadge)
             item(.talk, "Talk", "waveform", badge: 0)
-            item(.today, "Today", "square.grid.2x2.fill", badge: 0)
+            // On iPad it's the home screen of the house, so it's "Home"
+            // (Dylan, 2026-11-17); the phone keeps "Today".
+            item(.today, UIDevice.current.userInterfaceIdiom == .pad ? "Home" : "Today", "square.grid.2x2.fill", badge: 0)
         }
         .padding(5)
         .glassPanel(radius: 32)
