@@ -249,7 +249,8 @@ final class OrbAnimator {
         let input = gated * gated * (3 - 2 * gated)
         // Two cascaded one-pole filters: ~170 ms to rise, ~560 ms to fall
         // (Dylan, 2026-11-17: "a little less smooth" than 250/800).
-        let tau = input > envelope ? 0.085 : 0.28
+        // Jarvis's core: ~150 ms up / ~490 ms down (a touch quicker, 2026-11-17).
+        let tau = input > envelope ? 0.075 : 0.245
         let k = 1 - exp(-dt / tau)
         stage1 += (input - stage1) * k
         envelope += (stage1 - envelope) * k
