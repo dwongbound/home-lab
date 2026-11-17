@@ -48,3 +48,17 @@ const USD_CENTS = new Intl.NumberFormat('en-US', { style: 'currency', currency: 
 export function dollars(n: number, cents = false): string {
   return (cents ? USD_CENTS : USD).format(n)
 }
+
+/**
+ * How long a background job has been going: "Queued", "Just started",
+ * "Running for 4 min", "Running for 1 h 5 min" (the app's runningWords).
+ */
+export function runningWords(task: { state: 'running' | 'queued'; startedAt: string | null }, now: number = Date.now()): string {
+  if (task.state === 'queued') return 'Queued'
+  const start = task.startedAt === null ? NaN : Date.parse(task.startedAt)
+  if (Number.isNaN(start)) return 'Running'
+  const minutes = Math.floor((now - start) / 60000)
+  if (minutes < 1) return 'Just started'
+  if (minutes < 60) return `Running for ${minutes} min`
+  return `Running for ${Math.floor(minutes / 60)} h ${minutes % 60} min`
+}

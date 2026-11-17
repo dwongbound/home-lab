@@ -8,7 +8,7 @@ import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, Runn
 import { OfferCards } from './OfferCards'
 import { BackgroundTasks } from './BackgroundTasks'
 import { canTalkUnprompted, openTalkLine, talkUrl, type TalkLine } from '../lib/talk'
-import { outcomeText, readableSummary, settledAs, toolLabel } from '../lib/approvals'
+import { msUntilExpiry, readableSummary, settledAs, settledLine, toolLabel } from '../lib/approvals'
 import { JarvisOrb, type OrbHandle, type OrbState } from './JarvisOrb'
 import { useScrollLock } from '../useScrollLock'
 import { Spinner } from './Spinner'
@@ -245,6 +245,31 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
     if (result.ok) settleApproval(id, ok, 'page')
     else updateApproval(id, (a) => ({ ...a, sending: false, error: result.message }))
   }
+
+  // An approval nobody answers in time closes by itself (Dylan, 2026-11-17):
+  // when the soonest `expires` passes, that card collapses to "Timed out: …".
+  // Jarvis's own approval_done still wins if it arrives first.
+  useEffect(() => {
+    let soonest: { id: string; left: number } | null = null
+    for (const turn of turns) {
+      for (const a of turn.approvals ?? []) {
+        if (a.outcome) continue
+        const left = msUntilExpiry(a.expires)
+        if (left === null) continue
+        if (soonest === null || left < soonest.left) soonest = { id: a.id, left }
+      }
+    }
+    if (soonest === null) return
+    const { id, left } = soonest
+    const timer = setTimeout(() => {
+      updateApproval(id, (a) => {
+        if (a.outcome) return a
+        return { ...a, outcome: 'denied', by: 'timeout', sending: false, error: undefined }
+      })
+    // A few seconds' grace, so a clock that runs a little ahead of the PC's doesn't close it early.
+    }, left + 3000)
+    return () => clearTimeout(timer)
+  }, [turns])
 
   /**
    * Jarvis started a slow lookup (label) or finished it (null): the orb
@@ -775,7 +800,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
         </button>
       )}
       <header className="chat__head">
-        <JarvisOrb ref={orbRef} state={state} size={page ? TALK_PAGE_ORB : 64} waiting={talking && dozing} />
+        <JarvisOrb ref={orbRef} state={state} size={page ? TALK_PAGE_ORB : 64} waiting={talking && dozing} work={tasks} />
         {/* No "Jarvis" title over the orb (Dylan, 2026-11-16): the orb is the name. */}
         {page ? <BackgroundTasks tasks={tasks} /> : null}
         {/* /talk shows only the orb (Dylan, 2026-11-11, 2026-11-16); the status stays for
@@ -875,22 +900,23 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
 /**
  * Jarvis asking before he writes a file or runs a command on the PC: what
  * he wants to do, exactly, with Approve and Deny. In Talk, saying yes or no
- * answers it too. Once settled it shrinks to the answer.
+ * answers it too. Once answered, or when nobody answers in time, the card
+ * shrinks to one line of the history ("Approved: …", "Timed out: …") and
+ * scrolls up with the rest (Dylan, 2026-11-17).
  */
 function ApprovalCard({ approval: a, talking, onAnswer }: { approval: ApprovalView; talking: boolean; onAnswer: (id: string, ok: boolean) => void }) {
+  if (a.outcome) {
+    return <p className="approval-line" data-outcome={a.outcome} data-by={a.by}>{settledLine(a)}</p>
+  }
   return (
-    <div className="approval" role="group" aria-label={`Jarvis asks: ${toolLabel(a.tool)}`} data-outcome={a.outcome}>
+    <div className="approval" role="group" aria-label={`Jarvis asks: ${toolLabel(a.tool)}`}>
       <p className="approval__tool">{toolLabel(a.tool)}</p>
       <p className="approval__summary">{readableSummary(a.summary)}</p>
-      {a.outcome ? (
-        <p className="approval__outcome">{outcomeText(a)}</p>
-      ) : (
-        <div className="approval__actions">
-          <button type="button" className="btn" disabled={a.sending} onClick={() => onAnswer(a.id, false)}>Deny</button>
-          <button type="button" className="btn btn--primary" disabled={a.sending} onClick={() => onAnswer(a.id, true)}>Approve</button>
-          {talking ? <span className="approval__hint">or say yes, no or wait</span> : null}
-        </div>
-      )}
+      <div className="approval__actions">
+        <button type="button" className="btn" disabled={a.sending} onClick={() => onAnswer(a.id, false)}>Deny</button>
+        <button type="button" className="btn btn--primary" disabled={a.sending} onClick={() => onAnswer(a.id, true)}>Approve</button>
+        {talking ? <span className="approval__hint">or say yes, no or wait</span> : null}
+      </div>
       {a.error ? <p className="approval__error" role="alert">{a.error}</p> : null}
     </div>
   )

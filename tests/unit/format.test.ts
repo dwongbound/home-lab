@@ -1,6 +1,6 @@
 // Text helpers: greeting, uptime, "x ago", share.
 import { describe, expect, it } from 'vitest'
-import { ago, greeting, share, uptime } from '../../src/lib/format'
+import { ago, greeting, runningWords, share, uptime } from '../../src/lib/format'
 
 /** A Date at the given local hour today. */
 function atHour(h: number): Date {
@@ -45,5 +45,19 @@ describe('share', () => {
     expect(share(20, 16)).toBe(1)
     expect(share(null, 16)).toBeNull()
     expect(share(4, 0)).toBeNull()
+  })
+})
+
+describe('runningWords', () => {
+  const now = Date.parse('2026-11-17T12:00:00Z')
+  it('says how long a job has been going', () => {
+    expect(runningWords({ state: 'queued', startedAt: null }, now)).toBe('Queued')
+    expect(runningWords({ state: 'running', startedAt: '2026-11-17T11:59:40Z' }, now)).toBe('Just started')
+    expect(runningWords({ state: 'running', startedAt: '2026-11-17T11:53:00Z' }, now)).toBe('Running for 7 min')
+    expect(runningWords({ state: 'running', startedAt: '2026-11-17T10:55:00Z' }, now)).toBe('Running for 1 h 5 min')
+  })
+  it('just says Running when the start time is missing or unreadable', () => {
+    expect(runningWords({ state: 'running', startedAt: null }, now)).toBe('Running')
+    expect(runningWords({ state: 'running', startedAt: 'earlier' }, now)).toBe('Running')
   })
 })

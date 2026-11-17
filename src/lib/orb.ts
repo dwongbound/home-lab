@@ -90,6 +90,19 @@ export interface OrbInput {
   waiting: boolean
   /** How loud the voice that matters is right now, 0..1. */
   level: number
+  /** A work dot's note is open: the turning eases to a stop so the dot stays put. */
+  held?: boolean
+}
+
+/** The dots that light up for background work, spread round the shell (the app's `spots`): one per job, up to three. */
+export const ORB_WORK_DOTS = [7, 29, 48]
+
+/** The dark amber of a lit work dot (#E0A020), as r, g, b. */
+export const ORB_WORK_AMBER: [number, number, number] = [224, 160, 32]
+
+/** Which dot each job lights: the first three jobs, each on its own fixed dot, so a job keeps its dot while it runs. */
+export function orbWorkDots<T>(work: T[]): { task: T; index: number }[] {
+  return work.slice(0, ORB_WORK_DOTS.length).map((task, i) => ({ task, index: ORB_WORK_DOTS[i] }))
 }
 
 /** How far the shell swells with your voice, as a share of its reach. */
@@ -218,7 +231,7 @@ export class OrbMotion {
    * nothing loops forever inside the glass.
    */
   resting(input: OrbInput): boolean {
-    if (input.state !== 'idle' || input.waiting) return false
+    if (input.state !== 'idle' || (input.waiting && !input.held)) return false
     if (Math.hypot(...this.spin) > 0.004) return false
     if (this.shellEnvelope > 0.004 || this.coreEnvelope > 0.004) return false
     const look = orbLook('idle')
@@ -234,7 +247,10 @@ export class OrbMotion {
     this.hearing = mix(this.hearing, audible, glide(dt, audible > this.hearing ? 0.08 : 1.2))
 
     let target: [number, number, number] = [0, 0, 0]
-    if (upright) {
+    if (input.held) {
+      // A work dot's note is open: hold still so the dot stays under it.
+      target = [0, 0, 0]
+    } else if (upright) {
       target = [0, speed, 0]
     } else if (input.state === 'listening' || input.waiting) {
       // The idle tumble: an axis drifting smoothly over the sphere.
