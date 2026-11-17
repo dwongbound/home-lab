@@ -13,5 +13,7 @@ playwright-report/
 ios/Jarvis.xcodeproj/
 ios/build/
 ios/App/Info.plist
+ios/Watch/Info.plist
+ios/TV/Info.plist
 ios/.build/
 ios/.swiftpm/

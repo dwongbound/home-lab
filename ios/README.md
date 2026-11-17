@@ -24,7 +24,19 @@ Review) or straight from Xcode. It never goes to the App Store.
 - **Settings:** the server address and a connection check.
 - The orb (design D: a glass core in a 3D constellation) and the app icon.
 
-Next: push notifications, Siri and widgets, the always-on view.
+## Apple Watch and Apple TV (started 2026-11-16)
+
+- **Watch** (`Watch/`, target `JarvisWatch`, ships inside the iPhone app):
+  tap Ask and dictate, see his answer with the model chip, Approve/Deny
+  what's waiting. Tailscale doesn't run on watchOS, so every request goes
+  through the iPhone app over WatchConnectivity (`App/WatchBridge.swift`,
+  messages in `JarvisKit/WatchRelay.swift`). The phone must be nearby; the
+  app needn't be open.
+- **Apple TV** (`TV/`, target `JarvisTV`): the always-on display. Big orb,
+  clock, greeting, agenda, home, background work; refreshes every 15 s and
+  keeps the TV awake. Needs Tailscale's Apple TV app signed in.
+
+Next: push notifications, Siri and widgets, the iPad always-on view, a TV icon.
 
 ## Layout
 
