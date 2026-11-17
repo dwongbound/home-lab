@@ -21,7 +21,7 @@ struct OrbView: View {
     var size: CGFloat
     /// How loud the voice that matters is (0..1).
     var level: Double = 0
-    /// How bright (high) that voice sounds (0..1): a rising inflection swells the shell a little more.
+    /// How bright that voice sounds (0..1); kept for callers, not drawn.
     var tone: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Everything that moves, carried from frame to frame.
@@ -47,8 +47,8 @@ struct OrbView: View {
         let side = min(area.width, area.height)
         let center = CGPoint(x: area.width / 2, y: area.height / 2)
         let breath = 1 + look.breathe * sin(a.breathPhase)
-        // Up to ~21% from his voice, plus up to ~5% more on a rising inflection.
-        let radius = side * look.radius * breath * (1 + a.shellVoice * 0.21 + a.shellVoice * a.shellTone * 0.05)
+        // Up to ~11% from his voice.
+        let radius = side * look.radius * breath * (1 + a.shellVoice * 0.11)
         let points = Self.sphere(count: Self.count, angle: a.angle)
         let color = look.color.color
         let shellGlow = a.shellVoice
@@ -57,7 +57,7 @@ struct OrbView: View {
         for point in points where point.z < 0 {
             dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow)
         }
-        core(in: &canvas, center: center, radius: side * 0.2 * look.coreScale * (1 + a.coreVoice * 0.25), glow: look.glow.color, voice: min(1, look.coreBright + a.coreVoice * 1.15))
+        core(in: &canvas, center: center, radius: side * 0.2 * look.coreScale * (1 + a.coreVoice * 0.2), glow: look.glow.color, voice: min(1, look.coreBright + a.coreVoice))
         lines(points, back: false, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow, alpha: look.lineAlpha)
         for point in points where point.z >= 0 {
             dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow)
@@ -223,14 +223,10 @@ final class OrbAnimator {
     private var speakingMix: Double = 0
     private var stage1: Double = 0
     private var envelope: Double = 0
-    /// Dylan's own envelope for the shell: same timing as the core, but a
-    /// lower noise floor and a steeper curve, so emphasised syllables swell
-    /// clearly more than quiet ones (Dylan, 2026-11-17: "move more with my
-    /// inflections", not faster).
+    /// Dylan's own envelope for the shell: lighter smoothing than the core's
+    /// so it visibly follows his syllables, within the same ~11% swell.
     private var shellStage1: Double = 0
     private var shellEnvelope: Double = 0
-    /// How high Dylan sounds, smoothed the same way (0..1).
-    private(set) var shellTone: Double = 0
     private var last: Double?
 
     /// Dylan's voice, as the shell sees it.
@@ -254,19 +250,19 @@ final class OrbAnimator {
         let input = gated * gated * (3 - 2 * gated)
         // Two cascaded one-pole filters: ~170 ms to rise, ~560 ms to fall
         // (Dylan, 2026-11-17: "a little less smooth" than 250/800).
-        // Jarvis's core: ~170 ms up / ~560 ms down.
-        let tau = input > envelope ? 0.085 : 0.28
+        // Jarvis's core: ~150 ms up / ~480 ms down.
+        let tau = input > envelope ? 0.075 : 0.24
         let k = 1 - exp(-dt / tau)
         stage1 += (input - stage1) * k
         envelope += (stage1 - envelope) * k
-        // The shell: noise floor 0.05, then a gamma 0.7 curve that opens up
-        // the middle of the range; same ~170 ms up / ~560 ms down.
-        let shellGated = max(0, (raw - 0.05) / 0.95)
-        let shellInput = pow(shellGated, 0.7)
-        let sk = 1 - exp(-dt / (shellInput > shellEnvelope ? 0.085 : 0.28))
+        // The shell, a little less smoothed so it follows his syllables
+        // (Dylan, 2026-11-17: "looks more responsive", same size): the same
+        // dead zone and curve, scaled so normal speech travels the whole
+        // range; one main stage (~120 ms up / ~400 ms down) and a light
+        // 40 ms second stage that only takes the edge off.
+        let shellInput = min(1, input * 1.25)
+        let sk = 1 - exp(-dt / (shellInput > shellStage1 ? 0.08 : 0.32))
         shellStage1 += (shellInput - shellStage1) * sk
-        shellEnvelope += (shellStage1 - shellEnvelope) * sk
-        // Pitch only counts while he's audible, and eases like the level.
-        if shellGated > 0 { shellTone += (min(max(tone, 0), 1) - shellTone) * (1 - exp(-dt / 0.28)) }
+        shellEnvelope += (shellStage1 - shellEnvelope) * (1 - exp(-dt / 0.04))
     }
 }
