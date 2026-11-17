@@ -20,7 +20,8 @@ struct ChatItem: Identifiable, Equatable {
     var finished: Bool
     /// Jarvis's lines: what Dylan asked, for "That was wrong".
     var question: String
-    /// Approvals: how it ended ("Approved", "Denied out loud"), nil while waiting.
+    /// Approvals: how it ended, as its one-line history entry ("Approved:
+    /// Write a file", "Timed out: …"); nil while it's still waiting.
     var outcome: String?
 
     /// A line of Dylan's.
@@ -65,7 +66,16 @@ final class ChatModel: ObservableObject {
         do {
             let turns = try await client.history()
             let pending = try await client.pendingApprovals()
-            items = Self.items(from: turns) + pending.map(ChatItem.approval)
+            // Settled approvals aren't in the PC's history, so they're kept
+            // from before, each after the line it followed.
+            let settled = settledApprovals()
+            var fresh = Self.items(from: turns)
+            for (afterText, item) in settled {
+                let at = afterText.flatMap { text in fresh.lastIndex(where: { $0.text == text }) }.map { $0 + 1 } ?? fresh.endIndex
+                fresh.insert(item, at: at)
+            }
+            let known = Set(fresh.map(\.id))
+            items = fresh + pending.map(ChatItem.approval).filter { !known.contains($0.id) }
             problem = nil
             app.noteReach(nil)
         } catch {
@@ -73,6 +83,32 @@ final class ChatModel: ObservableObject {
             app.noteReach(error)
         }
         loaded = true
+    }
+
+    /// Each settled approval with the text of the line before it.
+    private func settledApprovals() -> [(String?, ChatItem)] {
+        items.enumerated().compactMap { index, item in
+            guard case .approval = item.kind, item.outcome != nil else { return nil }
+            let before = index > 0 ? items[index - 1].text : nil
+            return (before, item)
+        }
+    }
+
+    /// Approvals still waiting, oldest first: the cards pinned above the
+    /// Ask box.
+    var pendingApprovals: [Approval] {
+        items.compactMap { item in
+            if case .approval(let approval) = item.kind, item.outcome == nil { return approval }
+            return nil
+        }
+    }
+
+    /// Settles any waiting approval whose time has run out, so its card
+    /// collapses into a "Timed out" line (Dylan, 2026-11-17).
+    func expireOverdue(now: Date = Date()) {
+        for approval in pendingApprovals where ApprovalWording.hasExpired(approval.expires, now: now) {
+            settle(approval, ok: false, later: false, by: "timeout")
+        }
     }
 
     /// Saved turns as chat lines; each reply remembers the question before it.
@@ -130,7 +166,9 @@ final class ChatModel: ObservableObject {
                 items.insert(.approval(approval), at: at)
             }
         case .approvalDone(let id, let ok, let by, let later):
-            settle(id, text: ApprovalWording.outcomeText(ok: ok, later: later, by: by))
+            if let approval = pendingApprovals.first(where: { $0.id == id }) {
+                settle(approval, ok: ok, later: later, by: by)
+            }
         case .error(let message):
             problem = message
         case .done:
@@ -157,20 +195,26 @@ final class ChatModel: ObservableObject {
         change(&items[index])
     }
 
-    /// Writes how an approval ended onto its card.
-    private func settle(_ approvalId: String, text: String) {
-        update("approval-\(approvalId)") { $0.outcome = text }
+    /// Settles an approval: the pinned card collapses into its one-line
+    /// entry in the history, gently.
+    private func settle(_ approval: Approval, ok: Bool, later: Bool, by: String) {
+        let line = ApprovalWording.settledLine(ok: ok, later: later, by: by, summary: approval.summary)
+        withAnimation(.smooth(duration: 0.35)) {
+            update("approval-\(approval.id)") { $0.outcome = line }
+        }
     }
 
     /// Approve or Deny on a card. Shows the answer at once and takes it
     /// back if the PC didn't get it.
     func answer(_ approval: Approval, ok: Bool, app: AppModel) async {
-        settle(approval.id, text: ok ? "Approved" : "Denied")
+        settle(approval, ok: ok, later: false, by: "page")
         do {
             try await app.client.answer(approval: approval.id, ok: ok)
             app.noteReach(nil)
         } catch {
-            update("approval-\(approval.id)") { $0.outcome = nil }
+            withAnimation(.smooth(duration: 0.35)) {
+                update("approval-\(approval.id)") { $0.outcome = nil }
+            }
             problem = error.localizedDescription
             app.noteReach(error)
         }

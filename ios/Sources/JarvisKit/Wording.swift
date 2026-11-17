@@ -58,6 +58,30 @@ public enum ApprovalWording {
         if by == "voice" { return "\(verb) out loud" }
         return verb
     }
+
+    /// A settled approval as one line in the conversation (Dylan,
+    /// 2026-11-17: it goes up into the history, not pinned): "Approved:
+    /// Write a file", "Denied out loud: …", "Timed out: …", "Holding for
+    /// later: …". The summary is the readable one.
+    public static func settledLine(ok: Bool, later: Bool, by: String, summary: String) -> String {
+        let what = readableSummary(summary)
+        if later { return "Holding for later: \(what)" }
+        if by == "timeout" { return "Timed out: \(what)" }
+        let verb = ok ? "Approved" : "Denied"
+        if by == "telegram" { return "\(verb) on Telegram: \(what)" }
+        if by == "voice" { return "\(verb) out loud: \(what)" }
+        return "\(verb): \(what)"
+    }
+
+    /// True once an approval's `expires` time has passed. An unreadable or
+    /// missing time never expires here (the PC's own timeout still settles it).
+    public static func hasExpired(_ expires: String, now: Date = Date()) -> Bool {
+        let plain = ISO8601DateFormatter()
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = fractional.date(from: expires) ?? plain.date(from: expires) else { return false }
+        return now >= date
+    }
 }
 
 public enum ModelWording {

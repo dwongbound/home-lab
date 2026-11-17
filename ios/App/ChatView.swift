@@ -28,7 +28,15 @@ struct ChatView: View {
                         .padding(.vertical, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                pinnedApprovals
                 composer
+            }
+        }
+        // Waiting approvals collapse into "Timed out" once their time is up.
+        .task {
+            while !Task.isCancelled {
+                chat.expireOverdue()
+                try? await Task.sleep(for: .seconds(5))
             }
         }
         .task {
@@ -136,11 +144,33 @@ struct ChatView: View {
                 JarvisBubble(item: item) { flagging = item }
                     .padding(.trailing, 40)
             }
-        case .approval(let approval):
-            ApprovalCard(approval: approval, outcome: item.outcome) { ok in
-                Task { await chat.answer(approval, ok: ok, app: app) }
+        case .approval:
+            // Waiting ones are pinned above the Ask box; settled ones are a
+            // single line here, where they happened.
+            if let line = item.outcome {
+                ApprovalLine(text: line)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
-            .padding(.trailing, 30)
+        }
+    }
+
+    /// Approvals still waiting, pinned just above the Ask box until
+    /// they're answered or time out.
+    @ViewBuilder
+    private var pinnedApprovals: some View {
+        let pending = chat.pendingApprovals
+        if !pending.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(pending) { approval in
+                    ApprovalCard(approval: approval, outcome: nil) { ok in
+                        Task { await chat.answer(approval, ok: ok, app: app) }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            .animation(.smooth(duration: 0.35), value: pending.map(\.id))
         }
     }
 

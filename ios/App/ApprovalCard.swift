@@ -54,6 +54,45 @@ struct ApprovalCard: View {
     }
 }
 
+/// A settled approval in the conversation: one quiet line ("Approved:
+/// Write notes.md", "Timed out: …"), coloured by how it ended.
+struct ApprovalLine: View {
+    let text: String
+
+    /// A small icon and the line, in the outcome's colour.
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.footnote.weight(.semibold))
+            Text(text)
+                .font(.footnote)
+                .lineLimit(2)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(color.opacity(0.10)))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// A tick, a cross, a clock or a pause.
+    private var symbol: String {
+        if text.hasPrefix("Approved") { return "checkmark.circle.fill" }
+        if text.hasPrefix("Timed out") { return "clock.badge.xmark" }
+        if text.hasPrefix("Holding") { return "pause.circle.fill" }
+        return "xmark.circle.fill"
+    }
+
+    /// Green for a yes, amber for held, quiet for a timeout, rose for no.
+    private var color: Color {
+        if text.hasPrefix("Approved") { return Theme.moss }
+        if text.hasPrefix("Holding") { return Theme.ember }
+        if text.hasPrefix("Timed out") { return Theme.frostDim }
+        return Theme.rose
+    }
+}
+
 /// "That was wrong": what Dylan wanted instead. Jarvis turns these into a
 /// fix and an eval case overnight.
 struct WrongSheet: View {
