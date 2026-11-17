@@ -87,6 +87,9 @@ struct RootView: View {
         // The app opens on Talk, so the call starts with the app; onChange
         // below only sees later switches.
         .task {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-demoIsland") { app.talk.demoIsland(); return }
+            #endif
             if app.tab == .talk && !app.talk.started {
                 await app.talk.start(app: app)
             }
