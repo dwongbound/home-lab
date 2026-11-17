@@ -8,6 +8,8 @@ import JarvisKit
 /// One finished exchange on the call: what Dylan said and what Jarvis said back.
 struct TalkTurn: Identifiable {
     let id = UUID()
+    /// Which exchange of the call this was (counts up from 0).
+    let number: Int
     let heard: String
     let reply: String
     let model: String?
@@ -37,7 +39,11 @@ final class TalkModel: ObservableObject {
     @Published private(set) var model: String?
     /// The slow lookup he's doing ("Searching the web."), or nil.
     @Published private(set) var working: String?
-    @Published private(set) var approvals: [(approval: Approval, outcome: String?)] = []
+    /// Approvals on this call: the exchange each was asked in, and how it
+    /// ended as a one-line history entry (nil while it's still waiting).
+    @Published private(set) var approvals: [(approval: Approval, outcome: String?, exchange: Int)] = []
+    /// The exchange in progress (the one not yet moved into `turns`).
+    @Published private(set) var exchange = 0
     @Published private(set) var level: Float = 0
     /// How bright the voice sounds (0..1), for the orb's ripples.
     @Published private(set) var tone: Float = 0
@@ -109,11 +115,15 @@ final class TalkModel: ObservableObject {
 
     /// Approve or Deny on a card shown during Talk.
     func answer(_ approval: Approval, ok: Bool, app: AppModel) async {
-        settle(approval.id, ok ? "Approved" : "Denied")
+        settle(approval.id, ok: ok, later: false, by: "page")
         do {
             try await app.client.answer(approval: approval.id, ok: ok)
         } catch {
-            settle(approval.id, nil)
+            withAnimation(.smooth(duration: 0.35)) {
+                if let index = approvals.firstIndex(where: { $0.approval.id == approval.id }) {
+                    approvals[index].outcome = nil
+                }
+            }
             problem = error.localizedDescription
         }
     }
@@ -178,10 +188,10 @@ final class TalkModel: ObservableObject {
             break
         case .approval(let approval):
             if !approvals.contains(where: { $0.approval.id == approval.id }) {
-                approvals.append((approval, nil))
+                approvals.append((approval, nil, exchange))
             }
         case .approvalDone(let id, let ok, let by, let later):
-            settle(id, ApprovalWording.outcomeText(ok: ok, later: later, by: by))
+            settle(id, ok: ok, later: later, by: by)
         case .hello:
             break
         }
@@ -197,7 +207,8 @@ final class TalkModel: ObservableObject {
     /// Moves the finished exchange into the transcript, keeping the last few.
     private func archiveTurn() {
         guard !heard.isEmpty || !reply.isEmpty else { return }
-        turns.append(TalkTurn(heard: heard, reply: reply, model: model))
+        turns.append(TalkTurn(number: exchange, heard: heard, reply: reply, model: model))
+        exchange += 1
         if turns.count > 6 { turns.removeFirst(turns.count - 6) }
     }
 
@@ -209,10 +220,34 @@ final class TalkModel: ObservableObject {
         }
     }
 
-    /// Writes how an approval ended onto its card (nil puts the buttons back).
-    private func settle(_ id: String, _ outcome: String?) {
+    /// Settles an approval: its card collapses into a one-line entry in the
+    /// transcript, after the exchange it was asked in.
+    private func settle(_ id: String, ok: Bool, later: Bool, by: String) {
         guard let index = approvals.firstIndex(where: { $0.approval.id == id }) else { return }
-        approvals[index].outcome = outcome
+        let line = ApprovalWording.settledLine(ok: ok, later: later, by: by, summary: approvals[index].approval.summary)
+        withAnimation(.smooth(duration: 0.35)) {
+            approvals[index].outcome = line
+        }
+    }
+
+    /// Approvals still waiting: pinned above the buttons.
+    var pendingApprovals: [Approval] {
+        approvals.filter { $0.outcome == nil }.map(\.approval)
+    }
+
+    /// Settled approvals asked during exchange `number`, as their lines.
+    func settledLines(in number: Int) -> [(id: String, line: String)] {
+        approvals.compactMap { entry in
+            guard entry.exchange == number, let line = entry.outcome else { return nil }
+            return (entry.approval.id, line)
+        }
+    }
+
+    /// Collapses any waiting approval whose time has run out into "Timed out".
+    func expireOverdue(now: Date = Date()) {
+        for approval in pendingApprovals where ApprovalWording.hasExpired(approval.expires, now: now) {
+            settle(approval.id, ok: false, later: false, by: "timeout")
+        }
     }
 
     /// The line dropped by itself.
@@ -254,7 +289,15 @@ struct TalkView: View {
                     .frame(maxWidth: 560)
                     .frame(maxWidth: .infinity)
                 }
+                pinnedApprovals
                 controls
+            }
+        }
+        // Waiting approvals collapse into "Timed out" once their time is up.
+        .task {
+            while !Task.isCancelled {
+                talk.expireOverdue()
+                try? await Task.sleep(for: .seconds(5))
             }
         }
     }
@@ -281,11 +324,6 @@ struct TalkView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     words
-                    ForEach(talk.approvals, id: \.approval.id) { entry in
-                        ApprovalCard(approval: entry.approval, outcome: entry.outcome) { ok in
-                            Task { await talk.answer(entry.approval, ok: ok, app: app) }
-                        }
-                    }
                     if let problem = talk.problem {
                         Text(problem)
                             .font(.footnote)
@@ -306,7 +344,7 @@ struct TalkView: View {
             .onChange(of: talk.heard) { follow(scroller) }
             .onChange(of: talk.reply) { follow(scroller) }
             .onChange(of: talk.working) { follow(scroller) }
-            .onChange(of: talk.approvals.count) { follow(scroller) }
+            .onChange(of: talk.approvals.map(\.outcome)) { follow(scroller) }
             .onChange(of: talk.turns.count) {
                 // A new turn always brings the view back to the bottom.
                 following = true
@@ -331,8 +369,38 @@ struct TalkView: View {
             ForEach(talk.turns) { turn in
                 bubbles(heard: turn.heard, reply: turn.reply, model: turn.model)
                     .opacity(0.7)
+                settled(in: turn.number)
             }
             bubbles(heard: talk.heard, reply: talk.reply, model: talk.model)
+            settled(in: talk.exchange)
+        }
+    }
+
+    /// The approvals settled during one exchange, as quiet lines.
+    private func settled(in number: Int) -> some View {
+        ForEach(talk.settledLines(in: number), id: \.id) { entry in
+            ApprovalLine(text: entry.line)
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+        }
+    }
+
+    /// Approval cards still waiting, pinned just above the buttons.
+    @ViewBuilder
+    private var pinnedApprovals: some View {
+        let pending = talk.pendingApprovals
+        if !pending.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(pending) { approval in
+                    ApprovalCard(approval: approval, outcome: nil) { ok in
+                        Task { await talk.answer(approval, ok: ok, app: app) }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+            .frame(maxWidth: 560)
+            .animation(.smooth(duration: 0.35), value: pending.map(\.id))
         }
     }
 
