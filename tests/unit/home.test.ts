@@ -1,7 +1,7 @@
 // Home Assistant control: which devices show, and that the page can only
 // send the few commands it's meant to, to the kinds of device it's meant to.
 import { describe, expect, it, vi } from 'vitest'
-import { createHomeReader, toDevice, toReading } from '../../server/sources/home.mjs'
+import { createHomeReader, toDevice, toForecast, toReading } from '../../server/sources/home.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
 import { loadConfig } from '../../server/config.mjs'
 
@@ -144,6 +144,39 @@ describe('home reader', () => {
     const home = await createHomeReader(config, { fetch }).read()
     expect(home?.readings.map((r: { kind: string }) => r.kind)).toEqual(['door', 'temperature'])
     expect(home?.weather).toEqual({ condition: 'sunny', temperature: 61, unit: '°F', humidity: 40, wind: 6, windUnit: 'mph' })
+  })
+
+  it('reads the coming hours, keeping only what each has, at most twelve', () => {
+    const hour = (i: number) => ({ datetime: `2026-11-17T${String(i).padStart(2, '0')}:00:00+00:00`, condition: 'rainy', temperature: 60, precipitation_probability: 40 })
+    const body = { service_response: { 'weather.home': { forecast: [...Array(14).keys()].map(hour).concat([{ condition: 'sunny' } as never]) } } }
+    const hours = toForecast(body, 'weather.home')
+    expect(hours).toHaveLength(12)
+    expect(hours[0]).toEqual({ at: '2026-11-17T00:00:00+00:00', condition: 'rainy', temperature: 60, rain: 40 })
+    expect(toForecast({}, 'weather.home')).toEqual([])
+    expect(toForecast({ service_response: { 'weather.home': { forecast: 'no' } } }, 'weather.home')).toEqual([])
+  })
+
+  it('asks for the forecast once per quarter hour, and carries on without one', async () => {
+    const states = [{ entity_id: 'weather.home', state: 'sunny', attributes: { temperature: 61, temperature_unit: '°F' } }]
+    const answer = { service_response: { 'weather.home': { forecast: [{ datetime: '2026-11-17T20:00:00+00:00', condition: 'sunny', temperature: 62 }] } } }
+    let clock = 0
+    let asked = 0
+    const fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('get_forecasts')) {
+        asked += 1
+        return asked === 1 ? new Response(JSON.stringify(answer)) : new Response('no', { status: 500 })
+      }
+      return new Response(JSON.stringify(u.endsWith('/api/template') ? [] : states))
+    })
+    const reader = createHomeReader(config, { fetch, now: () => clock })
+    expect((await reader.read())?.forecast).toEqual([{ at: '2026-11-17T20:00:00+00:00', condition: 'sunny', temperature: 62 }])
+    clock = 60_000
+    expect((await reader.read())?.forecast).toHaveLength(1)
+    expect(asked).toBe(1)
+    clock = 16 * 60_000
+    expect((await reader.read())?.forecast).toEqual([])
+    expect(asked).toBe(2)
   })
 })
 

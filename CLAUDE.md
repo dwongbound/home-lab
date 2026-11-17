@@ -28,7 +28,7 @@ Playwright **1.63** (desktop + Pixel 7 + iPad Pro 11 landscape) · Node **20.12+
   `GET /api/jarvis/memory` + `GET /api/jarvis/memory/search?q=` + `POST /api/jarvis/memory` (`{op: remember|forget}`, same header; Jarvis `/memory/facts`, `/memory/search`; `MemoryPanel` = Memory, last on Settings),
   `GET`/`POST /api/jarvis/voice` + `GET /api/jarvis/voice/sample` (WAV; checks in `server/voice.mjs`; Jarvis `/voice`, `/voice/sample`; `VoicePanel` on Settings before Memory),
   `POST /api/home/control` (`{entity, command, value?}`; climate takes `target` °/`mode`; same header + Tailscale login; allowlist in
-  `server/sources/home.mjs`, which also reads devices/weather (with humidity, wind)/sun and read-only sensor `readings` (room temperature/humidity, open doors, motion, low batteries; `toReading`) into `snapshot.home`),
+  `server/sources/home.mjs`, which also reads devices/weather (with humidity, wind)/sun and read-only sensor `readings` (room temperature/humidity, open doors, motion, low batteries; `toReading`) and the hourly `forecast` (HA `weather.get_forecasts`, 15 min cache, `toForecast`) into `snapshot.home`),
   `POST /api/digest/refresh` (same header; asks Jarvis `/digest/refresh`; client hook `src/api/digestRefresh.tsx`),
   `POST /api/money/picks` (`{op: pick|clear|remind}`, same header; store `server/money-picks.mjs`, file `money-picks-file.mjs`,
   `MONEY_PICKS_FILE`; snapshot `moneyPicks`; banner via `pickReminderDue`).

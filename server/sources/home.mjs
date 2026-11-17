@@ -7,6 +7,12 @@
 // and garage doors are left out on purpose.
 
 const TIMEOUT_MS = 2500
+
+/** How long an hourly forecast is kept before asking Home Assistant again. */
+const FORECAST_TTL_MS = 15 * 60_000
+
+/** The most forecast hours sent. */
+const MAX_FORECAST = 12
 const ENTITY = /^[a-z_]+\.[a-z0-9_]+$/
 
 /** The domains shown on the page, and what each is called there. */
@@ -131,6 +137,26 @@ function toWeather(entity) {
   return weather
 }
 
+/**
+ * The coming hours from Home Assistant's forecast answer, each with only
+ * what it has. An answer in any other shape gives an empty list.
+ */
+export function toForecast(body, entityId) {
+  const hours = body?.service_response?.[entityId]?.forecast
+  if (!Array.isArray(hours)) return []
+  const out = []
+  for (const h of hours) {
+    if (typeof h?.datetime !== 'string' || typeof h.condition !== 'string') continue
+    const hour = { at: h.datetime, condition: h.condition }
+    if (num(h.temperature) !== undefined) hour.temperature = h.temperature
+    if (num(h.templow) !== undefined) hour.low = h.templow
+    if (num(h.precipitation_probability) !== undefined) hour.rain = h.precipitation_probability
+    out.push(hour)
+    if (out.length === MAX_FORECAST) break
+  }
+  return out
+}
+
 /** A number, or undefined when Home Assistant didn't give one. */
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
@@ -171,6 +197,7 @@ async function nothingChanged(res) {
 
 export function createHomeReader(config, deps = {}) {
   const fetchFn = deps.fetch ?? globalThis.fetch
+  const nowFn = deps.now ?? Date.now
   const headers = { Authorization: `Bearer ${config.haToken}`, 'content-type': 'application/json' }
 
   /** Entity ids of switches that are a speaker's or TV's settings; none if the template fails. */
@@ -184,6 +211,27 @@ export function createHomeReader(config, deps = {}) {
     } catch {
       return new Set()
     }
+  }
+
+  // The last forecast and when it was read, so a refresh every 15 s doesn't ask each time.
+  let forecastCache = { entity: '', at: 0, hours: [] }
+
+  /** The hourly forecast for one weather entity, cached; empty when HA can't give one. */
+  async function forecast(entityId) {
+    const now = nowFn()
+    if (forecastCache.entity === entityId && now - forecastCache.at < FORECAST_TTL_MS) return forecastCache.hours
+    let hours = []
+    try {
+      const res = await fetchFn(`${config.haUrl}/api/services/weather/get_forecasts?return_response`, {
+        method: 'POST', headers, body: JSON.stringify({ entity_id: entityId, type: 'hourly' }), signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      if (res.ok) hours = toForecast(await res.json(), entityId)
+    } catch {
+      hours = []
+    }
+    // A failure is cached too, so a weather service without forecasts isn't asked every refresh.
+    forecastCache = { entity: entityId, at: now, hours }
+    return hours
   }
 
   return {
@@ -200,13 +248,17 @@ export function createHomeReader(config, deps = {}) {
         const devices = []
         const readings = []
         let weather = null
+        let weatherId = ''
         const sun = { rising: null, setting: null }
         for (const e of states) {
           const device = toDevice(e)
           if (device && !hidden.has(device.id)) devices.push(device)
           const reading = toReading(e)
           if (reading) readings.push(reading)
-          if (weather === null && e.entity_id.startsWith('weather.')) weather = toWeather(e)
+          if (weather === null && e.entity_id.startsWith('weather.')) {
+            weather = toWeather(e)
+            weatherId = e.entity_id
+          }
           if (e.entity_id === 'sensor.sun_next_rising') sun.rising = e.state
           if (e.entity_id === 'sensor.sun_next_setting') sun.setting = e.state
         }
@@ -216,7 +268,8 @@ export function createHomeReader(config, deps = {}) {
         // Things that need a look first (open doors, low batteries, motion), then the rooms; A-Z within.
         const readingOrder = ['door', 'window', 'battery', 'motion', 'temperature', 'humidity']
         readings.sort((x, y) => readingOrder.indexOf(x.kind) - readingOrder.indexOf(y.kind) || x.name.localeCompare(y.name))
-        return { devices, readings: readings.slice(0, MAX_READINGS), weather, sun }
+        const hours = weatherId ? await forecast(weatherId) : []
+        return { devices, readings: readings.slice(0, MAX_READINGS), weather, forecast: hours, sun }
       } catch {
         return null
       }

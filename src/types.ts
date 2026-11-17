@@ -140,10 +140,24 @@ export interface Reading {
   unit?: string
 }
 
+/** One coming hour of weather from Home Assistant. */
+export interface ForecastHour {
+  /** When the hour starts, ISO. */
+  at: string
+  /** Home Assistant's weather word ("sunny", "rainy"...). */
+  condition: string
+  temperature?: number
+  low?: number
+  /** Chance of rain, percent. */
+  rain?: number
+}
+
 export interface HomeState {
   devices: Device[]
   /** Sensor readings, the ones needing a look first; missing on an older server. */
   readings?: Reading[]
+  /** The coming hours, soonest first; empty when the weather service has none, missing on an older server. */
+  forecast?: ForecastHour[]
   /** Outside now. Humidity is a percent; wind is in Home Assistant's own unit. */
   weather: { condition: string; temperature: number | null; unit: string; humidity?: number; wind?: number; windUnit?: string } | null
   sun: { rising: string | null; setting: string | null }
