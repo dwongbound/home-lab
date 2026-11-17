@@ -81,6 +81,21 @@ public struct Home: Decodable, Sendable {
     public let devices: [Device]
     public let weather: Weather?
     public let sun: Sun?
+    /// Sensor readings, the ones needing a look first. Missing on an older
+    /// server.
+    public let readings: [Reading]?
+}
+
+/// One Home Assistant sensor: a room's temperature or humidity, a door or
+/// window, motion, or a battery.
+public struct Reading: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    /// temperature, humidity, door, window, motion or battery.
+    public let kind: String
+    /// A number as text ("70.5"), or "open", "detected", "low".
+    public let value: String
+    public let unit: String?
 }
 
 /// Today's sunrise and sunset (ISO times).
@@ -94,6 +109,11 @@ public struct Weather: Decodable, Sendable {
     public let condition: String
     public let temperature: Double?
     public let unit: String
+    /// Percent.
+    public let humidity: Double?
+    /// In Home Assistant's own unit (`windUnit`).
+    public let wind: Double?
+    public let windUnit: String?
 }
 
 /// One Home Assistant device: a light, switch, fan, speaker, scene or thermostat.
