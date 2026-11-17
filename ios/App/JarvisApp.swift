@@ -148,6 +148,8 @@ struct TabBar: View {
         }
         .padding(5)
         .glassPanel(radius: 32)
+        // A compact pill on iPad too, not a bar across the whole screen.
+        .frame(maxWidth: 420)
         .padding(.horizontal, 40)
         .padding(.bottom, 6)
     }
