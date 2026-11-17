@@ -143,6 +143,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis.tv
         PRODUCT_NAME: Jarvis
+        # The layered home-screen icon and Top Shelf art (scripts/make_tv_icon.py).
+        ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
         SWIFT_VERSION: "5.9"
     info:
       path: TV/Info.plist
