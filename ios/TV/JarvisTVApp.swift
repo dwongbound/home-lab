@@ -116,6 +116,7 @@ final class AlwaysOnModel: ObservableObject {
 struct AlwaysOnView: View {
     @StateObject private var model = AlwaysOnModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     /// Which turn of the panel rotation is showing.
     @State private var turn = 0
     /// The sun lamp right now (Dylan, 2026-11-17): the background follows
@@ -270,6 +271,19 @@ struct AlwaysOnView: View {
             #endif
         }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        // Never the screensaver while Jarvis is open (Dylan, 2026-11-18: "it
+        // should just stay on the Jarvis app if it's open forever"): asked
+        // again whenever the app comes back to the front, and every minute
+        // in case tvOS let go of it.
+        .onChange(of: scenePhase) { _, phase in
+            UIApplication.shared.isIdleTimerDisabled = phase == .active
+        }
+        .task {
+            while !Task.isCancelled {
+                if scenePhase == .active { UIApplication.shared.isIdleTimerDisabled = true }
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
     }
 
     // MARK: Sun lamp
