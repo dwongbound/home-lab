@@ -11,7 +11,10 @@ final class WatchBoardTests: XCTestCase {
     }
 
     func testBoardFromASnapshotAndBack() throws {
-        let now = Date()
+        // Noon today, not the real time: the board only shows what's still to
+        // come today, so "an hour from now" fell into tomorrow when the test
+        // ran in the last hour of the day.
+        let now = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
         let json = #"{"generatedAt":"x","services":[],"today":[{"id":"1","at":"\#(iso(now.addingTimeInterval(3600)))","title":"Volleyball"}],"notices":[{"id":"n","kind":"need","title":"Lights off?","source":"approval","created":"","approvalId":"a1"}],"jobs":{"running":[{"id":"j","label":"Rewriting reminders","state":"running","startedAt":"2026-11-18T09:00:00Z"}]}}"#
         let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
         let board = WatchBoard(snapshot: snapshot, now: now)
