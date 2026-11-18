@@ -86,10 +86,10 @@ final class TVBoardTests: XCTestCase {
     func testGuestModeHidesPrivateCards() throws {
         let json = #"{"generatedAt":"x","services":[{"id":"h","name":"Home Assistant","detail":"","status":"up"}],"today":[{"id":"1","at":"2026-11-17T20:00:00Z","title":"x"}],"offers":{"greeting":"Evening, Dylan. You're at Varda.","offers":[{"id":"o","title":"t","body":"b","startText":"s"}]},"cloud":{"health":{"yesterday":{"steps":100}}}}"#
         let s = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
-        XCTAssertEqual(TVBoard.cards(s, guest: false), [.today, .jarvis, .health, .suggestions])
-        XCTAssertEqual(TVBoard.cards(s, guest: true), [.today, .jarvis])
-        XCTAssertNil(TVBoard.greeting(s, guest: true)?.body)
-        XCTAssertNotNil(TVBoard.greeting(s, guest: false)?.body)
+        // Jarvis's message leads the rotation, guests included.
+        XCTAssertEqual(TVBoard.cards(s, guest: false), [.message, .today, .jarvis, .health, .suggestions])
+        XCTAssertEqual(TVBoard.cards(s, guest: true), [.message, .today, .jarvis])
+        XCTAssertEqual(TVBoard.greeting(s, guest: true)?.body, "You're at Varda.")
     }
 
     func testForecastAndCalendarDecodeAndBadSectionsAreSkipped() throws {

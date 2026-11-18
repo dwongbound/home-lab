@@ -99,4 +99,9 @@ public struct ChatTurn: Codable, Equatable, Sendable {
 
     /// True for Dylan's own lines.
     public var isUser: Bool { role == "user" }
+
+    /// Builds a turn (sample data and tests; the server's are decoded).
+    public init(role: String, text: String, at: String, model: String?) {
+        self.role = role; self.text = text; self.at = at; self.model = model
+    }
 }

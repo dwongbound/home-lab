@@ -60,6 +60,10 @@ struct AlwaysOnView: View {
     @State private var drift = CGSize.zero
     /// True while the Ask Jarvis screen is up.
     @State private var asking = false
+    /// The conversation (kept while the chat is closed, so reopening
+    /// carries on) and whether the text field has focus.
+    @StateObject private var chat = TVChatModel()
+    @FocusState private var typing: Bool
     /// Guest-friendly (on by default): people walking in see this screen,
     /// so it leaves out sleep, steps, Jarvis's suggestions and the private
     /// half of the greeting (TVBoard in JarvisKit).
@@ -87,7 +91,16 @@ struct AlwaysOnView: View {
             } else {
                 HStack(alignment: .center, spacing: 80) {
                     left.frame(maxWidth: .infinity)
-                    right.frame(maxWidth: .infinity, alignment: .leading)
+                    Group {
+                        if asking {
+                            ChatPanel(model: chat, palette: palette, field: $typing)
+                                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 60)), removal: .opacity.combined(with: .offset(x: 60))))
+                        } else {
+                            right.transition(.opacity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(.smooth(duration: 0.6), value: asking)
                 }
                 .padding(80)
                 .offset(drift)
@@ -130,15 +143,24 @@ struct AlwaysOnView: View {
                 try? await Task.sleep(for: .seconds(preview ? 0.5 : 30))
             }
         }
-        .fullScreenCover(isPresented: $asking) {
-            AskJarvisView()
-                .preferredColorScheme(.dark)
+        // Menu slides the chat away (and only then: otherwise Menu leaves
+        // the app as usual).
+        .onExitCommand(perform: asking ? { closeChat() } : nil)
+        // After each reply the field takes focus again: the next turn is one
+        // press and the mic button.
+        .onChange(of: chat.replies) { _, _ in if asking { typing = true } }
+        // A minute of quiet after the last reply closes the chat.
+        .task(id: asking) {
+            while asking && !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                if chat.chat.shouldClose(lastActivity: chat.lastActivity, now: Date()) { closeChat() }
+            }
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             #if DEBUG
             // Screenshot check: `-openAsk` opens Ask Jarvis at launch.
-            if ProcessInfo.processInfo.arguments.contains("-openAsk") { asking = true }
+            if ProcessInfo.processInfo.arguments.contains("-openAsk") { openChat() }
             #endif
         }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
@@ -207,8 +229,26 @@ struct AlwaysOnView: View {
         }
     }
 
+    /// Slides the chat in and puts focus on the field.
+    private func openChat() {
+        asking = true
+        wake()
+        Task {
+            await chat.opened()
+            typing = true
+        }
+    }
+
+    /// Slides the chat away; the conversation is kept.
+    private func closeChat() {
+        chat.hush()
+        typing = false
+        asking = false
+    }
+
     /// Works out whether the calm layout should show right now.
     private func updateCalm() {
+        if asking { if calm { calm = false }; return }
         let next = NightCalm.isCalm(now: SunLampPreview.now(), sunrise: sunTimes.rise, enabled: nightCalmOn, wokenUntil: wokenUntil)
         if next != calm { calm = next }
     }
@@ -239,7 +279,9 @@ struct AlwaysOnView: View {
     /// connection line.
     private var left: some View {
         VStack(spacing: 26) {
-            OrbView(state: model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening, size: 400, work: model.snapshot?.jobs?.running ?? [], tappable: false, onLight: palette.darkInk)
+            // The orb follows the chat while it's open: thinking, working,
+            // speaking with each word.
+            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, work: model.snapshot?.jobs?.running ?? [], tappable: false, onLight: palette.darkInk)
                 // Dim at night so the bedroom stays dark (the text is dimmed
                 // by the palette instead, only as far as it stays readable).
                 .opacity(0.35 + 0.65 * min(1, lamp.brightness * 3))
@@ -286,10 +328,11 @@ struct AlwaysOnView: View {
             // away) and the guest-friendly switch beside it.
             HStack(spacing: 24) {
                 Button {
-                    asking = true
+                    asking ? closeChat() : openChat()
                 } label: {
-                    Label("Ask Jarvis", systemImage: "mic.fill")
+                    Label(asking ? "Done" : "Ask Jarvis", systemImage: asking ? "checkmark" : "mic.fill")
                         .font(.callout)
+                        .foregroundStyle(ink)
                 }
                 .accessibilityHint("Type or hold the mic button to ask him something")
                 Button {
@@ -337,7 +380,7 @@ struct AlwaysOnView: View {
                 let hero = TVBoard.hero(snapshot, now: now, guest: guest)
                 VStack(alignment: .leading, spacing: 26) {
                     ChipRow(chips: StatusChips.chips(snapshot, approvals: model.approvals), palette: palette)
-                    greeting(snapshot, showBody: hero == nil)
+                    greeting(snapshot, showBody: false)
                     if let hero {
                         NowNextCard(item: hero, now: now, palette: palette)
                             .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -395,6 +438,23 @@ struct AlwaysOnView: View {
     @ViewBuilder
     private func boardCard(_ which: TVCard, snapshot: Snapshot, now: Date) -> some View {
         switch which {
+        case .message:
+            // Jarvis's full message, wrapped; it shrinks a little before it
+            // would ever be cut off.
+            card(which) {
+                // The headline is already across the top; the card is the rest.
+                if let parts = TVBoard.greeting(snapshot, guest: guest) {
+                    if let body = parts.body {
+                        Text(body)
+                            .font(.title3)
+                            .lineSpacing(6)
+                            .lineLimit(7)
+                            .minimumScaleFactor(0.7)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .staggered(1)
+                    }
+                }
+            }
         case .today:
             card(which) {
                 ForEach(Array(TodayTimeline.rows(snapshot.today, events: snapshot.events, now: now, guest: guest, limit: 6).enumerated()), id: \.element.id) { index, row in
