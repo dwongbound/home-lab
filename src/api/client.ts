@@ -109,9 +109,10 @@ export async function streamJarvis(
       onWorking(null)
     } else if (event.type === 'model') {
       onModel(event.model)
-    } else {
+    } else if (event.type === 'error') {
       outcome = { ok: false, message: event.message }
     }
+    // A meal_question only follows a photo, and the page's chat sends none: the apps answer those.
   }
 
   if (IS_STATIC_BUILD) {
