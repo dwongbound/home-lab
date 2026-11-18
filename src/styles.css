@@ -524,9 +524,9 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .orb__points { position: absolute; inset: calc(var(--orb) * -.75); width: calc(var(--orb) * 2.5); height: calc(var(--orb) * 2.5); border-radius: 0; pointer-events: none; }
 /* Work dots: a finger-sized tap target riding on each lit dot (moved by JarvisOrb), and the note it opens. */
 .orb > .orb__work { top: -22px; left: -22px; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; z-index: 2; }
-.orb > .orb__work:focus-visible { outline: 2px solid #e0a020; outline-offset: -8px; }
-.orb > .orb__note { left: 50%; translate: -50% 0; z-index: 3; display: flex; align-items: flex-start; gap: 10px; width: max-content; max-width: min(300px, 86vw); padding: 4px 4px 4px 12px; border-radius: 16px; border: 1px solid rgba(224, 160, 32, .55); background: #212936; box-shadow: 0 6px 12px rgba(0, 0, 0, .35); text-align: left; }
-.orb__note-dot { flex: none; width: 10px; height: 10px; margin-top: 13px; border-radius: 50%; background: #e0a020; }
+.orb > .orb__work:focus-visible { outline: 2px solid #4da3ff; outline-offset: -8px; }
+.orb > .orb__note { left: 50%; translate: -50% 0; z-index: 3; display: flex; align-items: flex-start; gap: 10px; width: max-content; max-width: min(300px, 86vw); padding: 4px 4px 4px 12px; border-radius: 16px; border: 1px solid rgba(77, 163, 255, .55); background: #212936; box-shadow: 0 6px 12px rgba(0, 0, 0, .35); text-align: left; }
+.orb__note-dot { flex: none; width: 10px; height: 10px; margin-top: 13px; border-radius: 50%; background: #4da3ff; }
 .orb__note-words { display: grid; gap: 3px; padding: 8px 0; min-width: 0; font-size: 14px; line-height: 1.35; color: var(--frost); }
 .orb__note-words > span { color: var(--frost-dim); font-size: 12.5px; }
 .orb__note-close { flex: none; min-width: 44px; min-height: 44px; }

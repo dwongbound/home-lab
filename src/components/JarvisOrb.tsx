@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties } from 'react'
 import { runningWords } from '../lib/format'
-import { ORB_POINTS, ORB_REACH, ORB_SHELL_SWELL, ORB_WORK_AMBER, OrbMotion, orbDot, orbLinks, orbPoints, orbWorkDots } from '../lib/orb'
+import { ORB_POINTS, ORB_REACH, ORB_SHELL_SWELL, ORB_WORK_BLUE, OrbMotion, orbDot, orbLinks, orbPoints, orbWorkDots } from '../lib/orb'
 import type { RunningTask } from '../types'
 
 /** The constellation's lines never change (turning keeps distances), so they're worked out once. */
@@ -17,7 +17,7 @@ const LINKS = orbLinks(orbPoints(ORB_POINTS, 0))
 // only the core swells with his voice (pulse()). Every change eases.
 // With reduced motion it's drawn once and never moves.
 // Background work (Dylan, 2026-11-17, the app's work dots): each running job
-// lights one dot dark amber. Tapping a lit dot eases the turning to a stop
+// lights one dot blue. Tapping a lit dot eases the turning to a stop
 // and opens a note saying what the work is and how long it has run; Close,
 // a tap anywhere else, or the job finishing lets the orb turn again.
 
@@ -269,12 +269,12 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
 })
 
 /**
- * A lit work dot: bigger than its neighbours, dark amber, inside a soft
- * amber glow; a little bigger while its note is open. Drawn still (no
+ * A lit work dot: bigger than its neighbours, blue, inside a soft
+ * blue glow; a little bigger while its note is open. Drawn still (no
  * breathing), so an orb at rest stays at rest.
  */
 function drawWorkDot(ctx: CanvasRenderingContext2D, p: { x: number; y: number; z: number }, radius: number, open: boolean): void {
-  const [r, g, b] = ORB_WORK_AMBER
+  const [r, g, b] = ORB_WORK_BLUE
   const near = (p.z + 1) / 2
   const core = Math.max(radius * 2.4, 2.5) * (open ? 1.3 : 1)
   const halo = core * 3.6
