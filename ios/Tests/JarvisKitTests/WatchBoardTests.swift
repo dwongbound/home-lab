@@ -11,7 +11,10 @@ final class WatchBoardTests: XCTestCase {
     }
 
     func testBoardFromASnapshotAndBack() throws {
-        let now = Date()
+        // Noon today, so the event an hour on is still today whatever time
+        // the test runs (in the last hour of the day it used to land on
+        // tomorrow, which the board leaves off by design).
+        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(12 * 3600)
         let json = #"{"generatedAt":"x","services":[],"today":[{"id":"1","at":"\#(iso(now.addingTimeInterval(3600)))","title":"Volleyball"}],"notices":[{"id":"n","kind":"need","title":"Lights off?","source":"approval","created":"","approvalId":"a1"}],"jobs":{"running":[{"id":"j","label":"Rewriting reminders","state":"running","startedAt":"2026-11-18T09:00:00Z"}]}}"#
         let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
         let board = WatchBoard(snapshot: snapshot, now: now)
