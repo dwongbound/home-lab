@@ -31,7 +31,9 @@ struct KioskTalkOrb: View {
                 level: Double(talk.level),
                 tone: Double(talk.tone),
                 work: work,
-                dim: dim
+                dim: dim,
+                // Pips only in the kiosks: the list is a tap away in the app.
+                pips: Notices.pips(app.notices)
             )
             // A little bigger while a call is on.
             .scaleEffect(callOpen ? 1.08 : 1)

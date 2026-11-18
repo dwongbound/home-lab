@@ -68,28 +68,7 @@ struct RootView: View {
         .overlay(alignment: .bottom) {
             TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount)
         }
-        // The iPad's kiosk lives here, not on the Home page, so it can come
-        // up by itself from Talk or Chat (a second cover on its own view).
-        .background {
-            Color.clear.fullScreenCover(isPresented: $app.padKiosk) {
-                KioskView(today: app.today, chat: app.chat, talk: app.talk)
-                    .environmentObject(app)
-            }
-        }
-        // Any touch, keystroke or tab change restarts the iPad's idle clock.
-        .simultaneousGesture(TapGesture().onEnded { app.noteActivity() })
-        .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { _ in app.noteActivity() })
-        .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in app.noteActivity() }
-        .onReceive(NotificationCenter.default.publisher(for: UITextView.textDidChangeNotification)) { _ in app.noteActivity() }
-        .onChange(of: app.tab) { _, _ in app.noteActivity() }
-        .task {
-            guard UIDevice.current.userInterfaceIdiom == .pad else { return }
-            UIDevice.current.isBatteryMonitoringEnabled = true
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(15))
-                app.checkIdleKiosk()
-            }
-        }
+        .modifier(PadKioskAndNotices(app: app))
         .fullScreenCover(isPresented: Binding(get: { bedside.showing }, set: { if !$0 { bedside.dismiss() } })) {
             PhoneKioskView(today: app.today, talk: app.talk, app: app) { bedside.dismiss() }
         }
@@ -147,6 +126,27 @@ struct StatusLine: View {
                     .foregroundStyle(Theme.frostDim)
             }
             Spacer()
+            // The notices: a small row of pips and a count, when any.
+            if !app.notices.isEmpty {
+                Button {
+                    app.showNotices = true
+                } label: {
+                    HStack(spacing: 6) {
+                        ForEach(Array(Notices.pips(app.notices).prefix(4).enumerated()), id: \.offset) { _, kind in
+                            Circle().fill(pipColor(kind)).frame(width: 7, height: 7)
+                        }
+                        Text(Notices.countLabel(app.notices) ?? "")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.frost)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .background(Capsule().fill(Theme.glass))
+                    .overlay(Capsule().strokeBorder(Theme.glassEdge))
+                }
+                .accessibilityLabel("\(app.notices.count) unread notices")
+                .transition(.scale.combined(with: .opacity))
+            }
             Button {
                 app.showSettings = true
             } label: {
@@ -161,6 +161,21 @@ struct StatusLine: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
+        .animation(.smooth, value: app.notices.count)
+        // Pulling down on the status row opens the notices.
+        .contentShape(Rectangle())
+        .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { drag in
+            if drag.translation.height > 40 && abs(drag.translation.width) < drag.translation.height { app.showNotices = true }
+        })
+    }
+
+    /// The pip colours: orange needs you, blue heads-up, dim white FYI.
+    private func pipColor(_ kind: NoticeKind) -> Color {
+        switch kind {
+        case .need: return Color(red: 1.0, green: 0.54, blue: 0.24)
+        case .heads: return Color(red: 0.44, green: 0.72, blue: 1.0)
+        case .fyi: return Theme.frostDim
+        }
     }
 
     /// The dot's colour for the connection state.
@@ -246,3 +261,39 @@ extension View {
         safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: 66) }
     }
 }
+
+/// The iPad's kiosk and the notices sheet, each presented from its own
+/// background view (two sheets on one view clash), plus the iPad's idle
+/// clock: any touch, keystroke or tab change restarts its five minutes.
+struct PadKioskAndNotices: ViewModifier {
+    @ObservedObject var app: AppModel
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                Color.clear.fullScreenCover(isPresented: $app.padKiosk) {
+                    KioskView(today: app.today, chat: app.chat, talk: app.talk)
+                        .environmentObject(app)
+                }
+            }
+            .background {
+                Color.clear.sheet(isPresented: $app.showNotices) {
+                    NoticesSheet().environmentObject(app)
+                }
+            }
+            .simultaneousGesture(TapGesture().onEnded { app.noteActivity() })
+            .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { _ in app.noteActivity() })
+            .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in app.noteActivity() }
+            .onReceive(NotificationCenter.default.publisher(for: UITextView.textDidChangeNotification)) { _ in app.noteActivity() }
+            .onChange(of: app.tab) { _, _ in app.noteActivity() }
+            .task {
+                guard UIDevice.current.userInterfaceIdiom == .pad else { return }
+                UIDevice.current.isBatteryMonitoringEnabled = true
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(15))
+                    app.checkIdleKiosk()
+                }
+            }
+    }
+}
+

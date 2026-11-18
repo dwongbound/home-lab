@@ -29,6 +29,38 @@ final class AlwaysOnModel: ObservableObject {
     @Published private(set) var approvals = 0
     private let client = JarvisClient()
 
+    /// Notices cleared here, hidden at once until the snapshot drops them.
+    @Published private(set) var cleared: Set<String> = []
+
+    /// The unread notices, newest first, less any just cleared.
+    var notices: [Notice] {
+        Notices.sorted((snapshot?.notices ?? []).filter { !cleared.contains($0.id) })
+    }
+
+    /// Clears notices everywhere (empty ids = all of them).
+    func clearNotices(_ ids: [String]) {
+        let gone = ids.isEmpty ? notices.map(\.id) : ids
+        cleared.formUnion(gone)
+        Task {
+            do {
+                if ids.isEmpty { try await client.clearAllNotices() } else { try await client.clearNotices(ids: ids) }
+            } catch {
+                cleared.subtract(gone)
+            }
+        }
+    }
+
+    /// Approve or Deny from a notice, then clear it.
+    func answer(_ notice: Notice, ok: Bool) {
+        guard let approvalId = notice.approvalId else { return }
+        Task {
+            do {
+                try await client.answer(approval: approvalId, ok: ok)
+                clearNotices([notice.id])
+            } catch {}
+        }
+    }
+
     /// Tells Jarvis Dylan has gone to bed (or is up after a mis-press).
     /// Failures stay quiet: an older server answers 404 or 409.
     func setSleep(_ asleep: Bool) {
@@ -69,6 +101,8 @@ struct AlwaysOnView: View {
     /// The conversation (kept while the chat is closed, so reopening
     /// carries on) and whether the text field has focus.
     @StateObject private var chat = TVChatModel()
+    /// True while the notices list is in the right side.
+    @State private var showingNotices = false
     @FocusState private var typing: Bool
     /// Guest-friendly (on by default): people walking in see this screen,
     /// so it leaves out sleep, steps, Jarvis's suggestions and the private
@@ -103,12 +137,16 @@ struct AlwaysOnView: View {
                         if asking {
                             ChatPanel(model: chat, palette: palette, field: $typing)
                                 .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 60)), removal: .opacity.combined(with: .offset(x: 60))))
+                        } else if showingNotices && !guest {
+                            NoticesPanel(notices: model.notices, palette: palette, answer: { model.answer($0, ok: $1) }, clear: { model.clearNotices($0) })
+                                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 60)), removal: .opacity.combined(with: .offset(x: 60))))
                         } else {
                             right.transition(.opacity)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .animation(.smooth(duration: 0.6), value: asking)
+                    .animation(.smooth(duration: 0.6), value: showingNotices)
                 }
                 .padding(80)
                 .offset(drift)
@@ -156,7 +194,7 @@ struct AlwaysOnView: View {
         // the app as usual).
         // Menu backs out of the night view, then out of the chat; otherwise
         // it leaves the app as usual.
-        .onExitCommand(perform: calm ? { wake() } : asking ? { closeChat() } : nil)
+        .onExitCommand(perform: calm ? { wake() } : asking ? { closeChat() } : showingNotices ? { showingNotices = false } : nil)
         // After each reply the field takes focus again: the next turn is one
         // press and the mic button.
         .onChange(of: chat.replies) { _, _ in if asking { typing = true } }
@@ -172,6 +210,7 @@ struct AlwaysOnView: View {
             #if DEBUG
             // Screenshot check: `-openAsk` opens Ask Jarvis at launch.
             if ProcessInfo.processInfo.arguments.contains("-openAsk") { openChat() }
+            if ProcessInfo.processInfo.arguments.contains("-openNotices") { showingNotices = true }
             #endif
         }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
@@ -197,7 +236,8 @@ struct AlwaysOnView: View {
     private var calmLayout: some View {
         Button(action: wake) {
             VStack(spacing: 22) {
-                OrbView(state: .listening, size: 240, tappable: false, onLight: false)
+                // At night only the pips that need him.
+                OrbView(state: .listening, size: 240, tappable: false, onLight: false, pips: Notices.pips(model.notices, night: true))
                     .opacity(0.3)
                 TimelineView(.periodic(from: .now, by: 30)) { tick in
                     let now = SunLampPreview.now(at: tick.date)
@@ -300,7 +340,7 @@ struct AlwaysOnView: View {
         VStack(spacing: 26) {
             // The orb follows the chat while it's open: thinking, working,
             // speaking with each word.
-            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, work: model.snapshot?.jobs?.running ?? [], tappable: false, onLight: palette.darkInk)
+            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, work: model.snapshot?.jobs?.running ?? [], tappable: false, onLight: palette.darkInk, pips: Notices.pips(model.notices))
                 // Dim at night so the bedroom stays dark (the text is dimmed
                 // by the palette instead, only as far as it stays readable).
                 .opacity(0.35 + 0.65 * min(1, lamp.brightness * 3))
@@ -411,7 +451,10 @@ struct AlwaysOnView: View {
                 let now = SunLampPreview.now(at: tick.date)
                 let hero = TVBoard.hero(snapshot, now: now, guest: guest)
                 VStack(alignment: .leading, spacing: 26) {
-                    ChipRow(chips: StatusChips.chips(snapshot, approvals: model.approvals), palette: palette)
+                    HStack(spacing: 18) {
+                        ChipRow(chips: StatusChips.chips(snapshot, approvals: model.approvals), palette: palette)
+                        noticesButton
+                    }
                     greeting(snapshot, showBody: false)
                     if let hero {
                         NowNextCard(item: hero, now: now, palette: palette)
@@ -441,6 +484,36 @@ struct AlwaysOnView: View {
             HStack(spacing: 16) {
                 ProgressView()
                 Text("Jarvis is thinking…").foregroundStyle(inkDim)
+            }
+        }
+    }
+
+    /// "3 new" with its pips: in full view a button that slides the list
+    /// in; in guest view the count only, never the text.
+    @ViewBuilder
+    private var noticesButton: some View {
+        let notices = model.notices
+        if let count = Notices.countLabel(notices) {
+            let label = HStack(spacing: 8) {
+                ForEach(Array(Notices.pips(notices).prefix(4).enumerated()), id: \.offset) { _, kind in
+                    Circle().fill(kind == .need ? palette.alert.color : kind == .heads ? palette.accent.color : palette.inkDim.color)
+                        .frame(width: 12, height: 12)
+                }
+                Text(count).font(.caption.weight(.semibold))
+            }
+            if guest {
+                label
+                    .foregroundStyle(palette.ink.color)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(palette.panel.color))
+                    .overlay(Capsule().strokeBorder(palette.panelEdge.color, lineWidth: 2))
+            } else {
+                Button {
+                    showingNotices.toggle()
+                } label: { label }
+                .buttonStyle(SoftFocusButtonStyle(palette: palette))
+                .accessibilityLabel("\(notices.count) unread notices")
             }
         }
     }

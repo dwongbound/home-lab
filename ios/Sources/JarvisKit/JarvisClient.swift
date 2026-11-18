@@ -146,6 +146,28 @@ public struct JarvisClient: Sendable {
         _ = try await send(sleepRequest(asleep: asleep, source: source))
     }
 
+    /// Clears notices everywhere: these ids, or all of them.
+    public func clearNotices(ids: [String]) async throws {
+        try await post("api/jarvis/notices/clear", ["ids": ids])
+    }
+
+    /// Clears every notice.
+    public func clearAllNotices() async throws {
+        try await post("api/jarvis/notices/clear", ["all": true])
+    }
+
+    /// The request registering this device for push notifications.
+    public func pushRegisterRequest(token: String, platform: String, environment: String, bundle: String, name: String) -> URLRequest {
+        request("api/jarvis/push/register", method: "POST", json: [
+            "token": token, "platform": platform, "environment": environment, "bundle": bundle, "name": name,
+        ])
+    }
+
+    /// Registers this device's push token with the page server.
+    public func registerPush(token: String, platform: String, environment: String, bundle: String, name: String) async throws {
+        _ = try await send(pushRegisterRequest(token: token, platform: platform, environment: environment, bundle: bundle, name: name))
+    }
+
     private func post(_ path: String, _ json: [String: Any]) async throws {
         _ = try await send(request(path, method: "POST", json: json))
     }
