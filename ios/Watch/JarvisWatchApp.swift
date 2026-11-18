@@ -224,6 +224,12 @@ struct WatchHome: View {
                         .font(.footnote.weight(.semibold))
                     }
                 }
+                // Today's calories, a small line when Jarvis has them.
+                if let food = model.board.nutrition, food.isToday() {
+                    Label("\(food.leftWords) · \(food.ofGoalWords)", systemImage: "fork.knife")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.frostDim)
+                }
                 if let problem = model.problem {
                     Text(problem).font(.footnote).foregroundStyle(Theme.rose).multilineTextAlignment(.center)
                     if model.unreachable {
@@ -339,7 +345,15 @@ struct NoticesList: View {
 /// Each complication at its size, with sample data (`-complicationGallery`),
 /// for screenshots without a real watch face.
 struct ComplicationGallery: View {
-    private let entry = JarvisEntry(date: Date(), data: ComplicationData(needCount: 2, runningCount: 1, nextTitle: "Volleyball at the Y", nextAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(42 * 60)), updated: Date()))
+    private let entry = JarvisEntry(date: Date(), data: ComplicationData(needCount: 2, runningCount: 1, nextTitle: "Volleyball at the Y", nextAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(42 * 60)), nutrition: ComplicationGallery.sampleFood, updated: Date()))
+
+    /// Today's sample calories (Pacific date, so it counts as today).
+    static var sampleFood: Nutrition {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let p = c.dateComponents([.year, .month, .day], from: Date())
+        return Nutrition(date: String(format: "%04d-%02d-%02d", p.year!, p.month!, p.day!), eaten: 1180, goal: 1750, left: 570, protein: 96, proteinGoal: 140)
+    }
 
     var body: some View {
         ScrollView {
@@ -352,7 +366,13 @@ struct ComplicationGallery: View {
                     .padding(8).frame(height: 70).background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12)))
                 NextView(entry: entry, family: .accessoryRectangular)
                     .padding(8).frame(height: 70).background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12)))
+                HStack(spacing: 12) {
+                    CaloriesView(entry: entry, family: .accessoryCircular).frame(width: 50, height: 50)
+                    CaloriesView(entry: entry, family: .accessoryRectangular)
+                        .padding(6).frame(height: 70).background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12)))
+                }
                 NeedsView(entry: entry, family: .accessoryInline).font(.footnote)
+                CaloriesView(entry: entry, family: .accessoryInline).font(.footnote)
                 NextView(entry: entry, family: .accessoryInline).font(.footnote)
             }
         }

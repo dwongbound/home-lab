@@ -95,3 +95,51 @@ struct NextView: View {
     }
 }
 
+
+/// Calories left today: a ring of eaten against the goal with the number
+/// left inside; "570 left" over "1,180 of 1,750" (and protein) in the wide
+/// size; "570 kcal left" inline. Over the goal it says "120 over". Old or
+/// missing numbers say "Open Jarvis to update".
+struct CaloriesView: View {
+    let entry: JarvisEntry
+    let family: WidgetFamily
+
+    var body: some View {
+        let food = entry.data?.calories(now: entry.date)
+        switch family {
+        case .accessoryCircular:
+            if let food {
+                Gauge(value: food.fraction) {
+                    Text("kcal")
+                } currentValueLabel: {
+                    Text(food.left >= 0 ? "\(Int(food.left.rounded()))" : "+\(Int((-food.left).rounded()))")
+                        .font(.system(size: 13, weight: .bold).monospacedDigit())
+                }
+                .gaugeStyle(.accessoryCircularCapacity)
+                .tint(food.left >= 0 ? .green : .orange)
+            } else {
+                ZStack {
+                    AccessoryWidgetBackground()
+                    Image(systemName: "fork.knife").font(.title3)
+                }
+            }
+        case .accessoryCorner:
+            Image(systemName: "fork.knife")
+                .widgetLabel(food.map { "\($0.leftWords.replacingOccurrences(of: " left", with: " kcal left"))" } ?? "Open Jarvis")
+        case .accessoryInline:
+            Text(food.map { $0.leftWords.replacingOccurrences(of: " left", with: " kcal left").replacingOccurrences(of: " over", with: " kcal over") } ?? "Open Jarvis to update")
+        default:
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Calories", systemImage: "fork.knife").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                if let food {
+                    Text(food.leftWords).font(.headline).widgetAccentable()
+                    Text(food.ofGoalWords).font(.caption)
+                    if let protein = food.proteinWords { Text("Protein \(protein)").font(.caption2).foregroundStyle(.secondary) }
+                } else {
+                    Text("Open Jarvis to update").font(.caption)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}

@@ -44,13 +44,15 @@ public struct WatchBoard: Equatable, Sendable {
     public var nextTitle: String?
     /// When the next thing starts (ISO).
     public var nextAt: String?
+    /// Today's calories (numbers only), when Jarvis has them.
+    public var nutrition: Nutrition?
 
     public static func == (a: WatchBoard, b: WatchBoard) -> Bool {
-        a.notices == b.notices && a.tasks.map(\.label) == b.tasks.map(\.label) && a.tasks.map(\.startedAt) == b.tasks.map(\.startedAt) && a.nextTitle == b.nextTitle && a.nextAt == b.nextAt
+        a.notices == b.notices && a.tasks.map(\.label) == b.tasks.map(\.label) && a.tasks.map(\.startedAt) == b.tasks.map(\.startedAt) && a.nextTitle == b.nextTitle && a.nextAt == b.nextAt && a.nutrition == b.nutrition
     }
 
-    public init(notices: [WatchNotice] = [], tasks: [(label: String, startedAt: String?)] = [], nextTitle: String? = nil, nextAt: String? = nil) {
-        self.notices = notices; self.tasks = tasks; self.nextTitle = nextTitle; self.nextAt = nextAt
+    public init(notices: [WatchNotice] = [], tasks: [(label: String, startedAt: String?)] = [], nextTitle: String? = nil, nextAt: String? = nil, nutrition: Nutrition? = nil) {
+        self.notices = notices; self.tasks = tasks; self.nextTitle = nextTitle; self.nextAt = nextAt; self.nutrition = nutrition
     }
 
     /// From the phone's snapshot: unread notices newest first, running tasks,
@@ -63,6 +65,7 @@ public struct WatchBoard: Equatable, Sendable {
         }
         nextTitle = next?.title
         nextAt = next.map { ISO8601DateFormatter().string(from: $0.start) }
+        nutrition = snapshot?.nutrition
     }
 
     /// As a WatchConnectivity dictionary.
@@ -73,6 +76,7 @@ public struct WatchBoard: Equatable, Sendable {
         ]
         if let nextTitle { out["nextTitle"] = nextTitle }
         if let nextAt { out["nextAt"] = nextAt }
+        if let nutrition { out["nutrition"] = nutrition.dictionary }
         return out
     }
 
@@ -86,6 +90,7 @@ public struct WatchBoard: Equatable, Sendable {
         }
         nextTitle = message["nextTitle"] as? String
         nextAt = message["nextAt"] as? String
+        nutrition = (message["nutrition"] as? [String: Any]).flatMap(Nutrition.init(dictionary:))
     }
 }
 
@@ -97,6 +102,8 @@ public struct ComplicationData: Equatable, Sendable {
     public var runningCount: Int
     public var nextTitle: String?
     public var nextAt: String?
+    /// Today's calories, when Jarvis has them.
+    public var nutrition: Nutrition?
     /// When the phone sent it.
     public var updated: Date
 
@@ -108,12 +115,13 @@ public struct ComplicationData: Equatable, Sendable {
         runningCount = board.tasks.count
         nextTitle = board.nextTitle
         nextAt = board.nextAt
+        nutrition = board.nutrition
         self.updated = updated
     }
 
-    public init(needCount: Int, runningCount: Int, nextTitle: String?, nextAt: String?, updated: Date) {
+    public init(needCount: Int, runningCount: Int, nextTitle: String?, nextAt: String?, nutrition: Nutrition? = nil, updated: Date) {
         self.needCount = needCount; self.runningCount = runningCount
-        self.nextTitle = nextTitle; self.nextAt = nextAt; self.updated = updated
+        self.nextTitle = nextTitle; self.nextAt = nextAt; self.nutrition = nutrition; self.updated = updated
     }
 
     /// As the dictionary the phone sends and the Watch keeps.
@@ -121,6 +129,7 @@ public struct ComplicationData: Equatable, Sendable {
         var out: [String: Any] = ["need": needCount, "running": runningCount, "updated": updated.timeIntervalSince1970]
         if let nextTitle { out["nextTitle"] = nextTitle }
         if let nextAt { out["nextAt"] = nextAt }
+        if let nutrition { out["nutrition"] = nutrition.dictionary }
         return out
     }
 
@@ -130,7 +139,14 @@ public struct ComplicationData: Equatable, Sendable {
         runningCount = dictionary["running"] as? Int ?? 0
         nextTitle = dictionary["nextTitle"] as? String
         nextAt = dictionary["nextAt"] as? String
+        nutrition = (dictionary["nutrition"] as? [String: Any]).flatMap(Nutrition.init(dictionary:))
         self.updated = Date(timeIntervalSince1970: updated)
+    }
+
+    /// Today's calories if fresh and for today; nil means "Open Jarvis to update".
+    public func calories(now: Date = Date()) -> Nutrition? {
+        guard !isStale(now: now), let nutrition, nutrition.isToday(now: now) else { return nil }
+        return nutrition
     }
 
     public func isStale(now: Date = Date()) -> Bool {
