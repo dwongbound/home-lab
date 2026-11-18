@@ -287,7 +287,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
           { id: 't5', at: atPacificTime(t, 23, 30), title: 'Local model unloads if idle', detail: 'Frees about 6 GB of GPU memory', status: 'scheduled' },
         ],
         activity: [
-          { id: 'a1', at: minutesAgo(4), kind: 'jarvis', text: 'Jarvis answered "what time is sunset" on Telegram' },
+          { id: 'a1', at: minutesAgo(4), kind: 'jarvis', text: 'Jarvis answered "what time is sunset" in the app' },
           { id: 'a2', at: minutesAgo(38), kind: 'ha', text: 'Living room lamp turned off by the bedtime scene' },
           { id: 'a3', at: minutesAgo(95), kind: 'ollama', text: 'ornith-1.5:9b loaded in 41 s' },
           { id: 'a4', at: minutesAgo(240), kind: 'system', text: 'Ubuntu started by the "Start Ubuntu (WSL)" task' },

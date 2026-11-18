@@ -58,9 +58,9 @@ function goneApproval(body) {
   return result
 }
 
-/** Who answered an approval, as one of the four the page knows. */
+/** Who answered an approval, as one of the three the page knows. */
 function toApprovalBy(by) {
-  if (by === 'page' || by === 'voice' || by === 'telegram') return by
+  if (by === 'page' || by === 'voice') return by
   return 'timeout'
 }
 const HISTORY_POINTS = 24

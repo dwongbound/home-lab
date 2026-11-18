@@ -48,7 +48,7 @@ export interface TalkHandlers {
   onClosed: (message: string) => void
   /** Jarvis wants an OK to write a file or run a command (answer by tap, or say yes or no). */
   onApproval: (approval: Approval) => void
-  /** An approval was settled: by the page (a tap or a spoken yes/no), Telegram, or the clock. */
+  /** An approval was settled: by the page (a tap or a spoken yes/no) or the clock. */
   /** later: he said "wait", so the request is held rather than denied. */
   onApprovalDone: (id: string, ok: boolean, by: ApprovalBy, later: boolean) => void
 }
@@ -72,9 +72,9 @@ interface TalkEvent {
   wake_word?: boolean
 }
 
-/** Who settled an approval, as one of the four the page knows. */
+/** Who settled an approval, as one of the three the page knows. */
 function approvalBy(by: string | undefined): ApprovalBy {
-  if (by === 'page' || by === 'voice' || by === 'telegram') return by
+  if (by === 'page' || by === 'voice') return by
   return 'timeout'
 }
 

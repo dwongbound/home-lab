@@ -25,7 +25,7 @@ export const RequestsChart = memo(function RequestsChart({ days }: { days: DayCo
       <header className="panel__head">
         <div>
           <h2 id="chart-title" className="panel__title">Jarvis requests</h2>
-          <p className="panel__sub">Telegram, Siri and scheduled runs this week</p>
+          <p className="panel__sub">The app, Siri and scheduled runs this week</p>
         </div>
         <p className="chart__total"><strong>{total}</strong> so far</p>
       </header>

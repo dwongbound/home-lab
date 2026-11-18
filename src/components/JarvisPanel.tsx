@@ -376,7 +376,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
       }
       await wait(CATCH_UP_EVERY_MS)
     }
-    return { ok: false, message: soFar || 'Lost touch with Jarvis. Ask again, or check Telegram.' }
+    return { ok: false, message: soFar || 'Lost touch with Jarvis. Ask again in a moment.' }
   }
 
   /** Hands-free Talk: the real voice line with live data, the demo otherwise. */

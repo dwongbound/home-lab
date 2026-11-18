@@ -331,11 +331,11 @@ export interface ApprovalAnswerResult extends ActionResult {
 /**
  * Jarvis asking before he writes a file or runs a command on the PC. He
  * waits (up to `expires`) for Approve or Deny from the page, a spoken yes
- * or no in Talk, or Telegram, whichever answers first.
+ * or no in Talk, whichever answers first (Telegram was removed 2026-11-18).
  */
 export interface Approval { id: string; tool: string; summary: string; expires: string }
-/** Who settled an approval: a tap on the page, a spoken yes or no in Talk, Telegram, or nobody in time. */
-export type ApprovalBy = 'page' | 'voice' | 'telegram' | 'timeout'
+/** Who settled an approval: a tap on the page, a spoken yes or no in Talk, or nobody in time. */
+export type ApprovalBy = 'page' | 'voice' | 'timeout'
 /** How an approval ended: yes, no, or held for later because he said "wait". */
 export type ApprovalOutcome = 'approved' | 'denied' | 'later'
 export type ChatEvent =

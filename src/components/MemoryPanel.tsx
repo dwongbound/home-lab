@@ -10,7 +10,7 @@ import { Spinner } from './Spinner'
 //     picked up from chats by the 3:30 am pass or told to him here. Each can
 //     be forgotten (after a confirm), and new ones added.
 //   - Search: the same search Jarvis runs before he answers, over every
-//     saved conversation (Telegram, Siri, this page, voice).
+//     saved conversation (the app, Siri, this page, voice).
 // His private memory.md is never shown or changed here.
 
 /** Where a past moment came from, in words. */
@@ -18,6 +18,7 @@ function chatName(chat: string): string {
   if (chat === 'web') return 'This page'
   if (chat === 'voice') return 'Voice'
   if (chat === 'siri') return 'Siri'
+  // Telegram was removed 2026-11-18, but older saved conversations still carry its name.
   if (chat.startsWith('tg') || chat === 'telegram') return 'Telegram'
   return chat || 'Chat'
 }
@@ -135,7 +136,7 @@ export function MemoryPanel({ now }: { now: Date }) {
       {body}
 
       <h3 className="memory__heading">Search past conversations</h3>
-      <p className="panel__sub">The same search Jarvis runs before he answers you, across Telegram, Siri, voice and this page.</p>
+      <p className="panel__sub">The same search Jarvis runs before he answers you, across the app, Siri, voice and this page.</p>
       <form className="memory__form" onSubmit={search} role="search">
         <label htmlFor="memory-search" className="jarvis__label">Search past conversations</label>
         <input
