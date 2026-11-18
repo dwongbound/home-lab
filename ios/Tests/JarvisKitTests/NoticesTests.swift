@@ -53,3 +53,30 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(body?["environment"], "sandbox")
     }
 }
+
+final class TVBannerTests: XCTestCase {
+    private let a = Notice(id: "a", kind: .fyi, title: "Done", body: "Rewrite finished", source: "job", created: "2026-11-18T09:00:00Z")
+    private let b = Notice(id: "b", kind: .need, title: "Lights off?", source: "approval", created: "2026-11-18T09:05:00Z", approvalId: "x")
+
+    func testOnlyNewOnesAfterTheFirstSnapshot() {
+        XCTAssertEqual(TVBanner.arrivals(seen: nil, now: [a, b], night: false), [])
+        XCTAssertEqual(TVBanner.arrivals(seen: ["a"], now: [a, b], night: false).map(\.id), ["b"])
+        XCTAssertEqual(TVBanner.arrivals(seen: [], now: [b, a], night: false).map(\.id), ["a", "b"], "oldest first")
+        XCTAssertEqual(TVBanner.arrivals(seen: [], now: [a, b], night: true).map(\.id), ["b"], "only needs at night")
+    }
+
+    func testGuestsNeverSeeTheTextAndBatchesShowTheNewest() {
+        XCTAssertEqual(TVBanner.words(a, guest: false).title, "Done")
+        XCTAssertEqual(TVBanner.words(a, guest: false).body, "Rewrite finished")
+        XCTAssertEqual(TVBanner.words(a, more: 2, guest: false).body, "Rewrite finished · +2 more")
+        XCTAssertEqual(TVBanner.words(b, more: 1, guest: false).body, "+1 more")
+        XCTAssertEqual(TVBanner.words(a, guest: true).title, "New notification")
+        XCTAssertEqual(TVBanner.words(a, more: 2, guest: true).title, "3 new notifications")
+        XCTAssertNil(TVBanner.words(b, guest: true).body)
+        let batch = TVBanner.banner([a, b])
+        XCTAssertEqual(batch?.notice.id, "b")
+        XCTAssertEqual(batch?.more, 1)
+        XCTAssertNil(TVBanner.banner([]))
+        XCTAssertEqual(TVBanner.seconds(b), 8)
+    }
+}
