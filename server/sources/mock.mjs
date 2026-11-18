@@ -321,6 +321,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
         moneyPicks: await picks.read(cloud.money.recent),
         offers: { greeting: 'Well, good evening, Dylan! Your 7 PM practice moved to court 2.', offers: state.offers.map((o) => ({ ...o })) },
         notices: currentNotices(t).map((n) => ({ ...n })),
+        // Made-up calories for today.
+        nutrition: { date: t.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140 },
       }
     },
 

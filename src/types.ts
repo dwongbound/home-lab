@@ -193,6 +193,24 @@ export interface Snapshot {
   offers: JarvisOffers | null
   /** Jarvis's unread notifications, newest first (GET /notices); null on an older Jarvis. */
   notices: Notice[] | null
+  /** Today's calories (GET /nutrition/today), for the Watch complication; null on an older Jarvis. */
+  nutrition: NutritionToday | null
+}
+
+/** Today's food numbers from Jarvis's meal log. Numbers only, never meal names. */
+export interface NutritionToday {
+  /** The Pacific-time day these are for, "2026-11-18". */
+  date: string
+  /** Calories eaten so far, and the day's goal. */
+  eaten: number
+  goal: number
+  /** goal minus eaten; negative when over. */
+  left: number
+  /** Active calories burned (Apple Health), when Jarvis has them. */
+  burned: number | null
+  /** Protein so far and its goal, in grams. */
+  protein: number | null
+  proteinGoal: number | null
 }
 
 /** How much a notification asks of Dylan: an answer, a look, or nothing. */
