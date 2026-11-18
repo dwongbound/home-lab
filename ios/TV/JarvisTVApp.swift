@@ -270,7 +270,6 @@ struct AlwaysOnView: View {
             if ProcessInfo.processInfo.arguments.contains("-openNotices") { showingNotices = true }
             #endif
         }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         // Never the screensaver while Jarvis is open (Dylan, 2026-11-18: "it
         // should just stay on the Jarvis app if it's open forever"): asked
         // again whenever the app comes back to the front, and every minute
