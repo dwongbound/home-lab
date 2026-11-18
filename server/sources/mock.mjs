@@ -390,7 +390,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
     /** Answers a waiting sample approval; unknown ids were already answered. */
     async answerApproval(id, ok) {
       const waiting = state.approvals.get(id)
-      if (!waiting) return { ok: false, message: 'That request was already answered or ran out of time' }
+      if (!waiting) return { ok: false, gone: true, message: 'That request was already answered or ran out of time' }
       waiting.answer(ok, 'page')
       return { ok: true, message: ok ? 'Approved' : 'Denied' }
     },

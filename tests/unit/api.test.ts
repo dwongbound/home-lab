@@ -166,8 +166,10 @@ describe('Jarvis approvals', () => {
     await chatting
     expect(events).toContainEqual({ type: 'approval_done', id, ok: true, by: 'page' })
     expect(events.at(-1)).toEqual({ type: 'done', ok: true })
-    // Answered once; a second answer is refused.
-    expect((await callApi(api, 'POST', '/api/jarvis/approve', ACTION_HEADER, JSON.stringify({ id, ok: false }))).statusCode).toBe(409)
+    // Answered once; a second answer says it's gone, so every screen drops the card.
+    const late = await callApi(api, 'POST', '/api/jarvis/approve', ACTION_HEADER, JSON.stringify({ id, ok: false }))
+    expect(late.statusCode).toBe(410)
+    expect(late.json()).toMatchObject({ ok: false, gone: true })
     expect((await callApi(api, 'GET', '/api/jarvis/approvals')).json().pending).toEqual([])
   })
 })

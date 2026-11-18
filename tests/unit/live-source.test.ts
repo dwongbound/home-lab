@@ -94,6 +94,7 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url === `${config.jarvisApiUrl}/approve`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       const { id } = JSON.parse(String(init?.body))
+      if (id === 'voiced') return Response.json({ error: 'that approval is already answered no (voice)', gone: true, answer: { ok: false, by: 'voice' } }, { status: 404 })
       return Response.json({ ok: true }, { status: id === 'a1' ? jarvisStatusCode : 404 })
     }
     if (url === `${config.jarvisApiUrl}/approvals`) {
@@ -332,7 +333,9 @@ describe('live chat with Jarvis', () => {
     const { source, fetch } = liveWith({})
     const login = { login: 'dylan@example.com' }
     expect(await source.answerApproval('a1', true, login)).toEqual({ ok: true, message: 'Approved' })
-    expect(await source.answerApproval('gone', false, login)).toEqual({ ok: false, message: 'That request was already answered or ran out of time' })
+    // Already over: `gone` tells the page to drop the card, with how it was answered when Jarvis remembers.
+    expect(await source.answerApproval('gone', false, login)).toEqual({ ok: false, gone: true, message: 'That request was already answered or ran out of time' })
+    expect(await source.answerApproval('voiced', false, login)).toEqual({ ok: false, gone: true, message: 'That approval is already answered no (voice)', answer: { ok: false, by: 'voice', later: false } })
     expect(await source.approvals(login)).toEqual([{ id: 'a2', tool: 'edit_file', summary: '~/x.md', expires: 'z' }])
     expect(await source.answerApproval('a1', true, {})).toMatchObject({ ok: false })
     expect(await liveWith({ jarvisAnswers: false }).source.answerApproval('a1', true, login)).toEqual({ ok: false, message: 'Jarvis is not answering' })

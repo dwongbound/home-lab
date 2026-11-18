@@ -54,7 +54,7 @@ describe('the voice line', () => {
 
   it('hands your words over while you talk, then the whole turn, then his reply, and his approval requests', async () => {
     // Just enough of a browser's audio and WebSocket for the line to open.
-    const node = () => ({ connect: (next: unknown) => next, gain: { value: 1 }, fftSize: 0, getFloatTimeDomainData: () => {} })
+    const node = () => ({ connect: (next: unknown) => next, disconnect: () => {}, gain: { value: 1 }, fftSize: 0, getFloatTimeDomainData: () => {} })
     class FakeContext {
       state = 'running'
       destination = node()
@@ -94,7 +94,13 @@ describe('the voice line', () => {
     vi.stubGlobal('AudioWorkletNode', FakeWorklet)
     vi.stubGlobal('WebSocket', FakeSocket)
     const track = { enabled: true, stop: vi.fn() }
-    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) } })
+    // The first microphone, then a fresh one each time the line reopens it.
+    const fresh = { enabled: true, stop: vi.fn() }
+    const getUserMedia = vi.fn(async () => {
+      const t = getUserMedia.mock.calls.length === 1 ? track : fresh
+      return { getTracks: () => [t], getAudioTracks: () => [t] }
+    })
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
     vi.stubGlobal('requestAnimationFrame', () => 0)
     vi.stubGlobal('cancelAnimationFrame', () => {})
     URL.createObjectURL = () => 'blob:x'
@@ -172,6 +178,12 @@ describe('the voice line', () => {
     say({ type: 'woke', by: 'voice' })
     say({ type: 'state', state: 'listening' })
     expect(on.onState).toHaveBeenLastCalledWith('listening')
+    // The line is open but he's had no sound from us: the microphone is opened afresh, the old one let go.
+    say({ type: 'no_audio', seconds: 20 })
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(track.stop).toHaveBeenCalled())
+    expect(fresh.stop).not.toHaveBeenCalled()
+    expect(on.onClosed).not.toHaveBeenCalled()
     // "Goodbye": the call ends for good. Mic off, speaker stopped, and a
     // plain note rather than "the line dropped", even when the socket closes after.
     say({ type: 'bye' })

@@ -42,6 +42,21 @@ function toApproval(raw) {
   }
 }
 
+/**
+ * What to tell the page when Approve or Deny was tapped on a request that's
+ * already over (Jarvis answers 404 with why, and how it was answered when
+ * he still remembers). `gone` tells every screen to drop the card for good
+ * (Dylan, 2026-11-18: a card answered by voice kept coming back).
+ */
+function goneApproval(body) {
+  const said = typeof body?.error === 'string' && body.error ? body.error : 'that request was already answered or ran out of time'
+  const result = { ok: false, gone: true, message: said.charAt(0).toUpperCase() + said.slice(1) }
+  if (typeof body?.answer?.ok === 'boolean') {
+    result.answer = { ok: body.answer.ok, by: toApprovalBy(body.answer.by), later: body.answer.later === true }
+  }
+  return result
+}
+
 /** Who answered an approval, as one of the four the page knows. */
 function toApprovalBy(by) {
   if (by === 'page' || by === 'voice' || by === 'telegram') return by
@@ -547,7 +562,7 @@ export function createLiveSource(config, deps = {}) {
           body: JSON.stringify({ id, ok }),
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
-        if (res.status === 404) return { ok: false, message: 'That request was already answered or ran out of time' }
+        if (res.status === 404) return goneApproval(await res.json().catch(() => null))
         if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
         return { ok: true, message: ok ? 'Approved' : 'Denied' }
       } catch {

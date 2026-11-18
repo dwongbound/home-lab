@@ -304,6 +304,8 @@ export function createApi(source) {
     }
     const login = req.headers['tailscale-user-login'] ?? ''
     const result = await source.answerApproval(body.id, body.ok, { login })
+    // 410 = that request is over (answered elsewhere or timed out): drop its card.
+    if (result.gone) return sendJson(res, 410, result)
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
