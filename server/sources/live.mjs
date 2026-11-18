@@ -17,6 +17,7 @@ import { parseOffers } from './offers.mjs'
 import { parseNotices } from './notices.mjs'
 import { parseNutrition } from './nutrition.mjs'
 import { parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
+import { parseReport, parseReports } from './reports.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
@@ -63,6 +64,8 @@ function toApprovalBy(by) {
   if (by === 'page' || by === 'voice') return by
   return 'timeout'
 }
+// A report can be up to 1 MB, so it gets longer than a probe.
+const REPORT_TIMEOUT_MS = 10_000
 const HISTORY_POINTS = 24
 const GB = 1024 ** 3
 
@@ -320,6 +323,13 @@ export function createLiveSource(config, deps = {}) {
     return parseJobs(await res.json())
   }
 
+  /** The reports Jarvis has written (GET /reports); null when an older Jarvis answers 404. */
+  async function readJarvisReports() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/reports`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseReports(await res.json())
+  }
+
   /** Jarvis's greeting and offers (GET /offers); null when an older Jarvis answers 404. */
   async function readJarvisOffers() {
     const res = await fetchFn(`${config.jarvisApiUrl}/offers`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
@@ -381,8 +391,9 @@ export function createLiveSource(config, deps = {}) {
         readJarvisOffers(),
         readJarvisNotices(),
         readJarvisNutrition(),
+        readJarvisReports(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -432,6 +443,7 @@ export function createLiveSource(config, deps = {}) {
         offers,
         notices,
         nutrition,
+        reports,
       }
     },
 
@@ -755,6 +767,59 @@ export function createLiveSource(config, deps = {}) {
         const body = await res.json().catch(() => ({}))
         if (!res.ok) return { ok: false, message: body?.message ?? `Jarvis answered ${res.status}` }
         return { ok: true, message: body?.message ?? 'Done' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
+     * One report's HTML (GET /reports/{id}), as Jarvis saved it. `gone` when
+     * it was deleted or has expired; neither when he isn't answering.
+     */
+    async reportHtml(id, caller = {}) {
+      if (!caller.login) return { html: null, gone: false }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/reports/${encodeURIComponent(id)}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(REPORT_TIMEOUT_MS),
+        })
+        if (res.status === 404) return { html: null, gone: true }
+        if (!res.ok) return { html: null, gone: false }
+        return { html: await res.text(), gone: false }
+      } catch {
+        return { html: null, gone: false }
+      }
+    },
+
+    /**
+     * Keeps a report past its 30 days or lets it go again (POST
+     * /reports/{id}/keep), or deletes it now (POST /reports/{id}/delete).
+     */
+    async changeReport(change, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to change reports' }
+      const id = encodeURIComponent(change.id)
+      let path = `/reports/${id}/delete`
+      let body = {}
+      if (change.op === 'keep') {
+        path = `/reports/${id}/keep`
+        body = { keep: change.keep }
+      }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}${path}`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        const answer = await res.json().catch(() => ({}))
+        if (res.status === 404) return { ok: false, message: 'That report is already gone' }
+        if (!res.ok) return { ok: false, message: answer?.error ?? `Jarvis answered ${res.status}` }
+        if (change.op === 'delete') return { ok: true, message: 'Deleted' }
+        const report = parseReport(answer?.report)
+        let message = 'Kept until you switch it off'
+        if (!change.keep) message = 'Back to 30 days'
+        if (report === null) return { ok: true, message }
+        return { ok: true, message, report }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }

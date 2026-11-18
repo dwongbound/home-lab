@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, PlaybookBook, PlaybookChange, PlaybookResult, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
+import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, PlaybookBook, PlaybookChange, PlaybookResult, ReportChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -340,6 +340,24 @@ export async function changePlaybook(change: PlaybookChange): Promise<PlaybookRe
   }
   try {
     const res = await fetch(PLAYBOOKS_KEY, {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify(change),
+    })
+    return await res.json()
+  } catch {
+    return { ok: false, message: 'The page couldn’t reach the server' }
+  }
+}
+
+/** Keeps a report past its 30 days (or lets it go again), or deletes it. */
+export async function changeReport(change: ReportChange): Promise<ActionResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.changeReport(change)
+  }
+  try {
+    const res = await fetch('/api/jarvis/reports', {
       method: 'POST',
       headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
       body: JSON.stringify(change),

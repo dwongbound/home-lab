@@ -187,6 +187,8 @@ export interface Snapshot {
   home: HomeState | null
   /** What Jarvis runs in the background (GET /jobs); null on an older Jarvis or when it doesn't answer. */
   jobs: JarvisJobs | null
+  /** The reports Jarvis has written (GET /reports); null on an older Jarvis or when it doesn't answer. */
+  reports: JarvisReports | null
   /** Money page category picks waiting to be applied in Copilot. */
   moneyPicks: MoneyPicks
   /** Jarvis's greeting and the tasks he offers to do (GET /offers); null on an older Jarvis. */
@@ -262,6 +264,30 @@ export interface JarvisOffers {
   greeting: string | null
   offers: JarvisOffer[]
 }
+
+/** One report Jarvis wrote: a self-contained page kept on the PC, opened at /reports/<id>. */
+export interface JarvisReport {
+  id: string
+  title: string
+  summary: string
+  created: string
+  /** When Jarvis deletes it (created + the days kept); null while Keep is on. */
+  expires: string | null
+  kept: boolean
+  bytes: number
+}
+
+/** Jarvis's reports newest first, the room they take, and the rules: days kept and the size cap. */
+export interface JarvisReports {
+  reports: JarvisReport[]
+  totalBytes: number
+  keepDays: number
+  /** The most all reports together may take; 0 when Jarvis doesn't say. */
+  maxBytes: number
+}
+
+/** A change to one report: keep it past its days (or let it go again), or delete it now. */
+export type ReportChange = { op: 'keep'; id: string; keep: boolean } | { op: 'delete'; id: string }
 
 /** One of Jarvis's background jobs: Lookout, Messenger, Nightly, or housekeeping. */
 export interface JarvisJob {
@@ -539,6 +565,10 @@ export interface DataSource {
   playbooks(caller?: { login?: string }): Promise<PlaybookBook | null>
   /** Saves, deletes or runs one playbook. */
   changePlaybook(change: PlaybookChange, caller?: { login?: string }): Promise<PlaybookResult>
+  /** One report's HTML; `gone` when it was deleted or has expired. */
+  reportHtml(id: string, caller?: { login?: string }): Promise<{ html: string | null; gone: boolean }>
+  /** Keeps, lets go of, or deletes one report. */
+  changeReport(change: ReportChange, caller?: { login?: string }): Promise<ActionResult>
   /** How Jarvis sounds, or null when he can't be asked. */
   voice(caller?: { login?: string }): Promise<VoiceSettings | null>
   /** Saves how Jarvis sounds; used from his next reply. */

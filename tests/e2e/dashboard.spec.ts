@@ -1302,3 +1302,42 @@ test('an approval already answered out loud drops its card for good when I tap i
     await page.request.post('/api/jarvis/approve', { headers: { 'x-home-lab': '1' }, data: { id: p.id, ok: false } })
   }
 })
+
+test('Reports: each says when it is deleted, Keep holds one, Delete asks first, and a report opens as a locked-down page', async ({ page }) => {
+  await page.goto('/#services')
+  const reports = page.getByRole('region', { name: 'Reports' })
+  // The rule and the room used are stated up front.
+  await expect(reports).toContainText('Each report is deleted 30 days after it was made, unless Keep is on.')
+  await expect(reports).toContainText('of 200 MB')
+  const speakers = reports.getByRole('listitem').filter({ hasText: 'Bookshelf speakers under $400' })
+  await expect(speakers).toContainText('184 KB')
+  await expect(speakers).toContainText(/Deletes [A-Z][a-z]{2} \d{1,2}/)
+  await expect(reports.getByRole('listitem').filter({ hasText: 'Week in review' })).toContainText('Kept until you switch Keep off')
+
+  // Keep holds it past its 30 days; switching it off brings the date back.
+  const keep = speakers.getByRole('switch', { name: 'Keep Bookshelf speakers under $400' })
+  await keep.click()
+  await expect(keep).toHaveAttribute('aria-checked', 'true')
+  await expect(speakers).toContainText('Kept until you switch Keep off')
+  await keep.click()
+  await expect(keep).toHaveAttribute('aria-checked', 'false')
+  await expect(speakers).toContainText(/Deletes [A-Z][a-z]{2} \d{1,2}/)
+
+  // Delete asks first, and Close leaves the report alone.
+  await speakers.getByRole('button', { name: 'Delete Bookshelf speakers under $400' }).click()
+  const confirm = page.getByRole('dialog', { name: 'Delete this report?' })
+  await expect(confirm).toContainText('removed from the PC for good')
+  await confirm.getByRole('button', { name: 'Close' }).click()
+  await expect(confirm).toBeHidden()
+  await expect(speakers).toBeVisible()
+
+  // The report is its own page, served so it can't run scripts or load anything from outside.
+  const link = speakers.getByRole('link', { name: 'Bookshelf speakers under $400' })
+  await expect(link).toHaveAttribute('href', '/reports/rep-speakers')
+  const res = await page.request.get('/reports/rep-speakers')
+  expect(res.status()).toBe(200)
+  expect(res.headers()['content-security-policy']).toContain("default-src 'none'")
+  expect(res.headers()['content-security-policy']).toContain('sandbox')
+  expect(await res.text()).toContain('<h1>Bookshelf speakers under $400</h1>')
+  expect((await page.request.get('/reports/not-there')).status()).toBe(404)
+})

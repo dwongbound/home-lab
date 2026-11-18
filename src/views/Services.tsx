@@ -4,10 +4,12 @@ import { ModelCard } from '../components/ModelCard'
 import { LoadedModels } from '../components/LoadedModels'
 import { TerminalPanel } from '../components/TerminalPanel'
 import { JobsPanel } from '../components/JobsPanel'
+import { ReportsPanel } from '../components/ReportsPanel'
 import { useInKiosk } from '../useKiosk'
 
 // The Services page: every service with response times, the local model card,
 // what's in GPU memory and why, what Jarvis is doing in the background,
+// the reports he has written (with how long each is kept),
 // and a terminal on jarvis (the same tmux
 // session as the Shell tab) for restarting things by hand. Kiosk mode
 // leaves the terminal out: a shell on jarvis has no place on a wall display.
@@ -25,6 +27,7 @@ export function Services({ data, now, onToast }: { data: Snapshot; now: Date; on
         </div>
         <div className="stack">
           <JobsPanel jobs={data.jobs} now={now} />
+          <ReportsPanel reports={data.reports} now={now} />
           <ModelCard model={data.model} onDone={onToast} />
         </div>
       </div>

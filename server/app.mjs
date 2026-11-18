@@ -34,9 +34,12 @@ import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parsePushDevice } from './sources/notices.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
+import { REPORT_CSP, isReportId, missingReportPage } from './sources/reports.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
+// A report's own page, outside /api/ so the link reads plainly in a message.
+const REPORT_PATH = /^\/reports\/([^/]+)$/
 const MAX_BODY_BYTES = 8 * 1024
 // A chat message may carry photos (the apps shrink them first), so it gets more room.
 const MAX_CHAT_BYTES = 19 * 1024 * 1024
@@ -255,6 +258,50 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
+  /** Keeps a report past its 30 days (or lets it go again), or deletes it. */
+  async function handleReportChange(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    const keep = body?.op === 'keep' && typeof body.keep === 'boolean'
+    const known = keep || body?.op === 'delete'
+    if (!known || !isReportId(body.id)) {
+      return sendJson(res, 400, { ok: false, message: 'Send {"op": "keep", "id": "...", "keep": true | false} or {"op": "delete", "id": "..."}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    let change = { op: 'delete', id: body.id }
+    if (keep) change = { op: 'keep', id: body.id, keep: body.keep }
+    const result = await source.changeReport(change, { login })
+    return sendJson(res, result.ok ? 200 : 502, result)
+  }
+
+  /**
+   * One report as its own page (GET /reports/{id}), the link Jarvis puts in
+   * his "Report ready" message. The HTML is Jarvis's; the headers are ours,
+   * and they stop it running scripts or loading anything from outside.
+   */
+  async function handleReportPage(req, res, id) {
+    const login = req.headers['tailscale-user-login'] ?? ''
+    let found = { html: null, gone: true }
+    if (isReportId(id)) found = await source.reportHtml(id, { login })
+    res.setHeader('content-type', 'text/html; charset=utf-8')
+    res.setHeader('content-security-policy', REPORT_CSP)
+    res.setHeader('x-content-type-options', 'nosniff')
+    res.setHeader('referrer-policy', 'no-referrer')
+    res.setHeader('cache-control', 'private, no-store')
+    if (found.html !== null) {
+      res.statusCode = 200
+      return res.end(found.html)
+    }
+    if (found.gone) {
+      res.statusCode = 404
+      return res.end(missingReportPage('This report was deleted or has expired.'))
+    }
+    res.statusCode = 502
+    return res.end(missingReportPage('Jarvis isn’t answering, so this report can’t be shown right now. Open it through Tailscale, with Jarvis running on the PC.'))
+  }
+
   /** How Jarvis sounds, and the voices he has. */
   async function handleVoice(req, res) {
     const login = req.headers['tailscale-user-login'] ?? ''
@@ -429,6 +476,15 @@ export function createApi(source) {
 
   return async function api(req, res, next) {
     const { pathname } = new URL(req.url ?? '/', 'http://localhost')
+    const reportMatch = pathname.match(REPORT_PATH)
+    if (req.method === 'GET' && reportMatch) {
+      try {
+        return await handleReportPage(req, res, decodeURIComponent(reportMatch[1]))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return sendJson(res, 500, { error: message })
+      }
+    }
     if (!pathname.startsWith('/api/')) {
       if (next) return next()
       return sendJson(res, 404, { error: 'Not found' })
@@ -466,6 +522,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/playbooks') {
         return await handlePlaybookChange(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/reports') {
+        return await handleReportChange(req, res)
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/voice') {
         return await handleVoice(req, res)
