@@ -37,6 +37,12 @@ targets:
       # The Watch app ships inside the iPhone app (it asks Jarvis through
       # the phone, since Tailscale doesn't run on the Watch).
       - target: JarvisWatch
+    # Push notifications (paid membership, Dylan 2026-11-18): Jarvis's
+    # messages, approvals and alerts reach the lock screen.
+    entitlements:
+      path: App/Jarvis.entitlements
+      properties:
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis

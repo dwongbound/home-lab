@@ -41,6 +41,12 @@ final class AppModel: ObservableObject {
     /// The last touch, keystroke or tab change; the iPad's idle kiosk counts
     /// five quiet minutes from here.
     private(set) var lastActivity = Date()
+    /// True while the notices sheet is up.
+    @Published var showNotices = false
+    /// Notices cleared here but not yet gone from the snapshot: hidden at
+    /// once so the list doesn't flicker back before the next poll.
+    @Published private(set) var clearedNotices: Set<String> = []
+
     /// The Settings switch "Kiosk when idle on charge", on by default.
     static let idleKioskKey = "kiosk.padIdle"
 
@@ -52,6 +58,34 @@ final class AppModel: ObservableObject {
     let today = TodayModel()
     let talk = TalkModel()
     private var relay: AnyCancellable?
+    private var relayToday: AnyCancellable?
+
+    /// The unread notices, newest first, less any just cleared here.
+    var notices: [Notice] {
+        Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.contains($0.id) })
+    }
+
+    /// Clears notices everywhere (the server clears them for every device);
+    /// they vanish here at once and come back if the server didn't hear.
+    func clearNotices(_ ids: [String]) async {
+        clearedNotices.formUnion(ids)
+        do {
+            try await client.clearNotices(ids: ids)
+        } catch {
+            clearedNotices.subtract(ids)
+        }
+    }
+
+    /// Clears every notice.
+    func clearAllNotices() async {
+        let ids = notices.map(\.id)
+        clearedNotices.formUnion(ids)
+        do {
+            try await client.clearAllNotices()
+        } catch {
+            clearedNotices.subtract(ids)
+        }
+    }
 
     /// Something happened: the five quiet minutes start again.
     func noteActivity() {
@@ -89,6 +123,8 @@ final class AppModel: ObservableObject {
         // The Chat tab's badge counts the chat's waiting approvals, so a
         // change in the chat redraws the tab bar too.
         relay = chat.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        // The notices ride in the snapshot, so a new one redraws every orb.
+        relayToday = today.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         // Mute and End on the Dynamic Island reach the call through here.
         TalkActivityBridge.handler = { [weak self] action in
             guard let self else { return }

@@ -340,7 +340,7 @@ struct TalkView: View {
                     VStack(spacing: 14) {
                         // The orb stays put; it shrinks a little once
                         // there's a conversation to make room for it.
-                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone), work: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1)
+                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone), work: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, pips: Notices.pips(app.notices), onPips: { app.showNotices = true })
                             // Above the words below it, so a work callout isn't covered.
                             .zIndex(1)
                             .padding(.top, hasWords ? 8 : 24)

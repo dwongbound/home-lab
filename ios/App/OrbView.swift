@@ -36,6 +36,12 @@ struct OrbView: View {
     /// True on a bright background (the TV's daytime sun lamp): the dots
     /// and lines are drawn in dark slate so they still show.
     var onLight = false
+    /// Unread notices, one pip each circling just outside the shell
+    /// (Notices.pips in JarvisKit): orange needs Dylan, blue is a heads-up,
+    /// dim white an FYI. Distinct from the amber work dots on the shell.
+    var pips: [NoticeKind] = []
+    /// Tapping a pip opens the notices (nil: pips aren't tappable).
+    var onPips: (() -> Void)? = nil
     /// The work whose callout is open, if any.
     @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -60,6 +66,9 @@ struct OrbView: View {
                 .accessibilityHidden(true)
                 if tappable {
                     workTargets
+                }
+                if let onPips, !pips.isEmpty {
+                    pipTargets(t: t, onTap: onPips)
                 }
             }
         }
@@ -138,6 +147,7 @@ struct OrbView: View {
         a.remember(points: points, center: center, radius: radius)
         let litDots = Set(lit.map(\.index))
 
+        drawPips(back: true, in: &canvas, area: area, t: t)
         lines(points, back: true, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow, alpha: look.lineAlpha)
         for (i, point) in points.enumerated() where point.z < 0 {
             if litDots.contains(i) { workDot(point, in: &canvas, center: center, radius: radius, t: t, open: lit.first { $0.index == i }?.task.id == opened) }
@@ -148,6 +158,68 @@ struct OrbView: View {
         for (i, point) in points.enumerated() where point.z >= 0 {
             if litDots.contains(i) { workDot(point, in: &canvas, center: center, radius: radius, t: t, open: lit.first { $0.index == i }?.task.id == opened) }
             else { dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow) }
+        }
+        drawPips(back: false, in: &canvas, area: area, t: t)
+    }
+
+    // MARK: Notice pips
+
+    /// Where pip `i` of `n` is at time `t`: on a tilted ring just outside
+    /// the shell, the ring turning slowly; z < 0 is behind the orb.
+    private func pipPoint(_ i: Int, of n: Int, t: Double, side: Double) -> (x: Double, y: Double, z: Double) {
+        let turn = reduceMotion ? 0 : t * 0.35
+        let angle = turn + 2 * Double.pi * Double(i) / Double(max(n, 1))
+        let ring = side * 0.47
+        let x = cos(angle) * ring, z = sin(angle)
+        // Tilted so the ring reads as an orbit, not a line.
+        let y = z * ring * 0.30 - x * 0.18
+        return (x, y, z)
+    }
+
+    /// A pip's colour: orange (needs Dylan), blue (heads-up), dim white
+    /// (FYI); darker on the TV's bright daytime sky.
+    private func pipColor(_ kind: NoticeKind) -> Color {
+        switch kind {
+        case .need: return onLight ? Color(red: 0.80, green: 0.33, blue: 0.04) : Color(red: 1.0, green: 0.54, blue: 0.24)
+        case .heads: return onLight ? Color(red: 0.08, green: 0.36, blue: 0.72) : Color(red: 0.44, green: 0.72, blue: 1.0)
+        case .fyi: return onLight ? Color(red: 0.30, green: 0.33, blue: 0.38) : Color.white.opacity(0.6)
+        }
+    }
+
+    /// The pips behind the orb (smaller, dimmer) or in front of it.
+    private func drawPips(back: Bool, in canvas: inout GraphicsContext, area: CGSize, t: Double) {
+        guard !pips.isEmpty else { return }
+        let side = min(area.width, area.height)
+        let center = CGPoint(x: area.width / 2, y: area.height / 2)
+        for (i, kind) in pips.enumerated() {
+            let p = pipPoint(i, of: pips.count, t: t, side: side)
+            guard (p.z < 0) == back else { continue }
+            let near = (p.z + 1) / 2
+            let at = CGPoint(x: center.x + p.x, y: center.y + p.y)
+            let core = side * 0.032 * (0.75 + near * 0.35)
+            let pulse = reduceMotion || kind != .need ? 0.5 : 0.5 + 0.5 * sin(t * 2.6 + Double(i))
+            let halo = core * (2.6 + pulse)
+            let color = pipColor(kind)
+            canvas.fill(Path(ellipseIn: CGRect(x: at.x - halo / 2, y: at.y - halo / 2, width: halo, height: halo)), with: .radialGradient(
+                Gradient(colors: [color.opacity(0.55 * (0.5 + near * 0.5)), color.opacity(0)]),
+                center: at, startRadius: 0, endRadius: halo / 2
+            ))
+            canvas.fill(Path(ellipseIn: CGRect(x: at.x - core / 2, y: at.y - core / 2, width: core, height: core)), with: .color(color.opacity(0.55 + near * 0.45)))
+        }
+    }
+
+    /// One 44 pt tap target over each pip, following it round; any opens
+    /// the notices.
+    private func pipTargets(t: Double, onTap: @escaping () -> Void) -> some View {
+        ForEach(Array(pips.enumerated()), id: \.offset) { i, _ in
+            let p = pipPoint(i, of: pips.count, t: t, side: size)
+            Button(action: onTap) {
+                Color.clear.frame(width: 44, height: 44).contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .position(x: size / 2 + p.x, y: size / 2 + p.y)
+            .accessibilityLabel(i == 0 ? "\(pips.count) unread notices" : "")
+            .accessibilityHidden(i != 0)
         }
     }
 

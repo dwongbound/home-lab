@@ -21,13 +21,18 @@ public enum DemoSnapshot {
     public static var snapshot: Snapshot? {
         let args = ProcessInfo.processInfo.arguments
         guard args.contains("-demoSnapshot") else { return nil }
-        let now = Self.now
+        return build(now: Self.now, sparse: args.contains("-demoSparse"))
+    }
+
+    /// The sample snapshot at `now` (full, or `sparse` for the near-empty
+    /// case). Split out so a test can check it still decodes.
+    static func build(now: Date, sparse: Bool) -> Snapshot? {
         let iso = { (offset: Double) in ISO8601DateFormatter().string(from: now.addingTimeInterval(offset * 60)) }
         let cal = Calendar.current
         let sunrise = ISO8601DateFormatter().string(from: cal.date(bySettingHour: 6, minute: 28, second: 0, of: now) ?? now)
         let sunset = ISO8601DateFormatter().string(from: cal.date(bySettingHour: 16, minute: 48, second: 0, of: now) ?? now)
         let tomorrow9 = ISO8601DateFormatter().string(from: cal.date(byAdding: .day, value: 1, to: cal.date(bySettingHour: 9, minute: 0, second: 0, of: now) ?? now) ?? now)
-        if args.contains("-demoSparse") {
+        if sparse {
             let json = """
             {"generatedAt":"x","services":[{"id":"j","name":"Jarvis","detail":"","status":"up"}],"today":[],
              "home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"off","current":69}],
@@ -41,6 +46,9 @@ public enum DemoSnapshot {
         }.joined(separator: ",")
         let json = """
         {"generatedAt":"x",
+         "notices":[{"id":"n1","kind":"need","title":"Turn off the bedroom lights?","body":"Jarvis wants to run home_service light.turn_off","source":"approval","created":"\(iso(-3))","approvalId":"ap1"},
+                    {"id":"n2","kind":"heads","title":"PS5 Pro back in stock at Target","body":"Lookout spotted it 10 minutes ago","source":"lookout","created":"\(iso(-12))"},
+                    {"id":"n3","kind":"fyi","title":"Reminder code rewrite finished","body":"Changing my code so reminders repeat: done","source":"job","created":"\(iso(-95))"}],
          "services":[{"id":"h","name":"Home Assistant","detail":"","status":"up"},{"id":"o","name":"Ollama","detail":"","status":"idle"},{"id":"j","name":"Jarvis","detail":"","status":"up"}],
          "today":[{"id":"jarvis-a@0830","at":"\(iso(-300))","title":"Marketplace deal watch","detail":"Jarvis: scan","status":"done"},
                   {"id":"c1","at":"\(iso(-150))","title":"Lunch with Sam"},

@@ -1,0 +1,112 @@
+// The notification centre (Dylan, 2026-11-18: "since I want to use the
+// Jarvis app for notifications, we need a visual notifications center…",
+// then the "pips on the orb" design). The page server keeps one shared list
+// of unread notices in the snapshot; clearing one anywhere clears it
+// everywhere. Each notice is a pip circling the orb: orange when it needs
+// Dylan, blue for a heads-up, dim white for an FYI. These are the rules the
+// iPhone, iPad and TV share: which pips show, the count, the row wording.
+import Foundation
+
+/// How much a notice wants Dylan.
+public enum NoticeKind: String, Decodable, Sendable, Comparable {
+    case need, heads, fyi
+
+    /// Unknown kinds from a newer server read as FYI.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = NoticeKind(rawValue: raw) ?? .fyi
+    }
+
+    /// Need first, then heads-up, then FYI.
+    private var rank: Int { self == .need ? 0 : self == .heads ? 1 : 2 }
+    public static func < (a: NoticeKind, b: NoticeKind) -> Bool { a.rank < b.rank }
+}
+
+/// One unread notice.
+public struct Notice: Decodable, Identifiable, Equatable, Sendable {
+    public let id: String
+    public let kind: NoticeKind
+    public let title: String
+    public let body: String
+    /// approval, lookout, reminder, alert, job or message.
+    public let source: String
+    /// When it was made (ISO).
+    public let created: String
+    /// For an approval: the id the Approve and Deny buttons answer.
+    public let approvalId: String?
+
+    public init(id: String, kind: NoticeKind, title: String, body: String = "", source: String, created: String, approvalId: String? = nil) {
+        self.id = id; self.kind = kind; self.title = title; self.body = body
+        self.source = source; self.created = created; self.approvalId = approvalId
+    }
+
+    enum CodingKeys: String, CodingKey { case id, kind, title, body, source, created, approvalId }
+
+    /// Missing optional parts read as empty rather than failing the notice.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = (try? c.decode(NoticeKind.self, forKey: .kind)) ?? .fyi
+        title = try c.decode(String.self, forKey: .title)
+        body = (try? c.decodeIfPresent(String.self, forKey: .body)) ?? ""
+        source = (try? c.decodeIfPresent(String.self, forKey: .source)) ?? "message"
+        created = (try? c.decodeIfPresent(String.self, forKey: .created)) ?? ""
+        approvalId = try? c.decodeIfPresent(String.self, forKey: .approvalId)
+    }
+
+    /// True when the row carries Approve and Deny.
+    public var isApproval: Bool { approvalId != nil }
+}
+
+public enum Notices {
+    /// The most pips drawn round an orb; more still count.
+    public static let maxPips = 8
+
+    /// The pips to draw: one per notice, needs first. At night only the
+    /// ones that need Dylan, so the bedroom stays dark.
+    public static func pips(_ notices: [Notice], night: Bool = false) -> [NoticeKind] {
+        let kinds = notices.map(\.kind).filter { !night || $0 == .need }
+        return Array(kinds.sorted().prefix(maxPips))
+    }
+
+    /// "3 new", or nil with none.
+    public static func countLabel(_ notices: [Notice]) -> String? {
+        notices.isEmpty ? nil : "\(notices.count) new"
+    }
+
+    /// Newest first (unparseable times last).
+    public static func sorted(_ notices: [Notice]) -> [Notice] {
+        notices.sorted { (AgendaTime.parse($0.created) ?? .distantPast) > (AgendaTime.parse($1.created) ?? .distantPast) }
+    }
+
+    /// The text of notices shows only outside guest view; guests see pips
+    /// and the count.
+    public static func showsText(guest: Bool) -> Bool { !guest }
+
+    /// "now", "12 min", "3 h", "Yesterday", "Mon".
+    public static func when(_ created: String, now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard let date = AgendaTime.parse(created) else { return "" }
+        let minutes = Int(now.timeIntervalSince(date) / 60)
+        if minutes < 1 { return "now" }
+        if minutes < 60 { return "\(minutes) min" }
+        if calendar.isDate(date, inSameDayAs: now) { return "\(minutes / 60) h" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return "Yesterday" }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US")
+        format.timeZone = calendar.timeZone
+        format.dateFormat = minutes < 7 * 24 * 60 ? "EEE" : "MMM d"
+        return format.string(from: date)
+    }
+
+    /// The SF Symbol for where a notice came from.
+    public static func symbol(_ source: String) -> String {
+        switch source {
+        case "approval": return "hand.raised.fill"
+        case "lookout": return "binoculars.fill"
+        case "reminder": return "bell.fill"
+        case "alert": return "exclamationmark.triangle.fill"
+        case "job": return "checkmark.seal.fill"
+        default: return "text.bubble.fill"
+        }
+    }
+}

@@ -17,8 +17,16 @@ public struct Snapshot: Decodable, Sendable {
     public var health: Health?
     /// Calendar events from the cloud digest, with their end and place.
     public var events: [CalendarEvent] = []
+    /// Unread notices, newest first; empty from an older server.
+    public var notices: [Notice] = []
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices }
+
+    /// One notice that may or may not decode; a bad one is skipped, not fatal.
+    private struct MaybeNotice: Decodable {
+        let notice: Notice?
+        init(from decoder: Decoder) throws { notice = try? Notice(from: decoder) }
+    }
 
     /// The cloud digest; the app only reads its money section.
     private struct Cloud: Decodable {
@@ -49,6 +57,7 @@ public struct Snapshot: Decodable, Sendable {
         let cloud = try? c.decodeIfPresent(Cloud.self, forKey: .cloud)
         money = cloud?.money
         events = cloud?.calendar ?? []
+        notices = ((try? c.decodeIfPresent([MaybeNotice].self, forKey: .notices)) ?? nil)?.compactMap(\.notice) ?? []
         health = cloud?.health
     }
 
