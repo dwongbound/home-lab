@@ -191,6 +191,8 @@ function sampleOffers() {
 export function createMockSource({ now = () => new Date() } = {}) {
   const state = {
     modelLoaded: true,
+    // Whether a screen's night mode last said you were in bed.
+    asleep: false,
     // The pretend web chat with Jarvis, oldest first.
     chat: [],
     // Approvals the pretend Jarvis is waiting on: id -> {approval, answer(ok)}.
@@ -371,6 +373,12 @@ export function createMockSource({ now = () => new Date() } = {}) {
     async hideOffer(id) {
       state.offers = state.offers.filter((o) => o.id !== id)
       return { ok: true, message: 'Hidden' }
+    },
+
+    /** Night mode on or off: remembered so a test can see it arrived. */
+    async setSleep(asleep) {
+      state.asleep = asleep
+      return { ok: true, message: asleep ? 'Good night' : 'Good morning' }
     },
 
     /** "That was wrong": kept in memory so a test can see it arrived. */

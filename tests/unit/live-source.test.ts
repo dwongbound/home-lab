@@ -58,6 +58,10 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url.startsWith(`${config.jarvisApiUrl}/voice/sample?`)) {
       return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })
     }
+    if (url === `${config.jarvisApiUrl}/sleep`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      return Response.json({ asleep: true }, { status: jarvisStatusCode })
+    }
     if (url === `${config.jarvisApiUrl}/chat/warm`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ ok: true }, { status: jarvisStatusCode })
@@ -383,5 +387,16 @@ describe('live chat with Jarvis', () => {
     expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
     expect(await source.warm({})).toBe(false)
     expect(await liveWith({ jarvisAnswers: false }).source.warm({ login: 'dylan@example.com' })).toBe(false)
+  })
+
+  it('tells Jarvis you have gone to bed, and says so plainly when it cannot', async () => {
+    const { source, fetch } = liveWith({})
+    expect(await source.setSleep(true, 'tv', { login: 'dylan@example.com' })).toEqual({ ok: true, message: 'Good night' })
+    const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/sleep`)!
+    expect(JSON.parse(init!.body as string)).toEqual({ asleep: true, source: 'tv' })
+    expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
+    expect((await source.setSleep(true, 'tv', {})).ok).toBe(false)
+    expect((await liveWith({ jarvisStatusCode: 404 }).source.setSleep(true, 'tv', { login: 'd@example.com' })).message).toBe('Jarvis can’t track sleep yet')
+    expect((await liveWith({ jarvisAnswers: false }).source.setSleep(false, 'tv', { login: 'd@example.com' })).message).toBe('Jarvis is not answering')
   })
 })

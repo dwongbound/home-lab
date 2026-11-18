@@ -15,6 +15,7 @@
 //   GET  /api/jarvis/approvals      what Jarvis is still waiting on you to approve ({pending})
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
 //   POST /api/jarvis/feedback      {question, answer, note} -> "That was wrong" on one of his replies
+//   POST /api/jarvis/sleep          {"asleep": true|false, "source"?} -> tells Jarvis you've gone to bed, or are up
 //   POST /api/jarvis/warm           starts Jarvis's web-chat engine early (the chat sheet opened)
 //   POST /api/home/control          {"entity", "command", "value"?} -> one Home Assistant device
 //   POST /api/digest/refresh        -> asks Jarvis to rewrite the digest; {running, lastWrite}
@@ -238,6 +239,23 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
+  /** Night mode on a screen (the Apple TV): tells Jarvis you've gone to bed, or that you're up again. */
+  async function handleSleep(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    if (typeof body?.asleep !== 'boolean') {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"asleep": true}' })
+    }
+    // Where it came from is only a label for Jarvis's log; anything odd becomes "page".
+    let from = 'page'
+    if (typeof body.source === 'string' && /^[a-z]{1,16}$/.test(body.source)) from = body.source
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.setSleep(body.asleep, from, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
   /** "That was wrong" on one of his replies: Jarvis saves it and works it into a fix and a test overnight. */
   async function handleFeedback(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -345,6 +363,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/offers/hide') {
         return await handleHideOffer(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/sleep') {
+        return await handleSleep(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/feedback') {
         return await handleFeedback(req, res)
