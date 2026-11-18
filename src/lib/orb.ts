@@ -97,8 +97,8 @@ export interface OrbInput {
 /** The dots that light up for background work, spread round the shell (the app's `spots`): one per job, up to three. */
 export const ORB_WORK_DOTS = [7, 29, 48]
 
-/** The dark amber of a lit work dot (#E0A020), as r, g, b. */
-export const ORB_WORK_AMBER: [number, number, number] = [224, 160, 32]
+/** The blue of a lit work dot (#4DA3FF), as r, g, b: blue = something Jarvis is working on, orange is kept for things that need Dylan (2026-11-18). */
+export const ORB_WORK_BLUE: [number, number, number] = [77, 163, 255]
 
 /** Which dot each job lights: the first three jobs, each on its own fixed dot, so a job keeps its dot while it runs. */
 export function orbWorkDots<T>(work: T[]): { task: T; index: number }[] {

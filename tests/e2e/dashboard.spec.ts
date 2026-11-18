@@ -885,7 +885,7 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   expect(tasksBox.x).toBeGreaterThanOrEqual(orbBox.x + orbBox.width)
   expect(tasksBox.x + tasksBox.width).toBeLessThanOrEqual(viewport.width)
   expect(Math.abs(orbBox.x + orbBox.width / 2 - viewport.width / 2)).toBeLessThan(2)
-  // Each job also lights a dark amber dot on the orb. Tapping it (it rides on a turning dot, hence
+  // Each job also lights a blue dot on the orb. Tapping it (it rides on a turning dot, hence
   // force) opens a note with what the work is and how long it has run; Close shuts it.
   const workDot = chat.getByRole('button', { name: 'Jarvis is working: Making drive times mention parking' })
   expect((await workDot.boundingBox())!.width).toBeGreaterThanOrEqual(44)
