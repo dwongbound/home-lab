@@ -1,5 +1,6 @@
 // The Chat tab: Dylan's conversation with Jarvis, approval cards inline,
 // and the Ask box at the bottom.
+import PhotosUI
 import SwiftUI
 import JarvisKit
 
@@ -7,6 +8,11 @@ struct ChatView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject var chat: ChatModel
     @State private var draft = ""
+    /// Photos picked for the next message (up to 4).
+    @State private var picked: [PickedPhoto] = []
+    @State private var choosing: [PhotosPickerItem] = []
+    @State private var showLibrary = false
+    @State private var showCamera = false
     @State private var flagging: ChatItem?
     @FocusState private var typing: Bool
     /// Whether the newest line is on screen; when it isn't, "Scroll to
@@ -21,16 +27,68 @@ struct ChatView: View {
                 StatusLine()
                 messages
                 if let problem = chat.problem {
-                    Text(problem)
-                        .font(.footnote)
-                        .foregroundStyle(Theme.rose)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack {
+                        Text(problem)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.rose)
+                        Spacer()
+                        if chat.failed != nil {
+                            Button("Try again") { Task { await chat.retry(app: app) } }
+                                .font(.footnote.weight(.semibold))
+                                .frame(minHeight: 44)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
                 }
                 pinnedApprovals
+                if !picked.isEmpty {
+                    PickedStrip(photos: $picked)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 composer
             }
+            // A blocking "Sending photos…" while they upload.
+            if chat.uploading {
+                Color.black.opacity(0.35).ignoresSafeArea()
+                VStack(spacing: 14) {
+                    ProgressView().controlSize(.large).tint(Theme.frost)
+                    Text("Sending photos…").font(.headline).foregroundStyle(Theme.frost)
+                }
+                .padding(28)
+                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
+                .transition(.opacity)
+            }
+        }
+        .animation(.smooth, value: chat.uploading)
+        .animation(.smooth, value: picked.count)
+        .photosPicker(isPresented: $showLibrary, selection: $choosing, maxSelectionCount: max(1, PhotoLimits.room(holding: picked.count)), matching: .images)
+        .onChange(of: choosing) { _, items in
+            guard !items.isEmpty else { return }
+            Task {
+                for item in items.prefix(PhotoLimits.room(holding: picked.count)) {
+                    if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                        add(image)
+                    }
+                }
+                choosing = []
+            }
+        }
+        #if DEBUG
+        // Screenshot check: `-demoPhotos` picks two sample photos.
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("-demoPhotos"), picked.isEmpty {
+                for color in [UIColor.systemOrange, UIColor.systemGreen] {
+                    let image = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 900)).image { ctx in
+                        color.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 1200, height: 900))
+                    }
+                    add(image)
+                }
+            }
+        }
+        #endif
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in add(image) }.ignoresSafeArea()
         }
         // Waiting approvals collapse into "Timed out" once their time is up.
         .task {
@@ -133,12 +191,26 @@ struct ChatView: View {
     private func row(_ item: ChatItem) -> some View {
         switch item.kind {
         case .user:
-            Text(item.text)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.leading, 60)
+            VStack(alignment: .trailing, spacing: 6) {
+                if !item.photos.isEmpty {
+                    BubblePhotos(photos: item.photos)
+                } else if item.photoCount > 0 {
+                    // Past photos aren't kept on the device: a chip says so.
+                    Label(PhotoLimits.chip(item.photoCount), systemImage: "photo.on.rectangle")
+                        .font(.footnote.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Theme.userBubble.opacity(0.6)))
+                }
+                if !item.text.isEmpty {
+                    Text(item.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.leading, 60)
         case .jarvis:
             if !item.text.isEmpty {
                 JarvisBubble(item: item) { flagging = item }
@@ -177,6 +249,21 @@ struct ChatView: View {
     /// The Ask box and Send.
     private var composer: some View {
         HStack(spacing: 8) {
+            // Photos: take one, or choose up to four.
+            Menu {
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button { showCamera = true } label: { Label("Take Photo", systemImage: "camera") }
+                }
+                Button { showLibrary = true } label: { Label("Choose Photos", systemImage: "photo.on.rectangle") }
+            } label: {
+                Image(systemName: "photo.badge.plus")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Theme.glass))
+                    .foregroundStyle(PhotoLimits.room(holding: picked.count) > 0 ? Theme.frost : Theme.frostFaint)
+            }
+            .disabled(PhotoLimits.room(holding: picked.count) == 0 || chat.isSending)
+            .accessibilityLabel("Add photos")
             TextField("Ask Jarvis", text: $draft, axis: .vertical)
                 .lineLimit(1...5)
                 .focused($typing)
@@ -200,17 +287,25 @@ struct ChatView: View {
         .padding(.vertical, 8)
     }
 
-    /// Something typed and no reply still coming.
+    /// Something typed (or a photo picked) and no reply still coming.
     private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !chat.isSending
+        (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !picked.isEmpty) && !chat.isSending
     }
 
-    /// Sends the draft and clears the box.
+    /// Sends the draft and any photos, and clears both.
     private func send() {
         guard canSend else { return }
         let text = draft
+        let photos = picked
         draft = ""
-        Task { await chat.send(text, app: app) }
+        picked = []
+        Task { await chat.send(text, photos: photos, app: app) }
+    }
+
+    /// Shrinks a taken or chosen photo and adds it to the next message.
+    private func add(_ image: UIImage) {
+        guard PhotoLimits.room(holding: picked.count) > 0, let jpeg = PhotoEncoder.encode(image) else { return }
+        picked.append(PickedPhoto(preview: PhotoEncoder.thumbnail(image), jpeg: jpeg))
     }
 }
 
