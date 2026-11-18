@@ -25,7 +25,6 @@ describe('how a settled approval reads', () => {
   it('writes a settled approval as one line: the answer, who gave it, and what it was', () => {
     const summary = 'Restart Jarvis'
     expect(settledLine({ outcome: 'approved', by: 'voice', summary })).toBe('Approved out loud: Restart Jarvis')
-    expect(settledLine({ outcome: 'approved', by: 'telegram', summary })).toBe('Approved on Telegram: Restart Jarvis')
     expect(settledLine({ outcome: 'denied', by: 'page', summary })).toBe('Denied: Restart Jarvis')
     expect(settledLine({ outcome: 'later', by: 'voice', summary })).toBe('Holding for later: Restart Jarvis')
     expect(settledLine({ outcome: 'denied', by: 'timeout', summary })).toBe('Timed out: Restart Jarvis')

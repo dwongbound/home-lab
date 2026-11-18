@@ -60,7 +60,6 @@ export function settledLine(a: { outcome?: ApprovalOutcome; by?: ApprovalBy; sum
   if (a.outcome === 'later') return `Holding for later: ${what}`
   if (a.by === 'timeout') return `Timed out: ${what}`
   const verb = a.outcome === 'approved' ? 'Approved' : 'Denied'
-  if (a.by === 'telegram') return `${verb} on Telegram: ${what}`
   if (a.by === 'voice') return `${verb} out loud: ${what}`
   return `${verb}: ${what}`
 }
