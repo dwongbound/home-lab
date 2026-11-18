@@ -321,7 +321,11 @@ export type ChatEvent =
   /** Which brain is answering: "claude", or "ornith" when he has fallen back to the local model. */
   | { type: 'model'; model: string }
 /** One saved line of the web chat. model: who wrote one of Jarvis's lines, when known. */
-export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string }
+/** `images` = how many photos went with the message (the bytes aren't kept in the history). */
+export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; images?: number }
+
+/** One photo on a chat message: its kind and base64 bytes. */
+export interface ChatImage { type: string; data: string }
 export type ActionName = 'ollama-unload' | 'ollama-load'
 
 /** One thing Jarvis keeps in mind in every conversation (his notes file, never memory.md). */
@@ -384,7 +388,7 @@ export interface DataSource {
   /** Asks Jarvis. On success `message` is Jarvis's reply. */
   ask(text: string, caller?: { login?: string }): Promise<ActionResult>
   /** Chats with Jarvis, calling onEvent as his reply streams in. */
-  chat(text: string, caller: { login?: string; offerId?: string }, onEvent: (event: ChatEvent) => void): Promise<void>
+  chat(text: string, caller: { login?: string; offerId?: string; images?: ChatImage[] }, onEvent: (event: ChatEvent) => void): Promise<void>
   /** The web chat with Jarvis so far, oldest first. */
   history(caller?: { login?: string }): Promise<ChatTurn[]>
   /** Approves or denies one waiting request; false when Jarvis doesn't know it (answered or expired). */

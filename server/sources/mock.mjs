@@ -460,7 +460,10 @@ export function createMockSource({ now = () => new Date() } = {}) {
       // Start on an offer card: it's taken, so the card goes away.
       if (caller?.offerId) state.offers = state.offers.filter((o) => o.id !== caller.offerId)
       const at = new Date().toISOString()
-      state.chat.push({ role: 'user', text, at })
+      const photos = caller?.images?.length ?? 0
+      const turn = { role: 'user', text, at }
+      if (photos > 0) turn.images = photos
+      state.chat.push(turn)
       await delay(700)
       // A question that needs a lookup shows the orb's working sweep first, like the real Jarvis.
       const work = sampleWork(text)
@@ -470,6 +473,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
         onEvent({ type: 'working_done' })
       }
       let reply = sampleReply(text)
+      // A photo: the pretend Jarvis says what he'd do with it.
+      if (photos > 0) reply = photos === 1 ? 'Got the photo. That looks like about 520 calories; logged as lunch.' : `Got ${photos} photos. Logged them together as one meal.`
       // Asking him to change a file or run something shows the approval
       // card, and his reply waits for the answer like the real Jarvis.
       const action = sampleAction(text)

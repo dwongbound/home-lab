@@ -423,4 +423,11 @@ describe('live chat with Jarvis', () => {
     expect((await old.registerPush(device, { login: 'd@example.com' })).message).toBe('Jarvis can’t send notifications yet')
     expect((await liveWith({ jarvisAnswers: false }).source.clearNotices({ all: true }, { login: 'd@example.com' })).message).toBe('Jarvis is not answering')
   })
+
+  it('sends a chat message’s photos to Jarvis as media_type and data', async () => {
+    const { source, fetch } = liveWith({})
+    await source.chat('lunch', { login: 'dylan@example.com', images: [{ type: 'image/jpeg', data: 'aGVsbG8=' }] }, () => {})
+    const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/chat/stream`)!
+    expect(JSON.parse(init!.body as string)).toEqual({ text: 'lunch', images: [{ media_type: 'image/jpeg', data: 'aGVsbG8=' }] })
+  })
 })
