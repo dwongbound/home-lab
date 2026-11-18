@@ -317,6 +317,16 @@ export interface LoadedModel {
 
 export interface ActionResult { ok: boolean; message: string }
 
+/**
+ * The answer to tapping Approve or Deny. `gone` = that request was already
+ * over (answered by voice or on another screen, or timed out), with how it
+ * was answered when Jarvis still remembers, so the card can be dropped for good.
+ */
+export interface ApprovalAnswerResult extends ActionResult {
+  gone?: boolean
+  answer?: { ok: boolean; by: ApprovalBy; later?: boolean }
+}
+
 /** One piece of Jarvis's streamed chat reply: more words, the end, or what went wrong. */
 /**
  * Jarvis asking before he writes a file or runs a command on the PC. He
@@ -465,7 +475,7 @@ export interface DataSource {
   /** The web chat with Jarvis so far, oldest first. */
   history(caller?: { login?: string }): Promise<ChatTurn[]>
   /** Approves or denies one waiting request; false when Jarvis doesn't know it (answered or expired). */
-  answerApproval(id: string, ok: boolean, caller?: { login?: string }): Promise<ActionResult>
+  answerApproval(id: string, ok: boolean, caller?: { login?: string }): Promise<ApprovalAnswerResult>
   /** Requests still waiting for an answer, e.g. after a reload. */
   approvals(caller?: { login?: string }): Promise<Approval[]>
   /** "That was wrong" on one of his replies, with what he should have said (may be empty). */

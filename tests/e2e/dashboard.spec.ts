@@ -1249,3 +1249,31 @@ test('Routines: make one, switch it off, run it, edit it and delete it', async (
   await expect(renamed).toHaveCount(0)
   await expect(list.getByRole('listitem')).toHaveCount(3)
 })
+
+test('an approval already answered out loud drops its card for good when I tap it', async ({ page }) => {
+  test.setTimeout(45_000)
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Please restart Jarvis')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  const chat = page.getByRole('dialog', { name: 'Jarvis' })
+  const card = chat.getByRole('group', { name: 'Jarvis asks: Run a command' }).last()
+  await expect(card).toBeVisible({ timeout: 10_000 })
+  // Jarvis says it was already answered no by voice (as when a spoken reply got there first).
+  await page.route('**/api/jarvis/approve', (route) => route.fulfill({
+    status: 410,
+    contentType: 'application/json',
+    body: JSON.stringify({ ok: false, gone: true, message: 'That approval is already answered no (voice)', answer: { ok: false, by: 'voice' } }),
+  }))
+  await card.getByRole('button', { name: 'Deny' }).click()
+  // The card goes up into the history as it was really answered, and doesn't come back.
+  await expect(chat.getByText(/^Denied out loud: /).last()).toBeVisible()
+  await expect(card).toBeHidden()
+  await page.waitForTimeout(1500)
+  await expect(chat.getByRole('group', { name: 'Jarvis asks: Run a command' })).toHaveCount(0)
+  // Tidy up: really answer the sample request, so the next test starts clean.
+  await page.unroute('**/api/jarvis/approve')
+  const pending = (await (await page.request.get('/api/jarvis/approvals')).json()).pending as { id: string }[]
+  for (const p of pending) {
+    await page.request.post('/api/jarvis/approve', { headers: { 'x-home-lab': '1' }, data: { id: p.id, ok: false } })
+  }
+})

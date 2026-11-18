@@ -291,6 +291,9 @@ export function contextRate(micRate: unknown): number | null {
 }
 
 /** Why Talk hung up by itself after the phone's audio changed under it. */
+/** What the page says when the microphone stopped and couldn't be reopened. */
+export const MIC_LOST_MESSAGE = 'Jarvis stopped hearing you. Tap Talk to start again.'
+
 /** What the page says after a goodbye ended the call for good. */
 export const BYE_MESSAGE = 'Goodbye. Tap Talk when you want him again.'
 const INTERRUPTED_MESSAGE = 'Your phone’s audio was interrupted, so Talk stopped. Tap Talk to start again.'
@@ -391,7 +394,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
 
   // Microphone: into the analyser (for the orb) and the worklet (for Jarvis).
   // The worklet feeds a silent gain so the browser keeps running it.
-  const mic = ctx.createMediaStreamSource(stream)
+  let mic = ctx.createMediaStreamSource(stream)
   const micLevel = ctx.createAnalyser()
   micLevel.fftSize = 512
   mic.connect(micLevel)
@@ -415,6 +418,8 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
 
   let rate = 22050
   let dozes = false
+  // True while the microphone is being reopened, so two no_audio events don't race.
+  let restarting = false
   let state: TalkState = 'listening'
   let playing: AudioBufferSourceNode[] = []
   let playAt = 0
@@ -515,10 +520,43 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       // idle), so hang up: mic off, no "Hey Jarvis", and a plain note instead
       // of "the line dropped". Only Talk starts it again.
       shutDown(BYE_MESSAGE)
+    } else if (event.type === 'no_audio') {
+      void restartMic()
     } else if (event.type === 'approval' && typeof event.id === 'string' && typeof event.summary === 'string') {
       on.onApproval({ id: event.id, tool: event.tool ?? '', summary: event.summary, expires: event.expires ?? '' })
     } else if (event.type === 'approval_done' && typeof event.id === 'string') {
       on.onApprovalDone(event.id, event.ok === true, approvalBy(event.by), event.later === true)
+    }
+  }
+
+  /**
+   * Jarvis says the line is open but he's had no sound from us for a while
+   * (`no_audio`; Dylan, 2026-11-18: "that will be all" never reached him
+   * because the mic had quietly stopped). Wakes the audio context and opens
+   * the microphone afresh; if that can't be done, hangs up with a plain
+   * note so it's clear he can't hear, instead of a line that looks alive.
+   */
+  async function restartMic() {
+    if (closed || restarting) return
+    restarting = true
+    try {
+      if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
+      const fresh = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
+      if (closed) {
+        for (const t of fresh.getTracks()) t.stop()
+        return
+      }
+      mic.disconnect()
+      for (const t of stream.getTracks()) t.stop()
+      stream = fresh
+      for (const t of stream.getAudioTracks()) t.enabled = !muted
+      mic = ctx.createMediaStreamSource(stream)
+      mic.connect(micLevel)
+      mic.connect(capture)
+    } catch {
+      shutDown(MIC_LOST_MESSAGE)
+    } finally {
+      restarting = false
     }
   }
 

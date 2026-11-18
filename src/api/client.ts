@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, Approval, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, RoutineBook, RoutineChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
+import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, RoutineBook, RoutineChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -170,7 +170,7 @@ export async function streamJarvis(
 export interface ChatResult extends ActionResult { dropped?: boolean }
 
 /** Approves (ok) or denies one thing Jarvis asked to do on the PC. */
-export async function answerApproval(id: string, ok: boolean): Promise<ActionResult> {
+export async function answerApproval(id: string, ok: boolean): Promise<ApprovalAnswerResult> {
   if (IS_STATIC_BUILD) {
     const source = await getStaticSource()
     return source.answerApproval(id, ok)
@@ -182,7 +182,12 @@ export async function answerApproval(id: string, ok: boolean): Promise<ActionRes
       body: JSON.stringify({ id, ok }),
     })
     const body = await res.json().catch(() => null)
-    return { ok: res.ok, message: body?.message ?? `The server answered ${res.status}` }
+    const result: ApprovalAnswerResult = { ok: res.ok, message: body?.message ?? `The server answered ${res.status}` }
+    if (body?.gone === true) {
+      result.gone = true
+      if (typeof body.answer?.ok === 'boolean') result.answer = body.answer
+    }
+    return result
   } catch {
     return { ok: false, message: 'The page server isn’t answering' }
   }

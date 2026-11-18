@@ -242,8 +242,19 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
   async function answer(id: string, ok: boolean) {
     updateApproval(id, (a) => ({ ...a, sending: true, error: undefined }))
     const result = await answerApproval(id, ok)
-    if (result.ok) settleApproval(id, ok, 'page')
-    else updateApproval(id, (a) => ({ ...a, sending: false, error: result.message }))
+    if (result.ok) {
+      settleApproval(id, ok, 'page')
+      return
+    }
+    // Already over (answered out loud or on another screen, or timed out):
+    // the card goes up into the history as it was really answered, for good,
+    // instead of sitting there refusing every tap (Dylan, 2026-11-18).
+    if (result.gone) {
+      if (result.answer) settleApproval(id, result.answer.ok, result.answer.by, result.answer.later === true)
+      else settleApproval(id, false, 'timeout')
+      return
+    }
+    updateApproval(id, (a) => ({ ...a, sending: false, error: result.message }))
   }
 
   // An approval nobody answers in time closes by itself (Dylan, 2026-11-17):
