@@ -143,7 +143,15 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
                 }
                 if reply.clearsNotice, let noticeId { await app.clearNotices([noticeId]) }
             }
-            if reply == .opened { app.showNotices = true }
+            // A tap opens the full message in Chat when the push points at
+            // one; otherwise the Notices list.
+            if reply == .opened {
+                if let turnId = PushWords.turnId(from: payload) {
+                    Task { await app.openTurn(turnId) }
+                } else {
+                    app.showNotices = true
+                }
+            }
         }
     }
 }

@@ -33,6 +33,8 @@ struct ChatItem: Identifiable, Equatable {
     var mealKey: String?
     var mealChoices: [String] = []
     var mealAnswer: String?
+    /// Jarvis's id for the turn (from history), so a notice can open it.
+    var turnId: Int?
 
     /// A line of Dylan's.
     static func user(_ text: String, photos: [UIImage] = [], photoCount: Int? = nil) -> ChatItem {
@@ -143,12 +145,16 @@ final class ChatModel: ObservableObject {
         var out: [ChatItem] = []
         var lastQuestion = ""
         for turn in turns {
+            var item: ChatItem
             if turn.isUser {
                 lastQuestion = turn.text
-                out.append(.user(turn.text, photoCount: turn.images ?? 0))
+                item = .user(turn.text, photoCount: turn.images ?? 0)
             } else {
-                out.append(.jarvis(turn.text, model: turn.model, finished: true, question: lastQuestion))
+                // A message he sent unasked isn't an answer to the line above.
+                item = .jarvis(turn.text, model: turn.model, finished: true, question: ModelWording.isNotice(turn.model ?? "") ? "" : lastQuestion)
             }
+            item.turnId = turn.id
+            out.append(item)
         }
         return out
     }
