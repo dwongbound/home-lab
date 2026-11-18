@@ -1,6 +1,7 @@
 // The chat: history from the PC, a streaming reply, approval cards and
 // "That was wrong". Mirrors the web page's chat sheet (JarvisPanel).
 import SwiftUI
+import UIKit
 import JarvisKit
 
 /// One line in the chat.
@@ -23,10 +24,14 @@ struct ChatItem: Identifiable, Equatable {
     /// Approvals: how it ended, as its one-line history entry ("Approved:
     /// Write a file", "Timed out: …"); nil while it's still waiting.
     var outcome: String?
+    /// Dylan's lines: the photos sent with it, while this session has them.
+    var photos: [UIImage] = []
+    /// Dylan's lines: how many photos it carried (history keeps only this).
+    var photoCount = 0
 
     /// A line of Dylan's.
-    static func user(_ text: String) -> ChatItem {
-        ChatItem(id: UUID().uuidString, kind: .user, text: text, model: nil, finished: true, question: "", outcome: nil)
+    static func user(_ text: String, photos: [UIImage] = [], photoCount: Int? = nil) -> ChatItem {
+        ChatItem(id: UUID().uuidString, kind: .user, text: text, model: nil, finished: true, question: "", outcome: nil, photos: photos, photoCount: photoCount ?? photos.count)
     }
 
     /// A reply of Jarvis's, empty until words arrive.
@@ -51,6 +56,13 @@ final class ChatModel: ObservableObject {
     @Published var problem: String?
     /// True once history has loaded at least once.
     @Published private(set) var loaded = false
+    /// True while photos are uploading (before the reply starts).
+    @Published private(set) var uploading = false
+    /// A message whose photos were refused, kept for "Try again".
+    @Published private(set) var failed: (text: String, photos: [PickedPhoto])?
+    /// Photos sent this session, by message text, so a reload keeps them
+    /// on their bubbles; otherwise a past message shows "2 photos".
+    private var sentPhotos: [String: [UIImage]] = [:]
 
     /// Approvals still waiting, for the tab's badge.
     var pendingCount: Int {
@@ -69,7 +81,11 @@ final class ChatModel: ObservableObject {
             // Settled approvals aren't in the PC's history, so they're kept
             // from before, each after the line it followed.
             let settled = settledApprovals()
-            var fresh = Self.items(from: turns)
+            var fresh = Self.items(from: turns).map { item in
+                var item = item
+                if item.kind == .user, item.photoCount > 0, let kept = sentPhotos[item.text] { item.photos = kept }
+                return item
+            }
             for (afterText, item) in settled {
                 let at = afterText.flatMap { text in fresh.lastIndex(where: { $0.text == text }) }.map { $0 + 1 } ?? fresh.endIndex
                 fresh.insert(item, at: at)
@@ -118,7 +134,7 @@ final class ChatModel: ObservableObject {
         for turn in turns {
             if turn.isUser {
                 lastQuestion = turn.text
-                out.append(.user(turn.text))
+                out.append(.user(turn.text, photoCount: turn.images ?? 0))
             } else {
                 out.append(.jarvis(turn.text, model: turn.model, finished: true, question: lastQuestion))
             }
@@ -126,26 +142,49 @@ final class ChatModel: ObservableObject {
         return out
     }
 
-    /// Sends a message and fills in the reply as it streams.
-    func send(_ text: String, offerId: String? = nil, app: AppModel) async {
+    /// Sends a message (and any photos) and fills in the reply as it
+    /// streams. A refused photo (400) keeps the message for "Try again".
+    func send(_ text: String, photos: [PickedPhoto] = [], offerId: String? = nil, app: AppModel) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isSending else { return }
-        items.append(.user(trimmed))
+        guard !trimmed.isEmpty || !photos.isEmpty, !isSending else { return }
+        let previews = photos.map(\.preview)
+        if !photos.isEmpty { sentPhotos[trimmed] = previews }
+        let mine = ChatItem.user(trimmed, photos: previews)
+        items.append(mine)
         let reply = ChatItem.jarvis("", model: nil, finished: false, question: trimmed)
         items.append(reply)
         isSending = true
+        uploading = !photos.isEmpty
         problem = nil
+        failed = nil
 
         do {
-            for try await event in app.client.chat(trimmed, offerId: offerId) {
+            for try await event in app.client.chat(trimmed, offerId: offerId, photos: photos.map { ChatPhoto(jpeg: $0.jpeg) }) {
+                uploading = false
                 apply(event, to: reply.id)
             }
             app.noteReach(nil)
+        } catch let error as JarvisError {
+            if case .server(let status, _) = error, status == 400, !photos.isEmpty {
+                problem = PhotoLimits.refusedWords
+                failed = (trimmed, photos)
+                items.removeAll { $0.id == mine.id }
+            } else {
+                problem = error.localizedDescription
+            }
+            app.noteReach(error)
         } catch {
             problem = error.localizedDescription
             app.noteReach(error)
         }
+        uploading = false
         finish(reply.id)
+    }
+
+    /// Sends the refused message again.
+    func retry(app: AppModel) async {
+        guard let failed else { return }
+        await send(failed.text, photos: failed.photos, app: app)
     }
 
     /// One streamed event onto the reply in progress.

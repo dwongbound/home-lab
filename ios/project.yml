@@ -60,6 +60,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
         NSFaceIDUsageDescription: Face ID unlocks your money details on the Today tab.
+        NSCameraUsageDescription: Take a photo, like your food, to send to Jarvis in the chat.
         # Talk shows in the Dynamic Island while the app is in the background.
         NSSupportsLiveActivities: true
         UILaunchScreen:
