@@ -36,6 +36,10 @@ struct ChatView: View {
                             Button("Try again") { Task { await chat.retry(app: app) } }
                                 .font(.footnote.weight(.semibold))
                                 .frame(minHeight: 44)
+                        } else if chat.failedMeal != nil {
+                            Button("Try again") { Task { await chat.retryMeal(app: app) } }
+                                .font(.footnote.weight(.semibold))
+                                .frame(minHeight: 44)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -48,12 +52,12 @@ struct ChatView: View {
                 }
                 composer
             }
-            // A blocking "Sending photos…" while they upload.
-            if chat.uploading {
+            // A blocking "Sending photos…" (or "Telling Jarvis…") while it goes.
+            if chat.uploading || chat.busy != nil {
                 Color.black.opacity(0.35).ignoresSafeArea()
                 VStack(spacing: 14) {
                     ProgressView().controlSize(.large).tint(Theme.frost)
-                    Text("Sending photos…").font(.headline).foregroundStyle(Theme.frost)
+                    Text(chat.busy ?? "Sending photos…").font(.headline).foregroundStyle(Theme.frost)
                 }
                 .padding(28)
                 .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
@@ -61,6 +65,7 @@ struct ChatView: View {
             }
         }
         .animation(.smooth, value: chat.uploading)
+        .animation(.smooth, value: chat.busy)
         .animation(.smooth, value: picked.count)
         .photosPicker(isPresented: $showLibrary, selection: $choosing, maxSelectionCount: max(1, PhotoLimits.room(holding: picked.count)), matching: .images)
         .onChange(of: choosing) { _, items in
@@ -213,8 +218,28 @@ struct ChatView: View {
             .padding(.leading, 60)
         case .jarvis:
             if !item.text.isEmpty {
-                JarvisBubble(item: item) { flagging = item }
-                    .padding(.trailing, 40)
+                VStack(alignment: .leading, spacing: 8) {
+                    JarvisBubble(item: item) { flagging = item }
+                    // "Is this the meal I already logged?"
+                    if item.mealKey != nil && item.mealAnswer == nil && item.finished {
+                        HStack(spacing: 8) {
+                            ForEach(item.mealChoices, id: \.self) { choice in
+                                Button(MealChoice.label(choice)) {
+                                    Task { await chat.answerMeal(item, choice: choice, app: app) }
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(Theme.glacier)
+                                .frame(minHeight: 44)
+                                .disabled(chat.busy != nil)
+                            }
+                        }
+                    } else if let answer = item.mealAnswer {
+                        Text(MealChoice.label(answer))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.frostDim)
+                    }
+                }
+                .padding(.trailing, 40)
             }
         case .approval:
             // Waiting ones are pinned above the Ask box; settled ones are a

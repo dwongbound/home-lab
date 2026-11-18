@@ -28,6 +28,11 @@ struct ChatItem: Identifiable, Equatable {
     var photos: [UIImage] = []
     /// Dylan's lines: how many photos it carried (history keeps only this).
     var photoCount = 0
+    /// Jarvis's lines: "is this the meal I logged?" (its key and choices),
+    /// and the choice once answered (the buttons retire).
+    var mealKey: String?
+    var mealChoices: [String] = []
+    var mealAnswer: String?
 
     /// A line of Dylan's.
     static func user(_ text: String, photos: [UIImage] = [], photoCount: Int? = nil) -> ChatItem {
@@ -58,6 +63,10 @@ final class ChatModel: ObservableObject {
     @Published private(set) var loaded = false
     /// True while photos are uploading (before the reply starts).
     @Published private(set) var uploading = false
+    /// A blocking label while a meal answer goes ("Telling Jarvis…").
+    @Published private(set) var busy: String?
+    /// A meal answer that failed, kept for "Try again".
+    @Published private(set) var failedMeal: (itemId: String, choice: String)?
     /// A message whose photos were refused, kept for "Try again".
     @Published private(set) var failed: (text: String, photos: [PickedPhoto])?
     /// Photos sent this session, by message text, so a reload keeps them
@@ -83,7 +92,9 @@ final class ChatModel: ObservableObject {
             let settled = settledApprovals()
             var fresh = Self.items(from: turns).map { item in
                 var item = item
-                if item.kind == .user, item.photoCount > 0, let kept = sentPhotos[item.text] { item.photos = kept }
+                if item.kind == .user, item.photoCount > 0 {
+                    item.photos = sentPhotos[item.text] ?? PhotoDiskCache.load(text: item.text, count: item.photoCount)
+                }
                 return item
             }
             for (afterText, item) in settled {
@@ -148,7 +159,10 @@ final class ChatModel: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !photos.isEmpty, !isSending else { return }
         let previews = photos.map(\.preview)
-        if !photos.isEmpty { sentPhotos[trimmed] = previews }
+        if !photos.isEmpty {
+            sentPhotos[trimmed] = previews
+            PhotoDiskCache.save(previews, text: trimmed)
+        }
         let mine = ChatItem.user(trimmed, photos: previews)
         items.append(mine)
         let reply = ChatItem.jarvis("", model: nil, finished: false, question: trimmed)
@@ -165,7 +179,7 @@ final class ChatModel: ObservableObject {
             }
             app.noteReach(nil)
         } catch let error as JarvisError {
-            if case .server(let status, _) = error, status == 400, !photos.isEmpty {
+            if case .server(let status, _) = error, status == 400 || status == 413, !photos.isEmpty {
                 problem = PhotoLimits.refusedWords
                 failed = (trimmed, photos)
                 items.removeAll { $0.id == mine.id }
@@ -179,6 +193,32 @@ final class ChatModel: ObservableObject {
         }
         uploading = false
         finish(reply.id)
+    }
+
+    /// Answers "is this the meal I logged?" under a reply; his answer comes
+    /// back as his next bubble and the buttons retire.
+    func answerMeal(_ item: ChatItem, choice: String, app: AppModel) async {
+        guard let key = item.mealKey, busy == nil else { return }
+        busy = "Telling Jarvis…"
+        problem = nil
+        failedMeal = nil
+        do {
+            let message = try await app.client.answerMeal(key: key, choice: choice)
+            update(item.id) { $0.mealAnswer = choice }
+            items.append(.jarvis(message, model: nil, finished: true, question: item.question))
+            app.noteReach(nil)
+        } catch {
+            problem = error.localizedDescription
+            failedMeal = (item.id, choice)
+            app.noteReach(error)
+        }
+        busy = nil
+    }
+
+    /// Tries the failed meal answer again.
+    func retryMeal(app: AppModel) async {
+        guard let failed = failedMeal, let item = items.first(where: { $0.id == failed.itemId }) else { return }
+        await answerMeal(item, choice: failed.choice, app: app)
     }
 
     /// Sends the refused message again.
@@ -210,6 +250,8 @@ final class ChatModel: ObservableObject {
             }
         case .error(let message):
             problem = message
+        case .mealQuestion(let key, let choices):
+            update(replyId) { $0.mealKey = key; $0.mealChoices = choices }
         case .done:
             break
         }
@@ -270,3 +312,32 @@ final class ChatModel: ObservableObject {
         }
     }
 }
+
+/// Sent photos' thumbnails on disk (Caches), so a past message still shows
+/// them after a relaunch: history only says how many there were.
+enum PhotoDiskCache {
+    private static var folder: URL? {
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        let url = caches.appendingPathComponent("chat-photos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// Keeps a message's thumbnails.
+    static func save(_ images: [UIImage], text: String) {
+        guard let folder else { return }
+        let key = PhotoCacheKey.key(text: text, count: images.count)
+        for (i, image) in images.enumerated() {
+            try? image.jpegData(compressionQuality: 0.7)?.write(to: folder.appendingPathComponent("\(key)-\(i).jpg"))
+        }
+    }
+
+    /// A message's thumbnails, or none if they aren't on this device.
+    static func load(text: String, count: Int) -> [UIImage] {
+        guard let folder else { return [] }
+        let key = PhotoCacheKey.key(text: text, count: count)
+        let images = (0..<count).compactMap { UIImage(contentsOfFile: folder.appendingPathComponent("\(key)-\($0).jpg").path) }
+        return images.count == count ? images : []
+    }
+}
+

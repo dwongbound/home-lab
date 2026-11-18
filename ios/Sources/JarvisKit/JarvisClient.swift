@@ -99,6 +99,19 @@ public struct JarvisClient: Sendable {
         return request
     }
 
+    /// The request answering a meal question: same, leftovers or new.
+    public func mealRequest(key: String, choice: String) -> URLRequest {
+        request("api/jarvis/chat/meal", method: "POST", json: ["key": key, "choice": choice])
+    }
+
+    /// Answers a meal question; Jarvis's reply comes back as `message`.
+    public func answerMeal(key: String, choice: String) async throws -> String {
+        struct Body: Decodable { let ok: Bool?; let message: String? }
+        let data = try await send(mealRequest(key: key, choice: choice))
+        let body = try? JSONDecoder().decode(Body.self, from: data)
+        return body?.message ?? "Done."
+    }
+
     /// The chat so far, oldest first.
     public func history() async throws -> [ChatTurn] {
         struct Body: Decodable { let turns: [ChatTurn]? }
