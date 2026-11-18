@@ -210,6 +210,8 @@ export interface Notice {
   created: string | null
   /** The approval a "need" notice is waiting on, for Approve and Deny on its row. */
   approvalId?: string
+  /** The chat turn (ChatTurn.id) holding the full message this notice previews; approvals have none. */
+  turnId?: number
 }
 
 /** Which notifications to clear: some, or all. */
@@ -324,7 +326,8 @@ export type ChatEvent =
   | { type: 'meal_question'; key: string; choices: string[] }
 /** One saved line of the web chat. model: who wrote one of Jarvis's lines, when known. */
 /** `images` = how many photos went with the message (the bytes aren't kept in the history). */
-export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; images?: number }
+/** One line of the chat. `id` is Jarvis's number for it; `model` is who wrote it, or "notice:reminder" for a message he sent unasked. */
+export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; images?: number; id?: number }
 
 /** One photo on a chat message: its kind and base64 bytes. */
 export interface ChatImage { type: string; data: string }

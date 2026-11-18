@@ -26,6 +26,8 @@ function parseNotice(raw) {
   if (typeof raw.created === 'string' && !Number.isNaN(Date.parse(raw.created))) notice.created = raw.created
   // The approval this notice is about, so Approve and Deny can sit on its row.
   if (typeof raw.approval_id === 'string' && ID.test(raw.approval_id)) notice.approvalId = raw.approval_id
+  // The chat turn holding the full message (the notice is only a preview), so a tap can open the chat there.
+  if (Number.isInteger(raw.turn_id) && raw.turn_id > 0) notice.turnId = raw.turn_id
   return notice
 }
 
