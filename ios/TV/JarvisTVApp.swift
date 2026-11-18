@@ -164,9 +164,21 @@ struct AlwaysOnView: View {
     /// cluttered and not dynamic enough for a kiosk).
     var body: some View {
         ZStack {
-            LampSky(lamp: lamp).ignoresSafeArea()
-            SkyLayers(lamp: lamp, arc: arc, condition: model.snapshot?.home?.weather?.condition, palette: palette)
-                .ignoresSafeArea()
+            // The night view is pure black edge to edge (stars and text stay);
+            // it fades to and from the lamp's sky with the layouts.
+            if calm {
+                Color.black.ignoresSafeArea()
+                    .transition(.opacity)
+                SkyLayers(lamp: lamp, arc: arc, condition: nil, palette: palette, blackout: true)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            } else {
+                LampSky(lamp: lamp).ignoresSafeArea()
+                    .transition(.opacity)
+                SkyLayers(lamp: lamp, arc: arc, condition: model.snapshot?.home?.weather?.condition, palette: palette)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
             if calm {
                 calmLayout
                     .offset(drift)

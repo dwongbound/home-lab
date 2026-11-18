@@ -19,6 +19,11 @@ struct SkyLayers: View {
     let arc: SkyArc
     let condition: String?
     let palette: LampPalette
+    /// The night view (Dylan, 2026-11-18: "make the background as close to
+    /// true black as possible"): stars and a plain crescent on pure black,
+    /// no haze, rain, dotted path or glow, so an OLED can switch the
+    /// background off.
+    var blackout = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -27,11 +32,13 @@ struct SkyLayers: View {
             TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion)) { tick in
                 let t = tick.date.timeIntervalSinceReferenceDate
                 ZStack {
-                    haze(size, t: t)
+                    if !blackout { haze(size, t: t) }
                     Canvas { context, size in
                         drawStars(context, size: size, t: t)
-                        drawArc(context, size: size)
-                        drawRain(context, size: size, t: t)
+                        if !blackout {
+                            drawArc(context, size: size)
+                            drawRain(context, size: size, t: t)
+                        }
                     }
                     body(size, t: t)
                 }
@@ -77,12 +84,14 @@ struct SkyLayers: View {
             .position(point)
         } else {
             ZStack {
-                Circle()
-                    .fill(RadialGradient(colors: [Color.white.opacity(0.10), .clear], center: .center, startRadius: 0, endRadius: 90))
-                    .frame(width: 180, height: 180)
-                // A crescent: a pale disc with a sky-coloured disc over it.
+                if !blackout {
+                    Circle()
+                        .fill(RadialGradient(colors: [Color.white.opacity(0.10), .clear], center: .center, startRadius: 0, endRadius: 90))
+                        .frame(width: 180, height: 180)
+                }
+                // A crescent: a pale disc with a sky-coloured (or black) disc over it.
                 Circle().fill(palette.dot.color).frame(width: 34, height: 34)
-                Circle().fill(palette.skyTop.color).frame(width: 30, height: 30).offset(x: 9, y: -5)
+                Circle().fill(blackout ? Color.black : palette.skyTop.color).frame(width: 30, height: 30).offset(x: 9, y: -5)
             }
             .opacity(fade)
             .position(point)
