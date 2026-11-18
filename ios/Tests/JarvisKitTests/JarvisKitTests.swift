@@ -57,7 +57,6 @@ final class WordingTests: XCTestCase {
     func testOutcomeText() {
         XCTAssertEqual(ApprovalWording.outcomeText(ok: true, later: false, by: "page"), "Approved")
         XCTAssertEqual(ApprovalWording.outcomeText(ok: false, later: false, by: "voice"), "Denied out loud")
-        XCTAssertEqual(ApprovalWording.outcomeText(ok: true, later: false, by: "telegram"), "Approved on Telegram")
         XCTAssertEqual(ApprovalWording.outcomeText(ok: false, later: false, by: "timeout"), "No answer in time, so he left it alone")
         XCTAssertEqual(ApprovalWording.outcomeText(ok: false, later: true, by: "voice"), "Holding this for later. Say “go ahead” when you’re ready.")
     }

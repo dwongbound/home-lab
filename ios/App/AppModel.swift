@@ -74,7 +74,7 @@ final class AppModel: ObservableObject {
         settled.showing(Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.contains($0.id) }))
     }
 
-    /// An approval is over (answered here, out loud, on Telegram, timed out,
+    /// An approval is over (answered here, out loud, timed out,
     /// or Jarvis says it's gone): remembered, and its card collapses into
     /// `line` in Chat and Talk, its notice goes. A second word on the same
     /// id is ignored unless `replace` (the PC's own account beats ours).

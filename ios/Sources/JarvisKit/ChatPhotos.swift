@@ -1,5 +1,5 @@
 // Photos in the chat (Dylan, 2026-11-18: "add images… I want to be able to
-// send my food pictures to Jarvis. Then I can completely remove Telegram").
+// send my food pictures to Jarvis").
 // The plain rules: how many, how big, how they're squeezed before sending,
 // and how they ride in the chat request. The app does the pixels.
 import Foundation
