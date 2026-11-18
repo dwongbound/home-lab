@@ -142,3 +142,36 @@ final class KioskOrbTalkTests: XCTestCase {
         XCTAssertFalse(PhoneKiosk.handOverToTalk(callLive: false))
     }
 }
+
+final class NightAndIdleTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
+
+    func testBackingOutOfNightSoonIsAMisPress() {
+        XCTAssertTrue(NightButton.sendAwakeOnExit(pressedAt: t0, now: t0.addingTimeInterval(9 * 60)))
+        XCTAssertFalse(NightButton.sendAwakeOnExit(pressedAt: t0, now: t0.addingTimeInterval(10 * 60)))
+        XCTAssertFalse(NightButton.sendAwakeOnExit(pressedAt: t0, now: t0.addingTimeInterval(7 * 3600)))
+    }
+
+    func testSleepRequestCarriesTheHeadersAndBody() throws {
+        let client = JarvisClient(base: URL(string: "https://jarvis.example.ts.net")!)
+        let request = client.sleepRequest(asleep: true, source: "tv")
+        XCTAssertEqual(request.url?.absoluteString, "https://jarvis.example.ts.net/api/jarvis/sleep")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "x-home-lab"), "1")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Origin"), "https://jarvis.example.ts.net")
+        let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
+        XCTAssertEqual(body?["asleep"] as? Bool, true)
+        XCTAssertEqual(body?["source"] as? String, "tv")
+    }
+
+    func testIdleKioskNeedsAllFiveMinutesOnChargeAndQuiet() {
+        let idle = t0.addingTimeInterval(-5 * 60)
+        XCTAssertTrue(IdleKiosk.shouldEnter(enabled: true, onTalkOrChat: true, charging: true, conversationActive: false, lastActivity: idle, now: t0))
+        XCTAssertFalse(IdleKiosk.shouldEnter(enabled: true, onTalkOrChat: true, charging: true, conversationActive: false, lastActivity: t0.addingTimeInterval(-299), now: t0))
+        XCTAssertFalse(IdleKiosk.shouldEnter(enabled: true, onTalkOrChat: true, charging: false, conversationActive: false, lastActivity: idle, now: t0))
+        XCTAssertFalse(IdleKiosk.shouldEnter(enabled: true, onTalkOrChat: false, charging: true, conversationActive: false, lastActivity: idle, now: t0))
+        XCTAssertFalse(IdleKiosk.shouldEnter(enabled: true, onTalkOrChat: true, charging: true, conversationActive: true, lastActivity: idle, now: t0))
+        XCTAssertFalse(IdleKiosk.shouldEnter(enabled: false, onTalkOrChat: true, charging: true, conversationActive: false, lastActivity: idle, now: t0))
+    }
+}
+

@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var checking = false
     @AppStorage(PhoneKioskMonitor.enabledKey) private var bedside = true
+    @AppStorage(AppModel.idleKioskKey) private var idleKiosk = true
     @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
     @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
 
@@ -40,6 +41,14 @@ struct SettingsView: View {
                             .frame(minHeight: 44)
                     } footer: {
                         Text("Turn the phone on its side while it's charging and Jarvis shows a big clock, the orb and what's next. Tap it for Close. Never shows money.")
+                    }
+                }
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    Section {
+                        Toggle("Kiosk when idle on charge", isOn: $idleKiosk)
+                            .frame(minHeight: 44)
+                    } footer: {
+                        Text("After five quiet minutes on Talk or Chat while the iPad is charging, it switches to the kiosk by itself.")
                     }
                 }
                 Section {

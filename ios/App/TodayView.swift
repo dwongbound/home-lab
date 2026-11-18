@@ -56,8 +56,6 @@ final class TodayModel: ObservableObject {
 struct TodayView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject var today: TodayModel
-    /// True while the iPad's full-screen kiosk is up.
-    @State private var kiosk = false
     /// True once the greeting's body has been tapped open.
     @State private var greetingOpen = false
 
@@ -82,12 +80,8 @@ struct TodayView: View {
         }
         .fontDesign(.rounded)
         #if DEBUG
-        .onAppear { if ProcessInfo.processInfo.arguments.contains("-openKiosk") { kiosk = true } }
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("-openKiosk") { app.padKiosk = true } }
         #endif
-        .fullScreenCover(isPresented: $kiosk) {
-            KioskView(today: today, chat: app.chat, talk: app.talk)
-                .environmentObject(app)
-        }
 
     }
 
@@ -156,7 +150,7 @@ struct TodayView: View {
                 Spacer()
                 if UIDevice.current.userInterfaceIdiom == .pad {
                     // The iPad's always-on room display.
-                    Button { kiosk = true } label: {
+                    Button { app.padKiosk = true } label: {
                         Label("Kiosk", systemImage: "rectangle.expand.vertical")
                             .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 14)
