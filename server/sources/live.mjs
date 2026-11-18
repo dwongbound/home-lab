@@ -15,6 +15,7 @@ import { createHomeReader } from './home.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
 import { parseNotices } from './notices.mjs'
+import { parseNutrition } from './nutrition.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
@@ -314,6 +315,13 @@ export function createLiveSource(config, deps = {}) {
     return parseNotices(await res.json())
   }
 
+  /** Today's calories eaten and goal (GET /nutrition/today); null when an older Jarvis answers 404. */
+  async function readJarvisNutrition() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/today`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseNutrition(await res.json())
+  }
+
   /** POSTs JSON to Jarvis as the caller; `done` is what to say when it works, `missing` when an older Jarvis answers 404. */
   async function postToJarvis(path, body, caller, done, missing) {
     if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
@@ -353,8 +361,9 @@ export function createLiveSource(config, deps = {}) {
         readJarvisJobs(),
         readJarvisOffers(),
         readJarvisNotices(),
+        readJarvisNutrition(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -403,6 +412,7 @@ export function createLiveSource(config, deps = {}) {
         moneyPicks: await picks.read(cloud?.money?.recent ?? []),
         offers,
         notices,
+        nutrition,
       }
     },
 

@@ -58,6 +58,9 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url.startsWith(`${config.jarvisApiUrl}/voice/sample?`)) {
       return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })
     }
+    if (url === `${config.jarvisApiUrl}/nutrition/today`) {
+      return Response.json({ date: '2026-11-18', eaten: 1200, goal: 1750, left: 999, burned: null, protein: 90, protein_goal: 140, goal_source: 'config' })
+    }
     if (url === `${config.jarvisApiUrl}/notices`) {
       return Response.json({ notices: [{ id: 'n1', kind: 'heads', title: 'Rain at 4', source: 'lookout' }, { id: 'n2', kind: 'nope', title: 'Dropped' }] }, { status: jarvisStatusCode })
     }
@@ -422,6 +425,11 @@ describe('live chat with Jarvis', () => {
     expect((await old.snapshot()).notices).toBeNull()
     expect((await old.registerPush(device, { login: 'd@example.com' })).message).toBe('Jarvis can’t send notifications yet')
     expect((await liveWith({ jarvisAnswers: false }).source.clearNotices({ all: true }, { login: 'd@example.com' })).message).toBe('Jarvis is not answering')
+  })
+
+  it('puts today’s calories in the snapshot, working out what is left itself', async () => {
+    const snapshot = await liveWith({}).source.snapshot()
+    expect(snapshot.nutrition).toEqual({ date: '2026-11-18', eaten: 1200, goal: 1750, left: 550, burned: null, protein: 90, proteinGoal: 140 })
   })
 
   it('sends a chat message’s photos to Jarvis as media_type and data', async () => {
