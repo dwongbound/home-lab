@@ -29,12 +29,31 @@ final class AlwaysOnModel: ObservableObject {
     @Published private(set) var approvals = 0
     private let client = JarvisClient()
 
+    /// The banner showing for new notices, if any (TVBanner in JarvisKit).
+    @Published var banner: BannerShow?
+    /// The notices this TV has already seen; nil until the first snapshot,
+    /// so what was waiting at launch never banners.
+    private var seen: Set<String>?
+    /// True while the night view is up: only notices that need Dylan banner.
+    var night = false
+
     /// Notices cleared here, hidden at once until the snapshot drops them.
     @Published private(set) var cleared: Set<String> = []
 
     /// The unread notices, newest first, less any just cleared.
     var notices: [Notice] {
         Notices.sorted((snapshot?.notices ?? []).filter { !cleared.contains($0.id) })
+    }
+
+    /// Banners whatever is new since the last snapshot: the newest, with
+    /// "+N more" (TVBanner).
+    private func noticeArrivals() {
+        let notices = self.notices
+        let arrivals = TVBanner.arrivals(seen: seen, now: notices, night: night)
+        seen = (seen ?? []).union(notices.map(\.id))
+        if let next = TVBanner.banner(arrivals) {
+            banner = BannerShow(notice: next.notice, more: next.more)
+        }
     }
 
     /// Clears notices everywhere (empty ids = all of them).
@@ -71,11 +90,19 @@ final class AlwaysOnModel: ObservableObject {
     func load() async {
         #if DEBUG
         // `-demoSnapshot` shows the sample data even when Jarvis answers.
-        if let demo = DemoSnapshot.snapshot { snapshot = demo; reachable = true; return }
+        if let demo = DemoSnapshot.snapshot {
+            snapshot = demo
+            reachable = true
+            // `-demoBanner` pretends the sample notices just arrived.
+            if ProcessInfo.processInfo.arguments.contains("-demoBanner"), seen == nil { seen = [] }
+            noticeArrivals()
+            return
+        }
         #endif
         do {
             snapshot = try await client.snapshot()
             reachable = true
+            noticeArrivals()
             approvals = (try? await client.pendingApprovals().count) ?? approvals
         } catch {
             reachable = false
@@ -111,6 +138,8 @@ struct AlwaysOnView: View {
     /// The calm bedroom layout from 2:30 AM to just before sunrise (on by
     /// default; the moon button beside Ask Jarvis turns it off).
     @AppStorage("tv.nightCalm") private var nightCalmOn = true
+    /// A soft chime with each banner (never in the night view).
+    @AppStorage("tv.bannerChime") private var chimeOn = true
     /// True while the calm layout shows.
     @State private var calm = false
     /// A remote press shows the full board until then.
@@ -154,6 +183,22 @@ struct AlwaysOnView: View {
             }
         }
         .fontDesign(.rounded)
+        // New notices slide down from the top for a few seconds.
+        .overlay(alignment: .top) {
+            if let show = model.banner {
+                NoticeBanner(show: show, guest: guest, night: calm, palette: palette)
+                    .padding(.top, 50)
+                    .id(show.id)
+                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    .task(id: show.id) {
+                        if chimeOn && !calm { Chime.shared.play() }
+                        try? await Task.sleep(for: .seconds(TVBanner.seconds(show.notice)))
+                        if model.banner?.id == show.id { model.banner = nil }
+                    }
+            }
+        }
+        .animation(.smooth(duration: 0.6), value: model.banner?.id)
+        .onChange(of: calm) { _, night in model.night = night }
         // The two layouts fade into each other slowly, never a cut.
         .animation(reduceMotion ? nil : .easeInOut(duration: 2.5), value: calm)
         // Any swipe on the remote while it's calm brings the board back.
@@ -162,7 +207,8 @@ struct AlwaysOnView: View {
         .task {
             while !Task.isCancelled {
                 await model.load()
-                try? await Task.sleep(for: .seconds(15))
+                // Every 5 s, so new notices banner promptly.
+                try? await Task.sleep(for: .seconds(5))
             }
         }
         .task {
@@ -425,6 +471,9 @@ struct AlwaysOnView: View {
                     Button(nightCalmOn ? "Turn off the automatic night view" : "Turn on the automatic night view") {
                         nightCalmOn.toggle()
                         updateCalm()
+                    }
+                    Button(chimeOn ? "Turn off the notification chime" : "Turn on the notification chime") {
+                        chimeOn.toggle()
                     }
                 }
                 .buttonStyle(SoftFocusButtonStyle(palette: palette))

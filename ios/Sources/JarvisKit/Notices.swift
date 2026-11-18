@@ -110,3 +110,37 @@ public enum Notices {
         }
     }
 }
+
+/// The Apple TV's in-app banner (Dylan, 2026-11-18: "can there be
+/// notifications on my apple tv somehow? Or an in app banner at least").
+/// tvOS shows no notification banners of its own, so the TV slides one in
+/// when a new notice turns up in the snapshot.
+public enum TVBanner {
+    /// How long a banner stays: about 8 seconds.
+    public static func seconds(_ notice: Notice) -> Double { 8 }
+
+    /// The notices new since the last snapshot, oldest first so they show
+    /// in the order they came. The first snapshot after launch shows none
+    /// (they're not news, just what was already waiting). At night only
+    /// the ones that need Dylan.
+    public static func arrivals(seen: Set<String>?, now notices: [Notice], night: Bool) -> [Notice] {
+        guard let seen else { return [] }
+        return Notices.sorted(notices).reversed().filter { !seen.contains($0.id) && (!night || $0.kind == .need) }
+    }
+
+    /// One banner for a batch of arrivals: the newest, and how many more.
+    public static func banner(_ arrivals: [Notice]) -> (notice: Notice, more: Int)? {
+        guard let newest = arrivals.last else { return nil }
+        return (newest, arrivals.count - 1)
+    }
+
+    /// The banner's words: the title, a short body and "+N more" in full
+    /// view; in guest view only "New notification" / "N new notifications",
+    /// never what they say.
+    public static func words(_ notice: Notice, more: Int = 0, guest: Bool) -> (title: String, body: String?) {
+        if guest { return (more == 0 ? "New notification" : "\(more + 1) new notifications", nil) }
+        let extra = more > 0 ? "+\(more) more" : nil
+        let body = [notice.body.isEmpty ? nil : notice.body, extra].compactMap { $0 }.joined(separator: " · ")
+        return (notice.title, body.isEmpty ? nil : body)
+    }
+}
