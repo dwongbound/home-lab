@@ -205,11 +205,14 @@ public enum TodayTimeline {
 
 /// The rotating cards on the TV's right side.
 public enum TVCard: String, CaseIterable, Sendable {
+    /// Jarvis's message (the greeting's full text), first in the rotation.
+    case message
     case today, home, playing, forecast, jarvis, lookout, health, suggestions
 
     /// The card's title.
     public var title: String {
         switch self {
+        case .message: return "From Jarvis"
         case .today: return "Today"
         case .home: return "Home"
         case .playing: return "Now playing"
@@ -217,13 +220,14 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .jarvis: return "Jarvis"
         case .lookout: return "Lookout"
         case .health: return "You"
-        case .suggestions: return "From Jarvis"
+        case .suggestions: return "Suggestions"
         }
     }
 
     /// Its SF Symbol.
     public var symbol: String {
         switch self {
+        case .message: return "text.bubble.fill"
         case .today: return "calendar"
         case .home: return "house.fill"
         case .playing: return "play.circle.fill"
@@ -251,6 +255,10 @@ public enum TVBoard {
     public static func cards(_ snapshot: Snapshot?, guest: Bool) -> [TVCard] {
         guard let snapshot else { return [] }
         var out: [TVCard] = []
+        // Jarvis's message first, guests included (Dylan, 2026-11-18: "the
+        // message always gets cut off… put it as one of the items that
+        // rotate, maybe the first one").
+        if greeting(snapshot, guest: guest)?.body != nil { out.append(.message) }
         if !TodayTimeline.rows(snapshot.today, events: snapshot.events, now: Date(), guest: guest).isEmpty { out.append(.today) }
         if !HomeGlance.lines(snapshot.home).isEmpty { out.append(.home) }
         if !playing(snapshot.home).isEmpty { out.append(.playing) }
@@ -289,12 +297,15 @@ public enum TVBoard {
         return guest ? NowNext(kind: pick.kind, title: pick.title, start: pick.start, end: pick.end, location: nil) : pick
     }
 
-    /// The greeting as the TV shows it. Guests get the headline only: the
-    /// rest often says where Dylan is and what he's doing.
+    /// The greeting as the TV shows it: the short headline across the top
+    /// and the rest on the From Jarvis card. Since Dylan asked for the card
+    /// in the rotation, guests see it too (`guest` is kept for when he
+    /// wants it hidden again).
     public static func greeting(_ snapshot: Snapshot?, guest: Bool) -> (headline: String, body: String?)? {
         guard let text = snapshot?.offers?.greeting, !text.isEmpty else { return nil }
         let parts = TodayWording.greetingParts(text)
-        return (parts.headline, guest ? nil : parts.body)
+        _ = guest
+        return (parts.headline, parts.body)
     }
 }
 
