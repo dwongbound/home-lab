@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, RoutineBook, RoutineChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
+import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, PlaybookBook, PlaybookChange, PlaybookResult, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -313,33 +313,33 @@ export async function changeMemory(change: MemoryChange): Promise<ActionResult> 
   }
 }
 
-export const ROUTINES_KEY = '/api/jarvis/routines'
+export const PLAYBOOKS_KEY = '/api/jarvis/playbooks'
 
-/** Fetches Jarvis's routines (null when he can't be asked). */
-async function fetchRoutines(): Promise<RoutineBook | null> {
+/** Fetches Jarvis's playbooks (null when he can't be asked). */
+async function fetchPlaybooks(): Promise<PlaybookBook | null> {
   if (IS_STATIC_BUILD) {
     const source = await getStaticSource()
-    return source.routines()
+    return source.playbooks()
   }
-  const res = await fetch(ROUTINES_KEY)
+  const res = await fetch(PLAYBOOKS_KEY)
   if (!res.ok) throw new Error(`The server answered ${res.status}`)
   const body = await res.json()
   return body?.book ?? null
 }
 
-/** Jarvis's routines, for the Routines page. Fetched when that page opens, not every refresh. */
-export function useRoutines() {
-  return useSWR<RoutineBook | null>(ROUTINES_KEY, fetchRoutines, { revalidateOnFocus: false })
+/** Jarvis's playbooks, for the Playbooks page. Fetched when that page opens, not every refresh. */
+export function usePlaybooks() {
+  return useSWR<PlaybookBook | null>(PLAYBOOKS_KEY, fetchPlaybooks, { revalidateOnFocus: false })
 }
 
-/** Saves, deletes or runs one routine. Never throws: trouble comes back as a message. */
-export async function changeRoutine(change: RoutineChange): Promise<ActionResult> {
+/** Saves, deletes or runs one playbook. Never throws: trouble comes back as a message. */
+export async function changePlaybook(change: PlaybookChange): Promise<PlaybookResult> {
   if (IS_STATIC_BUILD) {
     const source = await getStaticSource()
-    return source.changeRoutine(change)
+    return source.changePlaybook(change)
   }
   try {
-    const res = await fetch(ROUTINES_KEY, {
+    const res = await fetch(PLAYBOOKS_KEY, {
       method: 'POST',
       headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
       body: JSON.stringify(change),

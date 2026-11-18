@@ -26,7 +26,7 @@ const PATHS = {
   tv: 'M2.5 4.5h15v9.5h-15zM7 17h6',
   moon: 'M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z',
   sparkle: 'M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6z',
-  // A lightning bolt: routines, things that run by themselves.
+  // A lightning bolt: playbooks, things that run by themselves.
   bolt: 'M11 2.5 4.5 11.5H10L9 17.5l6.5-9H10z',
   // Points down; turned up when a dropdown is open.
   chevron: 'M5.5 8 10 12.5 14.5 8',

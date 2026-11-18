@@ -1,12 +1,12 @@
-import type { RoutineAction, RoutineDay, RoutineDraft, RoutineOptions, RoutineTrigger } from '../types'
+import type { Playbook, PlaybookDay, PlaybookDraft, PlaybookOptions, PlaybookStep, PlaybookThinker, PlaybookTrigger } from '../types'
 
-// Words and starting values for the Routines page: how a trigger and a
-// step read in a sentence, what a new routine or step starts as, and what's
+// Words and starting values for the Playbooks page: how a trigger and a
+// step read in a sentence, what a new playbook or step starts as, and what's
 // still missing before one can be saved. The server checks again
-// (server/sources/routines.mjs); this copy is so the page can say what's
+// (server/sources/playbooks.mjs); this copy is so the page can say what's
 // wrong before anything is sent.
 
-export const DAYS: { id: RoutineDay; label: string }[] = [
+export const DAYS: { id: PlaybookDay; label: string }[] = [
   { id: 'mon', label: 'Mon' },
   { id: 'tue', label: 'Tue' },
   { id: 'wed', label: 'Wed' },
@@ -16,23 +16,30 @@ export const DAYS: { id: RoutineDay; label: string }[] = [
   { id: 'sun', label: 'Sun' },
 ]
 
-export const TRIGGER_CHOICES: { type: RoutineTrigger['type']; label: string }[] = [
+export const TRIGGER_CHOICES: { type: PlaybookTrigger['type']; label: string }[] = [
   { type: 'time', label: 'At a time' },
   { type: 'arrive', label: 'When I get home' },
   { type: 'leave', label: 'When I leave home' },
   { type: 'asleep', label: 'When I go to sleep' },
   { type: 'awake', label: 'When I wake up' },
-  { type: 'manual', label: 'Only when I tap Run' },
+  { type: 'manual', label: 'When I ask, or the job comes up' },
 ]
 
-export const ACTION_CHOICES: { type: RoutineAction['type']; label: string }[] = [
+export const STEP_CHOICES: { type: PlaybookStep['type']; label: string }[] = [
   { type: 'device', label: 'Control a device' },
   { type: 'scene', label: 'Run a scene' },
   { type: 'app', label: 'Open an app on a TV' },
   { type: 'notify', label: 'Send me a notification' },
-  { type: 'ask', label: 'Ask Jarvis to do something' },
+  { type: 'think', label: 'Have Jarvis work something out' },
   { type: 'email', label: 'Send an email' },
   { type: 'wait', label: 'Wait' },
+]
+
+// Who does a thinking step, as the editor offers it.
+export const THINKER_CHOICES: { model: PlaybookThinker; label: string }[] = [
+  { model: 'auto', label: 'Jarvis picks' },
+  { model: 'worker', label: 'Ornith (simple, stays on the PC)' },
+  { model: 'claude', label: 'Claude (judgment and writing)' },
 ]
 
 /** "08:30" as "8:30 AM". */
@@ -43,18 +50,18 @@ export function clockLabel(at: string): string {
   return `${hour}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
 }
 
-/** Which days a timed routine runs, in words: "every day", "weekdays", "Mon, Wed". */
-export function daysLabel(days: RoutineDay[]): string {
+/** Which days a timed playbook runs, in words: "every day", "weekdays", "Mon, Wed". */
+export function daysLabel(days: PlaybookDay[]): string {
   if (days.length === 0 || days.length === 7) return 'every day'
-  const has = (d: RoutineDay) => days.includes(d)
-  const weekdays = ['mon', 'tue', 'wed', 'thu', 'fri'] as RoutineDay[]
+  const has = (d: PlaybookDay) => days.includes(d)
+  const weekdays = ['mon', 'tue', 'wed', 'thu', 'fri'] as PlaybookDay[]
   if (days.length === 5 && weekdays.every(has)) return 'weekdays'
   if (days.length === 2 && has('sat') && has('sun')) return 'weekends'
   return DAYS.filter((d) => has(d.id)).map((d) => d.label).join(', ')
 }
 
-/** When a routine runs, as one line. */
-export function triggerLine(trigger: RoutineTrigger): string {
+/** When a playbook runs, as one line. */
+export function triggerLine(trigger: PlaybookTrigger): string {
   if (trigger.type === 'time') return `At ${clockLabel(trigger.at)}, ${daysLabel(trigger.days)}`
   if (trigger.type === 'arrive') {
     if (trigger.minAway > 0) return `When I get home after ${trigger.minAway} min away`
@@ -63,7 +70,7 @@ export function triggerLine(trigger: RoutineTrigger): string {
   if (trigger.type === 'leave') return 'When I leave home'
   if (trigger.type === 'asleep') return 'When I go to sleep'
   if (trigger.type === 'awake') return 'When I wake up'
-  return 'Only when I tap Run'
+  return 'When I ask, or the job comes up'
 }
 
 // Jarvis's device commands (Home Assistant service names) in plain words.
@@ -118,28 +125,41 @@ function clip(words: string, max = 48): string {
 }
 
 /** One step, as one line. */
-export function actionLine(action: RoutineAction, options: RoutineOptions): string {
-  if (action.type === 'device') {
-    const name = nameOf(action.entity, options.devices)
-    if (action.value === undefined) return `${commandLabel(action.command)}: ${name}`
-    return `${name}: ${commandLabel(action.command).toLowerCase()} ${action.value}`
+export function stepLine(step: PlaybookStep, options: PlaybookOptions): string {
+  if (step.type === 'device') {
+    const name = nameOf(step.entity, options.devices)
+    if (step.value === undefined) return `${commandLabel(step.command)}: ${name}`
+    return `${name}: ${commandLabel(step.command).toLowerCase()} ${step.value}`
   }
-  if (action.type === 'scene') return `Scene: ${nameOf(action.entity, options.scenes)}`
-  if (action.type === 'app') return `Open ${action.app} on ${nameOf(action.entity, options.apps)}`
-  if (action.type === 'notify') return `Notify me: ${clip(action.text)}`
-  if (action.type === 'ask') return `Ask Jarvis: ${clip(action.text)}`
-  if (action.type === 'email') return `Email ${action.to}: ${clip(action.subject)}`
-  if (action.seconds % 60 === 0) return `Wait ${action.seconds / 60} min`
-  return `Wait ${action.seconds} s`
+  if (step.type === 'scene') return `Scene: ${nameOf(step.entity, options.scenes)}`
+  if (step.type === 'app') return `Open ${step.app} on ${nameOf(step.entity, options.apps)}`
+  if (step.type === 'notify') return `Notify me: ${clip(step.text)}`
+  if (step.type === 'think') return `Jarvis: ${clip(step.text)}`
+  if (step.type === 'email') return `Email ${step.to}: ${clip(step.subject)}`
+  if (step.seconds % 60 === 0) return `Wait ${step.seconds / 60} min`
+  return `Wait ${step.seconds} s`
 }
 
-/** A new, empty routine: runs only from the Run button until a trigger is picked. */
-export function blankRoutine(): RoutineDraft {
-  return { name: '', enabled: true, trigger: { type: 'manual' }, actions: [] }
+/** A new, empty playbook: runs only when asked until a trigger is picked. */
+export function blankPlaybook(): PlaybookDraft {
+  return {
+    name: '',
+    enabled: true,
+    purpose: '',
+    whenToUse: '',
+    trigger: { type: 'manual' },
+    inputs: [],
+    steps: [],
+    decisions: [],
+    done: [],
+    edgeCases: [],
+    standard: '',
+    badVersion: '',
+  }
 }
 
 /** What a trigger of one type starts as when it's picked. */
-export function blankTrigger(type: RoutineTrigger['type']): RoutineTrigger {
+export function blankTrigger(type: PlaybookTrigger['type']): PlaybookTrigger {
   if (type === 'time') return { type, at: '08:00', days: [] }
   if (type === 'arrive') return { type, zone: 'home', minAway: 15 }
   if (type === 'leave') return { type, zone: 'home' }
@@ -147,7 +167,7 @@ export function blankTrigger(type: RoutineTrigger['type']): RoutineTrigger {
 }
 
 /** What a step of one type starts as: the first device, scene or app Jarvis lists. */
-export function blankAction(type: RoutineAction['type'], options: RoutineOptions): RoutineAction {
+export function blankStep(type: PlaybookStep['type'], options: PlaybookOptions): PlaybookStep {
   if (type === 'device') {
     const first = options.devices[0]
     return { type, entity: first?.entity ?? '', command: first?.commands[0] ?? 'turn_off' }
@@ -158,40 +178,57 @@ export function blankAction(type: RoutineAction['type'], options: RoutineOptions
     return { type, entity: first?.entity ?? '', app: first?.apps[0] ?? '' }
   }
   if (type === 'notify') return { type, text: '' }
-  if (type === 'ask') return { type, text: '', confirm: true }
-  if (type === 'email') return { type, to: '', subject: '', body: '', confirm: true }
+  if (type === 'think') return { type, text: '', model: 'auto' }
+  // A playbook you wrote doesn't ask before sending (Dylan, 2026-11-18).
+  if (type === 'email') return { type, to: '', subject: '', body: '', confirm: false }
   return { type, seconds: 60 }
 }
 
 /** What one step is still missing, or null when it's complete. */
-function actionProblem(action: RoutineAction): string | null {
-  if (action.type === 'device') {
-    if (!action.entity) return 'pick a device'
-    if (commandTakesValue(action.command) && (action.value === undefined || action.value === '')) return 'give it a value'
+function stepProblem(step: PlaybookStep): string | null {
+  if (step.type === 'device') {
+    if (!step.entity) return 'pick a device'
+    if (commandTakesValue(step.command) && (step.value === undefined || step.value === '')) return 'give it a value'
     return null
   }
-  if (action.type === 'scene') return action.entity ? null : 'pick a scene'
-  if (action.type === 'app') return action.entity && action.app ? null : 'pick a TV and an app'
-  if (action.type === 'notify' || action.type === 'ask') return action.text.trim() ? null : 'write what it should say'
-  if (action.type === 'email') {
-    const addresses = emailAddresses(action.to)
+  if (step.type === 'scene') return step.entity ? null : 'pick a scene'
+  if (step.type === 'app') return step.entity && step.app ? null : 'pick a TV and an app'
+  if (step.type === 'notify') return step.text.trim() ? null : 'write what it should say'
+  if (step.type === 'think') return step.text.trim() ? null : 'write what Jarvis should do'
+  if (step.type === 'email') {
+    const addresses = emailAddresses(step.to)
     if (addresses.length === 0 || addresses.length > 10) return 'give it one to ten email addresses'
     if (!addresses.every((a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a))) return 'check the email address'
-    if (!action.subject.trim() || !action.body.trim()) return 'write a subject and a message'
+    if (!step.subject.trim() || !step.body.trim()) return 'write a subject and a message'
     return null
   }
-  if (action.seconds < 1 || action.seconds > 600) return 'wait between 1 and 600 seconds'
+  if (step.seconds < 1 || step.seconds > 600) return 'wait between 1 and 600 seconds'
   return null
 }
 
-/** Why a routine can't be saved yet, in plain words; null when it can. */
-export function routineProblem(draft: RoutineDraft): string | null {
-  if (!draft.name.trim()) return 'Give the routine a name'
+/** Why a playbook can't be saved yet, in plain words; null when it can. */
+export function playbookProblem(draft: PlaybookDraft): string | null {
+  if (!draft.name.trim()) return 'Give the playbook a name'
   if (draft.trigger.type === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.trigger.at)) return 'Pick a time'
-  if (draft.actions.length === 0) return 'Add at least one step'
-  for (let i = 0; i < draft.actions.length; i += 1) {
-    const problem = actionProblem(draft.actions[i])
+  if (draft.steps.length === 0) return 'Add at least one step'
+  for (let i = 0; i < draft.steps.length; i += 1) {
+    const problem = stepProblem(draft.steps[i])
     if (problem) return `Step ${i + 1}: ${problem}`
   }
   return null
+}
+
+/** A saved playbook as the editor starts with it: everything but what Jarvis keeps (id stays, last run and author go). */
+export function draftOf(playbook: Playbook): PlaybookDraft {
+  const { lastRun: _lastRun, madeBy: _madeBy, ...draft } = playbook
+  return draft
+}
+
+/**
+ * How a playbook's last run went, as the items of its done checklist that
+ * didn't hold: "Every light is off: the porch lights were still on".
+ */
+export function failedChecks(playbook: Playbook): string[] {
+  const checks = playbook.lastRun?.checks ?? []
+  return checks.filter((c) => !c.ok).map((c) => (c.why ? `${c.item}: ${c.why}` : c.item))
 }

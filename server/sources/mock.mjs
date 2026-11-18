@@ -214,9 +214,9 @@ export function createMockSource({ now = () => new Date() } = {}) {
     offers: sampleOffers(),
     // Pretend notifications, until cleared; null until the first snapshot stamps their times.
     notices: null,
-    // Pretend routines (made up), until edited on the Routines page.
-    routines: sampleRoutines(now()),
-    nextRoutineId: 10,
+    // Pretend playbooks (made up), until edited on the Playbooks page.
+    playbooks: samplePlaybooks(now()),
+    nextPlaybookId: 10,
     // Devices that asked for pushes.
     pushDevices: [],
     // "That was wrong" flags sent from the chat.
@@ -556,11 +556,11 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: false, message: 'Send {"op": "remember", "text"} or {"op": "forget", "id"}' }
     },
 
-    /** The pretend routines, and the sample devices their steps can use. */
-    async routines() {
+    /** The pretend playbooks, and the sample devices their steps can use. */
+    async playbooks() {
       const controllable = state.home.filter((d) => d.kind !== 'scene')
       return {
-        routines: state.routines.map((r) => ({ ...r })),
+        playbooks: state.playbooks.map((r) => ({ ...r })),
         options: {
           devices: controllable.map((d) => ({ entity: d.id, name: d.name, kind: d.kind, commands: sampleCommands(d.kind) })),
           scenes: state.home.filter((d) => d.kind === 'scene').map((d) => ({ entity: d.id, name: d.name })),
@@ -570,32 +570,36 @@ export function createMockSource({ now = () => new Date() } = {}) {
       }
     },
 
-    /** Saves, deletes or pretends to run one routine, in memory. */
-    async changeRoutine(change) {
+    /** Saves, deletes or pretends to run one playbook, in memory. */
+    async changePlaybook(change) {
       if (change?.op === 'save') {
-        const known = state.routines.findIndex((r) => r.id === change.routine.id)
+        const known = state.playbooks.findIndex((r) => r.id === change.playbook.id)
         if (known >= 0) {
-          state.routines[known] = { ...state.routines[known], ...change.routine }
+          state.playbooks[known] = { ...state.playbooks[known], ...change.playbook }
           return { ok: true, message: 'Saved' }
         }
-        state.routines.push({ ...change.routine, id: `r${state.nextRoutineId++}` })
+        state.playbooks.push({ ...change.playbook, madeBy: 'dylan', id: `r${state.nextPlaybookId++}` })
         return { ok: true, message: 'Saved' }
       }
-      const routine = state.routines.find((r) => r.id === change?.id)
-      if (!routine) return { ok: false, message: 'Jarvis doesn’t have that routine' }
+      const playbook = state.playbooks.find((r) => r.id === change?.id)
+      if (!playbook) return { ok: false, message: 'Jarvis doesn’t have that playbook' }
       if (change.op === 'delete') {
-        state.routines = state.routines.filter((r) => r !== routine)
+        state.playbooks = state.playbooks.filter((r) => r !== playbook)
         return { ok: true, message: 'Deleted' }
       }
-      const steps = routine.actions.length
-      const detail = steps === 1 ? 'Ran 1 step' : `Ran ${steps} steps`
-      routine.lastRun = { at: now().toISOString(), ok: true, detail }
-      return { ok: true, message: detail }
+      // A pretend run: every step works, and every done item holds.
+      const steps = playbook.steps.length
+      const checks = playbook.done.map((item) => ({ item, ok: true, why: '' }))
+      let detail = steps === 1 ? 'Ran 1 step' : `Ran ${steps} steps`
+      if (checks.length === 1) detail += ', the check passed'
+      if (checks.length > 1) detail += `, all ${checks.length} checks passed`
+      playbook.lastRun = { at: now().toISOString(), ok: true, detail, checks }
+      return { ok: true, message: detail, checks }
     },
   }
 }
 
-/** What a sample device of each kind can be told to do in a routine. */
+/** What a sample device of each kind can be told to do in a playbook. */
 function sampleCommands(kind) {
   // The same commands Jarvis offers for each kind (Home Assistant service names).
   if (kind === 'climate') return ['turn_on', 'turn_off', 'set_temperature', 'set_hvac_mode']
@@ -603,40 +607,62 @@ function sampleCommands(kind) {
   return ['turn_on', 'turn_off', 'toggle']
 }
 
-/** Made-up routines for the sample Routines page: bedtime, getting home and a weekday morning. */
-function sampleRoutines(t) {
+/** The parts of a sample playbook that are the same for all of them: nothing written yet. */
+function blankSample() {
+  return { purpose: '', whenToUse: '', inputs: [], decisions: [], done: [], edgeCases: [], standard: '', badVersion: '', madeBy: 'dylan' }
+}
+
+/** Made-up playbooks for the sample Playbooks page: bedtime, getting home and planning the week. */
+function samplePlaybooks(t) {
   return [
     {
+      ...blankSample(),
       id: 'r1',
       name: 'Bedtime',
       enabled: true,
+      purpose: 'Shut the place down for the night.',
       trigger: { type: 'asleep' },
-      actions: [
+      steps: [
         { type: 'device', entity: 'light.living_room_lamp', command: 'turn_off' },
         { type: 'device', entity: 'switch.porch_lights', command: 'turn_off' },
         { type: 'device', entity: 'media_player.apple_tv', command: 'turn_off' },
         { type: 'device', entity: 'climate.thermostat', command: 'set_temperature', value: 66 },
       ],
-      lastRun: { at: new Date(t.getTime() - 9 * 3600_000).toISOString(), ok: true, detail: 'Ran 4 steps' },
+      done: ['Every light is off', 'The thermostat reads 66'],
+      lastRun: {
+        at: new Date(t.getTime() - 9 * 3600_000).toISOString(),
+        ok: true,
+        detail: 'Ran 4 steps, all 2 checks passed',
+        checks: [{ item: 'Every light is off', ok: true, why: '' }, { item: 'The thermostat reads 66', ok: true, why: '' }],
+      },
     },
     {
+      ...blankSample(),
       id: 'r2',
       name: 'Arrive home',
       enabled: true,
       trigger: { type: 'arrive', zone: 'home', minAway: 15 },
-      actions: [{ type: 'app', entity: 'media_player.apple_tv', app: 'Jarvis' }],
+      steps: [{ type: 'app', entity: 'media_player.apple_tv', app: 'Jarvis' }],
     },
     {
+      ...blankSample(),
       id: 'r3',
-      name: 'Weekday morning',
+      name: 'Plan my week',
       enabled: false,
-      trigger: { type: 'time', at: '08:30', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
-      actions: [
-        { type: 'scene', entity: 'scene.movie_night' },
-        { type: 'wait', seconds: 30 },
-        { type: 'ask', text: 'Tell me the weather and my first meeting', confirm: false },
-        { type: 'notify', text: 'Time to head out' },
+      purpose: 'A short plan for the week ahead, every Sunday night.',
+      whenToUse: 'When I ask what my week looks like, or to prep for the week.',
+      trigger: { type: 'time', at: '20:00', days: ['sun'] },
+      inputs: [{ name: 'Calendars', where: 'Dylan Wong, Work, Church, Volleyball' }],
+      steps: [
+        { type: 'think', text: 'Read next week’s calendar and list each day’s fixed events', model: 'worker' },
+        { type: 'think', text: 'Write a short plan: busiest day, free evenings, anything to prepare', model: 'claude' },
+        { type: 'notify', text: 'Your week plan is in the chat' },
       ],
+      decisions: [{ if: 'Two events overlap', then: 'Say so at the top instead of picking one' }],
+      done: ['Every day Monday to Sunday is covered', 'Nothing before 9 AM is missed'],
+      edgeCases: ['An all-day event hides a timed one on the same day'],
+      standard: 'Short enough to read in a minute.',
+      badVersion: 'A list of every event with no judgment about what matters.',
     },
   ]
 }

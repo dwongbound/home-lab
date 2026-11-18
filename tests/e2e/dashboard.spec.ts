@@ -18,7 +18,7 @@
 //   - While the chat is open the page behind it stays put, and reading back up isn't interrupted by new words.
 //   - In Settings, under Voice, I play a sample, pick a voice, speed and blend, and save it.
 //   - In Settings, under Memory, I see what Jarvis remembers, teach him something, forget it, and search past chats.
-//   - On Routines I see what Jarvis runs by himself, make a new routine, switch one off, run one now, edit it and delete it.
+//   - On Playbooks I see the jobs Jarvis knows how to do, write a new one with its done checklist, switch one off, run one now and see the checklist pass, edit it and delete it.
 import { expect, test } from '@playwright/test'
 
 test('overview shows the PC at a glance', async ({ page }) => {
@@ -162,7 +162,7 @@ test('tapping a tab fades the new page in and slides the pill light, with no mot
 test('pill navigation reaches every page and keeps the back button working', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: 'Sections' })
-  for (const name of ['Home', 'Money', 'Services', 'Routines', 'Schedule', 'Settings']) {
+  for (const name of ['Home', 'Money', 'Services', 'Playbooks', 'Schedule', 'Settings']) {
     await nav.getByRole('link', { name }).click()
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
     await expect(nav.getByRole('link', { name })).toHaveAttribute('aria-current', 'page')
@@ -469,7 +469,7 @@ test('Settings can keep the screen on, and remembers it', async ({ page }) => {
 })
 
 test('every page fits without sideways scrolling, and tappable rows are finger-sized on touch', async ({ page }, info) => {
-  for (const hash of ['#money', '#schedule', '#home', '#preferences', '#claude', '#routines']) {
+  for (const hash of ['#money', '#schedule', '#home', '#preferences', '#claude', '#playbooks']) {
     await page.goto('/' + hash)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
@@ -1186,40 +1186,60 @@ test('a faint line at the bottom says which build this is and links its commit',
   await expect(footer.getByRole('link')).toHaveAttribute('href', /^https:\/\/github\.com\/dwongbound\/home-lab\/commit\/[0-9a-f]{7,40}$/)
 })
 
-test('Routines: make one, switch it off, run it, edit it and delete it', async ({ page }) => {
-  await page.goto('/#routines')
-  const list = page.getByRole('list', { name: 'Routines' })
+test('Playbooks: write one with a done checklist, switch it off, run it, edit it and delete it', async ({ page }) => {
+  await page.goto('/#playbooks')
+  const list = page.getByRole('list', { name: 'Playbooks' })
   await expect(list.getByRole('listitem').filter({ hasText: 'Bedtime' })).toContainText('When I go to sleep')
+  await expect(list.getByRole('listitem').filter({ hasText: 'Bedtime' })).toContainText('Shut the place down for the night.')
   await expect(list.getByRole('listitem').filter({ hasText: 'Arrive home' })).toContainText('Open Jarvis on Apple TV')
+  // A playbook with thinking steps says who Jarvis hands them to in its editor, not in the row.
+  await expect(list.getByRole('listitem').filter({ hasText: 'Plan my week' })).toContainText('Jarvis: Read next week’s calendar')
 
   // A new one: Save says what's missing until it has a name and a step.
-  await page.getByRole('button', { name: 'New routine' }).click()
-  const editor = page.getByRole('dialog', { name: 'New routine' })
+  await page.getByRole('button', { name: 'New playbook' }).click()
+  const editor = page.getByRole('dialog', { name: 'New playbook' })
   const size = await editor.boundingBox()
   await editor.getByRole('button', { name: 'Save' }).click()
-  await expect(editor.getByRole('alert')).toHaveText('Give the routine a name')
+  await expect(editor.getByRole('alert')).toHaveText('Give the playbook a name')
   await editor.getByLabel('Name').fill('Movie time')
-  await editor.getByLabel('When').selectOption('time')
+  await editor.getByLabel('What it’s for').fill('Get the room ready for a film')
+  await editor.getByRole('combobox', { name: 'When', exact: true }).selectOption('time')
   await editor.getByLabel('Time', { exact: true }).fill('20:00')
   await editor.getByRole('button', { name: 'Sat' }).click()
   await editor.getByRole('button', { name: 'Sun' }).click()
   await editor.getByLabel('Add a step').selectOption('scene')
   await editor.getByLabel('Add a step').selectOption('email')
   const email = editor.getByRole('listitem', { name: 'Step 2' })
-  // Emails ask first unless that's switched off.
-  await expect(email.getByRole('switch', { name: 'Ask me first, each time' })).toHaveAttribute('aria-checked', 'true')
+  // A playbook I wrote doesn't ask before it sends, unless I switch that on.
+  await expect(email.getByRole('switch', { name: 'Ask me first, each time' })).toHaveAttribute('aria-checked', 'false')
   await editor.getByRole('button', { name: 'Save' }).click()
   await expect(editor.getByRole('alert')).toHaveText('Step 2: give it one to ten email addresses')
   await editor.getByRole('button', { name: 'Remove step 2' }).click()
   await editor.getByLabel('Add a step').selectOption('notify')
   await editor.getByLabel('Notification text').fill('Popcorn is ready')
+  // A step in my own words, and who does it.
+  await editor.getByLabel('Add a step').selectOption('think')
+  await editor.getByRole('button', { name: 'Save' }).click()
+  await expect(editor.getByRole('alert')).toHaveText('Step 3: write what Jarvis should do')
+  await editor.getByLabel('What Jarvis should do').fill('Pick a film I have not seen')
+  await expect(editor.getByLabel('Who does it')).toHaveValue('auto')
+  await editor.getByLabel('Who does it').selectOption('claude')
+  // The done checklist, and the extras folded away under More for Jarvis.
+  await editor.getByRole('button', { name: 'Add a check' }).click()
+  await editor.getByRole('textbox', { name: 'Done item 1' }).fill('The lights are dimmed')
+  await editor.getByText('More for Jarvis').click()
+  await editor.getByRole('button', { name: 'Add a decision' }).click()
+  await editor.getByRole('textbox', { name: 'Decision 1: If…' }).fill('It is a weeknight')
+  await editor.getByRole('textbox', { name: 'Decision 1: Then…' }).fill('Nothing over two hours')
   // The pop-up stays one size however many steps it holds.
   expect(await editor.boundingBox()).toEqual(size)
   await editor.getByRole('button', { name: 'Save' }).click()
   await expect(editor).toBeHidden()
   const row = list.getByRole('listitem').filter({ hasText: 'Movie time' })
   await expect(row).toContainText('At 8:00 PM, weekends')
+  await expect(row).toContainText('Get the room ready for a film')
   await expect(row).toContainText('Notify me: Popcorn is ready')
+  await expect(row).toContainText('Jarvis: Pick a film I have not seen')
   await expect(row).toContainText('Hasn’t run yet')
 
   // Off and on again, then run it now.
@@ -1228,12 +1248,17 @@ test('Routines: make one, switch it off, run it, edit it and delete it', async (
   await row.getByRole('switch').click()
   await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
   await row.getByRole('button', { name: 'Run Movie time' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'Movie time: Ran 2 steps' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Movie time: Ran 3 steps, the check passed' })).toBeVisible()
   await expect(row).toContainText('Last ran')
 
   // Edit: Close leaves it alone, Save renames it, Delete asks first.
   await row.getByRole('button', { name: 'Edit Movie time' }).click()
-  const edit = page.getByRole('dialog', { name: 'Edit routine' })
+  const edit = page.getByRole('dialog', { name: 'Edit playbook' })
+  // What I wrote is all still there.
+  await expect(edit.getByRole('textbox', { name: 'Done item 1' })).toHaveValue('The lights are dimmed')
+  await expect(edit.getByLabel('Who does it')).toHaveValue('claude')
+  await edit.getByText('More for Jarvis').click()
+  await expect(edit.getByRole('textbox', { name: 'Decision 1: Then…' })).toHaveValue('Nothing over two hours')
   await edit.getByLabel('Name').fill('Changed my mind')
   await edit.getByRole('button', { name: 'Close' }).click()
   await expect(row).toBeVisible()
@@ -1244,7 +1269,7 @@ test('Routines: make one, switch it off, run it, edit it and delete it', async (
   await expect(renamed).toBeVisible()
   await renamed.getByRole('button', { name: 'Edit Film night' }).click()
   await edit.getByRole('button', { name: 'Delete' }).click()
-  const confirm = page.getByRole('dialog', { name: 'Delete this routine?' })
+  const confirm = page.getByRole('dialog', { name: 'Delete this playbook?' })
   await confirm.getByRole('button', { name: 'Delete' }).click()
   await expect(renamed).toHaveCount(0)
   await expect(list.getByRole('listitem')).toHaveCount(3)
