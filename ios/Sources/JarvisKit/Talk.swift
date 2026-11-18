@@ -106,6 +106,8 @@ public enum TalkMessage {
     public static let doze = #"{"type":"doze"}"#
     /// Talk again after dozing.
     public static let wake = #"{"type":"wake"}"#
+    /// Mute tapped: "I'm finished talking", so he answers what he has heard at once.
+    public static let endTurn = #"{"type":"end_turn"}"#
 
     /// For Jarvis's log, so a crackle report can be matched to the phone's audio.
     public static func client(micRate: Double, audioRate: Double) -> String {

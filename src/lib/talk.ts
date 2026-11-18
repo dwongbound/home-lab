@@ -15,6 +15,10 @@
 // dozing, Jarvis only listens for "Hey Jarvis" on the PC (nothing goes to
 // Whisper or his brain), then says state listening again. Talk sends
 // {"type":"wake"}. Muted, only silence goes out, so the wake word can't fire.
+//
+// Mute also means "I'm finished talking" (Dylan, 2026-11-17): tapping Mute
+// sends {"type":"end_turn"}, so Jarvis answers what he has heard right
+// away instead of waiting to be sure you've stopped.
 
 import { readTalkDirect, writeTalkDirect } from './prefs'
 import type { Approval, ApprovalBy } from '../types'
@@ -80,7 +84,8 @@ export interface TalkLine {
   /**
    * Mutes or unmutes the microphone. Muted, the line stays open and Jarvis
    * keeps answering and speaking, but he hears only silence: the mic track
-   * is switched off, so nothing it picks up leaves the phone.
+   * is switched off, so nothing it picks up leaves the phone. Muting also
+   * tells him you've finished talking, so he answers at once.
    */
   setMuted: (muted: boolean) => void
   /** Whether this Jarvis can doze and wake on "Hey Jarvis" (older ones can only hang up). */
@@ -549,10 +554,16 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     else ws.send(e.data)
   }
 
-  /** Switches the mic track itself off too, so muting doesn't rely on the frames alone. */
+  /**
+   * Switches the mic track itself off too, so muting doesn't rely on the
+   * frames alone. Going muted also says the turn is over, so Jarvis answers
+   * what he has heard without waiting out the quiet.
+   */
   function setMuted(next: boolean) {
+    const justMuted = next && !muted
     muted = next
     for (const t of stream.getAudioTracks()) t.enabled = !next
+    if (justMuted) tell('end_turn')
   }
   ws.onmessage = (e: MessageEvent<ArrayBuffer | string>) => {
     if (typeof e.data === 'string') {

@@ -123,8 +123,13 @@ final class TalkLine: @unchecked Sendable {
     }
 
     /// Muted, he hears only silence; the line and his voice carry on.
+    /// Going muted also tells him the turn is over, so he answers at once.
     func setMuted(_ value: Bool) {
-        queue.async { self.muted = value }
+        queue.async {
+            let justMuted = value && !self.muted
+            self.muted = value
+            if justMuted { self.send(text: TalkMessage.endTurn) }
+        }
     }
 
     /// Pause without hanging up: his voice stops and he listens only for "Hey Jarvis".
