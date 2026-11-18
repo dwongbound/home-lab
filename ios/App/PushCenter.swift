@@ -139,7 +139,7 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
             guard let app = self.app else { return }
             Task {
                 if let approvalId, reply == .approved || reply == .denied {
-                    try? await app.client.answer(approval: approvalId, ok: reply == .approved)
+                    await app.answerApproval(id: approvalId, summary: response.notification.request.content.body, ok: reply == .approved)
                 }
                 if reply.clearsNotice, let noticeId { await app.clearNotices([noticeId]) }
             }

@@ -120,19 +120,32 @@ extension JarvisClient {
     }
 
     /// Runs one Watch request against the PC and words the result for the Watch.
-    public func handle(_ request: WatchRequest) async -> WatchReply {
+    public func handle(_ request: WatchRequest, settledDefaults: UserDefaults = .standard) async -> WatchReply {
+        let settled = SettledApprovals.load(from: settledDefaults)
         do {
             switch request {
             case .ask(let text):
                 let answer = try await ask(text)
                 return .answer(text: answer.text, model: answer.model)
             case .approvals:
-                return .approvals(try await pendingApprovals())
+                // The phone's settled record: an approval that's over never
+                // goes back to the Watch, even while the PC still lists it.
+                return .approvals(settled.waiting(try await pendingApprovals()))
             case .answer(let id, let ok):
-                try await answer(approval: id, ok: ok)
-                return .done
+                switch try await answer(approval: id, ok: ok) {
+                case .taken:
+                    return .done
+                case .gone(_, let answer):
+                    // Already over: the card goes, nothing to retry.
+                    var record = SettledApprovals.load(from: settledDefaults)
+                    record.settle(id, line: ApprovalReply.goneLine(answer: answer, summary: ""))
+                    record.save(to: settledDefaults)
+                    return .done
+                case .failed(let words):
+                    return .problem(words)
+                }
             case .board:
-                return .board(WatchBoard(snapshot: try await snapshot()))
+                return .board(WatchBoard(snapshot: try await snapshot(), settled: settled))
             case .clear(let ids):
                 if ids.isEmpty { try await clearAllNotices() } else { try await clearNotices(ids: ids) }
                 return .done

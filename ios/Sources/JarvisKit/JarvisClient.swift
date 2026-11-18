@@ -126,9 +126,18 @@ public struct JarvisClient: Sendable {
         return body.pending ?? []
     }
 
-    /// Approve (ok) or Deny one thing Jarvis asked to do.
-    public func answer(approval id: String, ok: Bool) async throws {
-        try await post("api/jarvis/approve", ["id": id, "ok": ok])
+    /// Approve (ok) or Deny one thing Jarvis asked to do. An approval
+    /// that's already over comes back `.gone`, not as an error; only not
+    /// reaching Jarvis at all throws.
+    public func answer(approval id: String, ok: Bool) async throws -> ApprovalReply {
+        let request = request("api/jarvis/approve", method: "POST", json: ["id": id, "ok": ok])
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw JarvisError.unreachable
+        }
+        return ApprovalReply.read(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
     }
 
     /// "That was wrong" on a reply: what was asked, what he said, what Dylan wanted.

@@ -122,3 +122,4 @@ public struct ChatTurn: Codable, Equatable, Sendable {
         turns.firstIndex { $0.id == turnId }
     }
 }
+

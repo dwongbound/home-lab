@@ -104,7 +104,15 @@ final class ChatModel: ObservableObject {
                 fresh.insert(item, at: at)
             }
             let known = Set(fresh.map(\.id))
-            items = fresh + pending.map(ChatItem.approval).filter { !known.contains($0.id) }
+            // An approval that's over never comes back as a card, even while
+            // the PC still lists it for a moment.
+            let waiting = app.settled.waiting(pending)
+            items = fresh + waiting.map(ChatItem.approval).filter { !known.contains($0.id) }
+            for item in items {
+                if case .approval(let approval) = item.kind, item.outcome == nil, let line = app.settled.line(for: approval.id) {
+                    showSettled(approval.id, line: line)
+                }
+            }
             problem = nil
             app.noteReach(nil)
         } catch {
@@ -137,6 +145,17 @@ final class ChatModel: ObservableObject {
     func expireOverdue(now: Date = Date()) {
         for approval in pendingApprovals where ApprovalWording.hasExpired(approval.expires, now: now) {
             settle(approval, ok: false, later: false, by: "timeout")
+        }
+    }
+
+    /// The app that owns this chat, for the settled approvals (set by AppModel).
+    weak var app: AppModel?
+
+    /// Shows an approval as settled (`line`) or waiting again (nil). Called
+    /// by AppModel whichever screen settled it.
+    func showSettled(_ id: String, line: String?) {
+        withAnimation(.smooth(duration: 0.35)) {
+            update("approval-\(id)") { $0.outcome = line }
         }
     }
 
@@ -246,14 +265,14 @@ final class ChatModel: ObservableObject {
             working = nil
         case .approval(let approval):
             // The card goes above the reply's later words, like on the page.
-            if !items.contains(where: { $0.id == "approval-\(approval.id)" }) {
+            // One that's already over is never shown.
+            if app?.settled.isSettled(approval.id) != true, !items.contains(where: { $0.id == "approval-\(approval.id)" }) {
                 let at = items.firstIndex(where: { $0.id == replyId }) ?? items.endIndex
                 items.insert(.approval(approval), at: at)
             }
         case .approvalDone(let id, let ok, let by, let later):
-            if let approval = pendingApprovals.first(where: { $0.id == id }) {
-                settle(approval, ok: ok, later: later, by: by)
-            }
+            let summary = knownApproval(id)?.summary ?? ""
+            app?.settleApproval(id, line: ApprovalWording.settledLine(ok: ok, later: later, by: by, summary: summary))
         case .error(let message):
             problem = message
         case .mealQuestion(let key, let choices):
@@ -286,24 +305,26 @@ final class ChatModel: ObservableObject {
     /// entry in the history, gently.
     private func settle(_ approval: Approval, ok: Bool, later: Bool, by: String) {
         let line = ApprovalWording.settledLine(ok: ok, later: later, by: by, summary: approval.summary)
-        withAnimation(.smooth(duration: 0.35)) {
-            update("approval-\(approval.id)") { $0.outcome = line }
+        if let app {
+            app.settleApproval(approval.id, line: line)
+        } else {
+            showSettled(approval.id, line: line)
         }
+    }
+
+    /// The approval card with this id, settled or not.
+    private func knownApproval(_ id: String) -> Approval? {
+        for item in items {
+            if case .approval(let approval) = item.kind, approval.id == id { return approval }
+        }
+        return nil
     }
 
     /// Approve or Deny on a card. Shows the answer at once and takes it
     /// back if the PC didn't get it.
     func answer(_ approval: Approval, ok: Bool, app: AppModel) async {
-        settle(approval, ok: ok, later: false, by: "page")
-        do {
-            try await app.client.answer(approval: approval.id, ok: ok)
-            app.noteReach(nil)
-        } catch {
-            withAnimation(.smooth(duration: 0.35)) {
-                update("approval-\(approval.id)") { $0.outcome = nil }
-            }
-            problem = error.localizedDescription
-            app.noteReach(error)
+        if let message = await app.answerApproval(id: approval.id, summary: approval.summary, ok: ok) {
+            problem = message
         }
     }
 

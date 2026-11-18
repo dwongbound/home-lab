@@ -23,7 +23,7 @@ public struct TVChat: Equatable, Sendable {
     public private(set) var phase: Phase = .idle
     /// The slow lookup he's on ("Searching the web."), or nil.
     public private(set) var working: String?
-    public private(set) var problem: String?
+    public var problem: String?
     private var nextId = 0
 
     /// Lines kept on screen; older ones scroll away for good.

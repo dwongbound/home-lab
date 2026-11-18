@@ -73,7 +73,8 @@ final class TalkModel: ObservableObject {
         let handlers = TalkHandlers(
             onEvent: { [weak self] event in self?.apply(event, app: app) },
             onLevel: { [weak self] level, tone in self?.hear(level: level, tone: tone) },
-            onClosed: { [weak self] message in self?.closed(message) }
+            onClosed: { [weak self] message in self?.closed(message) },
+            onMicStuck: { [weak self] stuck in self?.micStuck = stuck }
         )
         let line = TalkLine(request: app.client.talkRequest, handlers: handlers)
         do {
@@ -113,6 +114,7 @@ final class TalkModel: ObservableObject {
         phase = .off
         level = 0
         working = nil
+        micStuck = false
     }
 
     /// Mic off or on; the line stays open either way.
@@ -124,17 +126,33 @@ final class TalkModel: ObservableObject {
 
     /// Approve or Deny on a card shown during Talk.
     func answer(_ approval: Approval, ok: Bool, app: AppModel) async {
-        settle(approval.id, ok: ok, later: false, by: "page")
-        do {
-            try await app.client.answer(approval: approval.id, ok: ok)
-        } catch {
-            withAnimation(.smooth(duration: 0.35)) {
-                if let index = approvals.firstIndex(where: { $0.approval.id == approval.id }) {
-                    approvals[index].outcome = nil
-                }
-            }
-            problem = error.localizedDescription
+        if let message = await app.answerApproval(id: approval.id, summary: approval.summary, ok: ok) {
+            problem = message
         }
+    }
+
+    /// The app that owns this call, for the settled approvals (set by AppModel).
+    weak var app: AppModel?
+
+    /// Shows an approval as settled (`line`) or waiting again (nil). Called
+    /// by AppModel whichever screen settled it.
+    func showSettled(_ id: String, line: String?) {
+        guard let index = approvals.firstIndex(where: { $0.approval.id == id }) else { return }
+        withAnimation(.smooth(duration: 0.35)) {
+            approvals[index].outcome = line
+        }
+    }
+
+    /// Mic stopped and wouldn't restart: shown with a tap to restart.
+    @Published private(set) var micStuck = false
+
+    /// What the screen says while it's stuck.
+    static let micStuckWords = "Mic paused. Tap to resume."
+
+    /// The tap on "Mic paused. Tap to resume."
+    func restartMic() {
+        micStuck = false
+        line?.restartMic(asked: true)
     }
 
     /// Keeps the Dynamic Island in step with the call (Dylan, 2026-11-17):
@@ -220,11 +238,15 @@ final class TalkModel: ObservableObject {
             problem = nil
             notice = "Goodbye. Tap Talk when you want him again."
         case .approval(let approval):
-            if !approvals.contains(where: { $0.approval.id == approval.id }) {
+            // One that's already over (answered on another screen) never shows.
+            if !app.settled.isSettled(approval.id), !approvals.contains(where: { $0.approval.id == approval.id }) {
                 approvals.append((approval, nil, exchange))
             }
         case .approvalDone(let id, let ok, let by, let later):
             settle(id, ok: ok, later: later, by: by)
+        case .noAudio:
+            // The line itself restarts the microphone (TalkLine.apply).
+            break
         case .hello:
             break
         }
@@ -268,10 +290,12 @@ final class TalkModel: ObservableObject {
     /// Settles an approval: its card collapses into a one-line entry in the
     /// transcript, after the exchange it was asked in.
     private func settle(_ id: String, ok: Bool, later: Bool, by: String) {
-        guard let index = approvals.firstIndex(where: { $0.approval.id == id }) else { return }
-        let line = ApprovalWording.settledLine(ok: ok, later: later, by: by, summary: approvals[index].approval.summary)
-        withAnimation(.smooth(duration: 0.35)) {
-            approvals[index].outcome = line
+        let summary = approvals.first(where: { $0.approval.id == id })?.approval.summary ?? ""
+        let line = ApprovalWording.settledLine(ok: ok, later: later, by: by, summary: summary)
+        if let app {
+            app.settleApproval(id, line: line)
+        } else {
+            showSettled(id, line: line)
         }
     }
 
@@ -316,6 +340,7 @@ final class TalkModel: ObservableObject {
 
     /// The line dropped by itself.
     private func closed(_ message: String) {
+        micStuck = false
         line = nil
         phase = .off
         level = 0
@@ -389,6 +414,18 @@ struct TalkView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     words
+                    if talk.micStuck {
+                        // Not listening any more, so it doesn't pretend to be.
+                        Button {
+                            talk.restartMic()
+                        } label: {
+                            Label(TalkModel.micStuckWords, systemImage: "mic.slash.fill")
+                                .font(.footnote.weight(.semibold))
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(Theme.rose)
+                    }
                     if let problem = talk.problem {
                         Text(problem)
                             .font(.footnote)

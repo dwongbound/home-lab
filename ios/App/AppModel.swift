@@ -63,9 +63,69 @@ final class AppModel: ObservableObject {
     private var relay: AnyCancellable?
     private var relayToday: AnyCancellable?
 
-    /// The unread notices, newest first, less any just cleared here.
+    /// Approvals that are over (JarvisKit SettledApprovals): their cards,
+    /// notice rows and orbit dots never come back, for a day, even while
+    /// the PC's lists still name them for a moment.
+    @Published private(set) var settled = SettledApprovals.load()
+
+    /// The unread notices, newest first, less any just cleared here and any
+    /// approval that's already over.
     var notices: [Notice] {
-        Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.contains($0.id) })
+        settled.showing(Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.contains($0.id) }))
+    }
+
+    /// An approval is over (answered here, out loud, on Telegram, timed out,
+    /// or Jarvis says it's gone): remembered, and its card collapses into
+    /// `line` in Chat and Talk, its notice goes. A second word on the same
+    /// id is ignored unless `replace` (the PC's own account beats ours).
+    func settleApproval(_ id: String, line: String, replace: Bool = false) {
+        if settled.isSettled(id) {
+            guard replace, settled.line(for: id) != line else { return }
+            settled.unsettle(id)
+        }
+        settled.prune()
+        settled.settle(id, line: line)
+        settled.save()
+        chat.showSettled(id, line: line)
+        talk.showSettled(id, line: line)
+        let noticeIds = (today.snapshot?.notices ?? []).filter { $0.approvalId == id }.map(\.id)
+        if !noticeIds.isEmpty { clearedNotices.formUnion(noticeIds) }
+    }
+
+    /// Approve or Deny from any screen. The card settles at once; if Jarvis
+    /// says it was already over, his account of it replaces ours and that's
+    /// the end of it (no error, no card coming back). Only an answer that
+    /// never reached him puts the card back; the message comes back for
+    /// the screen.
+    @discardableResult
+    func answerApproval(id: String, summary: String, ok: Bool) async -> String? {
+        settleApproval(id, line: ApprovalWording.settledLine(ok: ok, later: false, by: "page", summary: summary))
+        do {
+            switch try await client.answer(approval: id, ok: ok) {
+            case .taken:
+                noteReach(nil)
+                return nil
+            case .gone(_, let answer):
+                noteReach(nil)
+                settleApproval(id, line: ApprovalReply.goneLine(answer: answer, summary: summary), replace: true)
+                return nil
+            case .failed(let message):
+                unsettleApproval(id)
+                return message
+            }
+        } catch {
+            unsettleApproval(id)
+            noteReach(error)
+            return error.localizedDescription
+        }
+    }
+
+    /// Takes back an answer that never reached Jarvis: the card returns.
+    private func unsettleApproval(_ id: String) {
+        settled.unsettle(id)
+        settled.save()
+        chat.showSettled(id, line: nil)
+        talk.showSettled(id, line: nil)
     }
 
     /// Clears notices everywhere (the server clears them for every device);
@@ -100,11 +160,9 @@ final class AppModel: ObservableObject {
     /// Approve or Deny a notice's approval, then clear the notice.
     func answerNotice(_ notice: Notice, ok: Bool) async {
         guard let approvalId = notice.approvalId else { return }
-        do {
-            try await client.answer(approval: approvalId, ok: ok)
+        let summary = notice.body.isEmpty ? notice.title : notice.body
+        if await answerApproval(id: approvalId, summary: summary, ok: ok) == nil {
             await clearNotices([notice.id])
-        } catch {
-            noteReach(error)
         }
     }
 
@@ -154,6 +212,8 @@ final class AppModel: ObservableObject {
         server = UserDefaults.standard.string(forKey: Self.serverKey) ?? JarvisClient.defaultBase.absoluteString
         // The Chat tab's badge counts the chat's waiting approvals, so a
         // change in the chat redraws the tab bar too.
+        chat.app = self
+        talk.app = self
         relay = chat.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         // The notices ride in the snapshot, so a new one redraws every orb.
         relayToday = today.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
