@@ -14,6 +14,7 @@
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
 //   GET  /api/jarvis/approvals      what Jarvis is still waiting on you to approve ({pending})
 //   (chat messages may add "images": up to 4 photos as {"media_type", "data": base64})
+//   POST /api/jarvis/chat/meal     {"key", "choice"} -> same | leftovers | new, for a meal photo he may have logged already
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
 //   POST /api/jarvis/notices/clear {"ids"} or {"all": true} -> clears notifications on every device
 //   POST /api/jarvis/push/register {"token", "platform", "environment", "bundle"} -> an app asking for pushes
@@ -38,7 +39,10 @@ const MAX_BODY_BYTES = 8 * 1024
 const MAX_CHAT_BYTES = 19 * 1024 * 1024
 const MAX_CHAT_IMAGES = 4
 const MAX_IMAGE_CHARS = 4.5 * 1024 * 1024
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/webp']
+// Jarvis refuses HEIC, so the apps convert to JPEG first.
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+// What a "have I logged this meal already?" question can be answered with.
+const MEAL_CHOICES = ['same', 'leftovers', 'new']
 
 /** Picks the data source from config: "live" reads the PC, anything else is mock. */
 export function createSource(config) {
@@ -169,6 +173,20 @@ export function createApi(source) {
       if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`)
     })
     res.end()
+  }
+
+  /** The answer to "is this the meal I already logged?" under a photo reply: same, leftovers or new. */
+  async function handleMealAnswer(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    if (typeof body?.key !== 'string' || !/^[\w.:-]{1,100}$/.test(body.key) || !MEAL_CHOICES.includes(body.choice)) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"key": "m1", "choice": "same"} (same, leftovers or new)' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.answerMeal(body.key, body.choice, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
   }
 
   /** The web chat so far, so the page can show it after a reload. */
@@ -425,6 +443,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/offers/hide') {
         return await handleHideOffer(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/chat/meal') {
+        return await handleMealAnswer(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/notices/clear') {
         return await handleClearNotices(req, res)

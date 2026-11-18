@@ -320,6 +320,8 @@ export type ChatEvent =
   | { type: 'working_done' }
   /** Which brain is answering: "claude", or "ornith" when he has fallen back to the local model. */
   | { type: 'model'; model: string }
+  /** A meal photo that looks like one already logged; answered with POST /api/jarvis/chat/meal (the apps show the choices as buttons). */
+  | { type: 'meal_question'; key: string; choices: string[] }
 /** One saved line of the web chat. model: who wrote one of Jarvis's lines, when known. */
 /** `images` = how many photos went with the message (the bytes aren't kept in the history). */
 export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; images?: number }
@@ -399,6 +401,8 @@ export interface DataSource {
   sendFeedback(flag: JarvisFeedback, caller?: { login?: string }): Promise<ActionResult>
   /** Hides one offer for good (Hide on its card). */
   hideOffer(id: string, caller?: { login?: string }): Promise<ActionResult>
+  /** Answers a "logged this already?" meal question: same, leftovers or new. The message is Jarvis's reply. */
+  answerMeal(key: string, choice: string, caller?: { login?: string }): Promise<ActionResult>
   /** Clears notifications for every device. */
   clearNotices(which: NoticeClear, caller?: { login?: string }): Promise<ActionResult>
   /** Passes an app's push token to Jarvis. */

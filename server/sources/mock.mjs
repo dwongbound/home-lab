@@ -396,6 +396,13 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: true, message: 'Hidden' }
     },
 
+    /** A meal question answered: the pretend Jarvis says what he did. */
+    async answerMeal(_key, choice) {
+      if (choice === 'same') return { ok: true, message: 'Okay, I won’t log it twice.' }
+      if (choice === 'leftovers') return { ok: true, message: 'Logged as leftovers.' }
+      return { ok: true, message: 'Logged as a new meal.' }
+    },
+
     /** Clear on notifications: those ids, or all of them, are gone. */
     async clearNotices(which) {
       const ids = which.ids ?? []

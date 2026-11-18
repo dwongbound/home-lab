@@ -510,6 +510,9 @@ export function createLiveSource(config, deps = {}) {
             if (approval) onEvent({ type: 'approval', approval })
           } else if (event.type === 'approval_done' && typeof event.id === 'string') {
             onEvent({ type: 'approval_done', id: event.id, ok: event.ok === true, by: toApprovalBy(event.by), later: event.later === true })
+          } else if (event.type === 'meal_question' && typeof event.key === 'string' && Array.isArray(event.choices)) {
+            // A meal photo that looks like one already logged: the app shows the choices as buttons.
+            onEvent({ type: 'meal_question', key: event.key, choices: event.choices.filter((c) => typeof c === 'string') })
           } else if (event.type === 'model' && typeof event.model === 'string') {
             // Who is answering: Claude, or the local model while Claude's plan is out of room.
             onEvent({ type: 'model', model: event.model })
@@ -551,6 +554,24 @@ export function createLiveSource(config, deps = {}) {
         // Already gone counts as hidden.
         if (!res.ok && res.status !== 404) return { ok: false, message: `Jarvis answered ${res.status}` }
         return { ok: true, message: 'Hidden' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /** Answers a "logged this already?" meal question (POST /chat/meal); the message is what Jarvis says back. */
+    async answerMeal(key, choice, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/chat/meal`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify({ key, choice }),
+          signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+        })
+        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        const body = await res.json()
+        return { ok: true, message: typeof body?.reply === 'string' ? body.reply : 'Done' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }

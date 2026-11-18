@@ -17,6 +17,7 @@ describe('parseChatImages', () => {
     expect(parseChatImages([{ media_type: 'application/pdf', data: 'AAAA' }])).toBeNull()
     expect(parseChatImages([{ media_type: 'image/jpeg', data: 'not base64!' }])).toBeNull()
     expect(parseChatImages('photo')).toBeNull()
+    expect(parseChatImages([{ media_type: 'image/heic', data: 'AAAA' }])).toBeNull()
   })
 })
 
@@ -44,5 +45,15 @@ describe('POST /api/jarvis/chat with photos', () => {
     const bad = JSON.stringify({ text: 'hi', images: [{ media_type: 'text/plain', data: 'AAAA' }] })
     expect((await callApi(api, 'POST', '/api/jarvis/chat', ACTION_HEADER, bad)).statusCode).toBe(400)
     expect((await callApi(api, 'POST', '/api/jarvis/chat', ACTION_HEADER, JSON.stringify({ text: ' ' }))).statusCode).toBe(400)
+  })
+})
+
+describe('POST /api/jarvis/chat/meal', () => {
+  it('needs the page header, a key and one of the three choices', async () => {
+    const api = createApi(createMockSource())
+    const answer = JSON.stringify({ key: 'm1', choice: 'leftovers' })
+    expect((await callApi(api, 'POST', '/api/jarvis/chat/meal', {}, answer)).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/jarvis/chat/meal', ACTION_HEADER, JSON.stringify({ key: 'm1', choice: 'maybe' }))).statusCode).toBe(400)
+    expect((await callApi(api, 'POST', '/api/jarvis/chat/meal', ACTION_HEADER, answer)).json()).toEqual({ ok: true, message: 'Logged as leftovers.' })
   })
 })
