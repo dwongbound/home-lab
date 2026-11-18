@@ -38,6 +38,9 @@ public enum ChatEvent: Equatable, Sendable {
     case workingDone
     /// Which brain is answering: "claude", or a local model like "ornith".
     case model(String)
+    /// A meal photo that looks like one already logged: Dylan picks same,
+    /// leftovers or new (the buttons under the reply).
+    case mealQuestion(key: String, choices: [String])
 
     /// Reads one line of the stream. Blank lines, bad JSON and event types
     /// this build doesn't know yet come back nil, so a newer Jarvis never
@@ -72,6 +75,10 @@ public enum ChatEvent: Equatable, Sendable {
         case "model":
             guard let model = object["model"] as? String else { return nil }
             return .model(model)
+        case "meal_question":
+            guard let key = object["key"] as? String, !key.isEmpty else { return nil }
+            let choices = (object["choices"] as? [String] ?? MealChoice.all).filter { MealChoice.all.contains($0) }
+            return .mealQuestion(key: key, choices: choices.isEmpty ? MealChoice.all : choices)
         default:
             return nil
         }

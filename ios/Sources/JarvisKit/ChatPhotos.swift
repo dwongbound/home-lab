@@ -55,3 +55,29 @@ public enum PhotoLimits {
         count == 1 ? "1 photo" : "\(count) photos"
     }
 }
+
+/// The answers to "is this the meal I already logged?".
+public enum MealChoice {
+    public static let all = ["same", "leftovers", "new"]
+
+    /// The button's words.
+    public static func label(_ choice: String) -> String {
+        switch choice {
+        case "same": return "Same meal"
+        case "leftovers": return "Leftovers"
+        default: return "New meal"
+        }
+    }
+}
+
+/// Where a sent message's photo thumbnails are kept on this device, since
+/// history never sends the photos back: a stable name from the words and
+/// how many photos, so the bubble finds them after a relaunch.
+public enum PhotoCacheKey {
+    public static func key(text: String, count: Int) -> String {
+        var h: UInt64 = 1469598103934665603
+        for byte in text.utf8 { h = (h ^ UInt64(byte)) &* 1099511628211 }
+        return String(format: "%016llx-%d", h, count)
+    }
+}
+

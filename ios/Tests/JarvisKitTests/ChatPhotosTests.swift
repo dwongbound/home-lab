@@ -44,3 +44,28 @@ final class ChatPhotosTests: XCTestCase {
         XCTAssertNil(old.images)
     }
 }
+
+final class MealQuestionTests: XCTestCase {
+    func testParsesTheMealQuestion() {
+        let event = ChatEvent.parse(line: #"{"type":"meal_question","key":"m1","choices":["same","leftovers","new"]}"#)
+        XCTAssertEqual(event, .mealQuestion(key: "m1", choices: ["same", "leftovers", "new"]))
+        XCTAssertEqual(ChatEvent.parse(line: #"{"type":"meal_question","key":"m2","choices":["same","bogus"]}"#), .mealQuestion(key: "m2", choices: ["same"]))
+        XCTAssertNil(ChatEvent.parse(line: #"{"type":"meal_question"}"#))
+        XCTAssertEqual(MealChoice.label("leftovers"), "Leftovers")
+        XCTAssertEqual(MealChoice.label("same"), "Same meal")
+    }
+
+    func testMealRequestShape() throws {
+        let client = JarvisClient(base: URL(string: "https://jarvis.example.ts.net")!)
+        let r = client.mealRequest(key: "m1", choice: "new")
+        XCTAssertEqual(r.url?.path, "/api/jarvis/chat/meal")
+        XCTAssertEqual(r.httpMethod, "POST")
+        let body = try JSONSerialization.jsonObject(with: r.httpBody ?? Data()) as? [String: String]
+        XCTAssertEqual(body, ["key": "m1", "choice": "new"])
+    }
+
+    func testCacheKeyIsStable() {
+        XCTAssertEqual(PhotoCacheKey.key(text: "lunch", count: 2), PhotoCacheKey.key(text: "lunch", count: 2))
+        XCTAssertNotEqual(PhotoCacheKey.key(text: "lunch", count: 2), PhotoCacheKey.key(text: "lunch", count: 1))
+    }
+}
