@@ -142,6 +142,10 @@ describe('the voice line', () => {
     expect(sent).toHaveBeenLastCalledWith(frame)
     line.setMuted(true)
     expect(track.enabled).toBe(false)
+    // Muting also says "I'm finished talking", once.
+    expect(sent).toHaveBeenLastCalledWith(JSON.stringify({ type: 'end_turn' }))
+    line.setMuted(true)
+    expect(sent.mock.calls.filter((c) => c[0] === JSON.stringify({ type: 'end_turn' }))).toHaveLength(1)
     worklet!.port.onmessage!({ data: frame })
     const quiet = sent.mock.lastCall![0] as ArrayBuffer
     expect(quiet.byteLength).toBe(frame.byteLength)
