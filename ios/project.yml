@@ -43,6 +43,7 @@ targets:
       path: App/Jarvis.entitlements
       properties:
         aps-environment: development
+        com.apple.developer.usernotifications.time-sensitive: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis

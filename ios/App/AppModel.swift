@@ -125,6 +125,8 @@ final class AppModel: ObservableObject {
         relay = chat.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         // The notices ride in the snapshot, so a new one redraws every orb.
         relayToday = today.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        // Push notifications: the delegate, Approve/Deny on the lock screen.
+        PushCenter.shared.start(app: self)
         // Mute and End on the Dynamic Island reach the call through here.
         TalkActivityBridge.handler = { [weak self] action in
             guard let self else { return }
