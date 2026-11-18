@@ -1,9 +1,8 @@
 // Swiping the TV's cards with the Siri Remote (Dylan, 2026-11-18). A thin
 // UIKit view over the card area that can take focus: a swipe left on the
-// touch surface (or a press on the right of the clickpad ring) asks for the
-// next card, a swipe right (or a press on the left) for the previous one.
-// While it has focus, sideways moves are kept here rather than wandering off
-// to the buttons; up and down still move focus out as usual. It takes focus
+// touch surface asks for the next card, a swipe right for the previous one.
+// A swipe's own focus move is kept here so it doesn't wander off to the
+// buttons; pressing the clickpad ring (any direction) moves focus as usual. It takes focus
 // when the screen first appears, so swiping works straight away.
 import SwiftUI
 import UIKit
@@ -63,22 +62,40 @@ struct CardSwipeCatcher: UIViewRepresentable {
             if dx < -60 || vx < -600 { onSwipe(1) } else if dx > 60 || vx > 600 { onSwipe(-1) }
         }
 
-        /// The clickpad ring: right is next, left is previous.
+        /// True while a left or right press on the clickpad ring is down.
+        /// Presses move focus to the buttons as usual (Dylan, 2026-11-18:
+        /// "if i press left and right i should still be able to select the
+        /// buttons"); only a swipe on the touch surface pages the cards.
+        private var arrowPressed = false
+
         override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-            var handled = false
-            for press in presses {
-                switch press.type {
-                case .rightArrow: onSwipe(1); handled = true
-                case .leftArrow: onSwipe(-1); handled = true
-                default: break
-                }
+            if presses.contains(where: { $0.type == .leftArrow || $0.type == .rightArrow }) {
+                arrowPressed = true
             }
-            if !handled { super.pressesBegan(presses, with: event) }
+            super.pressesBegan(presses, with: event)
         }
 
-        /// Sideways moves stay here; up and down may leave for the buttons.
+        override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            releaseArrow()
+            super.pressesEnded(presses, with: event)
+        }
+
+        override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            releaseArrow()
+            super.pressesCancelled(presses, with: event)
+        }
+
+        /// Cleared a moment after the press, so the focus move it starts
+        /// still sees it.
+        private func releaseArrow() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.arrowPressed = false }
+        }
+
+        /// A sideways swipe stays here (it pages the cards); a sideways press,
+        /// and up or down, may leave for the buttons.
         override func shouldUpdateFocus(in context: UIFocusUpdateContext) -> Bool {
-            if context.previouslyFocusedItem === self, context.focusHeading.contains(.left) || context.focusHeading.contains(.right) {
+            if context.previouslyFocusedItem === self, !arrowPressed,
+               context.focusHeading.contains(.left) || context.focusHeading.contains(.right) {
                 return false
             }
             return super.shouldUpdateFocus(in: context)
