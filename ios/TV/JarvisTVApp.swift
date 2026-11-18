@@ -131,6 +131,12 @@ struct AlwaysOnView: View {
     @StateObject private var chat = TVChatModel()
     /// True while the notices list is in the right side.
     @State private var showingNotices = false
+    /// When the remote last swiped the cards; the rotation waits a minute.
+    @State private var lastSwipe: Date?
+    /// Which way the last card change went (+1 next, -1 previous).
+    @State private var slide = 1
+    /// True while the card area has the remote's focus.
+    @State private var cardFocused = false
     /// How long the card showing needs to scroll its text through once.
     @State private var cardScroll: Double = 0
     /// The most a card's rows may take before they scroll: less when the
@@ -224,7 +230,10 @@ struct AlwaysOnView: View {
                 // gone through once.
                 let extra = cardScroll - TVBoard.turnSeconds
                 if extra > 0 { try? await Task.sleep(for: .seconds(extra)) }
+                // A card chosen with the remote stays up for a minute.
+                guard CardSwipe.autoAdvanceAllowed(lastSwipe: lastSwipe) else { continue }
                 cardScroll = 0
+                slide = 1
                 withAnimation(reduceMotion ? nil : .smooth(duration: 1.0)) { turn += 1 }
             }
         }
@@ -518,7 +527,7 @@ struct AlwaysOnView: View {
     private var right: some View {
         if let snapshot = model.snapshot {
             let cards = TVBoard.cards(snapshot, guest: guest)
-            let active = cards.isEmpty ? 0 : turn % cards.count
+            let active = CardSwipe.index(turn: turn, count: cards.count)
             TimelineView(.periodic(from: .now, by: SunLampPreview.enabled ? 0.5 : 15)) { tick in
                 let now = SunLampPreview.now(at: tick.date)
                 let hero = TVBoard.hero(snapshot, now: now, guest: guest)
@@ -536,10 +545,21 @@ struct AlwaysOnView: View {
                         ZStack(alignment: .topLeading) {
                             boardCard(cards[active], snapshot: snapshot, now: now)
                                 .id(cards[active])
-                                .transition(.asymmetric(
-                                    insertion: .opacity.combined(with: .offset(x: 40)),
-                                    removal: .opacity.combined(with: .offset(x: -40))
+                                // Slides the way the swipe went.
+                                .transition(reduceMotion ? .opacity : .asymmetric(
+                                    insertion: .opacity.combined(with: .offset(x: CGFloat(40 * slide))),
+                                    removal: .opacity.combined(with: .offset(x: CGFloat(-40 * slide)))
                                 ))
+                            // The remote's swipes page the cards.
+                            if cards.count > 1 {
+                                CardSwipeCatcher(onSwipe: { step in
+                                    lastSwipe = Date()
+                                    slide = step
+                                    cardScroll = 0
+                                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.6)) { turn += step }
+                                }, onFocus: { cardFocused = $0 })
+                                .allowsHitTesting(true)
+                            }
                         }
                         // With three or more cards the height holds still so
                         // nothing below jumps; with fewer, the card takes
@@ -550,6 +570,10 @@ struct AlwaysOnView: View {
                         .onChange(of: hero == nil) { _, none in rowsMax = none ? 344 : 274 }
                         if cards.count > 1 {
                             CardDots(count: cards.count, active: active, seconds: TVBoard.turnSeconds, palette: palette)
+                                // Brighter while the remote is on the cards.
+                                .opacity(cardFocused ? 1 : 0.7)
+                                .scaleEffect(cardFocused ? 1.15 : 1)
+                                .animation(.smooth(duration: 0.3), value: cardFocused)
                         }
                     }
                 }

@@ -417,3 +417,26 @@ public enum TaskCard {
     }
 }
 
+
+// MARK: Swiping cards
+
+/// Paging the TV's cards with the remote (Dylan, 2026-11-18: "if I swipe on
+/// the Apple TV remote, it basically swipes the panel as well and can go to
+/// the next (or previous) one").
+public enum CardSwipe {
+    /// After a swipe the card he chose stays up this long before the
+    /// automatic rotation carries on.
+    public static let pauseSeconds: Double = 60
+
+    /// Which card a turn count shows, wrapping both ways.
+    public static func index(turn: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        return ((turn % count) + count) % count
+    }
+
+    /// True when the automatic rotation may move on.
+    public static func autoAdvanceAllowed(lastSwipe: Date?, now: Date = Date()) -> Bool {
+        guard let lastSwipe else { return true }
+        return now.timeIntervalSince(lastSwipe) >= pauseSeconds
+    }
+}
