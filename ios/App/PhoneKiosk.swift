@@ -15,6 +15,15 @@ final class OrientationLock: NSObject, UIApplicationDelegate {
     /// The orientations allowed right now on iPhone.
     static var phoneMask: UIInterfaceOrientationMask = .portrait
 
+    /// APNs gave this device a token (PushCenter sends it on).
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        MainActor.assumeIsolated { PushCenter.shared.gotToken(deviceToken) }
+    }
+
+    /// No token this time (no network, or a build without push): tried
+    /// again at the next launch.
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {}
+
     /// Asked by UIKit whenever it considers rotating.
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         UIDevice.current.userInterfaceIdiom == .pad ? .all : Self.phoneMask

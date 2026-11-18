@@ -2,6 +2,7 @@
 // lab PC, reached over Tailscale. The brain, tools and approvals stay on
 // the PC.
 import SwiftUI
+import UserNotifications
 import JarvisKit
 
 @main
@@ -286,6 +287,16 @@ struct PadKioskAndNotices: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in app.noteActivity() }
             .onReceive(NotificationCenter.default.publisher(for: UITextView.textDidChangeNotification)) { _ in app.noteActivity() }
             .onChange(of: app.tab) { _, _ in app.noteActivity() }
+            // The sensible moment to ask about notifications: the first time
+            // a notice actually turns up.
+            .onChange(of: app.notices.isEmpty) { _, empty in
+                if !empty { Task { await PushCenter.shared.askIfNeeded() } }
+            }
+            // The app badge is the unread count, set here after every
+            // snapshot and clear (clearing sends no badge push).
+            .onChange(of: app.notices.count) { _, count in
+                UNUserNotificationCenter.current().setBadgeCount(count)
+            }
             .task {
                 guard UIDevice.current.userInterfaceIdiom == .pad else { return }
                 UIDevice.current.isBatteryMonitoringEnabled = true

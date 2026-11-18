@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var checking = false
     @AppStorage(PhoneKioskMonitor.enabledKey) private var bedside = true
     @AppStorage(AppModel.idleKioskKey) private var idleKiosk = true
+    @AppStorage(PushCenter.enabledKey) private var pushOn = true
     @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
     @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
 
@@ -42,6 +43,13 @@ struct SettingsView: View {
                     } footer: {
                         Text("Turn the phone on its side while it's charging and Jarvis shows a big clock, the orb and what's next. Tap it for Close. Never shows money.")
                     }
+                }
+                Section {
+                    Toggle("Notifications", isOn: $pushOn)
+                        .frame(minHeight: 44)
+                        .onChange(of: pushOn) { _, on in PushCenter.shared.setEnabled(on) }
+                } footer: {
+                    Text("Jarvis's messages, approvals and alerts as banners, even when the app is closed. Approve from the lock screen needs the phone unlocked.")
                 }
                 if UIDevice.current.userInterfaceIdiom == .pad {
                     Section {
