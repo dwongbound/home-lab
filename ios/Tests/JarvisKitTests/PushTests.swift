@@ -19,3 +19,21 @@ final class PushTests: XCTestCase {
         XCTAssertNil(PushWords.noticeId(from: [:]))
     }
 }
+
+final class NoticeResponseTests: XCTestCase {
+    func testActingClearsAndBeingShownNeverDoes() {
+        XCTAssertFalse(NoticeResponse.shown.clearsNotice, "a banner popping up isn't reading it")
+        XCTAssertFalse(NoticeResponse.dismissed.clearsNotice)
+        XCTAssertTrue(NoticeResponse.opened.clearsNotice)
+        XCTAssertTrue(NoticeResponse.approved.clearsNotice)
+        XCTAssertTrue(NoticeResponse.denied.clearsNotice)
+    }
+
+    func testActionsMap() {
+        XCTAssertEqual(NoticeResponse.from(action: "com.apple.UNNotificationDefaultActionIdentifier"), .opened)
+        XCTAssertEqual(NoticeResponse.from(action: PushWords.approveAction), .approved)
+        XCTAssertEqual(NoticeResponse.from(action: PushWords.denyAction), .denied)
+        XCTAssertEqual(NoticeResponse.from(action: "com.apple.UNNotificationDismissActionIdentifier"), .dismissed)
+        XCTAssertEqual(PushStatus.registered.words, "Push: registered")
+    }
+}
