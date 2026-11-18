@@ -522,12 +522,14 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .orb__core::after { content: ''; position: absolute; left: 22%; top: 12%; width: 40%; height: 22%; border-radius: 50%; background: rgba(255, 255, 255, .28); }
 /* The constellation's two layers: behind the glass core and in front of it (JarvisOrb.tsx draws them). They reach ORB_REACH (.9) of the core's size past its centre. */
 .orb__points { position: absolute; inset: calc(var(--orb) * -.75); width: calc(var(--orb) * 2.5); height: calc(var(--orb) * 2.5); border-radius: 0; pointer-events: none; }
-/* Work dots: a finger-sized tap target riding on each lit dot (moved by JarvisOrb), and the note it opens. */
+/* Work dots: a finger-sized tap target riding on each lit dot (moved by JarvisOrb), and the note it opens.
+   The note is wide enough that its words aren't cut off and grows with them
+   (Dylan, 2026-11-18); past its cap it scrolls inside itself. */
 .orb > .orb__work { top: -22px; left: -22px; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; z-index: 2; }
 .orb > .orb__work:focus-visible { outline: 2px solid #4da3ff; outline-offset: -8px; }
-.orb > .orb__note { left: 50%; translate: -50% 0; z-index: 3; display: flex; align-items: flex-start; gap: 10px; width: max-content; max-width: min(300px, 86vw); padding: 4px 4px 4px 12px; border-radius: 16px; border: 1px solid rgba(77, 163, 255, .55); background: #212936; box-shadow: 0 6px 12px rgba(0, 0, 0, .35); text-align: left; }
+.orb > .orb__note { left: 50%; translate: -50% 0; z-index: 3; display: flex; align-items: flex-start; gap: 10px; width: max-content; min-width: min(280px, 92vw); max-width: min(440px, 92vw); max-height: min(320px, 50vh); overflow-y: auto; overscroll-behavior: contain; padding: 4px 4px 4px 12px; border-radius: 16px; border: 1px solid rgba(77, 163, 255, .55); background: #212936; box-shadow: 0 6px 12px rgba(0, 0, 0, .35); text-align: left; }
 .orb__note-dot { flex: none; width: 10px; height: 10px; margin-top: 13px; border-radius: 50%; background: #4da3ff; }
-.orb__note-words { display: grid; gap: 3px; padding: 8px 0; min-width: 0; font-size: 14px; line-height: 1.35; color: var(--frost); }
+.orb__note-words { display: grid; gap: 3px; flex: 1; padding: 8px 0; min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.35; color: var(--frost); }
 .orb__note-words > span { color: var(--frost-dim); font-size: 12.5px; }
 .orb__note-close { flex: none; min-width: 44px; min-height: 44px; }
 /* Working (a slow lookup: web, calendar, traffic): the core warms to amber and
