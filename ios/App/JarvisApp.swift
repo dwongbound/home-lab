@@ -84,12 +84,13 @@ struct RootView: View {
         .sheet(isPresented: $app.showSettings) {
             SettingsView()
         }
-        // The snapshot (Today, and the orb's work dots on Talk) refreshes
-        // every 15 s, whichever page is showing, like the home page.
+        // The snapshot (Today, and the orb's dots) refreshes every 15 s,
+        // whichever page is showing, and every 5 s while an orange dot is up
+        // so a notice read on another device fades here soon after.
         .task {
             while !Task.isCancelled {
                 await app.today.load(app: app)
-                try? await Task.sleep(for: .seconds(15))
+                try? await Task.sleep(for: .seconds(Orbit.refreshSeconds(orangeShowing: !app.notices.isEmpty)))
             }
         }
         // The app opens on Talk, so the call starts with the app; onChange
@@ -170,13 +171,9 @@ struct StatusLine: View {
         })
     }
 
-    /// The pip colours: orange needs you, blue heads-up, dim white FYI.
+    /// Notices are orange (Dylan, 2026-11-18); one that needs him brightest.
     private func pipColor(_ kind: NoticeKind) -> Color {
-        switch kind {
-        case .need: return Color(red: 1.0, green: 0.54, blue: 0.24)
-        case .heads: return Color(red: 0.44, green: 0.72, blue: 1.0)
-        case .fyi: return Theme.frostDim
-        }
+        OrbView.noticeOrange(onLight: false).opacity(kind == .need ? 1 : kind == .heads ? 0.85 : 0.7)
     }
 
     /// The dot's colour for the connection state.

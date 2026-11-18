@@ -207,13 +207,14 @@ public enum TodayTimeline {
 public enum TVCard: String, CaseIterable, Sendable {
     /// Jarvis's message (the greeting's full text), first in the rotation.
     case message
-    case today, home, playing, forecast, jarvis, lookout, health, suggestions
+    case today, tasks, home, playing, forecast, jarvis, lookout, health, suggestions
 
     /// The card's title.
     public var title: String {
         switch self {
         case .message: return "From Jarvis"
         case .today: return "Today"
+        case .tasks: return "Active tasks"
         case .home: return "Home"
         case .playing: return "Now playing"
         case .forecast: return "Next hours"
@@ -229,6 +230,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         switch self {
         case .message: return "text.bubble.fill"
         case .today: return "calendar"
+        case .tasks: return "gearshape.2.fill"
         case .home: return "house.fill"
         case .playing: return "play.circle.fill"
         case .forecast: return "cloud.sun.fill"
@@ -263,7 +265,9 @@ public enum TVBoard {
         if !HomeGlance.lines(snapshot.home).isEmpty { out.append(.home) }
         if !playing(snapshot.home).isEmpty { out.append(.playing) }
         if (snapshot.home?.forecast?.count ?? 0) >= 3 { out.append(.forecast) }
-        if !(snapshot.jobs?.running.isEmpty ?? true) || !snapshot.services.isEmpty { out.append(.jarvis) }
+        // What Jarvis is chasing down, with live timers (Dylan, 2026-11-18).
+        if !(snapshot.jobs?.running.isEmpty ?? true) { out.append(.tasks) }
+        if !snapshot.services.isEmpty { out.append(.jarvis) }
         if let lookout = snapshot.jobs?.lookout, !lookout.watching.isEmpty || (snapshot.jobs?.messenger?.sentToday ?? 0) > 0 || !lookout.checks.isEmpty {
             out.append(.lookout)
         }
@@ -402,3 +406,14 @@ public enum LookoutCard {
         return "\(messenger.sentToday) \(noun) today"
     }
 }
+
+// MARK: Active tasks
+
+public enum TaskCard {
+    /// A task's line on the TV: its name, or for guests just "A task", since
+    /// a task's name can say what Dylan is up to.
+    public static func title(_ task: RunningTask, index: Int, guest: Bool) -> String {
+        guest ? "Task \(index + 1)" : task.label
+    }
+}
+

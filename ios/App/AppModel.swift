@@ -66,13 +66,33 @@ final class AppModel: ObservableObject {
     }
 
     /// Clears notices everywhere (the server clears them for every device);
-    /// they vanish here at once and come back if the server didn't hear.
+    /// they fade here at once and come back if the server didn't hear. The
+    /// snapshot is fetched again right after, so this device is current.
     func clearNotices(_ ids: [String]) async {
         clearedNotices.formUnion(ids)
         do {
             try await client.clearNotices(ids: ids)
+            await today.load(app: self)
         } catch {
             clearedNotices.subtract(ids)
+        }
+    }
+
+    /// A notice was seen on the orb or in the list: read, so cleared
+    /// everywhere, unless it needs an answer (Orbit.readOnView).
+    func readNotice(_ notice: Notice) async {
+        guard Orbit.readOnView(notice) else { return }
+        await clearNotices([notice.id])
+    }
+
+    /// Approve or Deny a notice's approval, then clear the notice.
+    func answerNotice(_ notice: Notice, ok: Bool) async {
+        guard let approvalId = notice.approvalId else { return }
+        do {
+            try await client.answer(approval: approvalId, ok: ok)
+            await clearNotices([notice.id])
+        } catch {
+            noteReach(error)
         }
     }
 

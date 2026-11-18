@@ -187,3 +187,15 @@ final class NightCalmTests: XCTestCase {
         XCTAssertEqual(LookoutCard.messagesLine(Messenger(sentToday: 0, cap: 8, quiet: nil)), "No messages today")
     }
 }
+
+final class TaskCardTests: XCTestCase {
+    func testTasksCardOnlyWhileSomethingRunsAndGuestsSeeNoNames() throws {
+        let idle = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","services":[],"today":[]}"#.utf8))
+        XCTAssertFalse(TVBoard.cards(idle, guest: false).contains(.tasks))
+        let busy = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","services":[],"today":[],"jobs":{"running":[{"id":"j","label":"Booking flights to Tokyo","state":"running"}]}}"#.utf8))
+        XCTAssertTrue(TVBoard.cards(busy, guest: true).contains(.tasks))
+        let task = busy.jobs!.running[0]
+        XCTAssertEqual(TaskCard.title(task, index: 0, guest: true), "Task 1")
+        XCTAssertEqual(TaskCard.title(task, index: 0, guest: false), "Booking flights to Tokyo")
+    }
+}
