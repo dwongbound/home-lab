@@ -13,6 +13,10 @@ public enum WatchRequest: Equatable, Sendable {
     case approvals
     /// Approve or deny one.
     case answer(id: String, ok: Bool)
+    /// The board: notices, running tasks, what's next.
+    case board
+    /// Clear notices everywhere (empty = all).
+    case clear([String])
 
     /// As a WatchConnectivity message.
     public var message: [String: Any] {
@@ -20,6 +24,8 @@ public enum WatchRequest: Equatable, Sendable {
         case .ask(let text): return ["op": "ask", "text": text]
         case .approvals: return ["op": "approvals"]
         case .answer(let id, let ok): return ["op": "answer", "id": id, "ok": ok]
+        case .board: return ["op": "board"]
+        case .clear(let ids): return ["op": "clear", "ids": ids]
         }
     }
 
@@ -34,6 +40,10 @@ public enum WatchRequest: Equatable, Sendable {
         case "answer":
             guard let id = message["id"] as? String, let ok = message["ok"] as? Bool else { return nil }
             self = .answer(id: id, ok: ok)
+        case "board":
+            self = .board
+        case "clear":
+            self = .clear(message["ids"] as? [String] ?? [])
         default:
             return nil
         }
@@ -45,6 +55,7 @@ public enum WatchReply: Equatable, Sendable {
     /// Jarvis's whole answer, and who wrote it ("claude", "ornith").
     case answer(text: String, model: String?)
     case approvals([Approval])
+    case board(WatchBoard)
     case done
     /// Something went wrong, worded for the Watch's small screen.
     case problem(String)
@@ -59,6 +70,8 @@ public enum WatchReply: Equatable, Sendable {
         case .approvals(let list):
             let rows: [[String: String]] = list.map { ["id": $0.id, "tool": $0.tool, "summary": $0.summary, "expires": $0.expires] }
             return ["kind": "approvals", "list": rows]
+        case .board(let board):
+            return ["kind": "board", "board": board.message]
         case .done:
             return ["kind": "done"]
         case .problem(let words):
@@ -77,6 +90,8 @@ public enum WatchReply: Equatable, Sendable {
                 guard let id = row["id"], let summary = row["summary"] else { return nil }
                 return Approval(id: id, tool: row["tool"] ?? "", summary: summary, expires: row["expires"] ?? "")
             })
+        case "board":
+            self = .board(WatchBoard(message: message["board"] as? [String: Any] ?? [:]))
         case "done":
             self = .done
         case "problem":
@@ -115,6 +130,11 @@ extension JarvisClient {
                 return .approvals(try await pendingApprovals())
             case .answer(let id, let ok):
                 try await answer(approval: id, ok: ok)
+                return .done
+            case .board:
+                return .board(WatchBoard(snapshot: try await snapshot()))
+            case .clear(let ids):
+                if ids.isEmpty { try await clearAllNotices() } else { try await clearNotices(ids: ids) }
                 return .done
             }
         } catch {

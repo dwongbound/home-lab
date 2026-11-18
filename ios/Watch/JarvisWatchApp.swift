@@ -5,6 +5,7 @@
 import SwiftUI
 import WatchConnectivity
 import WatchKit
+import WidgetKit
 import JarvisKit
 
 @main
@@ -14,8 +15,20 @@ struct JarvisWatchApp: App {
     /// One screen: the orb, Ask, the last answer, and anything waiting on an OK.
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-complicationGallery") {
+                ComplicationGallery()
+            } else {
+                WatchHome(model: model)
+                    .tint(Theme.glacier)
+                    .onOpenURL { url in model.open(url) }
+            }
+            #else
             WatchHome(model: model)
                 .tint(Theme.glacier)
+                // Complications open the app here: jarvis://ask, jarvis://notices.
+                .onOpenURL { url in model.open(url) }
+            #endif
         }
     }
 }
@@ -33,6 +46,14 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var model: String?
     @Published private(set) var approvals: [Approval] = []
     @Published var problem: String?
+    /// Notices (orange) and tasks Jarvis is chasing (blue), from the phone.
+    @Published private(set) var board = WatchBoard()
+    /// True when the phone couldn't be reached on the last try.
+    @Published private(set) var unreachable = false
+    /// The notices list is open (a complication or the button opened it).
+    @Published var showingNotices = false
+    /// Set by the Ask Jarvis complication: the Ask button glows to say "tap me".
+    @Published var askNudge = false
 
     /// Starts the session with the phone.
     override init() {
@@ -68,11 +89,59 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
         await refreshApprovals()
     }
 
-    /// Fetches what's waiting on an OK.
+    /// Fetches what's waiting on an OK, and the board.
     func refreshApprovals() async {
         if case .approvals(let list) = await send(.approvals) {
             approvals = list
         }
+        if case .board(let fresh) = await send(.board) {
+            take(fresh)
+        }
+    }
+
+    /// Clears a notice everywhere (through the phone).
+    func clear(_ notice: WatchNotice) async {
+        board.notices.removeAll { $0.id == notice.id }
+        if case .problem(let words) = await send(.clear([notice.id])) { problem = words }
+        await refreshApprovals()
+    }
+
+    /// Approve or Deny a notice's approval, then clear it.
+    func answer(_ notice: WatchNotice, ok: Bool) async {
+        guard let id = notice.approvalId else { return }
+        if case .problem(let words) = await send(.answer(id: id, ok: ok)) { problem = words; return }
+        WKInterfaceDevice.current().play(ok ? .success : .click)
+        await clear(notice)
+    }
+
+    /// A complication's link: open the notices, or nudge Ask.
+    func open(_ url: URL) {
+        switch url.host {
+        case "notices": showingNotices = true
+        case "ask": askNudge = true
+        default: break
+        }
+    }
+
+    /// New board from the phone: show it and refresh the complications.
+    private func take(_ fresh: WatchBoard) {
+        board = fresh
+        ComplicationStore.save(ComplicationData(board: fresh))
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// The phone's latest board, sent in the background after each snapshot.
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        guard let raw = applicationContext["board"] as? [String: Any] else { return }
+        let fresh = WatchBoard(message: raw)
+        Task { @MainActor in self.take(fresh) }
+    }
+
+    /// A complication update the phone pushed with priority.
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        guard let raw = userInfo["complication"] as? [String: Any], let data = ComplicationData(dictionary: raw) else { return }
+        ComplicationStore.save(data)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Approve or Deny on a card; the card goes once the phone confirms.
@@ -95,8 +164,10 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
             return .problem("Still connecting to your iPhone. Try again in a moment.")
         }
         guard session.isReachable else {
-            return .problem("Can’t reach your iPhone. Jarvis needs it nearby.")
+            unreachable = true
+            return .problem("iPhone not reachable")
         }
+        unreachable = false
         return await withCheckedContinuation { continuation in
             session.sendMessage(request.message, replyHandler: { message in
                 continuation.resume(returning: WatchReply(message: message))
@@ -122,7 +193,7 @@ struct WatchHome: View {
                 OrbView(state: model.phase == .asking ? .thinking : .listening, size: 70)
                     .opacity(model.phase == .asking ? 1 : 0.8)
                 if model.phase == .asking {
-                    Text("Jarvis is thinking…").font(.footnote).foregroundStyle(Theme.frostDim)
+                    Text("Asking your iPhone…").font(.footnote).foregroundStyle(Theme.frostDim)
                 } else {
                     // Tapping offers dictation first, so it's one tap and talk.
                     TextFieldLink(prompt: Text("Ask Jarvis")) {
@@ -134,9 +205,35 @@ struct WatchHome: View {
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.glacier)
                     .foregroundStyle(Theme.basalt)
+                    .shadow(color: model.askNudge ? Theme.glacier.opacity(0.8) : .clear, radius: 8)
+                }
+                if !model.board.notices.isEmpty || !model.board.tasks.isEmpty {
+                    // The dots, as on the phone: orange need you, blue running.
+                    Button { model.showingNotices = true } label: {
+                        HStack(spacing: 6) {
+                            if !model.board.notices.isEmpty {
+                                Circle().fill(OrbView.noticeOrange(onLight: false)).frame(width: 8, height: 8)
+                                Text("\(model.board.notices.count)")
+                            }
+                            if !model.board.tasks.isEmpty {
+                                Circle().fill(OrbView.taskBlue(onLight: false)).frame(width: 8, height: 8)
+                                Text("\(model.board.tasks.count)")
+                            }
+                            Text("Needs you").foregroundStyle(Theme.frostDim)
+                        }
+                        .font(.footnote.weight(.semibold))
+                    }
                 }
                 if let problem = model.problem {
                     Text(problem).font(.footnote).foregroundStyle(Theme.rose).multilineTextAlignment(.center)
+                    if model.unreachable {
+                        Button("Try again") {
+                            model.problem = nil
+                            Task {
+                                if !model.question.isEmpty && model.answer.isEmpty { await model.ask(model.question) } else { await model.refreshApprovals() }
+                            }
+                        }
+                    }
                 }
                 if !model.question.isEmpty {
                     Text(model.question).font(.footnote).foregroundStyle(Theme.frostDim).frame(maxWidth: .infinity, alignment: .leading)
@@ -158,6 +255,9 @@ struct WatchHome: View {
             }
         }
         .task { await model.refreshApprovals() }
+        .sheet(isPresented: $model.showingNotices) {
+            NoticesList(model: model)
+        }
     }
 
     /// "Needs your OK", what he wants, Deny and Approve.
@@ -176,3 +276,87 @@ struct WatchHome: View {
         .glassPanel(tint: Theme.ember)
     }
 }
+
+/// The notices (orange) and tasks Jarvis is chasing (blue), newest first.
+/// A notice that needs an answer has Approve and Deny; any other clears
+/// with a tap, everywhere.
+struct NoticesList: View {
+    @ObservedObject var model: WatchModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if model.board.notices.isEmpty && model.board.tasks.isEmpty {
+                    Text("All caught up.").foregroundStyle(Theme.frostDim)
+                }
+                ForEach(model.board.notices) { notice in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Circle().fill(OrbView.noticeOrange(onLight: false)).frame(width: 8, height: 8)
+                            Text(notice.title).font(.footnote.weight(.semibold)).lineLimit(3)
+                        }
+                        if !notice.body.isEmpty {
+                            Text(notice.body).font(.caption2).foregroundStyle(Theme.frostDim).lineLimit(3)
+                        }
+                        if notice.approvalId != nil {
+                            HStack {
+                                Button("Deny") { Task { await model.answer(notice, ok: false) } }
+                                Button("Approve") { Task { await model.answer(notice, ok: true) } }
+                                    .tint(Theme.ember)
+                            }
+                        } else {
+                            Button(notice.source == "reminder" ? "Got it" : "Clear") { Task { await model.clear(notice) } }
+                                .font(.footnote)
+                        }
+                    }
+                }
+                ForEach(Array(model.board.tasks.enumerated()), id: \.offset) { _, task in
+                    HStack(spacing: 6) {
+                        Circle().fill(OrbView.taskBlue(onLight: false)).frame(width: 8, height: 8)
+                        VStack(alignment: .leading) {
+                            Text(task.label).font(.footnote).lineLimit(2)
+                            TimelineView(.periodic(from: .now, by: 1)) { tick in
+                                Text(Orbit.elapsed(since: task.startedAt, now: tick.date) ?? "Running")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(Theme.frostDim)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Needs you")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+#if DEBUG
+/// Each complication at its size, with sample data (`-complicationGallery`),
+/// for screenshots without a real watch face.
+struct ComplicationGallery: View {
+    private let entry = JarvisEntry(date: Date(), data: ComplicationData(needCount: 2, runningCount: 1, nextTitle: "Volleyball at the Y", nextAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(42 * 60)), updated: Date()))
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    ZStack { Circle().fill(.white.opacity(0.12)); OrbGlyph() }.frame(width: 50, height: 50)
+                    ZStack { Circle().fill(.white.opacity(0.12)); NeedsView(entry: entry, family: .accessoryCircular) }.frame(width: 50, height: 50)
+                }
+                NeedsView(entry: entry, family: .accessoryRectangular)
+                    .padding(8).frame(height: 70).background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12)))
+                NextView(entry: entry, family: .accessoryRectangular)
+                    .padding(8).frame(height: 70).background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12)))
+                NeedsView(entry: entry, family: .accessoryInline).font(.footnote)
+                NextView(entry: entry, family: .accessoryInline).font(.footnote)
+            }
+        }
+    }
+}
+#endif
+
