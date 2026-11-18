@@ -24,10 +24,11 @@ struct OrbView: View {
     var level: Double = 0
     /// How bright that voice sounds (0..1); kept for callers, not drawn.
     var tone: Double = 0
-    /// Background work Jarvis is doing: each lights one dot dark amber
-    /// (at most 3). Tapping a lit dot pauses the turning and says what it
-    /// is (Dylan, 2026-11-17).
-    var work: [RunningTask] = []
+    /// The dots orbiting the orb (Orbit in JarvisKit): blue for each task
+    /// Jarvis is running, orange for each unread notice. Each travels its
+    /// own tilted orbit, behind the orb and in front of it. Tapping one
+    /// holds everything still and says what it is (Dylan, 2026-11-18).
+    var orbit: [OrbitItem] = []
     /// False on the TV, where there's nothing to tap.
     var tappable = true
     /// How bright the orb itself is drawn (paused or off: dimmer); a work
@@ -36,13 +37,13 @@ struct OrbView: View {
     /// True on a bright background (the TV's daytime sun lamp): the dots
     /// and lines are drawn in dark slate so they still show.
     var onLight = false
-    /// Unread notices, one pip each circling just outside the shell
-    /// (Notices.pips in JarvisKit): orange needs Dylan, blue is a heads-up,
-    /// dim white an FYI. Distinct from the amber work dots on the shell.
-    var pips: [NoticeKind] = []
-    /// Tapping a pip opens the notices (nil: pips aren't tappable).
-    var onPips: (() -> Void)? = nil
-    /// The work whose callout is open, if any.
+    /// Approve or Deny from an orange dot's label (nil: no buttons).
+    var onAnswer: ((Notice, Bool) -> Void)? = nil
+    /// A notice was seen (its label closed): read it, which clears it.
+    var onRead: ((Notice) -> Void)? = nil
+    /// A tap on the inner orb, off any dot (the kiosks: start or stop Talk).
+    var onCoreTap: (() -> Void)? = nil
+    /// The dot whose label is open, if any.
     @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Everything that moves, carried from frame to frame.
@@ -60,25 +61,32 @@ struct OrbView: View {
                 Canvas { canvas, area in
                     animator.held = opened != nil
                     animator.step(to: OrbLook.of(state), speaking: state == .speaking, level: reduceMotion ? 0 : level, dotsRiseMs: dotsRiseMs, coreRiseMs: coreRiseMs, at: t)
+                    animator.advanceOrbit(orbit, at: t, still: reduceMotion || opened != nil)
                     draw(in: &canvas, area: area, t: t)
                 }
                 .opacity(dim)
                 .accessibilityHidden(true)
+                #if !os(tvOS)
+                // The TV's dots can't be selected (Dylan, 2026-11-18).
                 if tappable {
-                    workTargets
+                    tapLayer
                 }
-                if let onPips, !pips.isEmpty {
-                    pipTargets(t: t, onTap: onPips)
-                }
+                #endif
             }
         }
         .frame(width: size, height: size)
         .overlay {
-            if let entry = lit.first(where: { $0.task.id == opened }) {
-                // The orb holds still while this is open, so the card can sit
-                // just under its dot.
-                WorkCallout(task: entry.task) { close() }
-                    .position(x: size / 2, y: animator.screen(entry.index).y + 44)
+            if let id = opened, let item = animator.item(id) {
+                // Everything holds still while this is open, so the label
+                // can sit just under its dot.
+                let spot = animator.orbitScreen[id] ?? CGPoint(x: size / 2, y: size / 2)
+                OrbitCallout(item: item, onLight: onLight, onAnswer: onAnswer.map { answer in
+                    { ok in
+                        if let notice = item.notice { answer(notice, ok) }
+                        opened = nil
+                    }
+                }) { close() }
+                    .position(x: size / 2, y: min(size - 20, spot.y + 52))
                     .frame(width: size, height: size)
                     .background {
                         // Tapping anywhere else closes it.
@@ -91,48 +99,65 @@ struct OrbView: View {
             }
         }
         .animation(.smooth(duration: 0.3), value: opened)
+        // A label closes by itself after a few seconds and it all moves on.
+        .task(id: opened) {
+            guard opened != nil else { return }
+            try? await Task.sleep(for: .seconds(Orbit.holdSeconds))
+            if !Task.isCancelled { close() }
+        }
         #if DEBUG
-        // Screenshot check: `-openWork` opens the first work callout.
+        // Screenshot check: `-openWork` opens the first dot's label.
         .onAppear {
-            if ProcessInfo.processInfo.arguments.contains("-openWork"), tappable { opened = work.first?.id }
+            if ProcessInfo.processInfo.arguments.contains("-openWork"), tappable { opened = orbit.first?.id }
         }
         #endif
-        // A finished job closes its callout and lets the orb turn again.
-        .onChange(of: work.map(\.id)) { _, ids in
-            if let opened, !ids.contains(opened) { close() }
+        // A dot that goes away closes its label.
+        .onChange(of: orbit.map(\.id)) { _, ids in
+            if let opened, !ids.contains(opened) { self.opened = nil }
         }
     }
 
-    /// The lit dots: up to three jobs, each on a fixed dot spread round the
-    /// shell, so a job keeps its dot while it runs.
-    private var lit: [(task: RunningTask, index: Int)] {
-        let spots = [7, 29, 48]
-        return Array(work.prefix(3)).enumerated().map { ($0.element, spots[$0.offset]) }
-    }
-
-    /// One 44 pt tap target over each lit dot, following it as it turns.
-    private var workTargets: some View {
-        ForEach(lit, id: \.task.id) { entry in
-            let spot = animator.screen(entry.index)
-            Button {
-                opened = opened == entry.task.id ? nil : entry.task.id
-            } label: {
-                Color.clear.frame(width: 44, height: 44).contentShape(Circle())
+    #if !os(tvOS)
+    /// One tap layer over the orb, read by OrbHit (JarvisKit): a dot (52 pt
+    /// reach, winning over the orb under it) holds everything still and
+    /// opens its label; the inner orb off any dot is `onCoreTap`. While a
+    /// label is open, the label's own catcher takes every tap and releases.
+    private var tapLayer: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture(coordinateSpace: .local) { point in
+                let dots = animator.orbitScreen.map { (id: $0.key, x: Double($0.value.x), y: Double($0.value.y)) }
+                switch OrbHit.resolve(x: point.x, y: point.y, dots: dots, centerX: size / 2, centerY: size / 2, coreRadius: animator.lastCoreRadius, frozen: opened != nil) {
+                case .dot(let id): opened = id
+                case .core: onCoreTap?()
+                case .release: close()
+                case .nothing: break
+                }
             }
-            .buttonStyle(.plain)
-            .position(spot)
-            .accessibilityLabel("Jarvis is working: \(entry.task.label)")
-            .accessibilityHint("Shows what he's doing")
-        }
+            .accessibilityElement()
+            .accessibilityLabel(onCoreTap == nil ? "Jarvis" : "Talk to Jarvis")
+            .accessibilityAddTraits(onCoreTap == nil ? [] : .isButton)
+            .accessibilityAction { onCoreTap?() }
+            .accessibilityActions {
+                ForEach(orbit) { item in
+                    Button(item.kind == .task ? "Jarvis is working: \(item.title)" : "Notice: \(item.title)") { opened = item.id }
+                }
+            }
     }
 
-    /// Closes the callout; the orb eases back into turning.
+    #endif
+
+    /// Closes the label; the orb eases back into turning. A notice that
+    /// was looked at is read (cleared everywhere), unless it needs an answer.
     private func close() {
+        if let id = opened, let notice = animator.item(id)?.notice, Orbit.readOnView(notice) {
+            onRead?(notice)
+        }
         opened = nil
     }
 
-    /// Back lines and points, the glass core, then front lines and points,
-    /// with the work dots lit amber among them.
+    /// Far orbit dots, back lines and points, the glass core, front lines
+    /// and points, then near orbit dots.
     private func draw(in canvas: inout GraphicsContext, area: CGSize, t: Double) {
         let a = animator
         let look = a.look
@@ -145,100 +170,60 @@ struct OrbView: View {
         let color = onLight ? Color(red: 0.16, green: 0.22, blue: 0.30) : look.color.color
         let shellGlow = a.shellVoice
         a.remember(points: points, center: center, radius: radius)
-        let litDots = Set(lit.map(\.index))
+        let coreRadius = side * 0.2 * look.coreScale * (1 + a.coreVoice * 0.2)
+        a.placeOrbit(center: center, radius: radius)
+        a.lastCoreRadius = coreRadius
 
-        drawPips(back: true, in: &canvas, area: area, t: t)
+        drawOrbit(back: true, in: &canvas, center: center, radius: radius, coreRadius: coreRadius, side: side, t: t)
         lines(points, back: true, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow, alpha: look.lineAlpha)
-        for (i, point) in points.enumerated() where point.z < 0 {
-            if litDots.contains(i) { workDot(point, in: &canvas, center: center, radius: radius, t: t, open: lit.first { $0.index == i }?.task.id == opened) }
-            else { dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow) }
+        for point in points where point.z < 0 {
+            dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow)
         }
-        core(in: &canvas, center: center, radius: side * 0.2 * look.coreScale * (1 + a.coreVoice * 0.2), glow: look.glow.color, voice: min(1, look.coreBright + a.coreVoice))
+        core(in: &canvas, center: center, radius: coreRadius, glow: look.glow.color, voice: min(1, look.coreBright + a.coreVoice))
         lines(points, back: false, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow, alpha: look.lineAlpha)
-        for (i, point) in points.enumerated() where point.z >= 0 {
-            if litDots.contains(i) { workDot(point, in: &canvas, center: center, radius: radius, t: t, open: lit.first { $0.index == i }?.task.id == opened) }
-            else { dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow) }
+        for point in points where point.z >= 0 {
+            dot(point, in: &canvas, center: center, radius: radius, color: color, voice: shellGlow)
         }
-        drawPips(back: false, in: &canvas, area: area, t: t)
+        drawOrbit(back: false, in: &canvas, center: center, radius: radius, coreRadius: coreRadius, side: side, t: t)
     }
 
-    // MARK: Notice pips
-
-    /// Where pip `i` of `n` is at time `t`: on a tilted ring just outside
-    /// the shell, the ring turning slowly; z < 0 is behind the orb.
-    private func pipPoint(_ i: Int, of n: Int, t: Double, side: Double) -> (x: Double, y: Double, z: Double) {
-        let turn = reduceMotion ? 0 : t * 0.35
-        let angle = turn + 2 * Double.pi * Double(i) / Double(max(n, 1))
-        let ring = side * 0.47
-        let x = cos(angle) * ring, z = sin(angle)
-        // Tilted so the ring reads as an orbit, not a line.
-        let y = z * ring * 0.30 - x * 0.18
-        return (x, y, z)
-    }
-
-    /// A pip's colour: orange (needs Dylan), blue (heads-up), dim white
-    /// (FYI); darker on the TV's bright daytime sky.
-    private func pipColor(_ kind: NoticeKind) -> Color {
-        switch kind {
-        case .need: return onLight ? Color(red: 0.80, green: 0.33, blue: 0.04) : Color(red: 1.0, green: 0.54, blue: 0.24)
-        case .heads: return onLight ? Color(red: 0.08, green: 0.36, blue: 0.72) : Color(red: 0.44, green: 0.72, blue: 1.0)
-        case .fyi: return onLight ? Color(red: 0.30, green: 0.33, blue: 0.38) : Color.white.opacity(0.6)
-        }
-    }
-
-    /// The pips behind the orb (smaller, dimmer) or in front of it.
-    private func drawPips(back: Bool, in canvas: inout GraphicsContext, area: CGSize, t: Double) {
-        guard !pips.isEmpty else { return }
-        let side = min(area.width, area.height)
-        let center = CGPoint(x: area.width / 2, y: area.height / 2)
-        for (i, kind) in pips.enumerated() {
-            let p = pipPoint(i, of: pips.count, t: t, side: side)
-            guard (p.z < 0) == back else { continue }
-            let near = (p.z + 1) / 2
-            let at = CGPoint(x: center.x + p.x, y: center.y + p.y)
-            let core = side * 0.032 * (0.75 + near * 0.35)
-            let pulse = reduceMotion || kind != .need ? 0.5 : 0.5 + 0.5 * sin(t * 2.6 + Double(i))
-            let halo = core * (2.6 + pulse)
-            let color = pipColor(kind)
-            canvas.fill(Path(ellipseIn: CGRect(x: at.x - halo / 2, y: at.y - halo / 2, width: halo, height: halo)), with: .radialGradient(
-                Gradient(colors: [color.opacity(0.55 * (0.5 + near * 0.5)), color.opacity(0)]),
-                center: at, startRadius: 0, endRadius: halo / 2
-            ))
-            canvas.fill(Path(ellipseIn: CGRect(x: at.x - core / 2, y: at.y - core / 2, width: core, height: core)), with: .color(color.opacity(0.55 + near * 0.45)))
-        }
-    }
-
-    /// One 44 pt tap target over each pip, following it round; any opens
-    /// the notices.
-    private func pipTargets(t: Double, onTap: @escaping () -> Void) -> some View {
-        ForEach(Array(pips.enumerated()), id: \.offset) { i, _ in
-            let p = pipPoint(i, of: pips.count, t: t, side: size)
-            Button(action: onTap) {
-                Color.clear.frame(width: 44, height: 44).contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .position(x: size / 2 + p.x, y: size / 2 + p.y)
-            .accessibilityLabel(i == 0 ? "\(pips.count) unread notices" : "")
-            .accessibilityHidden(i != 0)
-        }
-    }
-
-    /// The dark amber of a work dot (#E0A020).
+    /// The dark amber of a work dot (#E0A020), still used by the TV's
+    /// task rows and the phone's kiosk work line.
     static let workAmber = Color(red: 0xE0 / 255, green: 0xA0 / 255, blue: 0x20 / 255)
 
-    /// A lit work dot: bigger, dark amber, with a soft halo that breathes;
-    /// brighter while its callout is open.
-    private func workDot(_ p: (x: Double, y: Double, z: Double), in canvas: inout GraphicsContext, center: CGPoint, radius: Double, t: Double, open: Bool) {
-        let near = (p.z + 1) / 2
-        let pulse = reduceMotion ? 0.5 : 0.5 + 0.5 * sin(t * 2.2)
-        let at = CGPoint(x: center.x + p.x * radius, y: center.y + p.y * radius)
-        let core = (7 + near * 4) * (open ? 1.3 : 1)
-        let halo = core * (3.2 + pulse * 1.4)
-        canvas.fill(Path(ellipseIn: CGRect(x: at.x - halo / 2, y: at.y - halo / 2, width: halo, height: halo)), with: .radialGradient(
-            Gradient(colors: [Self.workAmber.opacity(0.75 * (0.6 + near * 0.4)), Self.workAmber.opacity(0)]),
-            center: at, startRadius: 0, endRadius: halo / 2
-        ))
-        canvas.fill(Path(ellipseIn: CGRect(x: at.x - core / 2, y: at.y - core / 2, width: core, height: core)), with: .color(Self.workAmber.opacity(0.85 + near * 0.15)))
+    /// Blue for a task Jarvis is running; darker on the TV's day sky.
+    static func taskBlue(onLight: Bool) -> Color {
+        onLight ? Color(red: 0.08, green: 0.36, blue: 0.72) : Color(red: 0.42, green: 0.72, blue: 1.0)
+    }
+
+    /// Orange for a notice; darker on the TV's day sky.
+    static func noticeOrange(onLight: Bool) -> Color {
+        onLight ? Color(red: 0.80, green: 0.36, blue: 0.04) : Color(red: 1.0, green: 0.56, blue: 0.20)
+    }
+
+    /// The orbiting dots on the far side (drawn before the orb, smaller,
+    /// dimmer, and faint where the core covers them) or the near side.
+    private func drawOrbit(back: Bool, in canvas: inout GraphicsContext, center: CGPoint, radius: Double, coreRadius: Double, side: Double, t: Double) {
+        for dot in animator.orbitDots where (dot.z < 0) == back {
+            let near = (dot.z + 1) / 2
+            var alpha = dot.alpha * (back ? 0.5 : 1)
+            let dx = dot.point.x - center.x, dy = dot.point.y - center.y
+            if back && (dx * dx + dy * dy).squareRoot() < coreRadius { alpha *= 0.35 }
+            let isOpen = dot.item.id == opened
+            let color = dot.item.kind == .task ? Self.taskBlue(onLight: onLight) : Self.noticeOrange(onLight: onLight)
+            let core = side * 0.03 * (0.7 + near * 0.4) * (0.8 + dot.item.emphasis * 0.3) * (isOpen ? 1.45 : 1)
+            let pulse = reduceMotion || opened != nil ? 0.5 : 0.5 + 0.5 * sin(t * 2.4 + dot.z * 3)
+            let halo = core * (2.6 + pulse)
+            canvas.fill(Path(ellipseIn: CGRect(x: dot.point.x - halo / 2, y: dot.point.y - halo / 2, width: halo, height: halo)), with: .radialGradient(
+                Gradient(colors: [color.opacity(0.6 * alpha * dot.item.emphasis), color.opacity(0)]),
+                center: dot.point, startRadius: 0, endRadius: halo / 2
+            ))
+            canvas.fill(Path(ellipseIn: CGRect(x: dot.point.x - core / 2, y: dot.point.y - core / 2, width: core, height: core)), with: .color(color.opacity(alpha * (0.55 + 0.45 * dot.item.emphasis))))
+            if isOpen {
+                let ring = core * 2.1
+                canvas.stroke(Path(ellipseIn: CGRect(x: dot.point.x - ring / 2, y: dot.point.y - ring / 2, width: ring, height: ring)), with: .color(color.opacity(0.8)), lineWidth: 1.5)
+            }
+        }
     }
 
     /// Faint lines from each point to its nearest neighbours: the ones
@@ -416,6 +401,71 @@ final class OrbAnimator {
     private var lastCenter = CGPoint.zero
     private var lastRadius: Double = 0
 
+    // MARK: Orbit dots
+
+    /// One orbiting dot as last placed: its item, how faded in it is, and
+    /// where it sits (screen point, and z: < 0 behind the orb).
+    struct OrbitDot {
+        let item: OrbitItem
+        let alpha: Double
+        let point: CGPoint
+        let z: Double
+    }
+    /// Each dot, fading in on arrival and out on leaving (read on another
+    /// device, task done) rather than popping.
+    private var tracks: [String: (item: OrbitItem, alpha: Double, live: Bool)] = [:]
+    private var trackOrder: [String] = []
+    /// The orbit's own clock: it stops while a label is open, so the dots
+    /// hold still and pick up exactly where they were.
+    private var orbitClock: Double = 0
+    private var orbitLast: Double?
+    private(set) var orbitDots: [OrbitDot] = []
+    /// Where each dot is on screen, for its tap target and label.
+    private(set) var orbitScreen: [String: CGPoint] = [:]
+    /// The inner orb's radius as last drawn, for taps on it.
+    var lastCoreRadius: Double = 0
+
+    /// The item behind a dot that's showing (or fading out).
+    func item(_ id: String) -> OrbitItem? { tracks[id]?.item }
+
+    /// Moves the orbit clock and the fades on to time `t`.
+    func advanceOrbit(_ items: [OrbitItem], at t: Double, still: Bool) {
+        let dt = min(max(t - (orbitLast ?? t), 0), 0.1)
+        orbitLast = t
+        if !still { orbitClock += dt }
+        let ids = Set(items.map(\.id))
+        for item in items {
+            if tracks[item.id] == nil { trackOrder.append(item.id) }
+            tracks[item.id] = (item, tracks[item.id]?.alpha ?? 0, true)
+        }
+        for id in trackOrder where !ids.contains(id) { tracks[id]?.live = false }
+        for id in trackOrder {
+            guard var track = tracks[id] else { continue }
+            track.alpha = track.live ? min(1, track.alpha + dt * 2) : max(0, track.alpha - dt * 1.2)
+            tracks[id] = track
+        }
+        trackOrder.removeAll { id in
+            guard let track = tracks[id] else { return true }
+            if !track.live && track.alpha <= 0 { tracks[id] = nil; return true }
+            return false
+        }
+    }
+
+    /// Works out where every dot is this frame, around this orb.
+    func placeOrbit(center: CGPoint, radius: Double) {
+        var dots: [OrbitDot] = []
+        var screen: [String: CGPoint] = [:]
+        for id in trackOrder {
+            guard let track = tracks[id] else { continue }
+            let p = Orbit.position(Orbit.path(for: id), t: orbitClock)
+            let point = CGPoint(x: center.x + p.x * radius, y: center.y + p.y * radius)
+            dots.append(OrbitDot(item: track.item, alpha: track.alpha, point: point, z: p.z / max(Orbit.path(for: id).radius, 0.01)))
+            if track.live { screen[id] = point }
+        }
+        orbitDots = dots
+        orbitScreen = screen
+    }
+
     /// Notes where this frame drew the dots.
     func remember(points: [(x: Double, y: Double, z: Double)], center: CGPoint, radius: Double) {
         lastPoints = points
@@ -562,38 +612,65 @@ extension OrbAnimator {
     }
 }
 
-/// The little card a lit work dot opens: what Jarvis is doing and for how
-/// long, with Close. Tapping the dot again closes it too.
-struct WorkCallout: View {
-    let task: RunningTask
+/// The little label a tapped dot opens: for a blue dot, the task and a
+/// live timer; for an orange one, the notice, when, and Approve/Deny if it
+/// needs an answer.
+struct OrbitCallout: View {
+    let item: OrbitItem
+    let onLight: Bool
+    /// Approve (true) or Deny (false); nil hides the buttons.
+    let onAnswer: ((Bool) -> Void)?
     let onClose: () -> Void
 
-    /// The label, how long, and Close, on amber-tinted glass.
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Circle().fill(OrbView.workAmber).frame(width: 10, height: 10).padding(.top, 5)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(task.label)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.frost)
-                    .fixedSize(horizontal: false, vertical: true)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    Text(task.runningWords(now: context.date))
-                        .font(.caption)
-                        .foregroundStyle(Theme.frostDim)
+        let color = item.kind == .task ? OrbView.taskBlue(onLight: false) : OrbView.noticeOrange(onLight: false)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Circle().fill(color).frame(width: 10, height: 10).padding(.top, 5)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.frost)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if item.kind == .task {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text(item.detail.isEmpty ? "Running · \(Orbit.elapsed(since: item.startedAt, now: context.date) ?? "now")" : item.detail)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(Theme.frostDim)
+                        }
+                    } else {
+                        if !item.detail.isEmpty {
+                            Text(item.detail).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(3)
+                        }
+                        if let created = item.notice?.created, !Notices.when(created).isEmpty {
+                            Text(Notices.when(created)).font(.caption2).foregroundStyle(Theme.frostFaint)
+                        }
+                    }
                 }
+                Spacer(minLength: 0)
+                Button("Close", action: onClose)
+                    .font(.footnote.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .tint(Theme.glacier)
             }
-            Button("Close", action: onClose)
+            if let onAnswer, item.notice?.isApproval == true {
+                HStack(spacing: 10) {
+                    Button("Deny") { onAnswer(false) }
+                        .buttonStyle(.bordered)
+                    Button("Approve") { onAnswer(true) }
+                        .buttonStyle(.borderedProminent)
+                }
                 .font(.footnote.weight(.semibold))
-                .frame(minWidth: 44, minHeight: 44)
-                .tint(Theme.glacier)
+                .padding(.leading, 20)
+            }
         }
         .padding(.leading, 12)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+        .padding(.trailing, 4)
         .frame(maxWidth: 300)
         // Solid, so the words under it don't show through.
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(red: 0.13, green: 0.16, blue: 0.21)))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(OrbView.workAmber.opacity(0.55), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(color.opacity(0.55), lineWidth: 1))
         .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
         .fixedSize(horizontal: false, vertical: true)
     }

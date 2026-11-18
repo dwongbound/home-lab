@@ -58,6 +58,9 @@ struct NoticesSheet: View {
     private func row(_ notice: Notice) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
+                // Opening it reads it (cleared everywhere), unless it needs
+                // an answer.
+                Task { await app.readNotice(notice) }
                 app.tab = .chat
                 dismiss()
             } label: {
@@ -96,20 +99,11 @@ struct NoticesSheet: View {
 
     /// Answers the approval, then clears its notice everywhere.
     private func answer(_ approvalId: String, notice: Notice, ok: Bool) async {
-        do {
-            try await app.client.answer(approval: approvalId, ok: ok)
-            await app.clearNotices([notice.id])
-        } catch {
-            app.noteReach(error)
-        }
+        await app.answerNotice(notice, ok: ok)
     }
 
-    /// The pip colours: orange needs you, blue heads-up, dim white FYI.
+    /// Notices are orange (Dylan, 2026-11-18); one that needs him brightest.
     private func color(_ kind: NoticeKind) -> Color {
-        switch kind {
-        case .need: return Color(red: 1.0, green: 0.54, blue: 0.24)
-        case .heads: return Color(red: 0.44, green: 0.72, blue: 1.0)
-        case .fyi: return Theme.frostDim
-        }
+        OrbView.noticeOrange(onLight: false).opacity(kind == .need ? 1 : kind == .heads ? 0.85 : 0.7)
     }
 }

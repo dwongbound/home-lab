@@ -30,10 +30,15 @@ struct KioskTalkOrb: View {
                 size: size,
                 level: Double(talk.level),
                 tone: Double(talk.tone),
-                work: work,
+                // Blue tasks and orange notices orbit; tapping one holds the
+                // orb still and says what it is (a tap on the orb itself
+                // still starts Talk).
+                orbit: Orbit.items(running: work, notices: app.notices),
                 dim: dim,
-                // Pips only in the kiosks: the list is a tap away in the app.
-                pips: Notices.pips(app.notices)
+                onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } },
+                onRead: { notice in Task { await app.readNotice(notice) } },
+                // The inner orb, off any dot, starts and stops Talk.
+                onCoreTap: tap
             )
             // A little bigger while a call is on.
             .scaleEffect(callOpen ? 1.08 : 1)
@@ -46,12 +51,7 @@ struct KioskTalkOrb: View {
                         .allowsHitTesting(false)
                 }
             }
-            .contentShape(Circle())
-            .onTapGesture(perform: tap)
-            .accessibilityElement(children: .ignore)
             .accessibilityLabel(callOpen ? "Stop talking" : "Talk to Jarvis")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { tap() }
             .animation(.smooth(duration: 0.6), value: callOpen)
             Text(problem ?? " ")
                 .font(.footnote)

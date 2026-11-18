@@ -237,7 +237,7 @@ struct AlwaysOnView: View {
         Button(action: wake) {
             VStack(spacing: 22) {
                 // At night only the pips that need him.
-                OrbView(state: .listening, size: 240, tappable: false, onLight: false, pips: Notices.pips(model.notices, night: true))
+                OrbView(state: .listening, size: 240, orbit: Orbit.items(running: [], notices: model.notices, night: true), tappable: false, onLight: false)
                     .opacity(0.3)
                 TimelineView(.periodic(from: .now, by: 30)) { tick in
                     let now = SunLampPreview.now(at: tick.date)
@@ -340,7 +340,7 @@ struct AlwaysOnView: View {
         VStack(spacing: 26) {
             // The orb follows the chat while it's open: thinking, working,
             // speaking with each word.
-            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, work: model.snapshot?.jobs?.running ?? [], tappable: false, onLight: palette.darkInk, pips: Notices.pips(model.notices))
+            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, orbit: Orbit.items(running: model.snapshot?.jobs?.running ?? [], notices: model.notices), tappable: false, onLight: palette.darkInk)
                 // Dim at night so the bedroom stays dark (the text is dimmed
                 // by the palette instead, only as far as it stays readable).
                 .opacity(0.35 + 0.65 * min(1, lamp.brightness * 3))
@@ -496,7 +496,7 @@ struct AlwaysOnView: View {
         if let count = Notices.countLabel(notices) {
             let label = HStack(spacing: 8) {
                 ForEach(Array(Notices.pips(notices).prefix(4).enumerated()), id: \.offset) { _, kind in
-                    Circle().fill(kind == .need ? palette.alert.color : kind == .heads ? palette.accent.color : palette.inkDim.color)
+                    Circle().fill(OrbView.noticeOrange(onLight: palette.darkInk).opacity(kind == .need ? 1 : 0.75))
                         .frame(width: 12, height: 12)
                 }
                 Text(count).font(.caption.weight(.semibold))
@@ -626,22 +626,31 @@ struct AlwaysOnView: View {
                     }
                 }
             }
-        case .jarvis:
+        case .tasks:
+            // What Jarvis is chasing down, each with a live timer.
             card(which) {
                 let running = snapshot.jobs?.running ?? []
-                ForEach(Array(running.prefix(2).enumerated()), id: \.element.id) { index, task in
-                    HStack(alignment: .firstTextBaseline, spacing: 18) {
-                        Image(systemName: "gearshape.2.fill")
-                            .foregroundStyle(warm)
-                            .symbolEffect(.rotate, options: .repeating, isActive: !reduceMotion)
-                            .frame(width: 44)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(task.label).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                            Text(task.runningWords()).font(.caption).foregroundStyle(inkDim)
+                TimelineView(.periodic(from: .now, by: 1)) { tick in
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(Array(running.prefix(4).enumerated()), id: \.element.id) { index, task in
+                            HStack(alignment: .firstTextBaseline, spacing: 18) {
+                                Circle().fill(OrbView.taskBlue(onLight: palette.darkInk)).frame(width: 16, height: 16)
+                                    .frame(width: 44)
+                                Text(TaskCard.title(task, index: index, guest: guest)).lineLimit(2)
+                                Spacer(minLength: 24)
+                                Text(task.state == "queued" ? "Queued" : Orbit.elapsed(since: task.startedAt, now: tick.date) ?? "Running")
+                                    .font(.headline.monospacedDigit())
+                                    .foregroundStyle(accent)
+                                    .contentTransition(.numericText())
+                            }
+                            .staggered(index)
                         }
                     }
-                    .staggered(index)
                 }
+            }
+        case .jarvis:
+            // How Jarvis's services are doing (tasks have their own card).
+            card(which) {
                 HStack(spacing: 28) {
                     ForEach(snapshot.services) { service in
                         Label(service.name, systemImage: service.status == "down" ? "xmark.circle.fill" : service.status == "degraded" ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
@@ -650,7 +659,7 @@ struct AlwaysOnView: View {
                             .foregroundStyle(inkDim)
                     }
                 }
-                .staggered(running.count)
+                .staggered(0)
             }
         case .lookout:
             card(which) {
