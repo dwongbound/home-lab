@@ -19,8 +19,10 @@ public struct Snapshot: Decodable, Sendable {
     public var events: [CalendarEvent] = []
     /// Unread notices, newest first; empty from an older server.
     public var notices: [Notice] = []
+    /// Today's food numbers; nil from an older Jarvis.
+    public var nutrition: Nutrition?
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices, nutrition }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -57,6 +59,7 @@ public struct Snapshot: Decodable, Sendable {
         let cloud = try? c.decodeIfPresent(Cloud.self, forKey: .cloud)
         money = cloud?.money
         events = cloud?.calendar ?? []
+        nutrition = try? c.decodeIfPresent(Nutrition.self, forKey: .nutrition)
         notices = ((try? c.decodeIfPresent([MaybeNotice].self, forKey: .notices)) ?? nil)?.compactMap(\.notice) ?? []
         health = cloud?.health
     }
@@ -426,3 +429,71 @@ public struct Health: Decodable, Sendable {
         }
     }
 }
+
+/// Today's food numbers from Jarvis's meal log (numbers only, never meals).
+public struct Nutrition: Decodable, Equatable, Sendable {
+    /// The Pacific-time day these are for, "2026-11-18".
+    public let date: String
+    public let eaten: Double
+    public let goal: Double
+    /// goal minus eaten; negative when over.
+    public let left: Double
+    public let burned: Double?
+    public let protein: Double?
+    public let proteinGoal: Double?
+
+    public init(date: String, eaten: Double, goal: Double, left: Double, burned: Double? = nil, protein: Double? = nil, proteinGoal: Double? = nil) {
+        self.date = date; self.eaten = eaten; self.goal = goal; self.left = left
+        self.burned = burned; self.protein = protein; self.proteinGoal = proteinGoal
+    }
+
+    /// True when these are today's numbers (Pacific time, like Jarvis).
+    public func isToday(now: Date = Date()) -> Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        return date == String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    /// "570 left", or "120 over" past the goal.
+    public var leftWords: String {
+        let n = Int(left.rounded())
+        return n >= 0 ? "\(Self.number(n)) left" : "\(Self.number(-n)) over"
+    }
+
+    /// "1,180 of 1,750".
+    public var ofGoalWords: String { "\(Self.number(Int(eaten.rounded()))) of \(Self.number(Int(goal.rounded())))" }
+
+    /// "96 of 140 g", when both are known.
+    public var proteinWords: String? {
+        guard let protein, let proteinGoal else { return nil }
+        return "\(Int(protein.rounded())) of \(Int(proteinGoal.rounded())) g"
+    }
+
+    /// How full the ring is, 0…1.
+    public var fraction: Double { goal > 0 ? min(1, max(0, eaten / goal)) : 0 }
+
+    static func number(_ n: Int) -> String {
+        let format = NumberFormatter()
+        format.numberStyle = .decimal
+        format.locale = Locale(identifier: "en_US")
+        return format.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+
+    /// As a WatchConnectivity dictionary, and back.
+    public var dictionary: [String: Any] {
+        var out: [String: Any] = ["date": date, "eaten": eaten, "goal": goal, "left": left]
+        if let burned { out["burned"] = burned }
+        if let protein { out["protein"] = protein }
+        if let proteinGoal { out["proteinGoal"] = proteinGoal }
+        return out
+    }
+
+    public init?(dictionary: [String: Any]) {
+        guard let date = dictionary["date"] as? String, let eaten = dictionary["eaten"] as? Double,
+              let goal = dictionary["goal"] as? Double, let left = dictionary["left"] as? Double else { return nil }
+        self.init(date: date, eaten: eaten, goal: goal, left: left, burned: dictionary["burned"] as? Double,
+                  protein: dictionary["protein"] as? Double, proteinGoal: dictionary["proteinGoal"] as? Double)
+    }
+}
+

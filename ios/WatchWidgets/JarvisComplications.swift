@@ -69,6 +69,19 @@ struct NextWidget: Widget {
     }
 }
 
+/// Calories left today, from Jarvis's meal log.
+struct CaloriesWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "jarvis.calories", provider: JarvisProvider()) { entry in
+            FamilyReader { family in CaloriesView(entry: entry, family: family) }
+                .containerBackground(.clear, for: .widget)
+        }
+        .configurationDisplayName("Calories left")
+        .description("Calories left today against your goal.")
+        .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular, .accessoryInline])
+    }
+}
+
 /// Hands the complication's size to a view that draws for it.
 struct FamilyReader<Content: View>: View {
     @Environment(\.widgetFamily) private var family
@@ -82,5 +95,6 @@ struct JarvisComplications: WidgetBundle {
         AskWidget()
         NeedsWidget()
         NextWidget()
+        CaloriesWidget()
     }
 }
