@@ -214,6 +214,9 @@ export function createMockSource({ now = () => new Date() } = {}) {
     offers: sampleOffers(),
     // Pretend notifications, until cleared; null until the first snapshot stamps their times.
     notices: null,
+    // Pretend routines (made up), until edited on the Routines page.
+    routines: sampleRoutines(now()),
+    nextRoutineId: 10,
     // Devices that asked for pushes.
     pushDevices: [],
     // "That was wrong" flags sent from the chat.
@@ -552,7 +555,90 @@ export function createMockSource({ now = () => new Date() } = {}) {
       }
       return { ok: false, message: 'Send {"op": "remember", "text"} or {"op": "forget", "id"}' }
     },
+
+    /** The pretend routines, and the sample devices their steps can use. */
+    async routines() {
+      const controllable = state.home.filter((d) => d.kind !== 'scene')
+      return {
+        routines: state.routines.map((r) => ({ ...r })),
+        options: {
+          devices: controllable.map((d) => ({ entity: d.id, name: d.name, kind: d.kind, commands: sampleCommands(d.kind) })),
+          scenes: state.home.filter((d) => d.kind === 'scene').map((d) => ({ entity: d.id, name: d.name })),
+          apps: [{ entity: 'media_player.apple_tv', name: 'Apple TV', apps: ['Jarvis', 'Netflix', 'YouTube', 'Music'] }],
+          zones: ['home'],
+        },
+      }
+    },
+
+    /** Saves, deletes or pretends to run one routine, in memory. */
+    async changeRoutine(change) {
+      if (change?.op === 'save') {
+        const known = state.routines.findIndex((r) => r.id === change.routine.id)
+        if (known >= 0) {
+          state.routines[known] = { ...state.routines[known], ...change.routine }
+          return { ok: true, message: 'Saved' }
+        }
+        state.routines.push({ ...change.routine, id: `r${state.nextRoutineId++}` })
+        return { ok: true, message: 'Saved' }
+      }
+      const routine = state.routines.find((r) => r.id === change?.id)
+      if (!routine) return { ok: false, message: 'Jarvis doesn’t have that routine' }
+      if (change.op === 'delete') {
+        state.routines = state.routines.filter((r) => r !== routine)
+        return { ok: true, message: 'Deleted' }
+      }
+      const steps = routine.actions.length
+      const detail = steps === 1 ? 'Ran 1 step' : `Ran ${steps} steps`
+      routine.lastRun = { at: now().toISOString(), ok: true, detail }
+      return { ok: true, message: detail }
+    },
   }
+}
+
+/** What a sample device of each kind can be told to do in a routine. */
+function sampleCommands(kind) {
+  // The same commands Jarvis offers for each kind (Home Assistant service names).
+  if (kind === 'climate') return ['turn_on', 'turn_off', 'set_temperature', 'set_hvac_mode']
+  if (kind === 'media') return ['turn_on', 'turn_off', 'media_play', 'media_pause', 'media_stop', 'volume_set', 'select_source']
+  return ['turn_on', 'turn_off', 'toggle']
+}
+
+/** Made-up routines for the sample Routines page: bedtime, getting home and a weekday morning. */
+function sampleRoutines(t) {
+  return [
+    {
+      id: 'r1',
+      name: 'Bedtime',
+      enabled: true,
+      trigger: { type: 'asleep' },
+      actions: [
+        { type: 'device', entity: 'light.living_room_lamp', command: 'turn_off' },
+        { type: 'device', entity: 'switch.porch_lights', command: 'turn_off' },
+        { type: 'device', entity: 'media_player.apple_tv', command: 'turn_off' },
+        { type: 'device', entity: 'climate.thermostat', command: 'set_temperature', value: 66 },
+      ],
+      lastRun: { at: new Date(t.getTime() - 9 * 3600_000).toISOString(), ok: true, detail: 'Ran 4 steps' },
+    },
+    {
+      id: 'r2',
+      name: 'Arrive home',
+      enabled: true,
+      trigger: { type: 'arrive', zone: 'home', minAway: 15 },
+      actions: [{ type: 'app', entity: 'media_player.apple_tv', app: 'Jarvis' }],
+    },
+    {
+      id: 'r3',
+      name: 'Weekday morning',
+      enabled: false,
+      trigger: { type: 'time', at: '08:30', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+      actions: [
+        { type: 'scene', entity: 'scene.movie_night' },
+        { type: 'wait', seconds: 30 },
+        { type: 'ask', text: 'Tell me the weather and my first meeting', confirm: false },
+        { type: 'notify', text: 'Time to head out' },
+      ],
+    },
+  ]
 }
 
 /** Made-up facts for the sample memory, learned over the last few days. */

@@ -18,6 +18,7 @@
 //   - While the chat is open the page behind it stays put, and reading back up isn't interrupted by new words.
 //   - In Settings, under Voice, I play a sample, pick a voice, speed and blend, and save it.
 //   - In Settings, under Memory, I see what Jarvis remembers, teach him something, forget it, and search past chats.
+//   - On Routines I see what Jarvis runs by himself, make a new routine, switch one off, run one now, edit it and delete it.
 import { expect, test } from '@playwright/test'
 
 test('overview shows the PC at a glance', async ({ page }) => {
@@ -161,7 +162,7 @@ test('tapping a tab fades the new page in and slides the pill light, with no mot
 test('pill navigation reaches every page and keeps the back button working', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: 'Sections' })
-  for (const name of ['Home', 'Money', 'Services', 'Schedule', 'Settings']) {
+  for (const name of ['Home', 'Money', 'Services', 'Routines', 'Schedule', 'Settings']) {
     await nav.getByRole('link', { name }).click()
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
     await expect(nav.getByRole('link', { name })).toHaveAttribute('aria-current', 'page')
@@ -468,7 +469,7 @@ test('Settings can keep the screen on, and remembers it', async ({ page }) => {
 })
 
 test('every page fits without sideways scrolling, and tappable rows are finger-sized on touch', async ({ page }, info) => {
-  for (const hash of ['#money', '#schedule', '#home', '#preferences', '#claude']) {
+  for (const hash of ['#money', '#schedule', '#home', '#preferences', '#claude', '#routines']) {
     await page.goto('/' + hash)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
@@ -1183,4 +1184,68 @@ test('a faint line at the bottom says which build this is and links its commit',
   expect(look.height).toBeLessThan(24)
   // The test build runs in a git checkout, so the commit is real and links to GitHub.
   await expect(footer.getByRole('link')).toHaveAttribute('href', /^https:\/\/github\.com\/dwongbound\/home-lab\/commit\/[0-9a-f]{7,40}$/)
+})
+
+test('Routines: make one, switch it off, run it, edit it and delete it', async ({ page }) => {
+  await page.goto('/#routines')
+  const list = page.getByRole('list', { name: 'Routines' })
+  await expect(list.getByRole('listitem').filter({ hasText: 'Bedtime' })).toContainText('When I go to sleep')
+  await expect(list.getByRole('listitem').filter({ hasText: 'Arrive home' })).toContainText('Open Jarvis on Apple TV')
+
+  // A new one: Save says what's missing until it has a name and a step.
+  await page.getByRole('button', { name: 'New routine' }).click()
+  const editor = page.getByRole('dialog', { name: 'New routine' })
+  const size = await editor.boundingBox()
+  await editor.getByRole('button', { name: 'Save' }).click()
+  await expect(editor.getByRole('alert')).toHaveText('Give the routine a name')
+  await editor.getByLabel('Name').fill('Movie time')
+  await editor.getByLabel('When').selectOption('time')
+  await editor.getByLabel('Time', { exact: true }).fill('20:00')
+  await editor.getByRole('button', { name: 'Sat' }).click()
+  await editor.getByRole('button', { name: 'Sun' }).click()
+  await editor.getByLabel('Add a step').selectOption('scene')
+  await editor.getByLabel('Add a step').selectOption('email')
+  const email = editor.getByRole('listitem', { name: 'Step 2' })
+  // Emails ask first unless that's switched off.
+  await expect(email.getByRole('switch', { name: 'Ask me first, each time' })).toHaveAttribute('aria-checked', 'true')
+  await editor.getByRole('button', { name: 'Save' }).click()
+  await expect(editor.getByRole('alert')).toHaveText('Step 2: give it one to ten email addresses')
+  await editor.getByRole('button', { name: 'Remove step 2' }).click()
+  await editor.getByLabel('Add a step').selectOption('notify')
+  await editor.getByLabel('Notification text').fill('Popcorn is ready')
+  // The pop-up stays one size however many steps it holds.
+  expect(await editor.boundingBox()).toEqual(size)
+  await editor.getByRole('button', { name: 'Save' }).click()
+  await expect(editor).toBeHidden()
+  const row = list.getByRole('listitem').filter({ hasText: 'Movie time' })
+  await expect(row).toContainText('At 8:00 PM, weekends')
+  await expect(row).toContainText('Notify me: Popcorn is ready')
+  await expect(row).toContainText('Hasn’t run yet')
+
+  // Off and on again, then run it now.
+  await row.getByRole('switch').click()
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+  await row.getByRole('switch').click()
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+  await row.getByRole('button', { name: 'Run Movie time' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Movie time: Ran 2 steps' })).toBeVisible()
+  await expect(row).toContainText('Last ran')
+
+  // Edit: Close leaves it alone, Save renames it, Delete asks first.
+  await row.getByRole('button', { name: 'Edit Movie time' }).click()
+  const edit = page.getByRole('dialog', { name: 'Edit routine' })
+  await edit.getByLabel('Name').fill('Changed my mind')
+  await edit.getByRole('button', { name: 'Close' }).click()
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: 'Edit Movie time' }).click()
+  await edit.getByLabel('Name').fill('Film night')
+  await edit.getByRole('button', { name: 'Save' }).click()
+  const renamed = list.getByRole('listitem').filter({ hasText: 'Film night' })
+  await expect(renamed).toBeVisible()
+  await renamed.getByRole('button', { name: 'Edit Film night' }).click()
+  await edit.getByRole('button', { name: 'Delete' }).click()
+  const confirm = page.getByRole('dialog', { name: 'Delete this routine?' })
+  await confirm.getByRole('button', { name: 'Delete' }).click()
+  await expect(renamed).toHaveCount(0)
+  await expect(list.getByRole('listitem')).toHaveCount(3)
 })
