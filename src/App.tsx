@@ -11,7 +11,7 @@ import { Services } from './views/Services'
 import { Claude } from './views/Claude'
 import { Money } from './views/Money'
 import { Home } from './views/Home'
-import { Routines } from './views/Routines'
+import { Playbooks } from './views/Playbooks'
 import { Schedule } from './views/Schedule'
 import { Settings, type SkyChoice } from './views/Settings'
 import { swipeToView, useHashView } from './useHashView'
@@ -90,8 +90,8 @@ export function App() {
     body = <Services data={data} now={now} onToast={setToast} />
   } else if (view === 'schedule') {
     body = <Schedule data={data} now={now} />
-  } else if (view === 'routines') {
-    body = <Routines now={now} />
+  } else if (view === 'playbooks') {
+    body = <Playbooks now={now} />
   } else if (view === 'preferences') {
     body = <Settings data={data} now={now} sky={sky} onSky={chooseSky} awake={awake} wake={wake} onAwake={chooseAwake} />
   } else {

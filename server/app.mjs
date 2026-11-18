@@ -9,8 +9,8 @@
 //   GET  /api/jarvis/memory         what Jarvis remembers ({memory})
 //   GET  /api/jarvis/memory/search?q=  past conversations matching q ({hits})
 //   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
-//   GET  /api/jarvis/routines       Jarvis's routines and what their steps can use ({book})
-//   POST /api/jarvis/routines       {"op": "save", "routine"} | {"op": "delete" | "run", "id"}
+//   GET  /api/jarvis/playbooks       Jarvis's playbooks and what their steps can use ({book})
+//   POST /api/jarvis/playbooks       {"op": "save", "playbook"} | {"op": "delete" | "run", "id"}
 //   GET  /api/jarvis/voice          how Jarvis sounds + every voice; POST saves {voice, speed, blend}
 //   GET  /api/jarvis/voice/sample   a WAV of ?voice=&speed=&voice2=&mix=
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
@@ -33,7 +33,7 @@ import { createMockSource } from './sources/mock.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parsePushDevice } from './sources/notices.mjs'
-import { cleanRoutine } from './sources/routines.mjs'
+import { cleanPlaybook } from './sources/playbooks.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
@@ -228,30 +228,30 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
-  /** Jarvis's routines, and what their steps can use. */
-  async function handleRoutines(req, res) {
+  /** Jarvis's playbooks, and what their steps can use. */
+  async function handlePlaybooks(req, res) {
     const login = req.headers['tailscale-user-login'] ?? ''
-    return sendJson(res, 200, { book: await source.routines({ login }) })
+    return sendJson(res, 200, { book: await source.playbooks({ login }) })
   }
 
-  /** Saves, deletes or runs one routine. */
-  async function handleRoutineChange(req, res) {
+  /** Saves, deletes or runs one playbook. */
+  async function handlePlaybookChange(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
       return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
     }
     const body = await readJson(req)
     const login = req.headers['tailscale-user-login'] ?? ''
     if (body?.op === 'save') {
-      const checked = cleanRoutine(body.routine)
+      const checked = cleanPlaybook(body.playbook)
       if (checked.problem) return sendJson(res, 400, { ok: false, message: checked.problem })
-      const result = await source.changeRoutine({ op: 'save', routine: checked.routine }, { login })
+      const result = await source.changePlaybook({ op: 'save', playbook: checked.playbook }, { login })
       return sendJson(res, result.ok ? 200 : 502, result)
     }
     const known = body?.op === 'delete' || body?.op === 'run'
     if (!known || typeof body.id !== 'string' || !body.id) {
-      return sendJson(res, 400, { ok: false, message: 'Send {"op": "save", "routine": {...}} or {"op": "delete" | "run", "id": "..."}' })
+      return sendJson(res, 400, { ok: false, message: 'Send {"op": "save", "playbook": {...}} or {"op": "delete" | "run", "id": "..."}' })
     }
-    const result = await source.changeRoutine({ op: body.op, id: body.id.slice(0, 80) }, { login })
+    const result = await source.changePlaybook({ op: body.op, id: body.id.slice(0, 80) }, { login })
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
@@ -461,11 +461,11 @@ export function createApi(source) {
       if (req.method === 'POST' && pathname === '/api/jarvis/memory') {
         return await handleMemoryChange(req, res)
       }
-      if (req.method === 'GET' && pathname === '/api/jarvis/routines') {
-        return await handleRoutines(req, res)
+      if (req.method === 'GET' && pathname === '/api/jarvis/playbooks') {
+        return await handlePlaybooks(req, res)
       }
-      if (req.method === 'POST' && pathname === '/api/jarvis/routines') {
-        return await handleRoutineChange(req, res)
+      if (req.method === 'POST' && pathname === '/api/jarvis/playbooks') {
+        return await handlePlaybookChange(req, res)
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/voice') {
         return await handleVoice(req, res)

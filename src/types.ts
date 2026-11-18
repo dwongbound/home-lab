@@ -386,55 +386,94 @@ export interface MemoryHit { chat: string; role: 'user' | 'jarvis'; text: string
 /** Adding or forgetting one fact. */
 export type MemoryChange = { op: 'remember'; text: string } | { op: 'forget'; id: string }
 
-/** A day of the week a timed routine runs on. */
-export type RoutineDay = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+/** A day of the week a timed playbook runs on. */
+export type PlaybookDay = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
-/** What starts a routine: a time, coming or going, bed or waking, or only the Run button. */
-export type RoutineTrigger =
-  | { type: 'time'; at: string; days: RoutineDay[] }
+/** What starts a playbook: a time, coming or going, bed or waking, or only when asked (or when its job comes up). */
+export type PlaybookTrigger =
+  | { type: 'time'; at: string; days: PlaybookDay[] }
   | { type: 'arrive'; zone: string; minAway: number }
   | { type: 'leave'; zone: string }
   | { type: 'asleep' }
   | { type: 'awake' }
   | { type: 'manual' }
 
-/** One step of a routine. `confirm` = Jarvis asks you before that step runs. */
-export type RoutineAction =
+/**
+ * Who does a thinking step: 'worker' is the local model (simple look-ups
+ * and sends), 'claude' is for judgment and writing, 'auto' lets Jarvis pick
+ * when the playbook is saved.
+ */
+export type PlaybookThinker = 'auto' | 'worker' | 'claude'
+
+/**
+ * One step of a playbook. The first five are fixed and run as plain code;
+ * `think` is a step in your own words that Jarvis works out; `confirm` on
+ * an email = Jarvis asks you before sending it.
+ */
+export type PlaybookStep =
   | { type: 'device'; entity: string; command: string; value?: number | string }
   | { type: 'scene'; entity: string }
   | { type: 'app'; entity: string; app: string }
   | { type: 'notify'; text: string }
-  | { type: 'ask'; text: string; confirm: boolean }
-  | { type: 'email'; to: string; subject: string; body: string; confirm: boolean }
   | { type: 'wait'; seconds: number }
+  | { type: 'think'; text: string; model: PlaybookThinker }
+  | { type: 'email'; to: string; subject: string; body: string; confirm: boolean }
 
-/** A group of steps Jarvis runs by himself (Dylan, 2026-11-18). */
-export interface Routine {
+/** One item of a run's done checklist: whether it held, and why not. */
+export interface PlaybookCheck { item: string; ok: boolean; why: string }
+
+/**
+ * A job Jarvis knows how to do (Dylan, 2026-11-18): what it's for, when it
+ * runs, its steps, the rules behind the decisions, and the checklist he
+ * checks himself against after every run.
+ */
+export interface Playbook {
   id: string
   name: string
   enabled: boolean
-  trigger: RoutineTrigger
-  actions: RoutineAction[]
+  /** What it's for, in one line. */
+  purpose: string
+  /** When Jarvis should reach for it without being told. */
+  whenToUse: string
+  trigger: PlaybookTrigger
+  /** What it needs, and where each thing lives. */
+  inputs: { name: string; where: string }[]
+  steps: PlaybookStep[]
+  /** The rules behind the judgment calls: if this, then that. */
+  decisions: { if: string; then: string }[]
+  /** The definition of done: what must be true for a run to count. */
+  done: string[]
+  /** Things that have gone wrong before. */
+  edgeCases: string[]
+  /** The tone or quality bar the result has to hit. */
+  standard: string
+  /** What a bad version looks like. */
+  badVersion: string
+  /** Who wrote it: Jarvis asks before running one he proposed himself. */
+  madeBy: 'dylan' | 'jarvis'
   /** How its last run went, if it has run. */
-  lastRun?: { at: string; ok: boolean; detail: string }
+  lastRun?: { at: string; ok: boolean; detail: string; checks: PlaybookCheck[] }
 }
 
-/** A routine being written: a new one has no id yet. */
-export type RoutineDraft = Omit<Routine, 'id' | 'lastRun'> & { id?: string }
+/** A playbook being written: a new one has no id yet. */
+export type PlaybookDraft = Omit<Playbook, 'id' | 'lastRun' | 'madeBy'> & { id?: string }
 
 /** What a step can use: devices and their commands, scenes, screens with apps, places. */
-export interface RoutineOptions {
+export interface PlaybookOptions {
   devices: { entity: string; name: string; kind: string; commands: string[] }[]
   scenes: { entity: string; name: string }[]
   apps: { entity: string; name: string; apps: string[] }[]
   zones: string[]
 }
 
-/** Everything the Routines page shows. */
-export interface RoutineBook { routines: Routine[]; options: RoutineOptions }
+/** Everything the Playbooks page shows. */
+export interface PlaybookBook { playbooks: Playbook[]; options: PlaybookOptions }
 
-/** Saving, deleting or running one routine. */
-export type RoutineChange = { op: 'save'; routine: RoutineDraft } | { op: 'delete'; id: string } | { op: 'run'; id: string }
+/** Saving, deleting or running one playbook. */
+export type PlaybookChange = { op: 'save'; playbook: PlaybookDraft } | { op: 'delete'; id: string } | { op: 'run'; id: string }
+
+/** How a change went; a run also says how its done checklist came out. */
+export interface PlaybookResult extends ActionResult { checks?: PlaybookCheck[] }
 
 /** One of the voices Jarvis can speak in (Kokoro's built-in set). */
 export interface VoiceOption {
@@ -496,10 +535,10 @@ export interface DataSource {
   searchMemory(query: string, caller?: { login?: string }): Promise<MemoryHit[]>
   /** Adds or forgets one fact. */
   changeMemory(change: MemoryChange, caller?: { login?: string }): Promise<ActionResult>
-  /** Jarvis's routines and what their steps can use, or null when he can't be asked. */
-  routines(caller?: { login?: string }): Promise<RoutineBook | null>
-  /** Saves, deletes or runs one routine. */
-  changeRoutine(change: RoutineChange, caller?: { login?: string }): Promise<ActionResult>
+  /** Jarvis's playbooks and what their steps can use, or null when he can't be asked. */
+  playbooks(caller?: { login?: string }): Promise<PlaybookBook | null>
+  /** Saves, deletes or runs one playbook. */
+  changePlaybook(change: PlaybookChange, caller?: { login?: string }): Promise<PlaybookResult>
   /** How Jarvis sounds, or null when he can't be asked. */
   voice(caller?: { login?: string }): Promise<VoiceSettings | null>
   /** Saves how Jarvis sounds; used from his next reply. */
