@@ -54,7 +54,6 @@ public enum ApprovalWording {
         if later { return "Holding this for later. Say “go ahead” when you’re ready." }
         if by == "timeout" { return "No answer in time, so he left it alone" }
         let verb = ok ? "Approved" : "Denied"
-        if by == "telegram" { return "\(verb) on Telegram" }
         if by == "voice" { return "\(verb) out loud" }
         return verb
     }
@@ -68,7 +67,6 @@ public enum ApprovalWording {
         if later { return "Holding for later: \(what)" }
         if by == "timeout" { return "Timed out: \(what)" }
         let verb = ok ? "Approved" : "Denied"
-        if by == "telegram" { return "\(verb) on Telegram: \(what)" }
         if by == "voice" { return "\(verb) out loud: \(what)" }
         return "\(verb): \(what)"
     }
@@ -115,7 +113,7 @@ public enum ModelWording {
 
     /// True for a message Jarvis sent unasked (a reminder, a Lookout ping,
     /// the start of day): its model is "notice:" + where it came from
-    /// (Dylan going Telegram-free, 2026-11-18). It gets a plain word chip.
+    /// (the app is his only channel, 2026-11-18). It gets a plain word chip.
     public static func isNotice(_ model: String) -> Bool {
         clean(model).hasPrefix("notice:")
     }

@@ -83,7 +83,7 @@ public enum ApprovalReply: Equatable, Sendable {
     /// How Jarvis says a finished approval was answered.
     public struct Answer: Equatable, Sendable {
         public let ok: Bool
-        /// page, voice, telegram or timeout.
+        /// page, voice or timeout.
         public let by: String
         /// He said "wait": held, not denied.
         public let later: Bool

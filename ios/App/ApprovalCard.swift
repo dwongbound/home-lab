@@ -3,7 +3,7 @@ import SwiftUI
 import JarvisKit
 
 /// Jarvis asking before he does something. Approve/Deny until answered,
-/// then how it ended (here, out loud, on Telegram, or timed out).
+/// then how it ended (here, out loud, or timed out).
 struct ApprovalCard: View {
     let approval: Approval
     let outcome: String?

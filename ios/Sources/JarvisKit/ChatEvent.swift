@@ -29,7 +29,7 @@ public enum ChatEvent: Equatable, Sendable {
     case error(String)
     /// Jarvis wants an OK before he carries on.
     case approval(Approval)
-    /// An approval was settled. `by` is who answered (page, voice, telegram,
+    /// An approval was settled. `by` is who answered (page, voice or
     /// timeout); `later` means he said "wait", so it's held, not denied.
     case approvalDone(id: String, ok: Bool, by: String, later: Bool)
     /// A slow lookup started ("Searching the web.").

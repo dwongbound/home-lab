@@ -1,5 +1,5 @@
 // Photos in the chat on iPhone and iPad (Dylan, 2026-11-18: "add images…
-// send my food pictures to Jarvis. Then I can completely remove Telegram").
+// send my food pictures to Jarvis").
 // Taking or choosing photos, shrinking them before they go (PhotoLimits in
 // JarvisKit), the thumbnails above the Ask box, the photos in a sent
 // bubble and the full-screen viewer.
