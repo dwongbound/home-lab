@@ -97,6 +97,24 @@ public enum PhoneKiosk {
         }
         return (showing && !dismissed, dismissed)
     }
+
+    /// What tapping a kiosk's orb does (Dylan, 2026-11-18: "even while the
+    /// kiosk mode is on we should be able to talk to Jarvis… tap the orb…
+    /// talk mode without any text or buttons").
+    public enum OrbTap: Equatable, Sendable { case start, hangUp, nothing }
+
+    /// Off: start a call. On in any way, dozing included: hang up fully, so
+    /// the mic is off and the wake word can't bring him back (Dylan: "if
+    /// tapped again it will go back to idle and not listen"). Still
+    /// calling: wait, a second tap mid-dial would race the line.
+    public static func orbTap(callOpen: Bool, connecting: Bool) -> OrbTap {
+        if connecting { return .nothing }
+        return callOpen ? .hangUp : .start
+    }
+
+    /// When the bedside display goes away mid-call, the call carries on in
+    /// the Talk tab rather than dropping.
+    public static func handOverToTalk(callLive: Bool) -> Bool { callLive }
 }
 
 /// Icons for the kiosk screens (Dylan, 2026-11-17: "for a kiosk the more

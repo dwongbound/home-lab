@@ -129,3 +129,16 @@ final class WeatherWordsTests: XCTestCase {
         XCTAssertEqual(TodayWording.weatherWords("rainy"), "Rainy")
     }
 }
+
+final class KioskOrbTalkTests: XCTestCase {
+    func testTapStartsThenTapAgainHangsUpEvenWhenDozing() {
+        XCTAssertEqual(PhoneKiosk.orbTap(callOpen: false, connecting: false), .start)
+        XCTAssertEqual(PhoneKiosk.orbTap(callOpen: true, connecting: false), .hangUp)
+        XCTAssertEqual(PhoneKiosk.orbTap(callOpen: false, connecting: true), .nothing)
+    }
+
+    func testLeavingTheKioskMidCallHandsOverToTalk() {
+        XCTAssertTrue(PhoneKiosk.handOverToTalk(callLive: true))
+        XCTAssertFalse(PhoneKiosk.handOverToTalk(callLive: false))
+    }
+}

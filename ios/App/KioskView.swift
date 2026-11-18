@@ -53,7 +53,11 @@ struct KioskView: View {
         .simultaneousGesture(TapGesture().onEnded { lastTouch = Date() })
         .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { _ in lastTouch = Date() })
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            // A call started here carries on in the Talk tab.
+            if PhoneKiosk.handOverToTalk(callLive: talk.phase != .off) { app.tab = .talk }
+        }
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(KioskPlan.turnSeconds))
@@ -92,14 +96,9 @@ struct KioskView: View {
                     }
                 }
             }
-            OrbView(
-                state: orbMood,
-                size: size,
-                level: Double(talk.level),
-                work: today.snapshot?.jobs?.running ?? [],
-                dim: talkLive ? 1 : 0.85
-            )
-            .zIndex(1)
+            // Tap to talk, tap again to stop (KioskTalkOrb).
+            KioskTalkOrb(talk: talk, app: app, size: size, work: today.snapshot?.jobs?.running ?? [])
+                .zIndex(1)
             heroCard
                 .animation(.smooth(duration: 0.6), value: hero)
         }
@@ -161,22 +160,6 @@ struct KioskView: View {
             .padding(.vertical, 16)
             .glassPanel(tint: tint)
             .transition(.opacity)
-    }
-
-    /// The orb follows the call if one is on; otherwise it shows work.
-    private var orbMood: OrbView.Mood {
-        switch talk.phase {
-        case .on(.thinking): return .thinking
-        case .on(.speaking): return .speaking
-        default:
-            return (today.snapshot?.jobs?.running.isEmpty ?? true) ? .listening : .working
-        }
-    }
-
-    /// True while a Talk call is listening, thinking or speaking.
-    private var talkLive: Bool {
-        if case .on(let state) = talk.phase { return state != .dozing }
-        return false
     }
 
     // MARK: Rotating panels

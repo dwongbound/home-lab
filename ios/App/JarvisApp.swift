@@ -2,6 +2,7 @@
 // lab PC, reached over Tailscale. The brain, tools and approvals stay on
 // the PC.
 import SwiftUI
+import JarvisKit
 
 @main
 struct JarvisApp: App {
@@ -68,7 +69,12 @@ struct RootView: View {
             TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount)
         }
         .fullScreenCover(isPresented: Binding(get: { bedside.showing }, set: { if !$0 { bedside.dismiss() } })) {
-            PhoneKioskView(today: app.today, talk: app.talk) { bedside.dismiss() }
+            PhoneKioskView(today: app.today, talk: app.talk, app: app) { bedside.dismiss() }
+        }
+        // Rotating upright or unplugging mid-call hands the call to the Talk
+        // tab rather than dropping it.
+        .onChange(of: bedside.showing) { _, showing in
+            if !showing, PhoneKiosk.handOverToTalk(callLive: app.talk.phase != .off) { app.tab = .talk }
         }
         .onAppear { bedside.start() }
         // The Settings switch can turn it on or off at any time.
