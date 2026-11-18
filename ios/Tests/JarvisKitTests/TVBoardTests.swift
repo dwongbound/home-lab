@@ -199,3 +199,20 @@ final class TaskCardTests: XCTestCase {
         XCTAssertEqual(TaskCard.title(task, index: 0, guest: false), "Booking flights to Tokyo")
     }
 }
+
+final class CardSwipeTests: XCTestCase {
+    func testWrapsBothWays() {
+        XCTAssertEqual(CardSwipe.index(turn: 0, count: 4), 0)
+        XCTAssertEqual(CardSwipe.index(turn: 5, count: 4), 1)
+        XCTAssertEqual(CardSwipe.index(turn: -1, count: 4), 3)
+        XCTAssertEqual(CardSwipe.index(turn: -5, count: 4), 3)
+        XCTAssertEqual(CardSwipe.index(turn: 3, count: 0), 0)
+    }
+
+    func testRotationWaitsAMinuteAfterASwipe() {
+        let now = Date()
+        XCTAssertTrue(CardSwipe.autoAdvanceAllowed(lastSwipe: nil, now: now))
+        XCTAssertFalse(CardSwipe.autoAdvanceAllowed(lastSwipe: now.addingTimeInterval(-30), now: now))
+        XCTAssertTrue(CardSwipe.autoAdvanceAllowed(lastSwipe: now.addingTimeInterval(-61), now: now))
+    }
+}
