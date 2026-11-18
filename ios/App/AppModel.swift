@@ -43,6 +43,9 @@ final class AppModel: ObservableObject {
     private(set) var lastActivity = Date()
     /// True while the notices sheet is up.
     @Published var showNotices = false
+    /// A chat turn to open (scroll to and highlight), set by a tapped
+    /// notification or notice; the Chat tab takes it and clears it.
+    @Published var focusTurn: Int?
     /// Notices cleared here but not yet gone from the snapshot: hidden at
     /// once so the list doesn't flicker back before the next poll.
     @Published private(set) var clearedNotices: Set<String> = []
@@ -76,6 +79,15 @@ final class AppModel: ObservableObject {
         } catch {
             clearedNotices.subtract(ids)
         }
+    }
+
+    /// Opens Chat at the message a notice previews (acting on it, so the
+    /// notice clears everywhere). Without a turn, Chat opens at the bottom.
+    func openTurn(_ turnId: Int?, clearing notice: Notice? = nil) async {
+        showNotices = false
+        tab = .chat
+        focusTurn = turnId
+        if let notice { await clearNotices([notice.id]) }
     }
 
     /// A notice was seen on the orb or in the list: read, so cleared

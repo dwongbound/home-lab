@@ -34,13 +34,15 @@ public struct Notice: Decodable, Identifiable, Equatable, Sendable {
     public let created: String
     /// For an approval: the id the Approve and Deny buttons answer.
     public let approvalId: String?
+    /// The chat turn this notice previews (the full message lives there).
+    public let turnId: Int?
 
-    public init(id: String, kind: NoticeKind, title: String, body: String = "", source: String, created: String, approvalId: String? = nil) {
+    public init(id: String, kind: NoticeKind, title: String, body: String = "", source: String, created: String, approvalId: String? = nil, turnId: Int? = nil) {
         self.id = id; self.kind = kind; self.title = title; self.body = body
-        self.source = source; self.created = created; self.approvalId = approvalId
+        self.source = source; self.created = created; self.approvalId = approvalId; self.turnId = turnId
     }
 
-    enum CodingKeys: String, CodingKey { case id, kind, title, body, source, created, approvalId }
+    enum CodingKeys: String, CodingKey { case id, kind, title, body, source, created, approvalId, turnId }
 
     /// Missing optional parts read as empty rather than failing the notice.
     public init(from decoder: Decoder) throws {
@@ -52,6 +54,13 @@ public struct Notice: Decodable, Identifiable, Equatable, Sendable {
         source = (try? c.decodeIfPresent(String.self, forKey: .source)) ?? "message"
         created = (try? c.decodeIfPresent(String.self, forKey: .created)) ?? ""
         approvalId = try? c.decodeIfPresent(String.self, forKey: .approvalId)
+        turnId = try? c.decodeIfPresent(Int.self, forKey: .turnId)
+    }
+
+    /// The words on the control that clears it: a reminder's says it's been
+    /// heard, since clearing one acknowledges the nag.
+    public var clearLabel: String {
+        source == "reminder" ? "Got it, stop reminding me" : "Clear"
     }
 
     /// True when the row carries Approve and Deny.

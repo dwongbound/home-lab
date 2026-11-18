@@ -13,6 +13,8 @@ struct ChatView: View {
     @State private var choosing: [PhotosPickerItem] = []
     @State private var showLibrary = false
     @State private var showCamera = false
+    /// The turn just opened from a notice, glowing for a moment.
+    @State private var highlighted: Int?
     @State private var flagging: ChatItem?
     @FocusState private var typing: Bool
     /// Whether the newest line is on screen; when it isn't, "Scroll to
@@ -143,8 +145,26 @@ struct ChatView: View {
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await chat.load(app: app) }
             .onChange(of: chat.items) {
+                guard app.focusTurn == nil && highlighted == nil else { return }
                 withAnimation(.easeOut(duration: 0.2)) {
                     scroller.scrollTo(chat.items.last?.id, anchor: .bottom)
+                }
+            }
+            // A notice or notification opened a turn: find it (loading the
+            // history if it isn't here yet), scroll to it and let it glow.
+            .onChange(of: app.focusTurn) { _, target in
+                guard let target else { return }
+                Task {
+                    if !chat.items.contains(where: { $0.turnId == target }) { await chat.load(app: app) }
+                    if let item = chat.items.first(where: { $0.turnId == target }) {
+                        highlighted = target
+                        withAnimation(.easeOut(duration: 0.4)) { scroller.scrollTo(item.id, anchor: .center) }
+                        try? await Task.sleep(for: .seconds(2.5))
+                        withAnimation(.smooth) { highlighted = nil }
+                    } else {
+                        withAnimation(.easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+                    }
+                    app.focusTurn = nil
                 }
             }
             .overlay(alignment: .bottom) {
@@ -220,6 +240,14 @@ struct ChatView: View {
             if !item.text.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     JarvisBubble(item: item) { flagging = item }
+                        .overlay {
+                            if item.turnId != nil && item.turnId == highlighted {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .strokeBorder(OrbView.noticeOrange(onLight: false), lineWidth: 2)
+                                    .shadow(color: OrbView.noticeOrange(onLight: false).opacity(0.6), radius: 10)
+                                    .transition(.opacity)
+                            }
+                        }
                     // "Is this the meal I already logged?"
                     if item.mealKey != nil && item.mealAnswer == nil && item.finished {
                         HStack(spacing: 8) {
@@ -343,7 +371,15 @@ struct JarvisBubble: View {
     /// Chip over a glass bubble.
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let model = item.model, !ModelWording.label(model).isEmpty {
+            if let model = item.model, ModelWording.isNotice(model) {
+                // A message he sent unasked: a plain word in a quiet chip.
+                Text(ModelWording.label(model))
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .foregroundStyle(Theme.frostDim)
+                    .background(Capsule().fill(Color.white.opacity(0.08)))
+            } else if let model = item.model, !ModelWording.label(model).isEmpty {
                 let tone = ModelWording.isClaude(model) ? Theme.ember : Theme.glacier
                 Text(ModelWording.label(model))
                     .font(.caption2.weight(.semibold))
@@ -355,7 +391,7 @@ struct JarvisBubble: View {
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(markdown(item.text))
                     .textSelection(.enabled)
-                if item.finished {
+                if item.finished && !ModelWording.isNotice(item.model ?? "") {
                     Button(action: onWrong) {
                         Text("…")
                             .foregroundStyle(Theme.frostFaint)

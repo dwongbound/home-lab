@@ -103,6 +103,7 @@ public enum ModelWording {
     public static func label(_ model: String) -> String {
         let name = clean(model)
         guard let first = name.first else { return "" }
+        if isNotice(name) { return noticeLabel(name) }
         if isClaude(name) {
             if let found = claudeLetters.first(where: { name.contains($0.word) }) {
                 return "Jarvis (C\(found.letter))"
@@ -110,6 +111,20 @@ public enum ModelWording {
             return "Jarvis (C)"
         }
         return "Jarvis (\(first.uppercased()))"
+    }
+
+    /// True for a message Jarvis sent unasked (a reminder, a Lookout ping,
+    /// the start of day): its model is "notice:" + where it came from
+    /// (Dylan going Telegram-free, 2026-11-18). It gets a plain word chip.
+    public static func isNotice(_ model: String) -> Bool {
+        clean(model).hasPrefix("notice:")
+    }
+
+    /// "Reminder", "Lookout", "Alert", "Finished", "Digest"; anything else
+    /// he sends unasked is just "Jarvis".
+    public static func noticeLabel(_ model: String) -> String {
+        let source = String(clean(model).dropFirst("notice:".count))
+        return ["reminder": "Reminder", "lookout": "Lookout", "alert": "Alert", "job": "Finished", "digest": "Digest"][source] ?? "Jarvis"
     }
 
     /// Claude's chip (any of its models) is orange; every local model's is blue.

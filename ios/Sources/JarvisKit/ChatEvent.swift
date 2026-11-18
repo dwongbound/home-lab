@@ -106,12 +106,19 @@ public struct ChatTurn: Codable, Equatable, Sendable {
     /// How many photos one of Dylan's lines carried (the photos themselves
     /// aren't kept in history).
     public let images: Int?
+    /// Jarvis's id for the turn, so a notice can point at it.
+    public let id: Int?
 
     /// True for Dylan's own lines.
     public var isUser: Bool { role == "user" }
 
     /// Builds a turn (sample data and tests; the server's are decoded).
-    public init(role: String, text: String, at: String, model: String?, images: Int? = nil) {
-        self.role = role; self.text = text; self.at = at; self.model = model; self.images = images
+    public init(role: String, text: String, at: String, model: String?, images: Int? = nil, id: Int? = nil) {
+        self.role = role; self.text = text; self.at = at; self.model = model; self.images = images; self.id = id
+    }
+
+    /// The position of the turn with Jarvis's id `turnId`, or nil.
+    public static func index(of turnId: Int, in turns: [ChatTurn]) -> Int? {
+        turns.firstIndex { $0.id == turnId }
     }
 }

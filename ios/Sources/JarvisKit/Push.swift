@@ -30,6 +30,20 @@ public enum PushWords {
         return nil
     }
 
+    /// The chat turn a notification previews (`turn_id`), so tapping it can
+    /// open the chat right there. A number or its text.
+    public static func turnId(from payload: [AnyHashable: Any]) -> Int? {
+        func read(_ any: Any?) -> Int? {
+            if let n = any as? Int { return n }
+            if let n = any as? NSNumber { return n.intValue }
+            if let s = any as? String { return Int(s) }
+            return nil
+        }
+        if let id = read(payload["turn_id"]) { return id }
+        if let jarvis = payload["jarvis"] as? [String: Any] { return read(jarvis["turn_id"]) }
+        return nil
+    }
+
     /// The notice a notification is about (`notice_id`), so tapping it can
     /// open the list there.
     public static func noticeId(from payload: [AnyHashable: Any]) -> String? {

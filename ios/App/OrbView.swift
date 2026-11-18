@@ -43,6 +43,8 @@ struct OrbView: View {
     var onRead: ((Notice) -> Void)? = nil
     /// A tap on the inner orb, off any dot (the kiosks: start or stop Talk).
     var onCoreTap: (() -> Void)? = nil
+    /// "Open in Chat" on a notice's label (nil: no button, as in kiosks).
+    var onOpen: ((Notice) -> Void)? = nil
     /// The dot whose label is open, if any.
     @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -83,6 +85,11 @@ struct OrbView: View {
                 OrbitCallout(item: item, onLight: onLight, onAnswer: onAnswer.map { answer in
                     { ok in
                         if let notice = item.notice { answer(notice, ok) }
+                        opened = nil
+                    }
+                }, onOpen: item.notice?.turnId == nil ? nil : onOpen.map { open in
+                    {
+                        if let notice = item.notice { open(notice) }
                         opened = nil
                     }
                 }) { close() }
@@ -620,6 +627,8 @@ struct OrbitCallout: View {
     let onLight: Bool
     /// Approve (true) or Deny (false); nil hides the buttons.
     let onAnswer: ((Bool) -> Void)?
+    /// Opens the full message in Chat; nil hides the button.
+    var onOpen: (() -> Void)? = nil
     let onClose: () -> Void
 
     var body: some View {
@@ -652,6 +661,19 @@ struct OrbitCallout: View {
                     .font(.footnote.weight(.semibold))
                     .frame(minWidth: 44, minHeight: 44)
                     .tint(Theme.glacier)
+            }
+            if let notice = item.notice, !notice.isApproval, onOpen != nil || notice.source == "reminder" {
+                HStack(spacing: 10) {
+                    if let onOpen {
+                        Button("Open in Chat", action: onOpen).buttonStyle(.bordered)
+                    }
+                    // Closing a reminder's label reads it, which stops the nag.
+                    if notice.source == "reminder" {
+                        Button(notice.clearLabel, action: onClose).buttonStyle(.borderedProminent)
+                    }
+                }
+                .font(.footnote.weight(.semibold))
+                .padding(.leading, 20)
             }
             if let onAnswer, item.notice?.isApproval == true {
                 HStack(spacing: 10) {

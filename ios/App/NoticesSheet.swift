@@ -23,7 +23,7 @@ struct NoticesSheet: View {
                                 .listRowBackground(Color.white.opacity(0.06))
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     if !notice.isApproval {
-                                        Button("Clear", role: .destructive) { Task { await app.clearNotices([notice.id]) } }
+                                        Button(notice.clearLabel, role: .destructive) { Task { await app.clearNotices([notice.id]) } }
                                     }
                                 }
                         }
@@ -59,9 +59,13 @@ struct NoticesSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
                 // Opening it reads it (cleared everywhere), unless it needs
-                // an answer.
-                Task { await app.readNotice(notice) }
-                app.tab = .chat
+                // an answer, and opens Chat at the full message.
+                if notice.turnId != nil {
+                    Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) ? notice : nil) }
+                } else {
+                    Task { await app.readNotice(notice) }
+                    app.tab = .chat
+                }
                 dismiss()
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
