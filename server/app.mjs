@@ -14,6 +14,8 @@
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
 //   GET  /api/jarvis/approvals      what Jarvis is still waiting on you to approve ({pending})
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
+//   POST /api/jarvis/notices/clear {"ids"} or {"all": true} -> clears notifications on every device
+//   POST /api/jarvis/push/register {"token", "platform", "environment", "bundle"} -> an app asking for pushes
 //   POST /api/jarvis/feedback      {question, answer, note} -> "That was wrong" on one of his replies
 //   POST /api/jarvis/sleep          {"asleep": true|false, "source"?} -> tells Jarvis you've gone to bed, or are up
 //   POST /api/jarvis/warm           starts Jarvis's web-chat engine early (the chat sheet opened)
@@ -26,6 +28,7 @@
 import { createMockSource } from './sources/mock.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
+import { parseClear, parsePushDevice } from './sources/notices.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
@@ -239,6 +242,34 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
+  /** Clear on a notification (or Clear all): Jarvis drops it, so it goes from every device. */
+  async function handleClearNotices(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const which = parseClear(await readJson(req))
+    if (which === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"ids": ["n1"]} or {"all": true}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.clearNotices(which, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
+  /** An app's push token, passed to Jarvis so he can send lock-screen notifications to that device. */
+  async function handleRegisterPush(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const device = parsePushDevice(await readJson(req))
+    if (device === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"token": "ab12…", "platform": "ios", "environment": "production", "bundle": "com.example.app"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.registerPush(device, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
   /** Night mode on a screen (the Apple TV): tells Jarvis you've gone to bed, or that you're up again. */
   async function handleSleep(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -363,6 +394,12 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/offers/hide') {
         return await handleHideOffer(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/notices/clear') {
+        return await handleClearNotices(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/push/register') {
+        return await handleRegisterPush(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/sleep') {
         return await handleSleep(req, res)

@@ -14,6 +14,7 @@ import { createDigestReader } from './digest.mjs'
 import { createHomeReader } from './home.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
+import { parseNotices } from './notices.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
@@ -306,6 +307,31 @@ export function createLiveSource(config, deps = {}) {
     return parseOffers(await res.json())
   }
 
+  /** Jarvis's unread notifications (GET /notices); null when an older Jarvis answers 404. */
+  async function readJarvisNotices() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/notices`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseNotices(await res.json())
+  }
+
+  /** POSTs JSON to Jarvis as the caller; `done` is what to say when it works, `missing` when an older Jarvis answers 404. */
+  async function postToJarvis(path, body, caller, done, missing) {
+    if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
+    try {
+      const res = await fetchFn(`${config.jarvisApiUrl}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      })
+      if (res.status === 404) return { ok: false, message: missing }
+      if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+      return { ok: true, message: done }
+    } catch {
+      return { ok: false, message: 'Jarvis is not answering' }
+    }
+  }
+
   const haHeaders = {}
   if (config.haToken) haHeaders.Authorization = `Bearer ${config.haToken}`
 
@@ -326,8 +352,9 @@ export function createLiveSource(config, deps = {}) {
         readJarvisSchedule(),
         readJarvisJobs(),
         readJarvisOffers(),
+        readJarvisNotices(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -375,6 +402,7 @@ export function createLiveSource(config, deps = {}) {
         jobs,
         moneyPicks: await picks.read(cloud?.money?.recent ?? []),
         offers,
+        notices,
       }
     },
 
@@ -522,6 +550,16 @@ export function createLiveSource(config, deps = {}) {
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }
+    },
+
+    /** Clear on notifications (POST /notices/clear with {ids} or {all: true}). */
+    async clearNotices(which, caller = {}) {
+      return postToJarvis('/notices/clear', which, caller, 'Cleared', 'Jarvis can’t keep notifications yet')
+    },
+
+    /** An app's push token (POST /push/register), so Jarvis can notify that device. */
+    async registerPush(device, caller = {}) {
+      return postToJarvis('/push/register', device, caller, 'Registered', 'Jarvis can’t send notifications yet')
     },
 
     /** Tells Jarvis you've gone to bed or are up (POST /sleep); an older Jarvis answers 404. */

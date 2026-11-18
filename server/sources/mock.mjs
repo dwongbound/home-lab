@@ -168,6 +168,16 @@ function withRefresh(digest, state) {
   return { ...digest, updatedAt: new Date(done).toISOString() }
 }
 
+/** Made-up notifications, one of each kind (never money: this list shows on shared screens). */
+function sampleNotices(t) {
+  const minutesAgo = (m) => new Date(t.getTime() - m * 60_000).toISOString()
+  return [
+    { id: 'n1', kind: 'need', title: 'Send the rehearsal reminder to the band?', body: 'The draft is ready.', source: 'approval', created: minutesAgo(2), approvalId: 'a-demo' },
+    { id: 'n2', kind: 'heads', title: 'Low clouds likely at Torrance on Thursday morning', body: '', source: 'lookout', created: minutesAgo(18) },
+    { id: 'n3', kind: 'fyi', title: 'Finished tidying the reminder code', body: '', source: 'job', created: minutesAgo(120) },
+  ]
+}
+
 /** Made-up offers like the ones Jarvis makes when he connects the dots. */
 function sampleOffers() {
   return [
@@ -202,6 +212,10 @@ export function createMockSource({ now = () => new Date() } = {}) {
     facts: sampleFacts(now()),
     // Pretend tasks Jarvis offers (made up), until Start or Hide.
     offers: sampleOffers(),
+    // Pretend notifications, until cleared; null until the first snapshot stamps their times.
+    notices: null,
+    // Devices that asked for pushes.
+    pushDevices: [],
     // "That was wrong" flags sent from the chat.
     feedback: [],
     nextFactId: 100,
@@ -225,6 +239,12 @@ export function createMockSource({ now = () => new Date() } = {}) {
   }
   // Categories picked on the Money page, in memory.
   const picks = createPickStore({ now })
+
+  /** The pretend notifications still unread; made on first use so their times follow the clock. */
+  function currentNotices(t) {
+    if (state.notices === null) state.notices = sampleNotices(t)
+    return state.notices
+  }
 
   return {
     kind: 'mock',
@@ -300,6 +320,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         jobs: mockJobs(t, minutesAgo),
         moneyPicks: await picks.read(cloud.money.recent),
         offers: { greeting: 'Well, good evening, Dylan! Your 7 PM practice moved to court 2.', offers: state.offers.map((o) => ({ ...o })) },
+        notices: currentNotices(t).map((n) => ({ ...n })),
       }
     },
 
@@ -373,6 +394,19 @@ export function createMockSource({ now = () => new Date() } = {}) {
     async hideOffer(id) {
       state.offers = state.offers.filter((o) => o.id !== id)
       return { ok: true, message: 'Hidden' }
+    },
+
+    /** Clear on notifications: those ids, or all of them, are gone. */
+    async clearNotices(which) {
+      const ids = which.ids ?? []
+      state.notices = currentNotices(now()).filter((n) => which.all !== true && !ids.includes(n.id))
+      return { ok: true, message: 'Cleared' }
+    },
+
+    /** An app asking for pushes: remembered so a test can see it arrived. */
+    async registerPush(device) {
+      state.pushDevices.push(device)
+      return { ok: true, message: 'Registered' }
     },
 
     /** Night mode on or off: remembered so a test can see it arrived. */

@@ -58,6 +58,13 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url.startsWith(`${config.jarvisApiUrl}/voice/sample?`)) {
       return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })
     }
+    if (url === `${config.jarvisApiUrl}/notices`) {
+      return Response.json({ notices: [{ id: 'n1', kind: 'heads', title: 'Rain at 4', source: 'lookout' }, { id: 'n2', kind: 'nope', title: 'Dropped' }] }, { status: jarvisStatusCode })
+    }
+    if (url === `${config.jarvisApiUrl}/notices/clear` || url === `${config.jarvisApiUrl}/push/register`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      return Response.json({ ok: true }, { status: jarvisStatusCode })
+    }
     if (url === `${config.jarvisApiUrl}/sleep`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ asleep: true }, { status: jarvisStatusCode })
@@ -398,5 +405,22 @@ describe('live chat with Jarvis', () => {
     expect((await source.setSleep(true, 'tv', {})).ok).toBe(false)
     expect((await liveWith({ jarvisStatusCode: 404 }).source.setSleep(true, 'tv', { login: 'd@example.com' })).message).toBe('Jarvis can’t track sleep yet')
     expect((await liveWith({ jarvisAnswers: false }).source.setSleep(false, 'tv', { login: 'd@example.com' })).message).toBe('Jarvis is not answering')
+  })
+
+  it('puts Jarvis’s notices in the snapshot, clears them and registers a device for pushes', async () => {
+    const { source, fetch } = liveWith({})
+    expect((await source.snapshot()).notices).toEqual([{ id: 'n1', kind: 'heads', title: 'Rain at 4', body: '', source: 'lookout', created: null }])
+    expect(await source.clearNotices({ ids: ['n1'] }, { login: 'dylan@example.com' })).toEqual({ ok: true, message: 'Cleared' })
+    const [, cleared] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/notices/clear`)!
+    expect(JSON.parse(cleared!.body as string)).toEqual({ ids: ['n1'] })
+    const device = { token: 'ab'.repeat(32), platform: 'ios' as const, environment: 'sandbox' as const, bundle: 'com.example.app', name: 'iPhone' }
+    expect(await source.registerPush(device, { login: 'dylan@example.com' })).toEqual({ ok: true, message: 'Registered' })
+    const [, registered] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/push/register`)!
+    expect(JSON.parse(registered!.body as string)).toEqual(device)
+    expect((await source.clearNotices({ all: true }, {})).ok).toBe(false)
+    const old = liveWith({ jarvisStatusCode: 404 }).source
+    expect((await old.snapshot()).notices).toBeNull()
+    expect((await old.registerPush(device, { login: 'd@example.com' })).message).toBe('Jarvis can’t send notifications yet')
+    expect((await liveWith({ jarvisAnswers: false }).source.clearNotices({ all: true }, { login: 'd@example.com' })).message).toBe('Jarvis is not answering')
   })
 })
