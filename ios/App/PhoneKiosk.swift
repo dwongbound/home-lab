@@ -7,6 +7,7 @@
 // PhoneKiosk.decide in JarvisKit.
 import SwiftUI
 import UIKit
+import UserNotifications
 import JarvisKit
 
 /// Which ways the app may turn. The normal tabs are portrait on iPhone;
@@ -14,6 +15,13 @@ import JarvisKit
 final class OrientationLock: NSObject, UIApplicationDelegate {
     /// The orientations allowed right now on iPhone.
     static var phoneMask: UIInterfaceOrientationMask = .portrait
+
+    /// The notification delegate is set before launch finishes, so a tap on
+    /// a notification that opened the app is handled too.
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        MainActor.assumeIsolated { UNUserNotificationCenter.current().delegate = PushCenter.shared }
+        return true
+    }
 
     /// APNs gave this device a token (PushCenter sends it on).
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

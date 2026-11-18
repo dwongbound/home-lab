@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(PhoneKioskMonitor.enabledKey) private var bedside = true
     @AppStorage(AppModel.idleKioskKey) private var idleKiosk = true
     @AppStorage(PushCenter.enabledKey) private var pushOn = true
+    @ObservedObject private var push = PushCenter.shared
     @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
     @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
 
@@ -48,9 +49,14 @@ struct SettingsView: View {
                     Toggle("Notifications", isOn: $pushOn)
                         .frame(minHeight: 44)
                         .onChange(of: pushOn) { _, on in PushCenter.shared.setEnabled(on) }
+                    // Whether push is actually working, in words.
+                    Text(push.status.words)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 } footer: {
-                    Text("Jarvis's messages, approvals and alerts as banners, even when the app is closed. Approve from the lock screen needs the phone unlocked.")
+                    Text("Jarvis's messages, approvals and alerts as banners, even when the app is closed. Approve from the lock screen needs the phone unlocked. At night a Focus such as Sleep can hold them in Notification Center; allow Jarvis in that Focus to see them.")
                 }
+                .task { await push.refreshStatus() }
                 if UIDevice.current.userInterfaceIdiom == .pad {
                     Section {
                         Toggle("Kiosk when idle on charge", isOn: $idleKiosk)
