@@ -180,3 +180,53 @@ final class PageSwipeTests: XCTestCase {
         XCTAssertFalse(PageSwipe.isSideways(width: 50, height: 30), "not sideways enough")
     }
 }
+
+final class PushTapTests: XCTestCase {
+    private let open = "com.apple.UNNotificationDefaultActionIdentifier"
+
+    func testAPlainNoticeWithATurn() {
+        let tap = PushTap(payload: ["aps": ["alert": ["title": "Lookout"]], "notice_id": "n1", "kind": "heads", "turn_id": 1879], action: open)
+        XCTAssertEqual(tap.noticeId, "n1")
+        XCTAssertEqual(tap.destination, .turn(1879))
+        XCTAssertEqual(tap.noticeToClear, "n1")
+    }
+
+    func testTheWhileYouWereAsleepSummary() {
+        let tap = PushTap(payload: ["notice_id": "held-2026-11-18", "kind": "heads"], action: open)
+        XCTAssertTrue(tap.isHeldSummary)
+        XCTAssertEqual(tap.destination, .notices)
+        XCTAssertNil(tap.noticeToClear, "held- ids aren't real notices")
+    }
+
+    func testAReportReadyPush() {
+        let tap = PushTap(payload: ["notice_id": "n2", "kind": "heads", "report_id": "95430f3fbe7f29d3"], action: open)
+        XCTAssertEqual(tap.destination, .report("95430f3fbe7f29d3"))
+    }
+
+    func testApproveFromTheLockScreen() {
+        let tap = PushTap(payload: ["notice_id": "n3", "kind": "need", "approval_id": "ap1"], action: PushWords.approveAction)
+        XCTAssertEqual(tap.answer?.id, "ap1")
+        XCTAssertEqual(tap.answer?.ok, true)
+        XCTAssertEqual(tap.destination, .app)
+    }
+
+    func testWrongTypesAndStrangersNeverBreakIt() {
+        // Turn id as text or a float, ids as numbers, junk fields, a bad report id.
+        let odd = PushTap(payload: ["notice_id": 42, "turn_id": "77", "approval_id": NSNull(), "report_id": "NOT-HEX", "extra": ["deep": [1, 2]]], action: open)
+        XCTAssertEqual(odd.noticeId, "42")
+        XCTAssertEqual(odd.turnId, 77)
+        XCTAssertNil(odd.approvalId)
+        XCTAssertNil(odd.reportId)
+        XCTAssertEqual(PushTap(payload: ["turn_id": 1879.0], action: open).turnId, 1879)
+        XCTAssertNil(PushTap(payload: ["turn_id": "soon"], action: open).turnId)
+        // Nothing at all: just open the app's notices.
+        let empty = PushTap(payload: [:], action: open)
+        XCTAssertNil(empty.noticeId)
+        XCTAssertEqual(empty.destination, .notices)
+        XCTAssertNil(empty.noticeToClear)
+        // A swipe goes nowhere and clears nothing.
+        let swiped = PushTap(payload: ["notice_id": "n1"], action: "com.apple.UNNotificationDismissActionIdentifier")
+        XCTAssertEqual(swiped.destination, .app)
+        XCTAssertNil(swiped.noticeToClear)
+    }
+}

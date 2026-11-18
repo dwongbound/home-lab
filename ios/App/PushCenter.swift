@@ -26,6 +26,11 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
     /// at launch if permission was already given.
     func start(app: AppModel) {
         self.app = app
+        // A tap that launched the app is handled now that it's ready.
+        if let tap = waitingTap {
+            waitingTap = nil
+            handle(tap)
+        }
         let center = UNUserNotificationCenter.current()
         // Already set at launch by the app delegate; set again in case.
         center.delegate = self
@@ -119,39 +124,67 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
     /// Banners show while the app is open too, and the snapshot is fetched
     /// at once so the new orange dot appears straight away. Being shown is
     /// not acting on it: nothing is cleared (NoticeResponse.shown).
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        await MainActor.run {
-            if let app = self.app { Task { await app.today.load(app: app) } }
+    ///
+    /// The completion-handler form, answered on the main thread. The async
+    /// form let the system's own completion run on a background thread,
+    /// which UIKit doesn't allow (the likely cause of the tap crash,
+    /// Dylan 2026-11-18).
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        nonisolated(unsafe) let done = completionHandler
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                if let app = self.app { Task { await app.today.load(app: app) } }
+                done([.banner, .list, .sound])
+            }
         }
-        return [.banner, .list, .sound]
     }
 
     /// Tapping a notification (or Approve/Deny on it) is acting on it: the
     /// notice is cleared everywhere, so its orange dot fades on every
-    /// device. A tap also opens the Notices sheet. Swiping it away is not
-    /// acting (NoticeResponse in JarvisKit).
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let payload = response.notification.request.content.userInfo
-        let reply = NoticeResponse.from(action: response.actionIdentifier)
-        let approvalId = PushWords.approvalId(from: payload)
-        let noticeId = PushWords.noticeId(from: payload)
-        await MainActor.run {
-            guard let app = self.app else { return }
-            Task {
-                if let approvalId, reply == .approved || reply == .denied {
-                    await app.answerApproval(id: approvalId, summary: response.notification.request.content.body, ok: reply == .approved)
-                }
-                if reply.clearsNotice, let noticeId { await app.clearNotices([noticeId]) }
-            }
-            // A tap opens the full message in Chat when the push points at
-            // one; otherwise the Notices list.
-            if reply == .opened {
-                if let turnId = PushWords.turnId(from: payload) {
-                    Task { await app.openTurn(turnId) }
+    /// device. Swiping it away is not acting (NoticeResponse in JarvisKit).
+    /// Everything needed is read off the response here, into plain values
+    /// (PushTap), then handled on the main thread, and the system's
+    /// completion is called there too. A tap that cold-launches the app
+    /// before it's ready waits and is handled once `start(app:)` runs.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let content = response.notification.request.content
+        let tap = PushTap(payload: content.userInfo, action: response.actionIdentifier, body: content.body.isEmpty ? content.title : content.body)
+        nonisolated(unsafe) let done = completionHandler
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                if self.app == nil {
+                    self.waitingTap = tap
                 } else {
-                    app.showNotices = true
+                    self.handle(tap)
                 }
+                done()
             }
+        }
+    }
+
+    /// A tap that arrived before the app was ready (a cold launch).
+    private var waitingTap: PushTap?
+
+    /// What a tap does: answers an approval, clears its notice, then opens
+    /// the report, the chat turn or the notices list (PushTap.destination).
+    private func handle(_ tap: PushTap) {
+        guard let app else { return }
+        Task {
+            if let answer = tap.answer {
+                await app.answerApproval(id: answer.id, summary: tap.body, ok: answer.ok)
+            }
+            if let noticeId = tap.noticeToClear { await app.clearNotices([noticeId]) }
+        }
+        switch tap.destination {
+        case .app:
+            break
+        case .report:
+            // Reports open in the app's own reader (the reports work).
+            app.showNotices = true
+        case .turn(let turnId):
+            Task { await app.openTurn(turnId) }
+        case .notices:
+            app.showNotices = true
         }
     }
 }
