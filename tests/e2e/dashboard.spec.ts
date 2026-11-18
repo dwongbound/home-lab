@@ -292,6 +292,63 @@ test('Services has the terminal, and there is no separate Shell tab', async ({ p
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Dylan')
 })
 
+test('the terminal key bar sends Ctrl+C, pastes in and copies out', async ({ page, context, browserName }) => {
+  // A stand-in for ttyd: a page whose window.term records what it's sent.
+  await page.route('**/shell/', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><body><script>
+      window.sent = [];
+      const lines = ['$ ls', 'notes.txt', ''];
+      window.term = {
+        input: (d) => window.sent.push(['key', d]),
+        paste: (t) => window.sent.push(['paste', t]),
+        focus: () => {},
+        hasSelection: () => false,
+        getSelection: () => '',
+        rows: 3,
+        buffer: { active: { viewportY: 0, length: 3, getLine: (y) => ({ translateToString: () => lines[y] }) } },
+      };
+    </script></body>`,
+  }))
+  if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/#services')
+  const bar = page.getByRole('toolbar', { name: 'Terminal keys' })
+  await expect(bar).toBeVisible()
+  const sent = () => page.frame({ url: /\/shell\/$/ })!.evaluate(() => (window as unknown as { sent: [string, string][] }).sent)
+
+  // Ctrl+C goes in as a key press (an interrupt), not as pasted text.
+  const ctrlC = bar.getByRole('button', { name: 'Send Ctrl+C' })
+  expect((await ctrlC.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await ctrlC.click()
+  await expect.poll(sent).toEqual([['key', '\x03']])
+
+  // Paste: the system clipboard where the browser shares it, else a box to paste into.
+  await bar.getByRole('button', { name: 'Paste' }).click()
+  const box = page.getByRole('dialog', { name: 'Paste into the terminal' })
+  const pasted = page.getByRole('status').filter({ hasText: 'Pasted.' })
+  await expect(box.or(pasted)).toBeVisible()
+  if (await box.isVisible()) {
+    const field = box.getByRole('textbox')
+    expect(await field.evaluate((el) => getComputedStyle(el).fontSize)).toBe('16px')
+    await field.fill('echo hi')
+    await box.getByRole('button', { name: 'Send' }).click()
+    await expect(box).toBeHidden()
+    await expect.poll(sent).toEqual([['key', '\x03'], ['paste', 'echo hi']])
+  }
+
+  // Copy: the screen goes to the clipboard, or shows in a box to copy by hand.
+  await bar.getByRole('button', { name: 'Copy' }).click()
+  const copyBox = page.getByRole('dialog', { name: 'Copy from the terminal' })
+  const copied = page.getByRole('status').filter({ hasText: 'Copied the screen.' })
+  await expect(copyBox.or(copied)).toBeVisible()
+  if (await copyBox.isVisible()) {
+    await expect(copyBox.getByRole('textbox')).toHaveValue('$ ls\nnotes.txt')
+    await copyBox.getByRole('button', { name: 'Close' }).click()
+  } else {
+    if (browserName === 'chromium') expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('$ ls\nnotes.txt')
+  }
+})
+
 test('Money flags purchases to sort, and every row opens a detail that Close and Back dismiss', async ({ page }) => {
   await page.goto('/#money')
   await expect(page.getByRole('heading', { level: 1, name: 'Money' })).toBeVisible()

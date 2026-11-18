@@ -307,6 +307,19 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* On Services, a shorter terminal under the panels. */
 .terminal--compact { margin-top: var(--gap); }
 .terminal--compact .shell__frame { height: clamp(280px, 42dvh, 520px); }
+/* The key bar under the terminal: keys an iPhone keyboard lacks, plus Paste and Copy. Wraps to two rows on a phone, so every key shows. */
+.termkeys { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.termkeys__key { flex: none; min-width: 44px; height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.1); color: var(--frost); font: 600 14px var(--font-mono); cursor: pointer; touch-action: manipulation; }
+.termkeys__key--wide { font-family: var(--font-body); }
+.termkeys__key:hover { background: rgba(255,255,255,.18); }
+.termkeys__key:active { background: rgba(255,255,255,.26); }
+/* A fixed line, so a note appearing never moves the page. */
+.termkeys__note { height: 18px; margin: 6px 0 0; color: var(--frost-dim); font-size: 13px; }
+.dialog.dialog--clip { height: 380px; }
+.clip { display: grid; grid-template-rows: auto 1fr; gap: 8px; min-height: 0; }
+.clip__label { color: var(--frost-dim); font-size: 13.5px; }
+/* 16px, so iOS doesn't zoom in when the box gets focus. */
+.clip__text { width: 100%; height: 100%; min-height: 0; resize: none; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--glass-edge); background: rgba(0,0,0,.18); color: var(--frost); font: 16px var(--font-mono); }
 /* Services: what each loaded model is doing. */
 .loaded__list { gap: 14px; }
 .loaded__item { display: grid; gap: 3px; }
