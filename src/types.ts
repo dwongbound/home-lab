@@ -191,6 +191,37 @@ export interface Snapshot {
   moneyPicks: MoneyPicks
   /** Jarvis's greeting and the tasks he offers to do (GET /offers); null on an older Jarvis. */
   offers: JarvisOffers | null
+  /** Jarvis's unread notifications, newest first (GET /notices); null on an older Jarvis. */
+  notices: Notice[] | null
+}
+
+/** How much a notification asks of Dylan: an answer, a look, or nothing. */
+export type NoticeKind = 'need' | 'heads' | 'fyi'
+
+/** One unread notification: a dot on the orb and a row in the shared list. */
+export interface Notice {
+  id: string
+  kind: NoticeKind
+  /** "Low clouds likely at Torrance on Thursday morning" */
+  title: string
+  body: string
+  /** Where it came from: an approval, Lookout, a reminder, a service alert, a finished job, or a message. */
+  source: 'approval' | 'lookout' | 'reminder' | 'alert' | 'job' | 'message'
+  created: string | null
+  /** The approval a "need" notice is waiting on, for Approve and Deny on its row. */
+  approvalId?: string
+}
+
+/** Which notifications to clear: some, or all. */
+export type NoticeClear = { ids: string[] } | { all: true }
+
+/** A device that wants lock-screen notifications. */
+export interface PushDevice {
+  token: string
+  platform: 'ios' | 'tvos' | 'watchos'
+  environment: 'sandbox' | 'production'
+  bundle: string
+  name: string
 }
 
 /** One task Jarvis offers to do, shown as a card with Start and Hide. */
@@ -364,6 +395,10 @@ export interface DataSource {
   sendFeedback(flag: JarvisFeedback, caller?: { login?: string }): Promise<ActionResult>
   /** Hides one offer for good (Hide on its card). */
   hideOffer(id: string, caller?: { login?: string }): Promise<ActionResult>
+  /** Clears notifications for every device. */
+  clearNotices(which: NoticeClear, caller?: { login?: string }): Promise<ActionResult>
+  /** Passes an app's push token to Jarvis. */
+  registerPush(device: PushDevice, caller?: { login?: string }): Promise<ActionResult>
   /** Night mode on a screen: tells Jarvis you've gone to bed (true) or are up (false). `from` names the screen. */
   setSleep(asleep: boolean, from: string, caller?: { login?: string }): Promise<ActionResult>
   /** What Jarvis remembers, or null when he can't be asked. */
