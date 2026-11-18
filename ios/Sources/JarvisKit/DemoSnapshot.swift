@@ -21,12 +21,16 @@ public enum DemoSnapshot {
     public static var snapshot: Snapshot? {
         let args = ProcessInfo.processInfo.arguments
         guard args.contains("-demoSnapshot") else { return nil }
-        return build(now: Self.now, sparse: args.contains("-demoSparse"))
+        return build(now: Self.now, sparse: args.contains("-demoSparse"), long: args.contains("-demoLong"))
     }
 
     /// The sample snapshot at `now` (full, or `sparse` for the near-empty
     /// case). Split out so a test can check it still decodes.
-    static func build(now: Date, sparse: Bool) -> Snapshot? {
+    static func build(now: Date, sparse: Bool, long: Bool = false) -> Snapshot? {
+        // `-demoLong`: a greeting too long for its card, to check it scrolls.
+        let greeting = long
+            ? "Good evening, Dylan. Volleyball is up next at the Y, and after that the CG x SOW rehearsal runs until ten. I finished rewriting the reminder code so repeats work again, the PS5 Pro is back in stock at Target, your thermostat is heating to 70, the bedroom speaker is playing lo-fi, flights to Tokyo in March dropped by eighty dollars, and tomorrow starts with the dentist at nine, so I'd aim for bed by midnight."
+            : "Good evening, Dylan. Volleyball is up next and I'm rewriting the reminder code in the background."
         let iso = { (offset: Double) in ISO8601DateFormatter().string(from: now.addingTimeInterval(offset * 60)) }
         let cal = Calendar.current
         let sunrise = ISO8601DateFormatter().string(from: cal.date(bySettingHour: 6, minute: 28, second: 0, of: now) ?? now)
@@ -55,7 +59,7 @@ public enum DemoSnapshot {
                   {"id":"c2","at":"\(iso(42))","title":"Volleyball at the Y"},
                   {"id":"jarvis-b@1900","at":"\(iso(120))","title":"Follow up on dinner plans","detail":"Jarvis: reminder"},
                   {"id":"c3","at":"\(iso(180))","title":"CG x SOW rehearsal"}],
-         "offers":{"greeting":"Good evening, Dylan. Volleyball is up next and I'm rewriting the reminder code in the background.","offers":[{"id":"o1","title":"Draft the rehearsal set list","body":"","startText":""}]},
+         "offers":{"greeting":"\(greeting)","offers":[{"id":"o1","title":"Draft the rehearsal set list","body":"","startText":""}]},
          "home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"heat","detail":"heating","current":68,"target":70,"humidity":44},
             {"id":"a","name":"Entrance","kind":"light","state":"on"},{"id":"b","name":"Hall","kind":"light","state":"off"},
             {"id":"e","name":"Desk","kind":"light","state":"on","brightness":0.6},

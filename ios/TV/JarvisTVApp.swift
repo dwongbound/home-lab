@@ -130,6 +130,11 @@ struct AlwaysOnView: View {
     @StateObject private var chat = TVChatModel()
     /// True while the notices list is in the right side.
     @State private var showingNotices = false
+    /// How long the card showing needs to scroll its text through once.
+    @State private var cardScroll: Double = 0
+    /// The most a card's rows may take before they scroll: less when the
+    /// Now/Next card is above.
+    @State private var rowsMax: CGFloat = 274
     @FocusState private var typing: Bool
     /// Guest-friendly (on by default): people walking in see this screen,
     /// so it leaves out sleep, steps, Jarvis's suggestions and the private
@@ -214,6 +219,11 @@ struct AlwaysOnView: View {
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(TVBoard.turnSeconds))
+                // A card whose text is still scrolling stays until it has
+                // gone through once.
+                let extra = cardScroll - TVBoard.turnSeconds
+                if extra > 0 { try? await Task.sleep(for: .seconds(extra)) }
+                cardScroll = 0
                 withAnimation(reduceMotion ? nil : .smooth(duration: 1.0)) { turn += 1 }
             }
         }
@@ -522,6 +532,9 @@ struct AlwaysOnView: View {
                         // nothing below jumps; with fewer, the card takes
                         // its own height and the column centres itself.
                         .frame(height: cards.count >= 3 ? (hero == nil ? 470 : 400) : nil, alignment: .top)
+                        .onPreferenceChange(ScrollCycleKey.self) { cardScroll = $0 }
+                        .onAppear { rowsMax = hero == nil ? 344 : 274 }
+                        .onChange(of: hero == nil) { _, none in rowsMax = none ? 344 : 274 }
                         if cards.count > 1 {
                             CardDots(count: cards.count, active: active, seconds: TVBoard.turnSeconds, palette: palette)
                         }
@@ -599,12 +612,11 @@ struct AlwaysOnView: View {
                 // The headline is already across the top; the card is the rest.
                 if let parts = TVBoard.greeting(snapshot, guest: guest) {
                     if let body = parts.body {
+                        // Long messages scroll slowly in the card rather than
+                        // shrinking or cutting off.
                         Text(body)
                             .font(.title3)
                             .lineSpacing(6)
-                            .lineLimit(7)
-                            .minimumScaleFactor(0.7)
-                            .fixedSize(horizontal: false, vertical: true)
                             .staggered(1)
                     }
                 }
@@ -823,11 +835,14 @@ struct AlwaysOnView: View {
                 .font(.callout.weight(.bold))
                 .foregroundStyle(inkDim)
                 .labelStyle(TintedIconLabel(icon: accent))
-            rows()
+            // Rows that don't fit scroll slowly inside the card.
+            AutoScrollBox(maxHeight: rowsMax) {
+                VStack(alignment: .leading, spacing: 18) {
+                    rows()
+                }
                 .font(.body)
                 .foregroundStyle(ink)
-                // Shrinks a step rather than clipping when a card is full.
-                .minimumScaleFactor(0.85)
+            }
         }
         .padding(34)
         .frame(maxWidth: .infinity, alignment: .leading)

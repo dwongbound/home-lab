@@ -307,3 +307,64 @@ extension View {
     /// Enters after the rows above it.
     func staggered(_ index: Int) -> some View { modifier(StaggerIn(index: index)) }
 }
+
+// MARK: Long text
+
+/// Text taller than its panel scrolls slowly inside it (AutoScroll in
+/// JarvisKit): a pause at the top, reading pace, a pause at the bottom,
+/// back up. Edges fade so nothing cuts off hard. Text that fits never
+/// moves. Reduce Motion: no scrolling, the panel just ends.
+struct AutoScrollBox<Content: View>: View {
+    /// The tallest the box may be; shorter content keeps its own height.
+    let maxHeight: CGFloat
+    @ViewBuilder var content: Content
+    @State private var contentHeight: CGFloat = 0
+    @State private var started = Date()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let overflow = max(0, Double(contentHeight - maxHeight))
+        let scrolls = overflow > 0.5 && !reduceMotion
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !scrolls)) { tick in
+            content
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .background(GeometryReader { g in Color.clear.preference(key: ContentHeightKey.self, value: g.size.height) })
+                .offset(y: scrolls ? -AutoScroll.offset(at: tick.date.timeIntervalSince(started), overflow: overflow) : 0)
+        }
+        .frame(height: min(contentHeight == 0 ? maxHeight : contentHeight, maxHeight), alignment: .top)
+        .clipped()
+        .mask {
+            if overflow > 0.5 {
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.06),
+                    .init(color: .black, location: 0.92),
+                    .init(color: .clear, location: 1),
+                ], startPoint: .top, endPoint: .bottom)
+            } else {
+                Rectangle()
+            }
+        }
+        .onPreferenceChange(ContentHeightKey.self) { height in
+            if abs(height - contentHeight) > 0.5 {
+                contentHeight = height
+                started = Date()
+            }
+        }
+        // How long the card should stay up so this scrolls through once.
+        .preference(key: ScrollCycleKey.self, value: scrolls ? AutoScroll.cardSeconds(turn: 0, overflow: overflow) : 0)
+    }
+}
+
+/// The measured height of the content inside an AutoScrollBox.
+struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// The longest scroll-through any box on a card needs, in seconds.
+struct ScrollCycleKey: PreferenceKey {
+    static var defaultValue: Double = 0
+    static func reduce(value: inout Double, nextValue: () -> Double) { value = max(value, nextValue()) }
+}
