@@ -16,6 +16,7 @@ import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
 import { parseNotices } from './notices.mjs'
 import { parseNutrition } from './nutrition.mjs'
+import { parseRoutineBook, toJarvisRoutine } from './routines.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
@@ -23,6 +24,8 @@ const realExecFile = promisify(execFileCallback)
 // Making a voice sample can take a few seconds when the GPU is busy.
 const SAMPLE_TIMEOUT_MS = 15_000
 const PROBE_TIMEOUT_MS = 2500
+// Running a routine by hand waits for its steps (a TV waking, a pause between steps).
+const ROUTINE_RUN_TIMEOUT_MS = 60_000
 // Jarvis can take a while: Claude thinking, or the local model loading first.
 const ASK_TIMEOUT_MS = 180_000
 // A chat reply can wait on an approval for up to 10 minutes, so its stream gets longer.
@@ -736,6 +739,62 @@ export function createLiveSource(config, deps = {}) {
         const body = await res.json().catch(() => ({}))
         if (!res.ok) return { ok: false, message: body?.message ?? `Jarvis answered ${res.status}` }
         return { ok: true, message: body?.message ?? 'Done' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
+     * Jarvis's routines and what their steps can use (GET /routines). Null
+     * when there's no login, he doesn't answer, or he's too old to have them.
+     */
+    async routines(caller = {}) {
+      if (!caller.login) return null
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/routines`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        return parseRoutineBook(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /**
+     * Saves (POST /routines), deletes (POST /routines/{id}/delete) or runs
+     * (POST /routines/{id}/run) one routine. A run can take a while (lights,
+     * a TV waking up), so it gets a longer wait than a save.
+     */
+    async changeRoutine(change, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to change routines' }
+      let path = '/routines'
+      let body = {}
+      let done = 'Saved'
+      let wait = PROBE_TIMEOUT_MS * 2
+      if (change.op === 'save') body = { routine: toJarvisRoutine(change.routine) }
+      if (change.op === 'delete') {
+        path = `/routines/${encodeURIComponent(change.id)}/delete`
+        done = 'Deleted'
+      }
+      if (change.op === 'run') {
+        path = `/routines/${encodeURIComponent(change.id)}/run`
+        done = 'Done'
+        wait = ROUTINE_RUN_TIMEOUT_MS
+      }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}${path}`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(wait),
+        })
+        const answer = await res.json().catch(() => ({}))
+        if (res.status === 404 && change.op === 'save') return { ok: false, message: 'Jarvis can’t run routines yet' }
+        const said = answer?.detail ?? answer?.message ?? answer?.error
+        if (!res.ok || answer?.ok === false) return { ok: false, message: typeof said === 'string' && said ? said : `Jarvis answered ${res.status}` }
+        return { ok: true, message: typeof said === 'string' && said ? said : done }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }

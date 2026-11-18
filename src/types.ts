@@ -376,6 +376,56 @@ export interface MemoryHit { chat: string; role: 'user' | 'jarvis'; text: string
 /** Adding or forgetting one fact. */
 export type MemoryChange = { op: 'remember'; text: string } | { op: 'forget'; id: string }
 
+/** A day of the week a timed routine runs on. */
+export type RoutineDay = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+
+/** What starts a routine: a time, coming or going, bed or waking, or only the Run button. */
+export type RoutineTrigger =
+  | { type: 'time'; at: string; days: RoutineDay[] }
+  | { type: 'arrive'; zone: string; minAway: number }
+  | { type: 'leave'; zone: string }
+  | { type: 'asleep' }
+  | { type: 'awake' }
+  | { type: 'manual' }
+
+/** One step of a routine. `confirm` = Jarvis asks you before that step runs. */
+export type RoutineAction =
+  | { type: 'device'; entity: string; command: string; value?: number | string }
+  | { type: 'scene'; entity: string }
+  | { type: 'app'; entity: string; app: string }
+  | { type: 'notify'; text: string }
+  | { type: 'ask'; text: string; confirm: boolean }
+  | { type: 'email'; to: string; subject: string; body: string; confirm: boolean }
+  | { type: 'wait'; seconds: number }
+
+/** A group of steps Jarvis runs by himself (Dylan, 2026-11-18). */
+export interface Routine {
+  id: string
+  name: string
+  enabled: boolean
+  trigger: RoutineTrigger
+  actions: RoutineAction[]
+  /** How its last run went, if it has run. */
+  lastRun?: { at: string; ok: boolean; detail: string }
+}
+
+/** A routine being written: a new one has no id yet. */
+export type RoutineDraft = Omit<Routine, 'id' | 'lastRun'> & { id?: string }
+
+/** What a step can use: devices and their commands, scenes, screens with apps, places. */
+export interface RoutineOptions {
+  devices: { entity: string; name: string; kind: string; commands: string[] }[]
+  scenes: { entity: string; name: string }[]
+  apps: { entity: string; name: string; apps: string[] }[]
+  zones: string[]
+}
+
+/** Everything the Routines page shows. */
+export interface RoutineBook { routines: Routine[]; options: RoutineOptions }
+
+/** Saving, deleting or running one routine. */
+export type RoutineChange = { op: 'save'; routine: RoutineDraft } | { op: 'delete'; id: string } | { op: 'run'; id: string }
+
 /** One of the voices Jarvis can speak in (Kokoro's built-in set). */
 export interface VoiceOption {
   /** Kokoro's id, e.g. "bm_george". */
@@ -436,6 +486,10 @@ export interface DataSource {
   searchMemory(query: string, caller?: { login?: string }): Promise<MemoryHit[]>
   /** Adds or forgets one fact. */
   changeMemory(change: MemoryChange, caller?: { login?: string }): Promise<ActionResult>
+  /** Jarvis's routines and what their steps can use, or null when he can't be asked. */
+  routines(caller?: { login?: string }): Promise<RoutineBook | null>
+  /** Saves, deletes or runs one routine. */
+  changeRoutine(change: RoutineChange, caller?: { login?: string }): Promise<ActionResult>
   /** How Jarvis sounds, or null when he can't be asked. */
   voice(caller?: { login?: string }): Promise<VoiceSettings | null>
   /** Saves how Jarvis sounds; used from his next reply. */
