@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react'
 import { parseMarkdown, type Block, type Span } from '../lib/markdown'
+import { openReport, reportIdFromHref } from '../lib/reportViewer'
 
 /**
  * Jarvis's reply as rich text: headings, lists, tables, dividers, code
@@ -57,8 +58,15 @@ function Spans({ spans }: { spans: Span[] }) {
         if (span.kind === 'bold') return <strong key={i}>{span.text}</strong>
         if (span.kind === 'italic') return <em key={i}>{span.text}</em>
         if (span.kind === 'code') return <code key={i} className="md__inline">{span.text}</code>
-        // Links open elsewhere so the chat (and Talk) stay where they are.
-        if (span.kind === 'link') return <a key={i} href={span.href} target="_blank" rel="noreferrer">{span.text}</a>
+        if (span.kind === 'link') {
+          // A link to one of his reports opens in the viewer, inside Jarvis.
+          const reportId = reportIdFromHref(span.href)
+          if (reportId !== null) {
+            return <a key={i} href={span.href} onClick={(e) => { e.preventDefault(); openReport(reportId, span.text) }}>{span.text}</a>
+          }
+          // Other links open elsewhere so the chat (and Talk) stay where they are.
+          return <a key={i} href={span.href} target="_blank" rel="noreferrer">{span.text}</a>
+        }
         return <Fragment key={i}>{span.text}</Fragment>
       })}
     </>

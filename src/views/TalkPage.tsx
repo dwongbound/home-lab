@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useSnapshot } from '../api/client'
 import { Backdrop } from '../components/Backdrop'
 import { JarvisPanel } from '../components/JarvisPanel'
+import { ReportViewer } from '../components/ReportViewer'
 import { ThinkingLoader } from '../components/ThinkingLoader'
 import { readSky } from '../lib/prefs'
 import { useNow } from '../useNow'
@@ -42,6 +43,7 @@ export function TalkPage() {
     <>
       <Backdrop now={now} override={readSky()} />
       <div className="shell" data-view="talk">{body}</div>
+      <ReportViewer />
     </>
   )
 }
