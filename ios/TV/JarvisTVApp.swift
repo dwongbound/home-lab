@@ -42,7 +42,7 @@ final class AlwaysOnModel: ObservableObject {
 
     /// The unread notices, newest first, less any just cleared.
     var notices: [Notice] {
-        Notices.sorted((snapshot?.notices ?? []).filter { !cleared.contains($0.id) })
+        TVSettled.shared.record.showing(Notices.sorted((snapshot?.notices ?? []).filter { !cleared.contains($0.id) }))
     }
 
     /// Banners whatever is new since the last snapshot: the newest, with
@@ -72,11 +72,27 @@ final class AlwaysOnModel: ObservableObject {
     /// Approve or Deny from a notice, then clear it.
     func answer(_ notice: Notice, ok: Bool) {
         guard let approvalId = notice.approvalId else { return }
+        let summary = notice.body.isEmpty ? notice.title : notice.body
+        let store = TVSettled.shared
+        store.settle(approvalId, line: ApprovalWording.settledLine(ok: ok, later: false, by: "page", summary: summary))
+        objectWillChange.send()
         Task {
             do {
-                try await client.answer(approval: approvalId, ok: ok)
-                clearNotices([notice.id])
-            } catch {}
+                switch try await client.answer(approval: approvalId, ok: ok) {
+                case .taken:
+                    clearNotices([notice.id])
+                case .gone(_, let answer):
+                    // Already over: gone for good, not an error.
+                    store.settle(approvalId, line: ApprovalReply.goneLine(answer: answer, summary: summary), replace: true)
+                    clearNotices([notice.id])
+                case .failed:
+                    store.unsettle(approvalId)
+                }
+            } catch {
+                store.unsettle(approvalId)
+            }
+            approvals = max(0, approvals - 1)
+            objectWillChange.send()
         }
     }
 
@@ -103,7 +119,9 @@ final class AlwaysOnModel: ObservableObject {
             snapshot = try await client.snapshot()
             reachable = true
             noticeArrivals()
-            approvals = (try? await client.pendingApprovals().count) ?? approvals
+            if let pending = try? await client.pendingApprovals() {
+                approvals = TVSettled.shared.record.waiting(pending).count
+            }
         } catch {
             reachable = false
             #if DEBUG

@@ -46,7 +46,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
-        let board = WatchBoard(snapshot: snapshot)
+        let board = WatchBoard(snapshot: snapshot, settled: SettledApprovals.load())
         let data = ComplicationData(board: board)
         let context: [String: Any] = ["board": board.message, "complication": data.dictionary]
         try? session.updateApplicationContext(context)

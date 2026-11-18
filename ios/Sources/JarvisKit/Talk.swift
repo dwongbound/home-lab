@@ -39,6 +39,9 @@ public enum TalkEvent: Equatable, Sendable {
     case bye
     case approval(Approval)
     case approvalDone(id: String, ok: Bool, by: String, later: Bool)
+    /// The line has carried no audio for `seconds` (Jarvis noticed): the
+    /// app restarts its microphone without hanging up.
+    case noAudio(seconds: Double)
 
     /// Reads one text message. Unknown or broken ones come back nil, so a
     /// newer Jarvis never breaks an older app.
@@ -92,6 +95,8 @@ public enum TalkEvent: Equatable, Sendable {
                 by: object["by"] as? String ?? "timeout",
                 later: object["later"] as? Bool ?? false
             )
+        case "no_audio":
+            return .noAudio(seconds: (object["seconds"] as? NSNumber)?.doubleValue ?? 0)
         default:
             return nil
         }

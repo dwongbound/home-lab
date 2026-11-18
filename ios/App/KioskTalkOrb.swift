@@ -53,13 +53,14 @@ struct KioskTalkOrb: View {
             }
             .accessibilityLabel(callOpen ? "Stop talking" : "Talk to Jarvis")
             .animation(.smooth(duration: 0.6), value: callOpen)
-            Text(problem ?? " ")
+            Text(problem ?? (talk.micStuck ? TalkModel.micStuckWords : " "))
                 .font(.footnote)
                 .foregroundStyle(Theme.rose)
                 .lineLimit(1)
-                .opacity(problem == nil ? 0 : 1)
+                .opacity(problem == nil && !talk.micStuck ? 0 : 1)
                 .animation(.smooth, value: problem)
-                .accessibilityHidden(problem == nil)
+                .animation(.smooth, value: talk.micStuck)
+                .accessibilityHidden(problem == nil && !talk.micStuck)
         }
         .onChange(of: talk.problem) { _, message in
             guard let message, !message.isEmpty else { return }
@@ -73,6 +74,12 @@ struct KioskTalkOrb: View {
 
     /// Start, or hang up completely (PhoneKiosk.orbTap in JarvisKit).
     private func tap() {
+        // A microphone that stopped and wouldn't come back: the tap restarts it.
+        if talk.micStuck {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            talk.restartMic()
+            return
+        }
         switch PhoneKiosk.orbTap(callOpen: callOpen, connecting: talk.phase == .connecting) {
         case .start:
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()

@@ -57,8 +57,9 @@ public struct WatchBoard: Equatable, Sendable {
 
     /// From the phone's snapshot: unread notices newest first, running tasks,
     /// and the next event or agenda item still to come today.
-    public init(snapshot: Snapshot?, now: Date = Date()) {
-        notices = Notices.sorted(snapshot?.notices ?? []).prefix(12).map(WatchNotice.init)
+    /// Approval rows already over (`settled`, the phone's record) are left off.
+    public init(snapshot: Snapshot?, settled: SettledApprovals = SettledApprovals(), now: Date = Date()) {
+        notices = settled.showing(Notices.sorted(snapshot?.notices ?? [])).prefix(12).map(WatchNotice.init)
         tasks = (snapshot?.jobs?.running ?? []).map { ($0.label, $0.startedAt) }
         let next = snapshot.flatMap { s in
             NowNext.pick(events: s.events, agenda: s.today, now: now).flatMap { $0.kind == .tomorrow ? nil : $0 }

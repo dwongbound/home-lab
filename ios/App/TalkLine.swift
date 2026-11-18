@@ -17,6 +17,9 @@ struct TalkHandlers {
     var onLevel: @MainActor (_ level: Float, _ tone: Float) -> Void
     /// The line dropped; the message says why, in words for the screen.
     var onClosed: @MainActor (String) -> Void
+    /// True when the microphone stopped and couldn't be brought back (the
+    /// screen says "Mic paused. Tap to resume."); false once it's back.
+    var onMicStuck: @MainActor (Bool) -> Void = { _ in }
 }
 
 /// Runs `body` on the main thread, after anything already sent there, so
@@ -54,9 +57,11 @@ enum TalkError: LocalizedError {
 // socket's callbacks and the main thread; `queue` keeps them in order.
 final class TalkLine: @unchecked Sendable {
     private let handlers: TalkHandlers
-    private let engine = AVAudioEngine()
-    private let voice = AVAudioPlayerNode()
-    private let chime = AVAudioPlayerNode()
+    // Not constants: after "media services were reset" the old engine is
+    // dead and a new one (with new players) takes its place.
+    private var engine = AVAudioEngine()
+    private var voice = AVAudioPlayerNode()
+    private var chime = AVAudioPlayerNode()
     private let socket: URLSessionWebSocketTask
     private let queue = DispatchQueue(label: "jarvis.talk")
     private let capture = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
@@ -79,6 +84,17 @@ final class TalkLine: @unchecked Sendable {
     private var audioStarted = false
     /// Microphone frames sent so far, for the debug log.
     private var framesSent = 0
+    /// Notices a microphone that has quietly stopped (JarvisKit MicWatchdog).
+    private var watchdog = MicWatchdog()
+    /// The once-a-second look at the watchdog.
+    private var watchTimer: DispatchSourceTimer?
+    /// When an audio interruption began, while one is under way.
+    private var interruptedAt: Date?
+    /// True while "Mic paused. Tap to resume." is on screen.
+    private var stuckShown = false
+    /// An interruption whose "ended" never comes (it happens) stops holding
+    /// the watchdog back after this long.
+    private static let interruptionPatience: TimeInterval = 15
 
     /// Builds the line; nothing starts until `open()`.
     init(request: URLRequest, handlers: TalkHandlers) {
@@ -115,6 +131,7 @@ final class TalkLine: @unchecked Sendable {
         send(text: TalkMessage.client(micRate: engine.inputNode.outputFormat(forBus: 0).sampleRate, audioRate: voiceRate))
         listen()
         watchAudio()
+        startWatchdog()
     }
 
     /// Hangs up: microphone, voice and socket all stop.
@@ -219,6 +236,20 @@ final class TalkLine: @unchecked Sendable {
     /// One chunk from the microphone: down to 16 kHz, into 20 ms frames, out
     /// to Jarvis. Runs on the audio thread.
     private func heard(_ buffer: AVAudioPCMBuffer) {
+        // Exact zeros mean a dead input, not a quiet room. While Jarvis
+        // speaks the echo cancelling may flatten the input, so only buffers
+        // arriving count then.
+        let zeros = buffer.floatChannelData.map {
+            MicWatchdog.isDigitalSilence(UnsafeBufferPointer(start: $0[0], count: Int(buffer.frameLength)))
+        } ?? true
+        queue.async {
+            self.watchdog.heard(silent: zeros && self.state != .speaking)
+            if self.stuckShown, !zeros {
+                self.stuckShown = false
+                talkLog("mic back")
+                onMain { self.handlers.onMicStuck(false) }
+            }
+        }
         guard let converter else { return }
         let ratio = capture.sampleRate / buffer.format.sampleRate
         let room = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
@@ -394,6 +425,12 @@ final class TalkLine: @unchecked Sendable {
             // He's said goodbye and is closing the line: hang up quietly
             // (no "line dropped" message), mic and audio off, no reconnect.
             shutDown(message: nil)
+        case .noAudio(let seconds):
+            // Jarvis has heard nothing from this line for a while: restart
+            // the microphone, keeping the line open.
+            talkLog("jarvis heard no audio for \(seconds)s")
+            watchdog.restarting()
+            recoverMic(reason: "jarvis heard nothing", rebuild: watchdog.tries > 1)
         default:
             break
         }
@@ -407,22 +444,60 @@ final class TalkLine: @unchecked Sendable {
 
     // MARK: Phone audio changes
 
-    /// A call or Siri takes the audio: hang up and say so. AirPods in or out:
-    /// rewire and carry on.
+    /// Keeps the microphone alive through whatever the phone does to its
+    /// audio (Dylan, 2026-11-18: the line stayed open for eight minutes with
+    /// no audio going out). The line itself is never dropped for these:
+    /// - A call, Siri or another app interrupts: the watchdog holds off;
+    ///   when it ends the engine restarts, whether or not iOS says "should
+    ///   resume" (and if the "ended" never comes, the watchdog steps in).
+    /// - AirPods in or out, or the engine's own setup changing: rewire.
+    /// - Media services reset: a whole new engine.
     private func watchAudio() {
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] note in
             let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
-            if raw == AVAudioSession.InterruptionType.began.rawValue {
-                self?.shutDown(message: "Your phone’s audio was interrupted, so Talk stopped. Tap Talk to start again.")
+            self?.queue.async {
+                guard let self, !self.closed else { return }
+                if raw == AVAudioSession.InterruptionType.began.rawValue {
+                    talkLog("audio interrupted")
+                    self.interruptedAt = Date()
+                    self.watchdog.held = true
+                } else {
+                    talkLog("interruption ended")
+                    self.interruptedAt = nil
+                    self.watchdog.held = false
+                    self.watchdog.reset()
+                    self.recoverMic(reason: "interruption ended")
+                }
             }
         })
-        observers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
-            self?.queue.async { self?.rewire() }
+        observers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil) { [weak self] note in
+            self?.queue.async {
+                guard let self, note.object as? AVAudioEngine === self.engine else { return }
+                self.rewire()
+            }
+        })
+        observers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil) { [weak self] note in
+            let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            self?.queue.async {
+                guard let self, !self.closed, self.audioStarted else { return }
+                talkLog("route changed (\(String(describing: reason)))")
+                // Usually the engine's own change notice rewires it; if the
+                // route change left it stopped, start it again here.
+                if !self.engine.isRunning, self.interruptedAt == nil { self.recoverMic(reason: "route change stopped the engine") }
+            }
+        })
+        observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.queue.async {
+                guard let self, !self.closed else { return }
+                self.watchdog.reset()
+                self.recoverMic(reason: "media services reset", rebuild: true)
+            }
         })
     }
 
-    /// Restarts the engine on the new route.
+    /// Restarts the engine on the new route. If it won't start, the
+    /// watchdog sees no buffers and takes it from there.
     private func rewire() {
         guard !closed else { return }
         talkLog("audio route changed, rewiring")
@@ -433,7 +508,97 @@ final class TalkLine: @unchecked Sendable {
             voice.play()
             chime.play()
         } catch {
-            shutDown(message: "The phone’s audio changed and Talk couldn’t carry on. Tap Talk to start again.")
+            talkLog("rewire failed: \(error)")
+        }
+    }
+
+    // MARK: The microphone watchdog
+
+    /// Looks at the watchdog once a second while the line is open.
+    private func startWatchdog() {
+        queue.async {
+            self.watchdog.reset()
+            let timer = DispatchSource.makeTimerSource(queue: self.queue)
+            timer.schedule(deadline: .now() + 1, repeating: 1)
+            timer.setEventHandler { [weak self] in self?.checkMic() }
+            timer.resume()
+            self.watchTimer = timer
+        }
+    }
+
+    /// One look: fine, restart (a full rebuild on the second try), or say
+    /// it's stuck. Runs on `queue`.
+    private func checkMic() {
+        guard !closed, audioStarted else { return }
+        if let interruptedAt, Date().timeIntervalSince(interruptedAt) > Self.interruptionPatience {
+            talkLog("interruption never ended; checking the mic anyway")
+            self.interruptedAt = nil
+            watchdog.held = false
+        }
+        switch watchdog.check() {
+        case .fine:
+            break
+        case .restart:
+            watchdog.restarting()
+            recoverMic(reason: "no microphone buffers", rebuild: watchdog.tries > 1)
+        case .giveUp:
+            guard !stuckShown else { return }
+            stuckShown = true
+            talkLog("mic would not come back")
+            onMain { self.handlers.onMicStuck(true) }
+        }
+    }
+
+    /// Tears the microphone down and starts it again, keeping the socket.
+    /// `rebuild` swaps in a whole new engine (after a media reset, or when a
+    /// plain restart didn't work). Runs on `queue`.
+    private func recoverMic(reason: String, rebuild: Bool = false) {
+        guard !closed, audioStarted else { return }
+        talkLog("restarting mic: \(reason)\(rebuild ? " (new engine)" : "")")
+        engine.inputNode.removeTap(onBus: 0)
+        voice.removeTap(onBus: 0)
+        engine.stop()
+        if rebuild {
+            engine = AVAudioEngine()
+            voice = AVAudioPlayerNode()
+            chime = AVAudioPlayerNode()
+            engine.attach(voice)
+            engine.attach(chime)
+            // Whatever of his voice was queued went with the old engine.
+            generation += 1
+            queued = 0
+        }
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true)
+            try engine.inputNode.setVoiceProcessingEnabled(true)
+        } catch {
+            talkLog("session wouldn't come back: \(error)")
+        }
+        connectNodes()
+        engine.prepare()
+        do {
+            try engine.start()
+            voice.play()
+            chime.play()
+        } catch {
+            talkLog("engine wouldn't start: \(error)")
+        }
+    }
+
+    /// "Mic paused. Tap to resume.": a fresh engine and a fresh count.
+    func restartMic(asked: Bool) {
+        queue.async {
+            guard !self.closed else { return }
+            self.watchdog.reset()
+            self.watchdog.held = false
+            self.interruptedAt = nil
+            if self.stuckShown {
+                self.stuckShown = false
+                onMain { self.handlers.onMicStuck(false) }
+            }
+            self.recoverMic(reason: asked ? "tapped resume" : "asked", rebuild: true)
         }
     }
 
@@ -442,6 +607,8 @@ final class TalkLine: @unchecked Sendable {
         queue.async {
             guard !self.closed else { return }
             self.closed = true
+            self.watchTimer?.cancel()
+            self.watchTimer = nil
             for observer in self.observers { NotificationCenter.default.removeObserver(observer) }
             self.observers = []
             // Only an engine that started has taps to remove; removing one

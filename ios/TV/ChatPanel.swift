@@ -66,7 +66,7 @@ final class TVChatModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         hush()
         do {
             for try await event in client.chat(text) {
-                chat.apply(event)
+                apply(event)
                 lastActivity = Date()
             }
             chat.finish()
@@ -78,14 +78,46 @@ final class TVChatModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         if speakReplies, let reply = chat.lastReply { speak(reply) }
     }
 
-    /// Approve or Deny with the remote.
+    /// One event onto the chat, keeping the TV's settled record: an
+    /// approval that's over is remembered, and one already over (answered
+    /// out loud or on the phone) shows as settled, never with buttons.
+    private func apply(_ event: ChatEvent) {
+        chat.apply(event)
+        switch event {
+        case .approval(let approval):
+            if let line = TVSettled.shared.record.line(for: approval.id) { chat.settle(approval.id, line) }
+        case .approvalDone(let id, let ok, let by, let later):
+            TVSettled.shared.settle(id, line: ApprovalWording.outcomeText(ok: ok, later: later, by: by))
+        default:
+            break
+        }
+    }
+
+    /// Approve or Deny with the remote. If Jarvis says it was already over,
+    /// his account of it stands and the buttons never come back; only an
+    /// answer that didn't reach him puts them back.
     func answer(_ approval: Approval, ok: Bool) async {
-        chat.settle(approval.id, ok ? "Approved" : "Denied")
+        let store = TVSettled.shared
+        let mine = ok ? "Approved" : "Denied"
+        chat.settle(approval.id, mine)
+        store.settle(approval.id, line: mine)
         lastActivity = Date()
         do {
-            try await client.answer(approval: approval.id, ok: ok)
+            switch try await client.answer(approval: approval.id, ok: ok) {
+            case .taken:
+                break
+            case .gone(_, let answer):
+                let line = answer.map { ApprovalWording.outcomeText(ok: $0.ok, later: $0.later, by: $0.by) } ?? ApprovalWording.outcomeText(ok: false, later: false, by: "timeout")
+                chat.settle(approval.id, line)
+                store.settle(approval.id, line: line, replace: true)
+            case .failed(let message):
+                chat.settle(approval.id, nil)
+                store.unsettle(approval.id)
+                chat.problem = message
+            }
         } catch {
             chat.settle(approval.id, nil)
+            store.unsettle(approval.id)
         }
     }
 
