@@ -77,6 +77,10 @@ final class PhoneKioskMonitor: ObservableObject {
 
     /// The phone's physical orientation, in the kiosk's terms.
     private var orientation: PhoneKiosk.Orientation {
+        #if DEBUG
+        // The simulator can't turn a portrait-locked app; this stands in.
+        if ProcessInfo.processInfo.arguments.contains("-pretendSideways") { return .landscape }
+        #endif
         switch UIDevice.current.orientation {
         case .portrait, .portraitUpsideDown: return .portrait
         case .landscapeLeft, .landscapeRight: return .landscape
@@ -105,6 +109,7 @@ final class PhoneKioskMonitor: ObservableObject {
 struct PhoneKioskView: View {
     @ObservedObject var today: TodayModel
     @ObservedObject var talk: TalkModel
+    let app: AppModel
     let onClose: () -> Void
     /// True for a few seconds after a tap, while Close shows.
     @State private var showClose = false
@@ -116,11 +121,16 @@ struct PhoneKioskView: View {
                 Theme.sky.ignoresSafeArea()
                 HStack(spacing: 24) {
                     clock.frame(maxWidth: .infinity, alignment: .leading)
-                    OrbView(
-                        state: (today.snapshot?.jobs?.running.isEmpty ?? true) ? .listening : .working,
-                        size: min(area.size.height * 0.78, area.size.width * 0.42),
-                        level: Double(talk.level),
-                        work: today.snapshot?.jobs?.running ?? []
+                        // Calmer while talking, so the orb has the room.
+                        .opacity(talk.phase == .off ? 1 : 0.55)
+                        .animation(.smooth(duration: 0.6), value: talk.phase == .off)
+                    // Tap to talk, tap again to stop (KioskTalkOrb).
+                    KioskTalkOrb(
+                        talk: talk,
+                        app: app,
+                        size: min(area.size.height * 0.7, area.size.width * 0.4),
+                        work: today.snapshot?.jobs?.running ?? [],
+                        idleDim: 1
                     )
                 }
                 .padding(.horizontal, 36)
