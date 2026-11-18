@@ -22,7 +22,7 @@ import { Spinner } from './Spinner'
 // over him and he stops). The conversation outlives closing the sheet and
 // changing pages, for this visit.
 
-/** model: who wrote the answer ("claude", or "ornith" when he fell back to the local model), once Jarvis has said. */
+/** model: who wrote the answer (a Claude model id like "claude-opus-5-5", plain "claude" from an older Jarvis, or "ornith" when he fell back to the local model), once Jarvis has said. */
 interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[]; flagged?: boolean; model?: string }
 /** An approval as the chat shows it: waiting, being sent, or settled (and how). */
 interface ApprovalView extends Approval {

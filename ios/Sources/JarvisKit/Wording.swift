@@ -85,16 +85,37 @@ public enum ApprovalWording {
 }
 
 public enum ModelWording {
-    /// The chip over a reply: "Jarvis (C)" for Claude, "Jarvis (O)" for
-    /// Ornith, the model's initial for any other; empty when unknown.
+    /// The letter for each Claude model, matched anywhere in the name Jarvis
+    /// sends ("claude-opus-5-5", "opus").
+    private static let claudeLetters: [(word: String, letter: String)] = [
+        ("opus", "O"), ("haiku", "H"), ("sonnet", "S"), ("fable", "F"),
+    ]
+
+    /// The name trimmed and lowercased, as every check below reads it.
+    private static func clean(_ model: String) -> String {
+        model.trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
+    /// The chip over a reply. Claude models get two letters: "Jarvis (CO)"
+    /// Opus, "Jarvis (CH)" Haiku, "Jarvis (CS)" Sonnet, "Jarvis (CF)" Fable;
+    /// a bare "claude" stays "Jarvis (C)". Anything else gets its initial,
+    /// "Jarvis (O)" for Ornith; empty when unknown.
     public static func label(_ model: String) -> String {
-        let name = model.trimmingCharacters(in: .whitespaces)
+        let name = clean(model)
         guard let first = name.first else { return "" }
+        if isClaude(name) {
+            if let found = claudeLetters.first(where: { name.contains($0.word) }) {
+                return "Jarvis (C\(found.letter))"
+            }
+            return "Jarvis (C)"
+        }
         return "Jarvis (\(first.uppercased()))"
     }
 
-    /// Claude's chip is orange; every local model's is blue.
+    /// Claude's chip (any of its models) is orange; every local model's is blue.
     public static func isClaude(_ model: String) -> Bool {
-        model.trimmingCharacters(in: .whitespaces).lowercased() == "claude"
+        let name = clean(model)
+        if name.hasPrefix("claude") { return true }
+        return claudeLetters.contains { $0.word == name }
     }
 }

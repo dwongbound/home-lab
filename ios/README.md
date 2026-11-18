@@ -11,8 +11,9 @@ Review) or straight from Xcode. It never goes to the App Store.
 
 ## What's in it (milestone 1)
 
-- **Chat:** history, streaming replies with the model chip ("Jarvis (C)"
-  orange, "Jarvis (O)" blue), typing dots and the working label, approval
+- **Chat:** history, streaming replies with the model chip (orange for
+  Claude with its model letter, "Jarvis (CO)" / "(CH)" / "(CS)" / "(CF)";
+  "Jarvis (O)" blue), typing dots and the working label, approval
   cards (Approve/Deny), and the faint "…" for "That was wrong".
 - **Today:** Jarvis's greeting and offers (Hide/Start), the agenda, weather
   and thermostat, service alerts, background work.

@@ -453,12 +453,12 @@ export function createMockSource({ now = () => new Date() } = {}) {
         reply = ok ? `Sample data: done. ${action.done}` : 'Sample data: okay, I left it alone.'
       }
       // The sample Jarvis always answers as Claude; the real one says "ornith" when he has fallen back.
-      onEvent({ type: 'model', model: 'claude' })
+      onEvent({ type: 'model', model: 'claude-haiku-5-5' })
       for (const piece of reply.split(/(?<=\s)/)) {
         onEvent({ type: 'delta', text: piece })
         await delay(45)
       }
-      state.chat.push({ role: 'jarvis', text: reply, at: new Date().toISOString(), model: 'claude' })
+      state.chat.push({ role: 'jarvis', text: reply, at: new Date().toISOString(), model: 'claude-haiku-5-5' })
       onEvent({ type: 'done', ok: true })
     },
 
