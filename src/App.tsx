@@ -23,6 +23,7 @@ import { useReveal } from './useReveal'
 import { KioskMode, useKiosk } from './useKiosk'
 import { shownPhase } from './lib/sky'
 import { BuildFooter } from './components/BuildFooter'
+import { ReportViewer } from './components/ReportViewer'
 
 // The whole page: backdrop, top bar, and whichever view the hash names.
 // It owns the three page-level states: waiting for the first snapshot
@@ -116,6 +117,8 @@ export function App() {
         {/* Only once the page has its data: shown under the loader, it would jump down when the panels arrive. */}
         {data ? <BuildFooter /> : null}
       </div>
+      {/* A report opened from the list or from a chat reply shows here, over everything. */}
+      <ReportViewer />
       {toast ? <p className="toast" role="status">{toast}</p> : null}
     </>
   )

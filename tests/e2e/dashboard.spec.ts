@@ -1303,7 +1303,7 @@ test('an approval already answered out loud drops its card for good when I tap i
   }
 })
 
-test('Reports: each says when it is deleted, Keep holds one, Delete asks first, and a report opens as a locked-down page', async ({ page }) => {
+test('Reports: each says when it is deleted, Keep holds one, Delete asks first, and a report opens inside the page as a locked-down frame', async ({ page }) => {
   await page.goto('/#services')
   const reports = page.getByRole('region', { name: 'Reports' })
   // The rule and the room used are stated up front.
@@ -1331,9 +1331,21 @@ test('Reports: each says when it is deleted, Keep holds one, Delete asks first, 
   await expect(confirm).toBeHidden()
   await expect(speakers).toBeVisible()
 
-  // The report is its own page, served so it can't run scripts or load anything from outside.
+  // A tap opens the report here, in the viewer, not in another tab.
   const link = speakers.getByRole('link', { name: 'Bookshelf speakers under $400' })
   await expect(link).toHaveAttribute('href', '/reports/rep-speakers')
+  await expect(link).not.toHaveAttribute('target', '_blank')
+  await link.click()
+  const viewer = page.getByRole('dialog', { name: 'Bookshelf speakers under $400' })
+  await expect(viewer).toBeVisible()
+  const frame = viewer.locator('iframe')
+  await expect(frame).toHaveAttribute('sandbox', '')
+  await expect(viewer.frameLocator('iframe').getByRole('heading', { name: 'Bookshelf speakers under $400' })).toBeVisible()
+  await expect(page).toHaveURL(/#services$/)
+  await viewer.getByRole('button', { name: 'Close' }).click()
+  await expect(viewer).toBeHidden()
+
+  // The report itself is served so it can't run scripts or load anything from outside.
   const res = await page.request.get('/reports/rep-speakers')
   expect(res.status()).toBe(200)
   expect(res.headers()['content-security-policy']).toContain("default-src 'none'")

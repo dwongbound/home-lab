@@ -6,6 +6,7 @@ import { loadConfig } from '../../server/config.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
 import { REPORT_CSP, isReportId, parseReports } from '../../server/sources/reports.mjs'
+import { reportIdFromHref } from '../../src/lib/reportViewer'
 import { endText, reportHref, rulesText, sizeText } from '../../src/lib/reports'
 import type { JarvisReport } from '../../src/types'
 import { callApi } from './helpers'
@@ -76,6 +77,25 @@ describe('report words', () => {
 
   it('links a report to its own page', () => {
     expect(reportHref('ab12')).toBe('/reports/ab12')
+  })
+})
+
+describe('report links', () => {
+  const page = 'https://jarvis.snakebird-ph.ts.net'
+
+  it('recognises a link to one of Jarvis’s reports, so it opens in the viewer', () => {
+    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/reports/95430f3fbe7f29d3', page)).toBe('95430f3fbe7f29d3')
+    expect(reportIdFromHref('/reports/rep-week', page)).toBe('rep-week')
+    // The tailnet address also counts when the page is open somewhere else (dev, or 127.0.0.1).
+    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/reports/95430f3fbe7f29d3', 'http://localhost:5180')).toBe('95430f3fbe7f29d3')
+  })
+
+  it('leaves every other link alone', () => {
+    expect(reportIdFromHref('https://example.com/reports/95430f3fbe7f29d3', page)).toBeNull()
+    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/reports/', page)).toBeNull()
+    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/reports/a/b', page)).toBeNull()
+    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/#services', page)).toBeNull()
+    expect(reportIdFromHref('http://[bad', page)).toBeNull()
   })
 })
 
