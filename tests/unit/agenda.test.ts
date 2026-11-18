@@ -8,7 +8,7 @@ const NOW = new Date('2026-11-10T20:00:00Z')
 
 /** A snapshot with just the parts the agenda reads. */
 function snap(parts: Partial<Snapshot>): Snapshot {
-  return { generatedAt: NOW.toISOString(), services: [], today: [], cloud: null, moneyPicks: { picks: [], remindAt: null }, ...parts } as unknown as Snapshot
+  return { generatedAt: NOW.toISOString(), services: [], metrics: [], today: [], cloud: null, moneyPicks: { picks: [], remindAt: null }, ...parts } as unknown as Snapshot
 }
 
 const cloud = (calendar: unknown[]) => ({ updatedAt: NOW.toISOString(), threads: [], calendar, email: [], deploys: [], pullRequests: [] })
@@ -50,6 +50,13 @@ describe('todayAgenda', () => {
     expect(activeAlerts(later, NOW).map((a) => a.id)).toEqual(['jarvis'])
     const due = snap({ services, moneyPicks: { picks: [pick, { ...pick, id: 'x6' }], remindAt: '2026-11-10T19:00:00Z' } })
     expect(activeAlerts(due, NOW)[0]).toEqual({ id: 'money-picks', text: '2 purchases ready to recategorize in Copilot', href: '#money/ready' })
+  })
+
+  it('warns when C: is down to 7 GB free, and not above that or when the reading is missing', () => {
+    const disk = (value: number | null) => snap({ metrics: [{ id: 'disk', label: 'Free on C:', value, unit: 'GB', total: 237, history: [] }] as Snapshot['metrics'] })
+    expect(activeAlerts(disk(7), NOW)).toEqual([{ id: 'disk-low', text: 'Disk space low: 7 GB free on C:', href: '#overview' }])
+    expect(activeAlerts(disk(8), NOW)).toEqual([])
+    expect(activeAlerts(disk(null), NOW)).toEqual([])
   })
 
   it('marks a finished event done, and has only Jarvis without a digest', () => {

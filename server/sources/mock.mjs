@@ -217,6 +217,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
     // Pretend playbooks (made up), until edited on the Playbooks page.
     playbooks: samplePlaybooks(now()),
     nextPlaybookId: 10,
+    // Pretend reports (made up), until kept or deleted on the Services page.
+    reports: sampleReports(now()),
     // Devices that asked for pushes.
     pushDevices: [],
     // "That was wrong" flags sent from the chat.
@@ -325,6 +327,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         offers: { greeting: 'Well, good evening, Dylan! Your 7 PM practice moved to court 2.', offers: state.offers.map((o) => ({ ...o })) },
         notices: currentNotices(t).map((n) => ({ ...n })),
         // Made-up calories for today.
+        reports: mockReports(state.reports),
         nutrition: { date: t.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140 },
       }
     },
@@ -570,6 +573,26 @@ export function createMockSource({ now = () => new Date() } = {}) {
       }
     },
 
+    /** A pretend report's page, or `gone` when it was deleted. */
+    async reportHtml(id) {
+      const report = state.reports.find((r) => r.id === id)
+      if (!report) return { html: null, gone: true }
+      return { html: sampleReportHtml(report), gone: false }
+    },
+
+    /** Keeps, lets go of, or deletes one pretend report. */
+    async changeReport(change) {
+      const report = state.reports.find((r) => r.id === change?.id)
+      if (!report) return { ok: false, message: 'That report is already gone' }
+      if (change.op === 'delete') {
+        state.reports = state.reports.filter((r) => r !== report)
+        return { ok: true, message: 'Deleted' }
+      }
+      report.kept = change.keep === true
+      if (report.kept) return { ok: true, message: 'Kept until you switch it off' }
+      return { ok: true, message: 'Back to 30 days' }
+    },
+
     /** Saves, deletes or pretends to run one playbook, in memory. */
     async changePlaybook(change) {
       if (change?.op === 'save') {
@@ -677,6 +700,61 @@ function sampleFacts(t) {
     { id: 'f4', text: 'Prefers short answers out loud, details in text.', learned: daysAgo(3), from: 'you' },
     { id: 'f5', text: 'Unloads the local model before gaming.', learned: daysAgo(5.3), from: 'nightly' },
   ]
+}
+
+const REPORT_KEEP_DAYS = 30
+const DAY_MS = 86_400_000
+
+/** Made-up reports for the sample Reports panel (this repo is public). */
+function sampleReports(t) {
+  const daysAgo = (d) => new Date(t.getTime() - d * DAY_MS).toISOString()
+  return [
+    { id: 'rep-speakers', title: 'Bookshelf speakers under $400', summary: 'Five pairs compared on sound, size and price, with a pick for a small room.', created: daysAgo(0.1), kept: false, bytes: 184_000 },
+    { id: 'rep-week', title: 'Week in review', summary: 'What got done, what slipped, and what is coming up next week.', created: daysAgo(6), kept: true, bytes: 96_500 },
+    { id: 'rep-trip', title: 'Weekend trip options', summary: 'Three places within a four-hour drive, with rough costs and what to do there.', created: daysAgo(27), kept: false, bytes: 412_000 },
+  ]
+}
+
+/** The pretend reports as the snapshot carries them: newest first, with each one's end date and the totals. */
+function mockReports(reports) {
+  const list = [...reports]
+    .sort((a, b) => b.created.localeCompare(a.created))
+    .map((r) => {
+      let expires = null
+      if (!r.kept) expires = new Date(Date.parse(r.created) + REPORT_KEEP_DAYS * DAY_MS).toISOString()
+      return { ...r, expires }
+    })
+  let totalBytes = 0
+  for (const r of reports) totalBytes += r.bytes
+  return { reports: list, totalBytes, keepDays: REPORT_KEEP_DAYS, maxBytes: 200_000_000 }
+}
+
+/** A small stand-in page for a pretend report. */
+function sampleReportHtml(report) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${report.title}</title>
+<style>
+  body { font: 17px/1.6 system-ui, sans-serif; margin: 0 auto; padding: 32px 20px; max-width: 44rem; background: #14161c; color: #e9e6df; }
+  h1 { font-size: 1.6rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid #3a3d47; }
+</style>
+</head>
+<body>
+<h1>${report.title}</h1>
+<p>${report.summary}</p>
+<table>
+<tr><th>Option</th><th>Why</th></tr>
+<tr><td>First</td><td>A sample row, since this is the demo page.</td></tr>
+<tr><td>Second</td><td>Another sample row.</td></tr>
+</table>
+</body>
+</html>
+`
 }
 
 /** Made-up past moments for the sample memory search. */

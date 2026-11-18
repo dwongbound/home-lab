@@ -26,9 +26,13 @@ function fromEvent(e: CalendarEvent, now: Date): TimelineItem {
 /** Something for the banner, and where tapping it goes. */
 export interface ActiveAlert { id: string; text: string; href: string }
 
+/** The banner warns when C: has this many GB free or fewer (Dylan, 2026-11-18). Jarvis pushes at the same mark. */
+export const LOW_DISK_GB = 7
+
 /**
  * For the banner: Money page picks whose reminder has come (Dylan asked to
- * be reminded to apply them in Copilot), then services not running right.
+ * be reminded to apply them in Copilot), a nearly full disk, then services
+ * not running right.
  */
 export function activeAlerts(s: Snapshot, now: Date = new Date()): ActiveAlert[] {
   const alerts: ActiveAlert[] = []
@@ -37,6 +41,10 @@ export function activeAlerts(s: Snapshot, now: Date = new Date()): ActiveAlert[]
     let text = `${n} purchases ready to recategorize in Copilot`
     if (n === 1) text = 'One purchase ready to recategorize in Copilot'
     alerts.push({ id: 'money-picks', text, href: '#money/ready' })
+  }
+  const disk = s.metrics.find((m) => m.id === 'disk')
+  if (disk && disk.value !== null && disk.value <= LOW_DISK_GB) {
+    alerts.push({ id: 'disk-low', text: `Disk space low: ${disk.value} GB free on C:`, href: '#overview' })
   }
   for (const sv of s.services) {
     if (sv.status !== 'degraded' && sv.status !== 'down') continue
