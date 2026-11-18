@@ -1036,7 +1036,7 @@ test('Jarvis shows typing dots until his reply starts', async ({ page }) => {
   await expect(chat.locator('.chat__typing')).toHaveCount(0)
 })
 
-test('a chip over each reply says who answered: Jarvis (C) in orange, Jarvis (O) in blue', async ({ page }) => {
+test('a chip over each reply says who answered: Claude in orange with its model letter, Jarvis (O) in blue', async ({ page }) => {
   await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"model","model":"ornith"}\n{"type":"delta","text":"Claude is out of room, so it is me."}\n{"type":"done","ok":true}\n' }))
   await page.goto('/')
   await page.getByRole('textbox', { name: 'Question for Jarvis' }).fill('Who is this?')
@@ -1047,12 +1047,21 @@ test('a chip over each reply says who answered: Jarvis (C) in orange, Jarvis (O)
   const chip = chat.locator('.chat__model').last()
   await expect(chip).toHaveText('Jarvis (O)')
   await expect(chip).toHaveAttribute('data-model', 'local')
-  // The sample Jarvis (no route) answers as Claude.
+  // Opus answering reads "Jarvis (CO)" and stays in Claude's orange.
+  await page.unroute('**/api/jarvis/chat')
+  await page.route('**/api/jarvis/chat', (route) => route.fulfill({ contentType: 'application/x-ndjson', body: '{"type":"model","model":"claude-opus-5-5"}\n{"type":"delta","text":"Opus here."}\n{"type":"done","ok":true}\n' }))
+  await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
+  await chat.getByRole('textbox', { name: 'Message Jarvis' }).fill('And the big one?')
+  await chat.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(chat.getByText('Opus here.')).toBeVisible()
+  await expect(chat.locator('.chat__model').last()).toHaveText('Jarvis (CO)')
+  await expect(chat.locator('.chat__model').last()).toHaveAttribute('data-model', 'claude')
+  // The sample Jarvis (no route) answers as Claude Haiku.
   await page.unroute('**/api/jarvis/chat')
   await expect(chat.getByRole('status')).toHaveText('Type below, or tap Talk', { timeout: 10_000 })
   await chat.getByRole('textbox', { name: 'Message Jarvis' }).fill('And now?')
   await chat.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(chat.locator('.chat__model').last()).toHaveText('Jarvis (C)')
+  await expect(chat.locator('.chat__model').last()).toHaveText('Jarvis (CH)')
   await expect(chat.locator('.chat__model').last()).toHaveAttribute('data-model', 'claude')
 })
 

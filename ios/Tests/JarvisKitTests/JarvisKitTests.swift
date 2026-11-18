@@ -69,6 +69,12 @@ final class WordingTests: XCTestCase {
         XCTAssertEqual(ModelWording.label("  "), "")
         XCTAssertTrue(ModelWording.isClaude(" Claude "))
         XCTAssertFalse(ModelWording.isClaude("ornith"))
+        XCTAssertEqual(ModelWording.label("claude-opus-5-5"), "Jarvis (CO)")
+        XCTAssertEqual(ModelWording.label("claude-haiku-5-5"), "Jarvis (CH)")
+        XCTAssertEqual(ModelWording.label("claude-sonnet-5-5"), "Jarvis (CS)")
+        XCTAssertEqual(ModelWording.label("claude-fable-5-2"), "Jarvis (CF)")
+        XCTAssertEqual(ModelWording.label("ornith-1.5:9b"), "Jarvis (O)")
+        XCTAssertTrue(ModelWording.isClaude("claude-opus-5-5"))
     }
 }
 

@@ -638,7 +638,7 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .chat__a .md__code { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: rgba(0,0,0,.28); font-size: 13px; overflow-x: auto; white-space: pre; }
 .chat__a .md__inline { padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,.12); font-size: 13px; }
 .chat__a a { color: var(--glacier); text-decoration: underline; text-underline-offset: 2px; }
-/* Who answered: a small chip over the reply, "Jarvis (C)" in orange for Claude and "Jarvis (O)" in blue for the local model (Dylan, 2026-11-16). */
+/* Who answered: a small chip over the reply, orange for Claude ("Jarvis (CO)" Opus, "(CH)" Haiku, "(CS)" Sonnet, "(CF)" Fable) and "Jarvis (O)" in blue for the local model (Dylan, 2026-11-16 and 11-17). */
 .chat__model { justify-self: start; display: inline-block; margin-bottom: -4px; padding: 2px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5; letter-spacing: .02em; color: #ffd3a8; background: rgba(255, 150, 60, .22); border: 1px solid rgba(255, 170, 90, .45); }
 .chat__model[data-model='local'] { color: #bfe0ff; background: rgba(80, 150, 255, .22); border-color: rgba(110, 170, 255, .45); }
 .chat__caret { display: inline-block; width: .6em; height: 1.1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--glacier); }
