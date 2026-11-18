@@ -339,11 +339,13 @@ public enum StatusChips {
 
 // MARK: Night
 
-/// The TV's calm bedroom layout (Dylan, 2026-11-17): from midnight until
+/// The TV's calm bedroom layout (Dylan, 2026-11-17): from 2:30 AM until
 /// half an hour before sunrise, only the clock, the date, the moon and
 /// stars, the dimmed orb and one line if something's on before 10 AM. Any
 /// press on the remote brings the full board back for a minute.
 public enum NightCalm {
+    /// When the calm layout starts (Dylan: "not from midnight, from 2:30 am").
+    public static let startHour = 2, startMinute = 30
     /// Minutes before sunrise the full board comes back.
     public static let wakeLead: Double = 30
     /// How long a remote press shows the full board.
@@ -355,11 +357,11 @@ public enum NightCalm {
     public static func isCalm(now: Date, sunrise: Date, enabled: Bool, wokenUntil: Date?, calendar: Calendar = .current) -> Bool {
         guard enabled else { return false }
         if let wokenUntil, now < wokenUntil { return false }
-        let midnight = calendar.startOfDay(for: now)
+        let start = calendar.date(bySettingHour: startHour, minute: startMinute, second: 0, of: now) ?? calendar.startOfDay(for: now)
         // Today's sunrise, whatever day the snapshot's time is from.
         let parts = calendar.dateComponents([.hour, .minute, .second], from: sunrise)
-        let rise = calendar.date(bySettingHour: parts.hour ?? 6, minute: parts.minute ?? 30, second: parts.second ?? 0, of: now) ?? midnight
-        return now >= midnight && now < rise.addingTimeInterval(-wakeLead * 60)
+        let rise = calendar.date(bySettingHour: parts.hour ?? 6, minute: parts.minute ?? 30, second: parts.second ?? 0, of: now) ?? start
+        return now >= start && now < rise.addingTimeInterval(-wakeLead * 60)
     }
 
     /// The small line for the calm layout: what's on before 10 AM today
