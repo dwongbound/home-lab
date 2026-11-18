@@ -481,12 +481,16 @@ export function createLiveSource(config, deps = {}) {
         onEvent({ type: 'error', message: 'Open this page through Tailscale to talk to Jarvis' })
         return
       }
+      const message = { text }
+      if (caller.offerId) message.offer_id = caller.offerId
+      // Photos go along as base64, the way Claude takes them.
+      if (caller.images) message.images = caller.images.map((image) => ({ media_type: image.type, data: image.data }))
       let res
       try {
         res = await fetchFn(`${config.jarvisApiUrl}/chat/stream`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
-          body: JSON.stringify(caller.offerId ? { text, offer_id: caller.offerId } : { text }),
+          body: JSON.stringify(message),
           signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
         })
       } catch {
@@ -633,6 +637,8 @@ export function createLiveSource(config, deps = {}) {
             const turn = { role: t.role === 'user' ? 'user' : 'jarvis', text: t.text, at: String(t.at ?? '') }
             // Older Jarvis lines don't say who wrote them; the chip only shows when one does.
             if (typeof t.model === 'string' && t.model) turn.model = t.model
+            // How many photos went with it (the bytes aren't in the history).
+            if (Number.isInteger(t.images) && t.images > 0) turn.images = t.images
             return turn
           })
       } catch {

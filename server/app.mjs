@@ -13,6 +13,7 @@
 //   GET  /api/jarvis/voice/sample   a WAV of ?voice=&speed=&voice2=&mix=
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
 //   GET  /api/jarvis/approvals      what Jarvis is still waiting on you to approve ({pending})
+//   (chat messages may add "images": up to 4 photos as {"media_type", "data": base64})
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
 //   POST /api/jarvis/notices/clear {"ids"} or {"all": true} -> clears notifications on every device
 //   POST /api/jarvis/push/register {"token", "platform", "environment", "bundle"} -> an app asking for pushes
@@ -33,6 +34,11 @@ import { parseClear, parsePushDevice } from './sources/notices.mjs'
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
 const MAX_BODY_BYTES = 8 * 1024
+// A chat message may carry photos (the apps shrink them first), so it gets more room.
+const MAX_CHAT_BYTES = 19 * 1024 * 1024
+const MAX_CHAT_IMAGES = 4
+const MAX_IMAGE_CHARS = 4.5 * 1024 * 1024
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/webp']
 
 /** Picks the data source from config: "live" reads the PC, anything else is mock. */
 export function createSource(config) {
@@ -49,17 +55,36 @@ function sendJson(res, status, body) {
 }
 
 /** Reads a small JSON request body, or null when it's missing, too big or not JSON. */
-async function readJson(req) {
+async function readJson(req, limit = MAX_BODY_BYTES) {
   let raw = ''
   for await (const chunk of req) {
     raw += chunk
-    if (raw.length > MAX_BODY_BYTES) return null
+    if (raw.length > limit) return null
   }
   try {
     return JSON.parse(raw)
   } catch {
     return null
   }
+}
+
+/**
+ * The photos on a chat message as [{type, data}] (sent as {media_type, data}; base64, no data: prefix):
+ * [] when there are none, null when one is the wrong kind, too big or too many.
+ */
+export function parseChatImages(raw) {
+  if (raw === undefined || raw === null) return []
+  if (!Array.isArray(raw) || raw.length > MAX_CHAT_IMAGES) return null
+  const images = []
+  for (const item of raw) {
+    // Jarvis and Claude call it media_type; plain `type` is taken too.
+    const type = item?.media_type ?? item?.type
+    if (!IMAGE_TYPES.includes(type)) return null
+    if (typeof item.data !== 'string' || item.data.length === 0 || item.data.length > MAX_IMAGE_CHARS) return null
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(item.data)) return null
+    images.push({ type, data: item.data })
+  }
+  return images
 }
 
 /**
@@ -122,14 +147,20 @@ export function createApi(source) {
     if (req.headers['x-home-lab'] !== '1') {
       return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
     }
-    const body = await readJson(req)
+    const body = await readJson(req, MAX_CHAT_BYTES)
     const text = typeof body?.text === 'string' ? body.text.trim() : ''
-    if (!text) {
+    const images = parseChatImages(body?.images)
+    if (images === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send up to 4 photos as {"media_type": "image/jpeg", "data": "<base64>"}' })
+    }
+    // A photo by itself is a message too (a meal to log).
+    if (!text && images.length === 0) {
       return sendJson(res, 400, { ok: false, message: 'Send JSON like {"text": "..."}' })
     }
     const login = req.headers['tailscale-user-login'] ?? ''
     // Start on an offer card: Jarvis marks it started and takes it as Dylan's ask.
     const caller = { login }
+    if (images.length > 0) caller.images = images
     if (typeof body.offerId === 'string' && /^[\w-]{1,64}$/.test(body.offerId)) caller.offerId = body.offerId
     res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' })
     // If the phone leaves mid-reply, keep reading Jarvis's answer to the end
