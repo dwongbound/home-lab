@@ -364,6 +364,8 @@ export interface DataSource {
   sendFeedback(flag: JarvisFeedback, caller?: { login?: string }): Promise<ActionResult>
   /** Hides one offer for good (Hide on its card). */
   hideOffer(id: string, caller?: { login?: string }): Promise<ActionResult>
+  /** Night mode on a screen: tells Jarvis you've gone to bed (true) or are up (false). `from` names the screen. */
+  setSleep(asleep: boolean, from: string, caller?: { login?: string }): Promise<ActionResult>
   /** What Jarvis remembers, or null when he can't be asked. */
   memory(caller?: { login?: string }): Promise<JarvisMemory | null>
   /** Searches past conversations (newest and best matches first). */

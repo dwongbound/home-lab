@@ -172,6 +172,22 @@ describe('Jarvis approvals', () => {
   })
 })
 
+describe('POST /api/jarvis/sleep', () => {
+  it('needs the page header and a yes or no, and passes the screen and login on', async () => {
+    let seen: unknown[] = []
+    const source = { ...createMockSource(), setSleep: async (...args: unknown[]) => { seen = args; return { ok: true, message: 'Good night' } } }
+    const api = createApi(source)
+    const headers = { ...ACTION_HEADER, 'tailscale-user-login': 'dylan@example.com' }
+    expect((await callApi(api, 'POST', '/api/jarvis/sleep', {}, JSON.stringify({ asleep: true }))).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/jarvis/sleep', headers, JSON.stringify({ asleep: 'yes' }))).statusCode).toBe(400)
+    const res = await callApi(api, 'POST', '/api/jarvis/sleep', headers, JSON.stringify({ asleep: true, source: 'tv' }))
+    expect(res.json()).toEqual({ ok: true, message: 'Good night' })
+    expect(seen).toEqual([true, 'tv', { login: 'dylan@example.com' }])
+    await callApi(api, 'POST', '/api/jarvis/sleep', headers, JSON.stringify({ asleep: false, source: 'Not A Screen!' }))
+    expect(seen).toEqual([false, 'page', { login: 'dylan@example.com' }])
+  })
+})
+
 describe('POST /api/jarvis/warm', () => {
   it('needs the page header, and passes the login on', async () => {
     let seen: unknown = null

@@ -524,6 +524,24 @@ export function createLiveSource(config, deps = {}) {
       }
     },
 
+    /** Tells Jarvis you've gone to bed or are up (POST /sleep); an older Jarvis answers 404. */
+    async setSleep(asleep, from, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/sleep`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify({ asleep, source: from }),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (res.status === 404) return { ok: false, message: 'Jarvis can’t track sleep yet' }
+        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        return { ok: true, message: asleep ? 'Good night' : 'Good morning' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
     /** "That was wrong" on one of his web chat replies (POST /feedback). */
     async sendFeedback(flag, caller = {}) {
       if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
