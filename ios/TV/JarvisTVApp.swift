@@ -64,7 +64,7 @@ struct AlwaysOnView: View {
     /// so it leaves out sleep, steps, Jarvis's suggestions and the private
     /// half of the greeting (TVBoard in JarvisKit).
     @AppStorage("tv.guestFriendly") private var guest = true
-    /// The calm bedroom layout from midnight to just before sunrise (on by
+    /// The calm bedroom layout from 2:30 AM to just before sunrise (on by
     /// default; the moon button beside Ask Jarvis turns it off).
     @AppStorage("tv.nightCalm") private var nightCalmOn = true
     /// True while the calm layout shows.
@@ -313,7 +313,7 @@ struct AlwaysOnView: View {
                         .font(.callout)
                         .foregroundStyle(ink)
                 }
-                .accessibilityHint("From midnight until just before sunrise, shows only the clock")
+                .accessibilityHint("From 2:30 AM until just before sunrise, shows only the clock")
             }
             Text(connectionWords)
                 .font(.caption)

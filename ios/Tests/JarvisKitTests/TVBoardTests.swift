@@ -151,10 +151,12 @@ final class NightCalmTests: XCTestCase {
     }
     private func iso(_ d: Date) -> String { ISO8601DateFormatter().string(from: d) }
 
-    func testCalmFromMidnightToHalfAnHourBeforeSunrise() {
+    func testCalmFromHalfPastTwoToHalfAnHourBeforeSunrise() {
         let rise = at(6, 30)
         XCTAssertFalse(NightCalm.isCalm(now: at(23, 30), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
-        XCTAssertTrue(NightCalm.isCalm(now: at(0, 5), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
+        XCTAssertFalse(NightCalm.isCalm(now: at(0, 5), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
+        XCTAssertFalse(NightCalm.isCalm(now: at(2, 29), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
+        XCTAssertTrue(NightCalm.isCalm(now: at(2, 30), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
         XCTAssertTrue(NightCalm.isCalm(now: at(5, 59), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
         XCTAssertFalse(NightCalm.isCalm(now: at(6, 0), sunrise: rise, enabled: true, wokenUntil: nil, calendar: la))
         // Yesterday's sunrise time still works.
