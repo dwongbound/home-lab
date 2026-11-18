@@ -167,3 +167,16 @@ final class MicWatchdogTests: XCTestCase {
         room.withUnsafeBufferPointer { XCTAssertFalse(MicWatchdog.isDigitalSilence($0)) }
     }
 }
+
+final class PageSwipeTests: XCTestCase {
+    func testSidewaysDragIsASwipe() {
+        XCTAssertTrue(PageSwipe.isSideways(width: -60, height: 8))
+        XCTAssertTrue(PageSwipe.isSideways(width: 40, height: -10))
+    }
+
+    func testScrollsAndTinyMovesAreNot() {
+        XCTAssertFalse(PageSwipe.isSideways(width: 30, height: 40), "a scroll that drifts sideways")
+        XCTAssertFalse(PageSwipe.isSideways(width: 10, height: 0), "too short")
+        XCTAssertFalse(PageSwipe.isSideways(width: 50, height: 30), "not sideways enough")
+    }
+}

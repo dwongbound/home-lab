@@ -47,6 +47,8 @@ struct RootView: View {
     @EnvironmentObject private var app: AppModel
     /// The iPhone's bedside kiosk: up while sideways and charging.
     @StateObject private var bedside = PhoneKioskMonitor()
+    /// Whether the keyboard is up.
+    @StateObject private var keyboard = KeyboardWatch()
 
     /// Each page draws its own status line instead of a big title
     /// (Dylan, 2026-11-16: no "Chat"/"Talk" headings).
@@ -63,12 +65,25 @@ struct RootView: View {
                 .tag(AppTab.today)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
+        // The keyboard goes as soon as a page swipe starts, not only once
+        // the next page has landed.
+        .simultaneousGesture(DragGesture(minimumDistance: PageSwipe.minDistance).onChanged { drag in
+            if keyboard.up, PageSwipe.isSideways(width: drag.translation.width, height: drag.translation.height) {
+                KeyboardWatch.dismiss()
+            }
+        })
         .background(Theme.sky.ignoresSafeArea())
         // The bar floats over the pages; each page keeps room for it, so
         // lists scroll up from under it and buttons sit above it.
+        // The keyboard covers the bar rather than lifting it (Dylan,
+        // 2026-11-18): it stays at the bottom, out of sight while typing.
         .overlay(alignment: .bottom) {
             TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount)
+                .opacity(keyboard.up ? 0 : 1)
+                .allowsHitTesting(!keyboard.up)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
         }
+        .environmentObject(keyboard)
         .modifier(PadKioskAndNotices(app: app))
         .fullScreenCover(isPresented: Binding(get: { bedside.showing }, set: { if !$0 { bedside.dismiss() } })) {
             PhoneKioskView(today: app.today, talk: app.talk, app: app) { bedside.dismiss() }
@@ -98,6 +113,17 @@ struct RootView: View {
         .task {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-demoIsland") { app.talk.demoIsland(); return }
+            // `-openChat` starts on Chat (simulator checks; no mic there).
+            if ProcessInfo.processInfo.arguments.contains("-openChat") {
+                app.tab = .chat
+                // `-thenHome` changes page a few seconds later, to check the
+                // keyboard goes with it.
+                if ProcessInfo.processInfo.arguments.contains("-thenHome") {
+                    try? await Task.sleep(for: .seconds(6))
+                    app.tab = .today
+                }
+                return
+            }
             #endif
             if app.tab == .talk && !app.talk.started {
                 await app.talk.start(app: app)
@@ -105,6 +131,8 @@ struct RootView: View {
         }
         // Opening Talk the first time starts the call, like the page's /talk.
         .onChange(of: app.tab) { _, tab in
+            // Swiping or tapping to another page puts the keyboard away.
+            KeyboardWatch.dismiss()
             if tab == .talk && !app.talk.started {
                 Task { await app.talk.start(app: app) }
             }
@@ -254,9 +282,41 @@ struct TabBar: View {
 }
 
 extension View {
-    /// Keeps a page's content clear of the floating tab bar.
+    /// Keeps a page's content clear of the floating tab bar. While the
+    /// keyboard is up the bar is hidden under it, so no gap is kept.
     func roomForTabBar() -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: 66) }
+        modifier(RoomForTabBar())
+    }
+}
+
+/// The space under a page for the tab bar, none while typing.
+private struct RoomForTabBar: ViewModifier {
+    @EnvironmentObject private var keyboard: KeyboardWatch
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: keyboard.up ? 0 : 66) }
+    }
+}
+
+/// Follows the keyboard coming up and going away.
+@MainActor
+final class KeyboardWatch: ObservableObject {
+    @Published private(set) var up = false
+    private var observers: [NSObjectProtocol] = []
+
+    init() {
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.up = true }
+        })
+        observers.append(center.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.up = false }
+        })
+    }
+
+    /// Puts the keyboard away, whichever field has it.
+    static func dismiss() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 
