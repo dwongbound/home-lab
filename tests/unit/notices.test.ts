@@ -24,6 +24,17 @@ describe('parseNotices', () => {
     ])
   })
 
+  it('passes on the chat turn a notice previews, when it is a whole number', () => {
+    const parsed = parseNotices({
+      notices: [
+        { id: 'n1', kind: 'heads', title: 'Start of day', source: 'reminder', turn_id: 412 },
+        { id: 'n2', kind: 'heads', title: 'No turn', turn_id: '412' },
+      ],
+    })
+    expect(parsed?.[0]).toHaveProperty('turnId', 412)
+    expect(parsed?.[1]).not.toHaveProperty('turnId')
+  })
+
   it('is null for an answer that isn’t a list, and caps a long one at 30', () => {
     expect(parseNotices(null)).toBeNull()
     expect(parseNotices({ notices: 'x' })).toBeNull()

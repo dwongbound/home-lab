@@ -660,6 +660,8 @@ export function createLiveSource(config, deps = {}) {
             if (typeof t.model === 'string' && t.model) turn.model = t.model
             // How many photos went with it (the bytes aren't in the history).
             if (Number.isInteger(t.images) && t.images > 0) turn.images = t.images
+            // His number for the turn, so a notice's turnId can find the message it previews.
+            if (Number.isInteger(t.id) && t.id > 0) turn.id = t.id
             return turn
           })
       } catch {

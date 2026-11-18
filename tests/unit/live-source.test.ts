@@ -97,7 +97,7 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       return Response.json({ pending: [{ id: 'a2', tool: 'edit_file', summary: '~/x.md', expires: 'z' }, { tool: 'broken' }] })
     }
     if (url === `${config.jarvisApiUrl}/chat/history?limit=50`) {
-      return Response.json({ turns: [{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'assistant', text: 'Lamp is off.', at: 'b', model: 'claude' }, { role: 'user' }] })
+      return Response.json({ turns: [{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'assistant', text: 'Lamp is off.', at: 'b', model: 'claude', id: 7 }, { role: 'user' }] })
     }
     if (url === `${config.jarvisApiUrl}/ask`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
@@ -351,7 +351,7 @@ describe('live chat with Jarvis', () => {
 
   it("reads the web chat history, naming Jarvis's lines and dropping broken ones", async () => {
     const turns = await liveWith({}).source.history({ login: 'dylan@example.com' })
-    expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b', model: 'claude' }])
+    expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b', model: 'claude', id: 7 }])
     expect(await liveWith({}).source.history({})).toEqual([])
   })
 

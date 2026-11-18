@@ -23,4 +23,10 @@ describe('model chip', () => {
     expect(modelTone('haiku')).toBe('claude')
     expect(modelTone('qwen')).toBe('local')
   })
+  it('gives a message he sent unasked a plain word and no model colour', () => {
+    expect(modelLabel('notice:reminder')).toBe('Reminder')
+    expect(modelLabel('notice:lookout')).toBe('Lookout')
+    expect(modelLabel('notice:message')).toBe('Jarvis')
+    expect(modelTone('notice:reminder')).toBe('notice')
+  })
 })
