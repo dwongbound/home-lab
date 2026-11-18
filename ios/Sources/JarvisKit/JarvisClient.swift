@@ -135,6 +135,17 @@ public struct JarvisClient: Sendable {
     }
 
     /// POSTs a JSON body; throws unless the server says yes.
+    /// The request telling Jarvis Dylan has gone to bed (`asleep: true`)
+    /// or is up after all (the Apple TV's Night button, Dylan 2026-11-18).
+    public func sleepRequest(asleep: Bool, source: String) -> URLRequest {
+        request("api/jarvis/sleep", method: "POST", json: ["asleep": asleep, "source": source])
+    }
+
+    /// Sends it. An older server answers 404 or 409; callers ignore that.
+    public func setSleep(asleep: Bool, source: String) async throws {
+        _ = try await send(sleepRequest(asleep: asleep, source: source))
+    }
+
     private func post(_ path: String, _ json: [String: Any]) async throws {
         _ = try await send(request(path, method: "POST", json: json))
     }

@@ -159,6 +159,7 @@ struct ChatPanel: View {
                         .font(.callout)
                         .foregroundStyle(palette.ink.color)
                 }
+                .buttonStyle(SoftFocusButtonStyle(palette: palette))
                 .accessibilityLabel(model.speakReplies ? "Replies read aloud" : "Replies muted")
             }
             ScrollViewReader { proxy in
@@ -207,7 +208,9 @@ struct ChatPanel: View {
                 } else {
                     HStack(spacing: 24) {
                         Button("Deny") { Task { await model.answer(approval, ok: false) } }
+                            .buttonStyle(SoftFocusButtonStyle(palette: palette))
                         Button("Approve") { Task { await model.answer(approval, ok: true) } }
+                            .buttonStyle(SoftFocusButtonStyle(palette: palette))
                     }
                 }
             }
@@ -258,3 +261,50 @@ struct ChatPanel: View {
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
     }
 }
+
+/// The TV's buttons (Dylan, 2026-11-18: "when i select a button without
+/// clicking the highlight is too white. Make it less white"). Instead of
+/// tvOS's bright white plate: a soft translucent tint with a clear outline
+/// and a small lift when focused, a quiet surface when not. The label keeps
+/// the palette's measured ink in every state.
+struct SoftFocusButtonStyle: ButtonStyle {
+    let palette: LampPalette
+
+    func makeBody(configuration: Configuration) -> some View {
+        Plate(configuration: configuration, palette: palette)
+    }
+
+    private struct Plate: View {
+        let configuration: ButtonStyleConfiguration
+        let palette: LampPalette
+        @Environment(\.isFocused) private var focused
+
+        var body: some View {
+            configuration.label
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(palette.ink.color)
+                .padding(.horizontal, 30)
+                .padding(.vertical, 16)
+                .background(Capsule().fill(fill))
+                .overlay(Capsule().strokeBorder(edge, lineWidth: focused ? 3 : 1.5))
+                .scaleEffect(configuration.isPressed ? 0.97 : focused ? 1.08 : 1)
+                .shadow(color: .black.opacity(focused ? 0.25 : 0), radius: 16, y: 8)
+                .animation(.smooth(duration: 0.25), value: focused)
+                .animation(.smooth(duration: 0.12), value: configuration.isPressed)
+        }
+
+        /// White at about a fifth over the dark sky; a light accent wash on
+        /// the bright day sky, where white wouldn't show.
+        private var fill: Color {
+            if focused { return palette.darkInk ? palette.accent.color.opacity(0.16) : Color.white.opacity(0.22) }
+            return palette.panel.color.opacity(0.7)
+        }
+
+        /// The outline that makes focus visible from across the room.
+        private var edge: Color {
+            if focused { return palette.darkInk ? palette.accent.color : Color.white.opacity(0.75) }
+            return palette.panelEdge.color.opacity(0.7)
+        }
+    }
+}
+

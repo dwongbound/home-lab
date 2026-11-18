@@ -3,6 +3,7 @@
 import Combine
 import LocalAuthentication
 import SwiftUI
+import UIKit
 import JarvisKit
 
 /// The tabs along the bottom (a sidebar on iPad).
@@ -32,6 +33,16 @@ final class AppModel: ObservableObject {
     @Published var showSettings = false
     /// nil until the first request; then whether the PC answered.
     @Published var reachable: Bool?
+    /// True while the iPad's full-screen kiosk is up (from the Home tab's
+    /// Kiosk button, or by itself when idle on charge).
+    @Published var padKiosk = false {
+        didSet { if !padKiosk { noteActivity() } }
+    }
+    /// The last touch, keystroke or tab change; the iPad's idle kiosk counts
+    /// five quiet minutes from here.
+    private(set) var lastActivity = Date()
+    /// The Settings switch "Kiosk when idle on charge", on by default.
+    static let idleKioskKey = "kiosk.padIdle"
 
     /// Money details stay hidden until Face ID (or the passcode) says it's
     /// Dylan, and hide again whenever the app goes to the background.
@@ -41,6 +52,36 @@ final class AppModel: ObservableObject {
     let today = TodayModel()
     let talk = TalkModel()
     private var relay: AnyCancellable?
+
+    /// Something happened: the five quiet minutes start again.
+    func noteActivity() {
+        lastActivity = Date()
+    }
+
+    /// The iPad goes to its kiosk by itself after five quiet minutes on the
+    /// Talk or Chat tab while charging, with no conversation going
+    /// (IdleKiosk in JarvisKit).
+    func checkIdleKiosk() {
+        guard UIDevice.current.userInterfaceIdiom == .pad, !padKiosk else { return }
+        let battery = UIDevice.current.batteryState
+        let live: Bool
+        switch talk.phase {
+        case .connecting: live = true
+        case .on(let state): live = state != .dozing
+        case .off: live = false
+        }
+        let enabled = UserDefaults.standard.object(forKey: Self.idleKioskKey) as? Bool ?? true
+        if IdleKiosk.shouldEnter(
+            enabled: enabled,
+            onTalkOrChat: tab == .talk || tab == .chat,
+            charging: battery == .charging || battery == .full,
+            conversationActive: live || chat.isSending,
+            lastActivity: lastActivity,
+            now: Date()
+        ) {
+            padKiosk = true
+        }
+    }
 
     /// Reads the saved address, or the one the app ships with.
     init() {

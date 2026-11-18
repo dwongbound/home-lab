@@ -147,3 +147,36 @@ public enum KioskIcons {
         return "calendar"
     }
 }
+
+/// The Apple TV's Night button (Dylan, 2026-11-18: "when I click night, it
+/// should change to the minimal night mode… clicking the remote should back
+/// out of it… that should also signal to Jarvis that I'm sleeping. It should
+/// know I'm awake when I first wake up and talk to Jarvis").
+public enum NightButton {
+    /// Backing out this soon after pressing Night reads as a mis-press, and
+    /// tells Jarvis he's awake after all. Later, Jarvis works it out himself
+    /// the next time Dylan talks to him.
+    public static let misPressSeconds: Double = 10 * 60
+
+    /// True when backing out of night should send "awake".
+    public static func sendAwakeOnExit(pressedAt: Date, now: Date) -> Bool {
+        now.timeIntervalSince(pressedAt) < misPressSeconds
+    }
+}
+
+/// The iPad going to its kiosk by itself (Dylan, 2026-11-18: "after being
+/// in the talk tab or the chat tab for like 5 minutes without any action
+/// AND the ipad is charging, it should automatically switch over to the
+/// always on ipad kiosk mode").
+public enum IdleKiosk {
+    /// How long with nothing happening before the kiosk comes up.
+    public static let idleSeconds: Double = 5 * 60
+
+    /// True when the kiosk should come up now: the setting is on, the Talk
+    /// or Chat tab is showing, it's on power, no conversation is going, and
+    /// nothing has been touched or typed for five minutes.
+    public static func shouldEnter(enabled: Bool, onTalkOrChat: Bool, charging: Bool, conversationActive: Bool, lastActivity: Date, now: Date) -> Bool {
+        enabled && onTalkOrChat && charging && !conversationActive && now.timeIntervalSince(lastActivity) >= idleSeconds
+    }
+}
+

@@ -29,6 +29,12 @@ final class AlwaysOnModel: ObservableObject {
     @Published private(set) var approvals = 0
     private let client = JarvisClient()
 
+    /// Tells Jarvis Dylan has gone to bed (or is up after a mis-press).
+    /// Failures stay quiet: an older server answers 404 or 409.
+    func setSleep(_ asleep: Bool) {
+        Task { try? await client.setSleep(asleep: asleep, source: "tv") }
+    }
+
     /// Fetches the snapshot; keeps the last one on screen if this fails.
     func load() async {
         #if DEBUG
@@ -75,6 +81,8 @@ struct AlwaysOnView: View {
     @State private var calm = false
     /// A remote press shows the full board until then.
     @State private var wokenUntil: Date?
+    /// When the Night button was pressed, while its night view is up.
+    @State private var nightPressedAt: Date?
 
     /// The orb and the time on the left; one roomy panel at a time on the
     /// right, cross-fading every 20 s (Dylan, 2026-11-17: the right was
@@ -112,6 +120,7 @@ struct AlwaysOnView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 2.5), value: calm)
         // Any swipe on the remote while it's calm brings the board back.
         .onMoveCommand { _ in if calm { wake() } }
+        .onPlayPauseCommand { if calm { wake() } }
         .task {
             while !Task.isCancelled {
                 await model.load()
@@ -145,7 +154,9 @@ struct AlwaysOnView: View {
         }
         // Menu slides the chat away (and only then: otherwise Menu leaves
         // the app as usual).
-        .onExitCommand(perform: asking ? { closeChat() } : nil)
+        // Menu backs out of the night view, then out of the chat; otherwise
+        // it leaves the app as usual.
+        .onExitCommand(perform: calm ? { wake() } : asking ? { closeChat() } : nil)
         // After each reply the field takes focus again: the next turn is one
         // press and the mic button.
         .onChange(of: chat.replies) { _, _ in if asking { typing = true } }
@@ -221,6 +232,13 @@ struct AlwaysOnView: View {
 
     /// Shows the full board for a minute, then lets it settle again.
     private func wake() {
+        // Backing out of the Night button's view: straight after pressing it
+        // reads as a mis-press, so Jarvis hears "awake" (NightButton). Later,
+        // he works that out himself when Dylan next talks to him.
+        if let pressed = nightPressedAt {
+            if NightButton.sendAwakeOnExit(pressedAt: pressed, now: Date()) { model.setSleep(false) }
+            nightPressedAt = nil
+        }
         wokenUntil = SunLampPreview.now().addingTimeInterval(NightCalm.pressSeconds)
         updateCalm()
         Task {
@@ -248,6 +266,7 @@ struct AlwaysOnView: View {
 
     /// Works out whether the calm layout should show right now.
     private func updateCalm() {
+        if nightPressedAt != nil { if !calm { calm = true }; return }
         if asking { if calm { calm = false }; return }
         let next = NightCalm.isCalm(now: SunLampPreview.now(), sunrise: sunTimes.rise, enabled: nightCalmOn, wokenUntil: wokenUntil)
         if next != calm { calm = next }
@@ -334,6 +353,7 @@ struct AlwaysOnView: View {
                         .font(.callout)
                         .foregroundStyle(ink)
                 }
+                .buttonStyle(SoftFocusButtonStyle(palette: palette))
                 .accessibilityHint("Type or hold the mic button to ask him something")
                 Button {
                     withAnimation(.smooth) { guest.toggle() }
@@ -344,19 +364,31 @@ struct AlwaysOnView: View {
                         .foregroundStyle(ink)
                 }
                 .accessibilityLabel(guest ? "Guest-friendly view is on" : "Guest-friendly view is off")
+                .buttonStyle(SoftFocusButtonStyle(palette: palette))
                 .accessibilityHint("Hides sleep, steps and Jarvis's suggestions when on")
+                // Night (Dylan, 2026-11-18): the minimal night view now, at
+                // any hour, and Jarvis hears he's gone to bed. Any press backs
+                // out. Holding Select on it turns the automatic 2:30 AM night
+                // view on or off.
                 Button {
-                    nightCalmOn.toggle()
-                    // Turning it on shows the board for a minute first.
-                    if nightCalmOn { wokenUntil = SunLampPreview.now().addingTimeInterval(NightCalm.pressSeconds) }
+                    if asking { closeChat() }
+                    nightPressedAt = Date()
+                    model.setSleep(true)
                     updateCalm()
                 } label: {
-                    Label(nightCalmOn ? "Night calm on" : "Night calm off", systemImage: nightCalmOn ? "moon.zzz.fill" : "moon.zzz")
+                    Label("Night", systemImage: nightCalmOn ? "moon.zzz.fill" : "moon.zzz")
                         .labelStyle(.iconOnly)
                         .font(.callout)
                         .foregroundStyle(ink)
                 }
-                .accessibilityHint("From 2:30 AM until just before sunrise, shows only the clock")
+                .contextMenu {
+                    Button(nightCalmOn ? "Turn off the automatic night view" : "Turn on the automatic night view") {
+                        nightCalmOn.toggle()
+                        updateCalm()
+                    }
+                }
+                .buttonStyle(SoftFocusButtonStyle(palette: palette))
+                .accessibilityHint("Shows only the clock and tells Jarvis you've gone to bed. Hold to change the automatic night view.")
             }
             Text(connectionWords)
                 .font(.caption)

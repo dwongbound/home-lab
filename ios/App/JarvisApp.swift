@@ -68,6 +68,28 @@ struct RootView: View {
         .overlay(alignment: .bottom) {
             TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount)
         }
+        // The iPad's kiosk lives here, not on the Home page, so it can come
+        // up by itself from Talk or Chat (a second cover on its own view).
+        .background {
+            Color.clear.fullScreenCover(isPresented: $app.padKiosk) {
+                KioskView(today: app.today, chat: app.chat, talk: app.talk)
+                    .environmentObject(app)
+            }
+        }
+        // Any touch, keystroke or tab change restarts the iPad's idle clock.
+        .simultaneousGesture(TapGesture().onEnded { app.noteActivity() })
+        .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { _ in app.noteActivity() })
+        .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in app.noteActivity() }
+        .onReceive(NotificationCenter.default.publisher(for: UITextView.textDidChangeNotification)) { _ in app.noteActivity() }
+        .onChange(of: app.tab) { _, _ in app.noteActivity() }
+        .task {
+            guard UIDevice.current.userInterfaceIdiom == .pad else { return }
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                app.checkIdleKiosk()
+            }
+        }
         .fullScreenCover(isPresented: Binding(get: { bedside.showing }, set: { if !$0 { bedside.dismiss() } })) {
             PhoneKioskView(today: app.today, talk: app.talk, app: app) { bedside.dismiss() }
         }
