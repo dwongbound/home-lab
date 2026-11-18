@@ -24,6 +24,8 @@ final class TodayModel: ObservableObject {
         #endif
         do {
             snapshot = try await app.client.snapshot()
+            // The Watch's board and complications follow every snapshot.
+            WatchBridge.shared.push(snapshot)
             problem = nil
             app.noteReach(nil)
         } catch {

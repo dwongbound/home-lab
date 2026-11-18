@@ -119,8 +119,16 @@ targets:
       - path: Watch
       - path: App/OrbView.swift
       - path: App/Theme.swift
+      - path: WatchWidgets/ComplicationViews.swift
     dependencies:
       - package: JarvisKit
+      # The complications, embedded in the Watch app.
+      - target: JarvisWatchComplications
+    # Shares the complication data with the complications.
+    entitlements:
+      path: Watch/JarvisWatch.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.dwongbound.jarvis]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis.watchkitapp
@@ -135,6 +143,32 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.dwongbound.jarvis
+
+  # Apple Watch complications: Ask Jarvis, Needs you, Next up.
+  JarvisWatchComplications:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: WatchWidgets
+    dependencies:
+      - package: JarvisKit
+    entitlements:
+      path: WatchWidgets/JarvisWatchComplications.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.dwongbound.jarvis]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis.watchkitapp.complications
+        PRODUCT_NAME: JarvisWatchComplications
+        SWIFT_VERSION: "5.9"
+    info:
+      path: WatchWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Jarvis
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
   # Apple TV: the always-on display. Reaches the PC over Tailscale's
   # Apple TV app.

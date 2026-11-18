@@ -39,6 +39,23 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    /// Hands the Watch its board and complication data after each snapshot,
+    /// in the background where iOS allows (the latest one wins). No money:
+    /// the board carries notices, tasks and what's next only.
+    func push(_ snapshot: Snapshot?) {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
+        let board = WatchBoard(snapshot: snapshot)
+        let data = ComplicationData(board: board)
+        let context: [String: Any] = ["board": board.message, "complication": data.dictionary]
+        try? session.updateApplicationContext(context)
+        // A complication on the face gets a little budget for prompt updates.
+        if session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 {
+            session.transferCurrentComplicationUserInfo(["complication": data.dictionary])
+        }
+    }
+
     /// Required; nothing to do once the session is up.
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
 
