@@ -180,3 +180,17 @@ public enum IdleKiosk {
     }
 }
 
+
+/// The app's pages swipe sideways; the keyboard goes away as a swipe
+/// starts (Dylan, 2026-11-18), not only once the next page lands.
+public enum PageSwipe {
+    /// How much more sideways than up-and-down a drag must be to count.
+    public static let ratio = 2.0
+    /// How far it must have gone, in points.
+    public static let minDistance = 20.0
+
+    /// True when a drag so far is a page swipe, not a scroll.
+    public static func isSideways(width: Double, height: Double) -> Bool {
+        abs(width) >= minDistance && abs(width) > abs(height) * ratio
+    }
+}

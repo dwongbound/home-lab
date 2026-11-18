@@ -20,6 +20,8 @@ struct ChatView: View {
     /// Whether the newest line is on screen; when it isn't, "Scroll to
     /// bottom" shows (Dylan, 2026-11-17).
     @State private var atBottom = true
+    /// Whether the keyboard is up (RootView's KeyboardWatch).
+    @EnvironmentObject private var keyboard: KeyboardWatch
 
     /// Status line, the scrolling chat, then the composer.
     var body: some View {
@@ -84,6 +86,10 @@ struct ChatView: View {
         #if DEBUG
         // Screenshot check: `-demoPhotos` picks two sample photos.
         .onAppear {
+            // `-typing` puts the cursor in the field (simulator keyboard checks).
+            if ProcessInfo.processInfo.arguments.contains("-typing") {
+                Task { try? await Task.sleep(for: .seconds(1.5)); typing = true }
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoPhotos"), picked.isEmpty {
                 for color in [UIColor.systemOrange, UIColor.systemGreen] {
                     let image = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 900)).image { ctx in
@@ -144,6 +150,12 @@ struct ChatView: View {
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await chat.load(app: app) }
+            // The keyboard coming up keeps the newest message in view above
+            // the field, like Messages.
+            .onChange(of: keyboard.up) { _, up in
+                guard up, app.focusTurn == nil, highlighted == nil else { return }
+                withAnimation(.easeOut(duration: 0.25)) { scroller.scrollTo("bottom", anchor: .bottom) }
+            }
             .onChange(of: chat.items) {
                 guard app.focusTurn == nil && highlighted == nil else { return }
                 withAnimation(.easeOut(duration: 0.2)) {
