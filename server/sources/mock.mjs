@@ -25,6 +25,11 @@ function wave(seed, count, base, spread) {
   return out
 }
 
+/** The Pacific-time calendar day of a moment, "2026-11-18". */
+function pacificDay(date) {
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
 /**
  * The instant that is `hour:minute` on the PC's clock (Pacific) on the same
  * Pacific calendar day as `date`. The server itself may run in UTC, so
@@ -328,7 +333,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         notices: currentNotices(t).map((n) => ({ ...n })),
         // Made-up calories for today.
         reports: mockReports(state.reports),
-        nutrition: { date: t.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140 },
+        nutrition: { date: pacificDay(t), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140 },
       }
     },
 
@@ -534,6 +539,32 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const facts = [...state.facts].sort((a, b) => b.learned.localeCompare(a.learned))
       const lastDistill = new Date(now().getTime() - 7 * 3600_000).toISOString()
       return { facts, turns: 1284 + state.chat.length, lastDistill }
+    },
+
+    /** A sample day of food: the same three meals whichever day is asked for. */
+    async nutritionDay(date) {
+      const t = now()
+      const day = date || pacificDay(t)
+      const items = [
+        { id: 'm1', at: atPacificTime(t, 9, 10), name: 'Greek yogurt with berries', portion: '1 bowl', calories: 240, protein: 22, fat: 6, carbs: 26, hasPhoto: true },
+        { id: 'm2', at: atPacificTime(t, 13, 5), name: 'Chicken burrito bowl', portion: '1 bowl', calories: 675, protein: 54, fat: 24, carbs: 67, hasPhoto: true },
+        { id: 'm3', at: atPacificTime(t, 16, 30), name: 'Protein shake', portion: '12 oz', calories: 265, protein: 20, fat: 5, carbs: 8, hasPhoto: false },
+      ]
+      return {
+        date: day,
+        goals: { calories: 1750, protein: 140, fat: 60, carbs: 160 },
+        totals: { calories: 1180, protein: 96, fat: 35, carbs: 101, burned: 420 },
+        items,
+      }
+    },
+
+    /** A sample week: seven days from `start` (or six days back), today part-way there. */
+    async nutritionWeek(start) {
+      const t = now()
+      const eaten = [1690, 1820, 1540, 1760, 2010, 1480, 1180]
+      const first = start ? new Date(`${start}T12:00:00Z`) : new Date(t.getTime() - 6 * 86_400_000)
+      const days = eaten.map((calories, i) => ({ date: pacificDay(new Date(first.getTime() + i * 86_400_000)), calories, goal: 1750 }))
+      return { start: days[0].date, days }
     },
 
     /** Finds sample past moments containing the words searched for. */
