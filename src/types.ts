@@ -367,6 +367,19 @@ export interface JarvisJobs {
   messenger: { sentToday: number; cap: number; quiet: string | null } | null
   /** Work Dylan sent to the background (e.g. a change to Jarvis's code), still running or queued. Shown beside the orb on /talk. */
   running: RunningTask[]
+  /** Background work that finished today, newest first (the apps' Running page); empty on an older Jarvis. */
+  finished: FinishedTask[]
+}
+
+/** One piece of background work that ended today. */
+export interface FinishedTask {
+  id: string
+  label: string
+  /** live = in use now, failed = didn't make it, nothing = nothing needed changing. */
+  state: 'live' | 'failed' | 'nothing'
+  finishedAt: string | null
+  /** The model that did it, as on chat turns; null when none did. */
+  model: string | null
 }
 
 /** One piece of background work Dylan asked for, until it finishes. */
@@ -376,6 +389,10 @@ export interface RunningTask {
   label: string
   state: 'running' | 'queued'
   startedAt: string | null
+  /** The model doing it, as Jarvis names it on chat turns ("claude-opus-…", an Ornith name); null when no model is. */
+  model: string | null
+  /** Where it's at right now, in one line ("Writing the change", "Running tests"); null when Jarvis doesn't say. */
+  step: string | null
 }
 
 /** One holder of graphics card memory: a local model, one of Jarvis's speech models, or the unnamed rest. */

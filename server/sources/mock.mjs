@@ -87,8 +87,11 @@ function mockJobs(t, minutesAgo) {
     },
     messenger: { sentToday: 2, cap: 5, quiet: null },
     running: [
-      { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: minutesAgo(2) },
-      { id: 'r2', label: 'Saying traffic first', state: 'queued', startedAt: null },
+      { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: minutesAgo(2), model: 'claude-opus-5-5', step: 'Running tests' },
+      { id: 'r2', label: 'Saying traffic first', state: 'queued', startedAt: null, model: null, step: null },
+    ],
+    finished: [
+      { id: 'f1', label: 'Shorter morning greeting', state: 'live', finishedAt: minutesAgo(50), model: 'claude-opus-5-5' },
     ],
   }
 }
