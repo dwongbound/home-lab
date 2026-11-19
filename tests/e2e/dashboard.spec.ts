@@ -600,7 +600,7 @@ test('swiping sideways changes tab, and not inside a text box', async ({ page },
   await expect(page.getByRole('heading', { level: 1, name: /Dylan/ })).toBeVisible()
 })
 
-test('while the first snapshot is on its way, a full-page "Jarvis is thinking" loader shows, still with reduced motion', async ({ browser }) => {
+test('while the first snapshot is on its way, a full-page "Jarvis is thinking" loader shows, still with reduced motion, and leaves smoothly when the page is ready', async ({ browser }) => {
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     const context = await browser.newContext({ reducedMotion })
     const page = await context.newPage()
@@ -614,9 +614,18 @@ test('while the first snapshot is on its way, a full-page "Jarvis is thinking" l
     const moving = await page.evaluate(() => document.getAnimations().filter((a) => (a.effect as KeyframeEffect | null)?.target instanceof Element && ((a.effect as KeyframeEffect).target as Element).closest('.thinking')).length)
     if (reducedMotion === 'reduce') expect(moving).toBe(0)
     else expect(moving).toBeGreaterThan(3)
+    // Watch for the loader leaving: with motion it lingers over the page as it lifts away; without, it never does.
+    await page.evaluate(() => {
+      const seen = window as unknown as { sawLeaving?: boolean }
+      new MutationObserver(() => { if (document.querySelector('.thinking[data-leaving]')) seen.sawLeaving = true }).observe(document.body, { subtree: true, childList: true, attributes: true })
+    })
     release()
     await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
     await expect(loader).toHaveCount(0)
+    // Gone for good soon after, and never in the way of a tap meanwhile.
+    await expect(page.locator('.thinking')).toHaveCount(0)
+    const sawLeaving = await page.evaluate(() => (window as unknown as { sawLeaving?: boolean }).sawLeaving === true)
+    expect(sawLeaving).toBe(reducedMotion === 'no-preference')
     await context.close()
   }
 })

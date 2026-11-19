@@ -20,6 +20,7 @@ import { useNow } from './useNow'
 import { readAwake, readSky, writeAwake, writeSky } from './lib/prefs'
 import { useWakeLock } from './useWakeLock'
 import { useReveal } from './useReveal'
+import { useLoaderExit } from './useLoaderExit'
 import { KioskMode, useKiosk } from './useKiosk'
 import { shownPhase } from './lib/sky'
 import { BuildFooter } from './components/BuildFooter'
@@ -50,9 +51,12 @@ export function App() {
     return () => clearTimeout(id)
   }, [toast])
 
-  // When the first snapshot arrives the page simply appears: no landing
-  // animation. Every version of one shook on Dylan's iPhone (2026-11-11).
+  // When the first snapshot arrives the panels fade in (useReveal) while the
+  // loader, which sits on top of the page and isn't glass, lifts away. Nothing
+  // glass moves: every landing animation that moved the page shook on
+  // Dylan's iPhone (2026-11-11).
   const hasData = data !== undefined
+  const loader = useLoaderExit(!data && !error)
 
   // Panels fade in on the first load and on every page change, and below
   // the screen as they're scrolled to. The main element is replaced once the
@@ -80,7 +84,8 @@ export function App() {
       </section>
     )
   } else if (!data) {
-    body = <section className="state state--loading"><ThinkingLoader /></section>
+    // Still waiting: the loader is drawn over the page, below.
+    body = null
   } else if (view === 'claude') {
     body = <Claude data={data} now={now} />
   } else if (view === 'home') {
@@ -119,6 +124,7 @@ export function App() {
       </div>
       {/* A report opened from the list or from a chat reply shows here, over everything. */}
       <ReportViewer />
+      <ThinkingLoader phase={loader} />
       {toast ? <p className="toast" role="status">{toast}</p> : null}
     </>
   )
