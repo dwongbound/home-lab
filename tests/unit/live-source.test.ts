@@ -65,6 +65,10 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url.startsWith(`${config.jarvisApiUrl}/nutrition/week`)) {
       return Response.json({ start: '2026-11-15', days: [{ date: '2026-11-15', calories: 1600, goal: 1750 }] })
     }
+    if (url === `${config.jarvisApiUrl}/gpu`) {
+      if (jarvisVersion === undefined) return new Response('not found', { status: 404 })
+      return Response.json({ models: [{ name: 'Parakeet', role: 'Hears you', mb: 2430, loaded: true }, { name: 'Kokoro', role: 'His voice', mb: 900, loaded: true }, { name: 'Qwen3-ASR', role: 'Final transcript', mb: 4600, loaded: false }] })
+    }
     if (url === `${config.jarvisApiUrl}/nutrition/today`) {
       return Response.json({ date: '2026-11-18', eaten: 1200, goal: 1750, left: 999, burned: null, protein: 90, protein_goal: 140, goal_source: 'config' })
     }
@@ -120,7 +124,7 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
   const execFile = vi.fn(async (cmd: string) => {
     if (cmd === config.nvidiaSmi) {
       if (gpuFails) throw new Error('nvidia-smi not found')
-      return { stdout: '10342, 12288\n' }
+      return { stdout: '10342, 12288, 37\n' }
     }
     if (unitState === 'active') return { stdout: 'active\n' }
     // No systemctl at all, as in Docker.
@@ -180,6 +184,26 @@ describe('live snapshot', () => {
     expect(gpu.value).toBe(10.1)
     expect(gpu.total).toBe(12)
     expect(disk.value).toBe(93)
+  })
+
+  it('names who holds the graphics card: Ollama models, Jarvis\'s loaded speech models, and the rest', async () => {
+    const models = [{ name: 'ornith-1.5:9b', size_vram: 6580 * 1024 ** 2 }]
+    const snap = await liveWith({ ollamaModels: models, jarvisVersion: { build: 54 } }).source.snapshot()
+    expect(snap.gpu).toEqual({
+      totalMb: 12288,
+      usedMb: 10342,
+      utilization: 37,
+      users: [
+        { name: 'Ornith', role: 'Local brain', mb: 6580, kind: 'local' },
+        { name: 'Parakeet', role: 'Hears you', mb: 2430, kind: 'speech' },
+        { name: 'Kokoro', role: 'His voice', mb: 900, kind: 'speech' },
+        { name: 'Everything else', role: 'Windows, the desktop and drivers', mb: 432, kind: 'other' },
+      ],
+    })
+    // An older Jarvis has no /gpu: his models fall into the unnamed rest.
+    const older = await liveWith({ ollamaModels: models }).source.snapshot()
+    expect(older.gpu?.users.map((user: { name: string }) => user.name)).toEqual(['Ornith', 'Everything else'])
+    expect((await liveWith({ gpuFails: true }).source.snapshot()).gpu).toBeNull()
   })
 
   it('shows "Not reporting" data (null) when nvidia-smi fails, without failing the snapshot', async () => {

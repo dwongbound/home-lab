@@ -12,6 +12,7 @@ import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createDigestReader } from './digest.mjs'
 import { createHomeReader } from './home.mjs'
+import { buildGpu, ollamaRows, parseJarvisGpu, parseSmi } from './gpu.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
 import { parseNotices } from './notices.mjs'
@@ -150,10 +151,18 @@ export function createLiveSource(config, deps = {}) {
   /** GPU use from nvidia-smi, which WSL exposes for the RTX 3060. */
   async function readGpu() {
     const { stdout } = await execFile(config.nvidiaSmi, [
-      '--query-gpu=memory.used,memory.total', '--format=csv,noheader,nounits',
+      '--query-gpu=memory.used,memory.total,utilization.gpu', '--format=csv,noheader,nounits',
     ], { timeout: PROBE_TIMEOUT_MS })
-    const [usedMb, totalMb] = stdout.trim().split(',').map((s) => Number(s.trim()))
-    return { usedGb: usedMb / 1024, totalGb: totalMb / 1024 }
+    const smi = parseSmi(stdout)
+    if (smi === null) throw new Error('nvidia-smi gave no numbers')
+    return { ...smi, usedGb: smi.usedMb / 1024, totalGb: smi.totalMb / 1024 }
+  }
+
+  /** Jarvis's own models on the card (GET /gpu); none on an older Jarvis or when he's down. */
+  async function readJarvisGpu() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/gpu`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return []
+    return parseJarvisGpu(await res.json())
   }
 
   /** Free and total space on the Windows C: drive, seen from WSL. */
@@ -392,8 +401,9 @@ export function createLiveSource(config, deps = {}) {
         readJarvisNotices(),
         readJarvisNutrition(),
         readJarvisReports(),
+        readJarvisGpu(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports, speechModels] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -436,6 +446,7 @@ export function createLiveSource(config, deps = {}) {
           loadSeconds: null,
         },
         models: describeModels(models),
+        gpu: buildGpu(gpu, [...ollamaRows(models, config.ollamaWatchModel), ...(speechModels ?? [])]),
         cloud,
         home: homeState,
         jobs,

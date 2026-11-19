@@ -310,6 +310,18 @@ export function createMockSource({ now = () => new Date() } = {}) {
         models: loaded
           ? [{ name: 'ornith-1.5:9b', role: 'watch', vramGb: 5.7, until: new Date(t.getTime() + 8 * 60_000).toISOString(), parameters: '9.7B', quantization: 'Q4_K_M', contextLength: 8192 }]
           : [],
+        // Like jarvis: the speech models always on the card, the local model when loaded.
+        gpu: {
+          totalMb: 12288,
+          usedMb: loaded ? 10350 : 3520,
+          utilization: loaded ? 34 : 3,
+          users: [
+            ...(loaded ? [{ name: 'Ornith', role: 'Local brain', mb: 6580, kind: 'local' }] : []),
+            { name: 'Parakeet', role: 'Hears you', mb: 2430, kind: 'speech' },
+            { name: 'Kokoro', role: 'Jarvis\'s voice', mb: 560, kind: 'speech' },
+            { name: 'Everything else', role: 'Windows, the desktop and drivers', mb: loaded ? 440 : 190, kind: 'other' },
+          ],
+        },
         cloud,
         home: {
           devices: state.home.map((d) => ({ ...d })),

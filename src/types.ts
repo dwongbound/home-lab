@@ -181,6 +181,8 @@ export interface Snapshot {
   model: { name: string; loaded: boolean; vramGb: number; loadSeconds: number | null }
   /** Every model Ollama has in memory right now, with what it's there for. */
   models: LoadedModel[]
+  /** The graphics card's memory and who holds it; null when nvidia-smi can't be read. */
+  gpu: GpuUse | null
   /** null until the digest is set up (no token) or before its first read. */
   cloud: CloudDigest | null
   /** null without a Home Assistant token, or when it doesn't answer. */
@@ -356,6 +358,24 @@ export interface RunningTask {
   label: string
   state: 'running' | 'queued'
   startedAt: string | null
+}
+
+/** One holder of graphics card memory: a local model, one of Jarvis's speech models, or the unnamed rest. */
+export interface GpuUser {
+  name: string
+  /** What it's for, in a few plain words. */
+  role: string
+  mb: number
+  kind: 'local' | 'speech' | 'other'
+}
+
+/** The graphics card right now. `users` are biggest first and add up to at most `usedMb`; the rest of `totalMb` is free. */
+export interface GpuUse {
+  totalMb: number
+  usedMb: number
+  /** How busy the card is, 0 to 100; null when the driver doesn't say. */
+  utilization: number | null
+  users: GpuUser[]
 }
 
 /** One model Ollama has loaded (GET /api/ps), and its job on jarvis. */

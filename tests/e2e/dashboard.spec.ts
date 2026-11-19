@@ -116,6 +116,11 @@ test('Schedule has the requests chart; Services has every service, the model car
   await page.goto('/#services')
   await expect(page.getByRole('link', { name: 'Open Home Assistant' })).toHaveAttribute('href', 'http://192.168.68.94:8123')
   await expect(page.getByRole('button', { name: 'Unload local model' })).toBeVisible()
+  // The graphics card pie: who holds its memory, by name, and what's free.
+  const card = page.getByRole('region', { name: 'Graphics card' })
+  await expect(card).toContainText('in use')
+  for (const name of ['Ornith', 'Parakeet', 'Kokoro', 'Everything else', 'Free']) await expect(card.getByText(name, { exact: true })).toBeVisible()
+  await expect(card.locator('.gpu__ring circle')).toHaveCount(5)
   const loaded = page.getByRole('region', { name: 'In GPU memory' })
   await expect(loaded).toContainText('ornith-1.5:9b')
   await expect(loaded).toContainText('answers when Claude can’t be reached')
@@ -186,6 +191,9 @@ test('unloading the local model blocks the dialog until it finishes, then loadin
   await expect(page.getByText('Unloaded', { exact: true })).toBeVisible()
   // Nothing is left in GPU memory, and the list says how it comes back.
   await expect(page.getByRole('region', { name: 'In GPU memory' })).toContainText('No model is loaded')
+  // The pie drops the local model's slice; the speech models stay.
+  await expect(page.getByRole('region', { name: 'Graphics card' }).getByText('Ornith', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Graphics card' }).getByText('Parakeet', { exact: true })).toBeVisible()
 
   // Put it back so the next test starts from the same state.
   await page.getByRole('button', { name: 'Load local model' }).click()

@@ -338,6 +338,23 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jobs__plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
 .jobs__why { color: var(--frost-faint); }
 
+/* ---------- Graphics card pie ---------- */
+.gpu__body { display: grid; grid-template-columns: minmax(120px, 170px) 1fr; gap: clamp(14px, 3vw, 26px); align-items: center; }
+.gpu__chart { position: relative; aspect-ratio: 1; }
+/* Slices start at the top and run clockwise. */
+.gpu__ring { width: 100%; height: 100%; transform: rotate(-90deg); display: block; }
+.gpu__centre { position: absolute; inset: 0; margin: 0; display: grid; place-content: center; text-align: center; }
+.gpu__used { font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.gpu__of { font-size: 12.5px; color: var(--frost-faint); }
+.gpu__legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.gpu__row { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; }
+.gpu__dot { width: 12px; height: 12px; border-radius: 50%; }
+.gpu__who { display: grid; min-width: 0; }
+.gpu__name { font-weight: 600; font-size: 14.5px; }
+.gpu__role { font-size: 12.5px; color: var(--frost-dim); }
+.gpu__mb { font-variant-numeric: tabular-nums; color: var(--frost-dim); font-size: 14px; }
+@media (max-width: 420px) { .gpu__body { grid-template-columns: 1fr; } .gpu__chart { width: min(170px, 60%); justify-self: center; } }
+
 /* ---------- Model ---------- */
 .model { display: grid; align-content: start; gap: 16px; }
 .model .panel__head { margin-bottom: 0; }
