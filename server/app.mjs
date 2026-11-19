@@ -9,6 +9,8 @@
 //   GET  /api/jarvis/memory         what Jarvis remembers ({memory})
 //   GET  /api/jarvis/memory/search?q=  past conversations matching q ({hits})
 //   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
+//   GET  /api/jarvis/nutrition/day?date=    one day of the meal log, with what was eaten ({day})
+//   GET  /api/jarvis/nutrition/week?start=  seven days of calories against the goal ({week})
 //   GET  /api/jarvis/playbooks       Jarvis's playbooks and what their steps can use ({book})
 //   POST /api/jarvis/playbooks       {"op": "save", "playbook"} | {"op": "delete" | "run", "id"}
 //   GET  /api/jarvis/voice          how Jarvis sounds + every voice; POST saves {voice, speed, blend}
@@ -30,6 +32,7 @@
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
 import { createMockSource } from './sources/mock.mjs'
+import { isDay } from './sources/nutrition.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parsePushDevice } from './sources/notices.mjs'
@@ -211,6 +214,20 @@ export function createApi(source) {
   async function handleMemorySearch(req, res, query) {
     const login = req.headers['tailscale-user-login'] ?? ''
     return sendJson(res, 200, { hits: await source.searchMemory(query, { login }) })
+  }
+
+  /**
+   * One day of the meal log (`which` = 'day') or a week of totals ('week'),
+   * for the apps' Diet screen. `value` is the date or week start asked for;
+   * none means today / this week, anything that isn't a day is refused.
+   */
+  async function handleNutrition(req, res, which, value) {
+    if (value !== '' && !isDay(value)) {
+      return sendJson(res, 400, { ok: false, message: 'Send a day as YYYY-MM-DD' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    if (which === 'week') return sendJson(res, 200, { week: await source.nutritionWeek(value, { login }) })
+    return sendJson(res, 200, { day: await source.nutritionDay(value, { login }) })
   }
 
   /** Adds or forgets one fact. */
@@ -513,6 +530,14 @@ export function createApi(source) {
       if (req.method === 'GET' && pathname === '/api/jarvis/memory/search') {
         const query = new URL(req.url ?? '/', 'http://localhost').searchParams.get('q') ?? ''
         return await handleMemorySearch(req, res, query.slice(0, 200))
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/day') {
+        const date = new URL(req.url ?? '/', 'http://localhost').searchParams.get('date') ?? ''
+        return await handleNutrition(req, res, 'day', date)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/week') {
+        const start = new URL(req.url ?? '/', 'http://localhost').searchParams.get('start') ?? ''
+        return await handleNutrition(req, res, 'week', start)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/memory') {
         return await handleMemoryChange(req, res)

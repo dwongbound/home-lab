@@ -58,6 +58,13 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url.startsWith(`${config.jarvisApiUrl}/voice/sample?`)) {
       return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })
     }
+    if (url.startsWith(`${config.jarvisApiUrl}/nutrition/day`)) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      return Response.json({ date: '2026-11-17', goals: { calories: 1750 }, totals: { calories: 250, burned: 300 }, items: [{ id: 4, at: '2026-11-17T08:00:00-08:00', name: 'Latte', calories: 250, has_photo: true }] }, { status: jarvisStatusCode })
+    }
+    if (url.startsWith(`${config.jarvisApiUrl}/nutrition/week`)) {
+      return Response.json({ start: '2026-11-15', days: [{ date: '2026-11-15', calories: 1600, goal: 1750 }] })
+    }
     if (url === `${config.jarvisApiUrl}/nutrition/today`) {
       return Response.json({ date: '2026-11-18', eaten: 1200, goal: 1750, left: 999, burned: null, protein: 90, protein_goal: 140, goal_source: 'config' })
     }
@@ -390,6 +397,22 @@ describe('live chat with Jarvis', () => {
     expect(await source.searchMemory('x', {})).toEqual([])
     expect((await source.changeMemory({ op: 'forget', id: 'a' }, {})).ok).toBe(false)
     expect(await liveWith({ jarvisAnswers: false }).source.memory(login)).toBeNull()
+  })
+
+  it('reads a day and a week of the meal log as the caller, null without a login or when Jarvis is down', async () => {
+    const { source, fetch } = liveWith({})
+    const login = { login: 'dylan@example.com' }
+    const day = await source.nutritionDay('2026-11-17', login)
+    expect(day?.items).toEqual([{ id: '4', at: '2026-11-17T08:00:00-08:00', name: 'Latte', portion: null, calories: 250, protein: null, fat: null, carbs: null, hasPhoto: true }])
+    expect(day?.totals.burned).toBe(300)
+    const call = fetch.mock.calls.find((c) => String(c[0]).endsWith('/nutrition/day?date=2026-11-17'))
+    expect((call?.[1]?.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
+    expect((await source.nutritionWeek('', login))?.days).toEqual([{ date: '2026-11-15', calories: 1600, goal: 1750 }])
+    expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/nutrition/week'))).toBe(true)
+    expect(await source.nutritionDay('2026-11-17', {})).toBeNull()
+    expect(await source.nutritionWeek('', {})).toBeNull()
+    expect(await liveWith({ jarvisAnswers: false }).source.nutritionDay('', login)).toBeNull()
+    expect(await liveWith({ jarvisStatusCode: 404 }).source.nutritionDay('', login)).toBeNull()
   })
 
   it("warms Jarvis's chat engine as the caller, and skips it without a login", async () => {

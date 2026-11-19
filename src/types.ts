@@ -199,6 +199,37 @@ export interface Snapshot {
   nutrition: NutritionToday | null
 }
 
+/** Calories and grams of protein, fat and carbs; null where Jarvis has no number. */
+export interface Macros { calories: number | null; protein: number | null; fat: number | null; carbs: number | null }
+
+/** One thing he ate: when, what, how much, and its numbers. */
+export interface NutritionItem extends Macros {
+  id: string
+  /** When it was eaten (ISO). */
+  at: string
+  name: string
+  /** "1 bowl", or null when Jarvis has no portion for it. */
+  portion: string | null
+  hasPhoto: boolean
+}
+
+/** One day of the meal log for the apps' Diet screen (Jarvis GET /nutrition/day). */
+export interface NutritionDay {
+  /** The Pacific-time day, "2026-11-18". */
+  date: string
+  goals: Macros
+  /** What the day adds up to, and active calories burned when known. */
+  totals: Macros & { burned: number | null }
+  /** Earliest first. */
+  items: NutritionItem[]
+}
+
+/** A week of calories eaten against the goal, for the Diet screen's day strip (Jarvis GET /nutrition/week). */
+export interface NutritionWeek {
+  start: string
+  days: { date: string; calories: number | null; goal: number | null }[]
+}
+
 /** Today's food numbers from Jarvis's meal log. Numbers only, never meal names. */
 export interface NutritionToday {
   /** The Pacific-time day these are for, "2026-11-18". */
@@ -557,6 +588,10 @@ export interface DataSource {
   setSleep(asleep: boolean, from: string, caller?: { login?: string }): Promise<ActionResult>
   /** What Jarvis remembers, or null when he can't be asked. */
   memory(caller?: { login?: string }): Promise<JarvisMemory | null>
+  /** One day of the meal log with what he ate; '' = today. Null when Jarvis can't be asked. */
+  nutritionDay(date: string, caller?: { login?: string }): Promise<NutritionDay | null>
+  /** Seven days of calories against the goal, from `start`; '' = this week. Null when Jarvis can't be asked. */
+  nutritionWeek(start: string, caller?: { login?: string }): Promise<NutritionWeek | null>
   /** Searches past conversations (newest and best matches first). */
   searchMemory(query: string, caller?: { login?: string }): Promise<MemoryHit[]>
   /** Adds or forgets one fact. */

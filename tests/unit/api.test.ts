@@ -104,6 +104,38 @@ describe('Jarvis memory', () => {
   })
 })
 
+describe('Diet screen (meal log)', () => {
+  it('gives a day and a week (sample data), and refuses a date that isn\'t one', async () => {
+    const api = createApi(createMockSource())
+    const day = (await callApi(api, 'GET', '/api/jarvis/nutrition/day?date=2026-11-17')).json().day
+    expect(day.date).toBe('2026-11-17')
+    expect(day.items.length).toBeGreaterThan(0)
+    expect(day.items[0]).toHaveProperty('hasPhoto')
+    const today = (await callApi(api, 'GET', '/api/jarvis/nutrition/day')).json().day
+    expect(today.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    const week = (await callApi(api, 'GET', '/api/jarvis/nutrition/week?start=2026-11-15')).json().week
+    expect(week.start).toBe('2026-11-15')
+    expect(week.days).toHaveLength(7)
+
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/day?date=yesterday')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/week?start=11/15')).statusCode).toBe(400)
+  })
+
+  it("passes the date and the caller's login on to the source", async () => {
+    const seen: unknown[] = []
+    const source = {
+      ...createMockSource(),
+      nutritionDay: async (date: string, caller: unknown) => { seen.push([date, caller]); return null },
+      nutritionWeek: async (start: string, caller: unknown) => { seen.push([start, caller]); return null },
+    }
+    const api = createApi(source)
+    const login = { 'tailscale-user-login': 'dylan@example.com' }
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/day?date=2026-11-17', login)).json()).toEqual({ day: null })
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/week', login)).json()).toEqual({ week: null })
+    expect(seen).toEqual([['2026-11-17', { login: 'dylan@example.com' }], ['', { login: 'dylan@example.com' }]])
+  })
+})
+
 describe('Jarvis voice', () => {
   it('reads the voice, plays a sample, and saves a new one (sample data)', async () => {
     const api = createApi(createMockSource())

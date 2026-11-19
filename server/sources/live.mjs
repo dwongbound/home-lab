@@ -15,7 +15,7 @@ import { createHomeReader } from './home.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
 import { parseNotices } from './notices.mjs'
-import { parseNutrition } from './nutrition.mjs'
+import { parseNutrition, parseNutritionDay, parseNutritionWeek } from './nutrition.mjs'
 import { parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
 import { parseReport, parseReports } from './reports.mjs'
 import { createPickStore } from '../money-picks.mjs'
@@ -731,6 +731,38 @@ export function createLiveSource(config, deps = {}) {
           turns: Number(body?.turns) || 0,
           lastDistill: typeof body?.lastDistill === 'string' ? body.lastDistill : null,
         }
+      } catch {
+        return null
+      }
+    },
+
+    /** One day of the meal log, items and all (Jarvis GET /nutrition/day), as the caller; null when he can't be asked. `date` '' = today. */
+    async nutritionDay(date, caller = {}) {
+      if (!caller.login) return null
+      try {
+        const query = date ? `?date=${encodeURIComponent(date)}` : ''
+        const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/day${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        return parseNutritionDay(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /** Seven days of calories against the goal (Jarvis GET /nutrition/week), as the caller; null when he can't be asked. `start` '' = this week. */
+    async nutritionWeek(start, caller = {}) {
+      if (!caller.login) return null
+      try {
+        const query = start ? `?start=${encodeURIComponent(start)}` : ''
+        const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/week${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        return parseNutritionWeek(await res.json())
       } catch {
         return null
       }
