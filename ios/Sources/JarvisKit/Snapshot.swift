@@ -23,8 +23,16 @@ public struct Snapshot: Decodable, Sendable {
     public var nutrition: Nutrition?
     /// Jarvis's reports and how long they're kept; nil from an older Jarvis.
     public var reports: ReportShelf?
+    /// The PC's gauges (memory, GPU memory, processor, disk).
+    public var metrics: [Metric] = []
+    /// The models Ollama has loaded, with their GPU memory.
+    public var models: [LoadedModel] = []
+    /// Other things Jarvis says hold GPU memory, when he names them.
+    public var gpuUsers: [GpuUser] = []
+    /// The card's own reading with every holder named (newer servers).
+    public var gpu: GpuReading?
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices, nutrition, reports }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices, nutrition, reports, metrics, models, gpuUsers, gpu }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -65,6 +73,18 @@ public struct Snapshot: Decodable, Sendable {
         notices = ((try? c.decodeIfPresent([MaybeNotice].self, forKey: .notices)) ?? nil)?.compactMap(\.notice) ?? []
         health = cloud?.health
         reports = try? c.decodeIfPresent(ReportShelf.self, forKey: .reports)
+        metrics = ((try? c.decodeIfPresent([Metric].self, forKey: .metrics)) ?? nil) ?? []
+        models = ((try? c.decodeIfPresent([LoadedModel].self, forKey: .models)) ?? nil) ?? []
+        gpuUsers = ((try? c.decodeIfPresent([GpuUser].self, forKey: .gpuUsers)) ?? nil) ?? []
+        gpu = (try? c.decodeIfPresent(GpuReading.self, forKey: .gpu)) ?? nil
+    }
+
+    /// Who's using the graphics card right now; nil without a GPU reading.
+    public var gpuShare: GpuShare? {
+        // The server's named reading when there is one; else the guess.
+        if let gpu, let share = GpuShare.from(gpu) { return share }
+        let gauge = metrics.first { $0.id == "gpu" }
+        return GpuShare.from(usedGb: gauge?.value, totalGb: gauge?.total, models: models, users: gpuUsers)
     }
 
     /// Services that are down or struggling: the app's alert banner.

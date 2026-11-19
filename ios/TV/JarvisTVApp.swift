@@ -5,6 +5,7 @@
 // iPad kiosk). Refreshes every 15 s like the page, and keeps the TV from
 // dimming while it's open. Reaches the PC over Tailscale's Apple TV app,
 // the same front door as the phone. Read-only: nothing here acts.
+import Charts
 import SwiftUI
 import UIKit
 import JarvisKit
@@ -557,7 +558,7 @@ struct AlwaysOnView: View {
     private var right: some View {
         if let snapshot = model.snapshot {
             let cards = TVBoard.cards(snapshot, guest: guest)
-            let active = CardSwipe.index(turn: turn, count: cards.count)
+            let active = Self.pinnedCard(cards) ?? CardSwipe.index(turn: turn, count: cards.count)
             TimelineView(.periodic(from: .now, by: SunLampPreview.enabled ? 0.5 : 15)) { tick in
                 let now = SunLampPreview.now(at: tick.date)
                 let hero = TVBoard.hero(snapshot, now: now, guest: guest)
@@ -839,6 +840,44 @@ struct AlwaysOnView: View {
                     .staggered(index)
                 }
             }
+        case .gpu:
+            // Who's using the graphics card: a donut and its legend.
+            if let share = snapshot.gpuShare {
+                card(which) {
+                    HStack(alignment: .center, spacing: 44) {
+                        Chart(share.slices) { slice in
+                            SectorMark(angle: .value("GB", slice.gb), innerRadius: .ratio(0.62), angularInset: 2)
+                                .cornerRadius(4)
+                                .foregroundStyle(gpuColor(slice, in: share))
+                        }
+                        .chartLegend(.hidden)
+                        // The GB in use in the middle of the ring.
+                        .chartBackground { _ in
+                            VStack(spacing: 0) {
+                                Text(String(format: "%.1f", share.usedGb)).font(.title2.weight(.semibold))
+                                Text("GB used").font(.caption).foregroundStyle(inkDim)
+                            }
+                        }
+                        .frame(width: 220, height: 220)
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(Array(share.slices.prefix(5).enumerated()), id: \.element.id) { index, slice in
+                                HStack(alignment: .center, spacing: 14) {
+                                    Circle().fill(gpuColor(slice, in: share)).frame(width: 16, height: 16)
+                                    // The name, and its job under it in the dim ink.
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(slice.name).lineLimit(1)
+                                        if let role = slice.role { Text(role).font(.callout).foregroundStyle(inkDim).lineLimit(1) }
+                                    }
+                                    Spacer(minLength: 10)
+                                    Text(slice.sizeText).monospacedDigit().foregroundStyle(inkDim)
+                                }
+                                .staggered(index)
+                            }
+                            Text(share.summary).font(.callout).foregroundStyle(inkDim)
+                        }
+                    }
+                }
+            }
         case .reports:
             // Read-only: no reader on the TV, so it points to the iPhone.
             card(which) {
@@ -859,6 +898,30 @@ struct AlwaysOnView: View {
                     .foregroundStyle(inkDim)
                     .staggered(3)
             }
+        }
+    }
+
+    /// `-tvCard gpu` holds that card up (simulator screenshots); nil otherwise.
+    private static func pinnedCard(_ cards: [TVCard]) -> Int? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let at = args.firstIndex(of: "-tvCard"), at + 1 < args.count, let card = TVCard(rawValue: args[at + 1]) {
+            return cards.firstIndex(of: card)
+        }
+        #endif
+        return nil
+    }
+
+    /// The page's colours from the lamp's palette (so they read on the day
+    /// sky too): local models warm, speech models cool (the accent, then a
+    /// lighter accent), the rest the dim ink, free a faint ink.
+    private func gpuColor(_ slice: GpuSlice, in share: GpuShare) -> Color {
+        let step = share.shade(of: slice)
+        switch slice.kind {
+        case .local: return warm.opacity(max(0.5, 1 - Double(step) * 0.2))
+        case .speech: return accent.opacity(max(0.45, 1 - Double(step) * 0.3))
+        case .other: return inkDim.opacity(0.7)
+        case .free: return inkDim.opacity(0.2)
         }
     }
 

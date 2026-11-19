@@ -119,6 +119,10 @@ struct TodayView: View {
             Text(problem).font(.footnote).foregroundStyle(Theme.rose)
         }
         if let snapshot = today.snapshot {
+            #if DEBUG
+            // `-gpuFirst` puts the GPU card at the top (simulator screenshots).
+            if ProcessInfo.processInfo.arguments.contains("-gpuFirst"), let share = snapshot.gpuShare { GpuCard(share: share) }
+            #endif
             hero(snapshot)
             ForEach(snapshot.alerts) { service in
                 Label("\(service.name) is \(service.status)", systemImage: "exclamationmark.triangle.fill")
@@ -144,6 +148,9 @@ struct TodayView: View {
             dietCard(snapshot.nutrition)
             if let health = snapshot.health, health.sleep?.asleepMin != nil || health.yesterday?.steps != nil {
                 healthCard(health)
+            }
+            if let share = snapshot.gpuShare {
+                GpuCard(share: share)
             }
             if let shelf = app.reportShelf {
                 reportsCard(shelf)

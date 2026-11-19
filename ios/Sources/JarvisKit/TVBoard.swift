@@ -210,6 +210,8 @@ public enum TVCard: String, CaseIterable, Sendable {
     case today, tasks, home, playing, forecast, jarvis, lookout, health, suggestions
     /// Jarvis's reports, read-only: titles and summaries (read on the iPhone).
     case reports
+    /// Who's using the graphics card, as a pie.
+    case gpu
 
     /// The card's title.
     public var title: String {
@@ -225,6 +227,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .health: return "You"
         case .suggestions: return "Suggestions"
         case .reports: return "Reports"
+        case .gpu: return "Graphics card"
         }
     }
 
@@ -242,6 +245,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .health: return "heart.fill"
         case .suggestions: return "lightbulb.fill"
         case .reports: return "doc.richtext"
+        case .gpu: return "cpu"
         }
     }
 
@@ -279,6 +283,7 @@ public enum TVBoard {
         if snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.suggestions) }
         if !(snapshot.reports?.reports.isEmpty ?? true) { out.append(.reports) }
+        if snapshot.gpuShare != nil { out.append(.gpu) }
         return guest ? out.filter { !$0.isPrivate } : out
     }
 
