@@ -41,6 +41,10 @@ targets:
   Jarvis:
     type: application
     platform: iOS
+    # Its scheme runs the swipe-freeze UI test too.
+    scheme:
+      testTargets:
+        - JarvisUITests
     sources:
       - path: App
       - path: Shared
@@ -213,12 +217,3 @@ targets:
         UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
 
-schemes:
-  JarvisUITests:
-    build:
-      targets:
-        Jarvis: all
-        JarvisUITests: [test]
-    test:
-      targets:
-        - JarvisUITests
