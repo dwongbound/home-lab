@@ -7,10 +7,13 @@ import UIKit
 import JarvisKit
 
 /// The tabs along the bottom (a sidebar on iPad).
+/// The pages, left to right (Dylan, 2026-11-18: "change the default tab to
+/// home, make it all the way left and then right of it is talk and then
+/// chat"). The order here is the bar's and the swipe's.
 enum AppTab: Hashable, CaseIterable {
-    case chat
-    case talk
     case today
+    case talk
+    case chat
 
     /// The tab `step` places along (1 = right), stopping at the ends.
     func neighbour(_ step: Int) -> AppTab {
@@ -28,8 +31,8 @@ final class AppModel: ObservableObject {
     @Published var server: String {
         didSet { UserDefaults.standard.set(server, forKey: Self.serverKey) }
     }
-    /// Talk first: opening the app goes straight to the voice line (Dylan, 2026-11-17).
-    @Published var tab: AppTab = .talk
+    /// Home first: the app opens on Home every launch (Dylan, 2026-11-18).
+    @Published var tab: AppTab = .today
     @Published var showSettings = false
     /// nil until the first request; then whether the PC answered.
     @Published var reachable: Bool?

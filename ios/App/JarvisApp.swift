@@ -54,15 +54,16 @@ struct RootView: View {
     /// (Dylan, 2026-11-16: no "Chat"/"Talk" headings).
     var body: some View {
         TabView(selection: $app.tab) {
-            ChatView(chat: app.chat)
-                .roomForTabBar()
-                .tag(AppTab.chat)
-            TalkView(talk: app.talk)
-                .roomForTabBar()
-                .tag(AppTab.talk)
+            // Home, Talk, Chat, left to right (AppTab's order).
             TodayView(today: app.today)
                 .roomForTabBar()
                 .tag(AppTab.today)
+            TalkView(talk: app.talk)
+                .roomForTabBar()
+                .tag(AppTab.talk)
+            ChatView(chat: app.chat)
+                .roomForTabBar()
+                .tag(AppTab.chat)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         // The keyboard goes as soon as a page swipe starts, not only once
@@ -108,8 +109,8 @@ struct RootView: View {
                 try? await Task.sleep(for: .seconds(Orbit.refreshSeconds(orangeShowing: !app.notices.isEmpty)))
             }
         }
-        // The app opens on Talk, so the call starts with the app; onChange
-        // below only sees later switches.
+        // If the app ever opens on Talk the call starts with it; onChange
+        // below only sees later switches. (It opens on Home now.)
         .task {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-demoIsland") { app.talk.demoIsland(); return }
@@ -252,10 +253,11 @@ struct TabBar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            item(.chat, "Chat", "bubble.left.fill", badge: chatBadge)
-            item(.talk, "Talk", "waveform", badge: 0)
-            // "Home" on iPhone and iPad alike (Dylan, 2026-11-17).
+            // Home, Talk, Chat (Dylan, 2026-11-18); "Home" on iPhone and
+            // iPad alike (2026-11-17).
             item(.today, "Home", "square.grid.2x2.fill", badge: 0)
+            item(.talk, "Talk", "waveform", badge: 0)
+            item(.chat, "Chat", "bubble.left.fill", badge: chatBadge)
         }
         .padding(5)
         .glassPanel(radius: 32)

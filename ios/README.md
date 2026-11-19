@@ -11,6 +11,9 @@ Review) or straight from Xcode. It never goes to the App Store.
 
 ## What's in it (milestone 1)
 
+Three pages, left to right: **Home**, **Talk**, **Chat**. The app opens on
+Home; swiping and the tab bar follow that order.
+
 - **Chat:** history, streaming replies with the model chip (orange for
   Claude with its model letter, "Jarvis (CO)" / "(CH)" / "(CS)" / "(CF)";
   "Jarvis (O)" blue), typing dots and the working label, approval
