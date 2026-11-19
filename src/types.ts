@@ -258,14 +258,19 @@ export interface Notice {
   /** "Low clouds likely at Torrance on Thursday morning" */
   title: string
   body: string
-  /** Where it came from: an approval, Lookout, a reminder, a service alert, a finished job, or a message. */
-  source: 'approval' | 'lookout' | 'reminder' | 'alert' | 'job' | 'message'
+  /** Where it came from: an approval, Lookout, a reminder, a service alert, a finished job, a message, or a chat message he kept. */
+  source: 'approval' | 'lookout' | 'reminder' | 'alert' | 'job' | 'message' | 'kept'
   created: string | null
   /** The approval a "need" notice is waiting on, for Approve and Deny on its row. */
   approvalId?: string
   /** The chat turn (ChatTurn.id) holding the full message this notice previews; approvals have none. */
   turnId?: number
+  /** True once he chose to keep it: it stays until he lets it go, whatever gets cleared. */
+  kept?: boolean
 }
+
+/** What to keep: a chat message by its turn id, or a notice already on the list. */
+export type NoticeKeep = { turnId: number } | { id: string }
 
 /** Which notifications to clear: some, or all. */
 export type NoticeClear = { ids: string[] } | { all: true }
@@ -432,7 +437,7 @@ export type ChatEvent =
 /** One saved line of the web chat. model: who wrote one of Jarvis's lines, when known. */
 /** `images` = how many photos went with the message (the bytes aren't kept in the history). */
 /** One line of the chat. `id` is Jarvis's number for it; `model` is who wrote it, or "notice:reminder" for a message he sent unasked, and then `writer` is the model that wrote that message (none for a plain reminder). */
-export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; writer?: string; images?: number; id?: number }
+export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; writer?: string; images?: number; id?: number; kept?: boolean }
 
 /** One photo on a chat message: its kind and base64 bytes. */
 export interface ChatImage { type: string; data: string }
@@ -602,6 +607,10 @@ export interface DataSource {
   answerMeal(key: string, choice: string, caller?: { login?: string }): Promise<ActionResult>
   /** Clears notifications for every device. */
   clearNotices(which: NoticeClear, caller?: { login?: string }): Promise<ActionResult>
+  /** Keeps a chat message or a notice on the list until he lets it go; the answer may carry the kept notice. */
+  keepNotice(what: NoticeKeep, caller?: { login?: string }): Promise<ActionResult & { notice?: Notice }>
+  /** Lets a kept one go, on every device. */
+  unkeepNotice(id: string, caller?: { login?: string }): Promise<ActionResult>
   /** Passes an app's push token to Jarvis. */
   registerPush(device: PushDevice, caller?: { login?: string }): Promise<ActionResult>
   /** Night mode on a screen: tells Jarvis you've gone to bed (true) or are up (false). `from` names the screen. */

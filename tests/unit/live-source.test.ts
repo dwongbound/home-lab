@@ -75,7 +75,14 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url === `${config.jarvisApiUrl}/notices`) {
       return Response.json({ notices: [{ id: 'n1', kind: 'heads', title: 'Rain at 4', source: 'lookout' }, { id: 'n2', kind: 'nope', title: 'Dropped' }] }, { status: jarvisStatusCode })
     }
-    if (url === `${config.jarvisApiUrl}/notices/clear` || url === `${config.jarvisApiUrl}/push/register`) {
+    if (url === `${config.jarvisApiUrl}/notices/keep`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      if (jarvisStatusCode === 404) return new Response('Not Found', { status: 404 })
+      const asked = JSON.parse(String(init?.body ?? '{}'))
+      if (asked.turn_id === 99) return Response.json({ ok: false, message: 'no such turn' }, { status: 404 })
+      return Response.json({ ok: true, notice: { id: 'k7', kind: 'fyi', title: 'Call the shop', source: 'kept', turn_id: 7, kept: true } })
+    }
+    if (url === `${config.jarvisApiUrl}/notices/unkeep` || url === `${config.jarvisApiUrl}/notices/clear` || url === `${config.jarvisApiUrl}/push/register`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ ok: true }, { status: jarvisStatusCode })
     }
@@ -458,6 +465,28 @@ describe('live chat with Jarvis', () => {
     expect((await source.setSleep(true, 'tv', {})).ok).toBe(false)
     expect((await liveWith({ jarvisStatusCode: 404 }).source.setSleep(true, 'tv', { login: 'd@example.com' })).message).toBe('Jarvis can’t track sleep yet')
     expect((await liveWith({ jarvisAnswers: false }).source.setSleep(false, 'tv', { login: 'd@example.com' })).message).toBe('Jarvis is not answering')
+  })
+
+  it('keeps a chat message or a notice with Jarvis and lets it go', async () => {
+    const { source, fetch } = liveWith({})
+    const who = { login: 'dylan@example.com' }
+    expect(await source.keepNotice({ turnId: 7 }, who)).toEqual({
+      ok: true,
+      message: 'Kept',
+      notice: { id: 'k7', kind: 'fyi', title: 'Call the shop', body: '', source: 'kept', created: null, turnId: 7, kept: true },
+    })
+    await source.keepNotice({ id: 'n1' }, who)
+    const sent = fetch.mock.calls.filter((c) => c[0] === `${config.jarvisApiUrl}/notices/keep`).map((c) => JSON.parse(c[1]!.body as string))
+    expect(sent).toEqual([{ turn_id: 7 }, { notice_id: 'n1' }])
+    expect((await source.keepNotice({ turnId: 99 }, who)).message).toBe('Jarvis can’t find that message')
+    expect((await source.keepNotice({ turnId: 7 }, {})).ok).toBe(false)
+    expect(await source.unkeepNotice('k7', who)).toEqual({ ok: true, message: 'Let go' })
+    const [, gone] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/notices/unkeep`)!
+    expect(JSON.parse(gone!.body as string)).toEqual({ id: 'k7' })
+    const old = liveWith({ jarvisStatusCode: 404 }).source
+    expect((await old.keepNotice({ turnId: 7 }, who)).message).toBe('Jarvis can’t keep messages yet')
+    expect((await old.unkeepNotice('k7', who)).message).toBe('Jarvis can’t keep messages yet')
+    expect((await liveWith({ jarvisAnswers: false }).source.keepNotice({ id: 'n1' }, who)).message).toBe('Jarvis is not answering')
   })
 
   it('puts Jarvis’s notices in the snapshot, clears them and registers a device for pushes', async () => {

@@ -428,11 +428,32 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: true, message: 'Logged as a new meal.' }
     },
 
-    /** Clear on notifications: those ids, or all of them, are gone. */
+    /** Clear on notifications: those ids, or all of them, are gone; kept ones stay. */
     async clearNotices(which) {
       const ids = which.ids ?? []
-      state.notices = currentNotices(now()).filter((n) => which.all !== true && !ids.includes(n.id))
+      state.notices = currentNotices(now()).filter((n) => n.kept === true || (which.all !== true && !ids.includes(n.id)))
       return { ok: true, message: 'Cleared' }
+    },
+
+    /** Keep on a notice ({id}) marks it kept; on a chat message ({turnId}) adds a kept line for it, once. */
+    async keepNotice(what) {
+      const notices = currentNotices(now())
+      let id = what.id
+      if (what.turnId !== undefined) id = `k${what.turnId}`
+      let notice = notices.find((n) => n.id === id)
+      if (!notice && what.turnId === undefined) return { ok: false, message: 'Jarvis can’t find that message' }
+      if (!notice) {
+        notice = { id, kind: 'fyi', title: 'A message you kept', body: '', source: 'kept', created: now().toISOString(), turnId: what.turnId }
+        notices.unshift(notice)
+      }
+      notice.kept = true
+      return { ok: true, message: 'Kept', notice: { ...notice } }
+    },
+
+    /** Letting a kept one go: it leaves the list. */
+    async unkeepNotice(id) {
+      state.notices = currentNotices(now()).filter((n) => n.id !== id)
+      return { ok: true, message: 'Let go' }
     },
 
     /** An app asking for pushes: remembered so a test can see it arrived. */
