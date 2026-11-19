@@ -152,6 +152,6 @@ final class ClientTests: XCTestCase {
 
     /// "Can't reach" points at Tailscale, the usual cause.
     func testUnreachableWording() {
-        XCTAssertEqual(JarvisError.unreachable.errorDescription, "Can’t reach Jarvis. Is Tailscale on?")
+        XCTAssertEqual(JarvisError.unreachable.errorDescription, "Can’t reach Jarvis. Check Tailscale.")
     }
 }

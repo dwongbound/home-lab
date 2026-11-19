@@ -160,3 +160,100 @@ final class PlaybackTrackerTests: XCTestCase {
         XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(10)))
     }
 }
+
+final class ChatWindowTests: XCTestCase {
+    func testPagesOfForty() {
+        XCTAssertEqual(ChatWindow.first(total: 240), 40)
+        XCTAssertEqual(ChatWindow.first(total: 12), 12)
+        XCTAssertEqual(ChatWindow.grow(40, total: 240), 80)
+        XCTAssertEqual(ChatWindow.grow(220, total: 240), 240)
+        XCTAssertTrue(ChatWindow.hasMore(shown: 40, total: 240))
+        XCTAssertFalse(ChatWindow.hasMore(shown: 240, total: 240))
+    }
+
+    /// Opening an old turn from a notice widens the window to reach it.
+    func testIncludingAnOldMessage() {
+        // Index 100 of 240 is the 140th from the end: three pages plus one.
+        XCTAssertEqual(ChatWindow.including(index: 100, shown: 40, total: 240), 200)
+        XCTAssertEqual(ChatWindow.including(index: 230, shown: 40, total: 240), 40)
+        XCTAssertEqual(ChatWindow.including(index: 0, shown: 40, total: 240), 240)
+    }
+}
+
+final class ChatHistoryTests: XCTestCase {
+    private func turn(_ id: Int, user: Bool) -> ChatTurn {
+        ChatTurn(role: user ? "user" : "assistant", text: "t\(id)", at: "", model: nil, id: id)
+    }
+
+    func testQueriesAndTodaysAnswer() throws {
+        XCTAssertEqual(HistoryQuery.before(40, limit: 50).parameters, ["limit": "50", "before": "40"])
+        XCTAssertEqual(HistoryQuery.around(7, limit: 500).parameters, ["limit": "100", "around": "7"])
+        // Today's server: turns only, so no older pages and pending unknown.
+        let today = try JSONDecoder().decode(HistoryPage.self, from: Data(#"{"turns":[{"role":"user","text":"hi","at":"","id":1}]}"#.utf8))
+        XCTAssertFalse(today.hasMore)
+        XCTAssertNil(today.pending)
+        let paged = try JSONDecoder().decode(HistoryPage.self, from: Data(#"{"turns":[],"hasMore":true,"pending":true}"#.utf8))
+        XCTAssertTrue(paged.hasMore)
+        XCTAssertEqual(paged.pending, true)
+    }
+
+    /// Older pages go in front, never twice.
+    func testPrependDropsOverlap() {
+        let held = [turn(5, user: true), turn(6, user: false)]
+        let older = [turn(3, user: true), turn(4, user: false), turn(5, user: true)]
+        XCTAssertEqual(ChatHistory.prepend(older, to: held).compactMap(\.id), [3, 4, 5, 6])
+    }
+
+    /// Back in the app: his last line unanswered (or the server says still
+    /// writing) means keep checking; an answered one doesn't.
+    func testReplyOwed() {
+        XCTAssertTrue(ChatHistory.replyOwed([turn(1, user: true)], pending: nil))
+        XCTAssertFalse(ChatHistory.replyOwed([turn(1, user: true), turn(2, user: false)], pending: nil))
+        XCTAssertTrue(ChatHistory.replyOwed([turn(1, user: true), turn(2, user: false)], pending: true))
+        XCTAssertFalse(ChatHistory.replyOwed([turn(1, user: true)], pending: false))
+        XCTAssertFalse(ChatHistory.replyOwed([], pending: nil))
+    }
+}
+
+final class ErrorWordingTests: XCTestCase {
+    func testNoCodesOnScreen() {
+        XCTAssertEqual(JarvisError.server(status: 502, message: "Jarvis answered 502").errorDescription, ErrorWording.restarting)
+        XCTAssertEqual(JarvisError.unreachable.errorDescription, ErrorWording.unreachable)
+        XCTAssertFalse(JarvisError.server(status: 500, message: "Jarvis answered 500").errorDescription!.contains("500"))
+        XCTAssertEqual(JarvisError.server(status: 400, message: "Say what the playbook should do").errorDescription, "Say what the playbook should do")
+    }
+
+    /// Reads retry a restart or a dropped line a few times, then give up;
+    /// anything else isn't retried.
+    func testRetryPolicy() async throws {
+        let calls = Counter()
+        let value = try await RetryPolicy.run(delays: [0, 0, 0], sleep: { _ in }) { () async throws -> Int in
+            let n = await calls.bump()
+            if n < 3 { throw JarvisError.server(status: 502, message: "") }
+            return n
+        }
+        XCTAssertEqual(value, 3)
+        let gaveUp = Counter()
+        do {
+            _ = try await RetryPolicy.run(delays: [0, 0], sleep: { _ in }) { () async throws -> Int in
+                _ = await gaveUp.bump(); throw JarvisError.unreachable
+            }
+            XCTFail("should give up")
+        } catch {}
+        let tries = await gaveUp.count
+        XCTAssertEqual(tries, 3)
+        let notRetried = Counter()
+        do {
+            _ = try await RetryPolicy.run(delays: [0, 0], sleep: { _ in }) { () async throws -> Int in
+                _ = await notRetried.bump(); throw JarvisError.server(status: 400, message: "no")
+            }
+        } catch {}
+        let once = await notRetried.count
+        XCTAssertEqual(once, 1)
+    }
+}
+
+actor Counter {
+    var count = 0
+    func bump() -> Int { count += 1; return count }
+}

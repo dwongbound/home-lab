@@ -67,6 +67,13 @@ final class ChatModel: ObservableObject {
     @Published var problem: String?
     /// True once history has loaded at least once.
     @Published private(set) var loaded = false
+    /// Older turns exist on the server than the ones held (a paging server
+    /// says so; today's never does).
+    @Published private(set) var olderOnServer = false
+    /// An older page is on its way.
+    @Published private(set) var loadingOlder = false
+    /// Checking for a reply that finished while the app was away.
+    @Published private(set) var catchingUp = false
     /// True while photos are uploading (before the reply starts).
     @Published private(set) var uploading = false
     /// A blocking label while a meal answer goes ("Telling Jarvis…").
@@ -88,7 +95,7 @@ final class ChatModel: ObservableObject {
     }
 
     /// Loads the chat so far and anything still waiting on an OK.
-    func load(app: AppModel) async {
+    func load(app: AppModel, around turnId: Int? = nil) async {
         #if DEBUG
         // `-demoChat` fills Chat with a long mixed history and reaches no
         // Jarvis (the scroll-lag test, UITests/ChatScrollTests.swift).
@@ -100,7 +107,11 @@ final class ChatModel: ObservableObject {
         #endif
         let client = app.client
         do {
-            let turns = try await client.history()
+            // The newest page, or a window round a turn a notice opened.
+            let page = try await client.history(turnId.map { .around($0, limit: HistoryQuery.pageSize) } ?? .newest(limit: HistoryQuery.pageSize))
+            let turns = page.turns
+            olderOnServer = page.hasMore
+            lastPending = page.pending
             let pending = try await client.pendingApprovals()
             // Settled approvals aren't in the PC's history, so they're kept
             // from before, each after the line it followed.
@@ -129,10 +140,56 @@ final class ChatModel: ObservableObject {
             problem = nil
             app.noteReach(nil)
         } catch {
-            problem = error.localizedDescription
+            // A refresh in the background never puts an error in Chat
+            // (Dylan, 2026-11-19: "Jarvis answered 502" coming back to the
+            // app); the status line shows whether Jarvis can be reached.
             app.noteReach(error)
         }
         loaded = true
+    }
+
+    /// What the server last said about a reply still being written.
+    private var lastPending: Bool?
+
+    /// The next older page from the server, put above what's held. Only
+    /// asked for when the server says there is one.
+    func loadOlder(app: AppModel) async {
+        guard olderOnServer, !loadingOlder, let first = items.compactMap(\.turnId).first else { return }
+        loadingOlder = true
+        defer { loadingOlder = false }
+        do {
+            let page = try await app.client.history(.before(first, limit: HistoryQuery.pageSize))
+            let known = Set(items.compactMap(\.turnId))
+            let older = Self.items(from: page.turns.filter { $0.id.map { !known.contains($0) } ?? true })
+            items.insert(contentsOf: older, at: 0)
+            olderOnServer = page.hasMore && !older.isEmpty
+        } catch {
+            app.noteReach(error)
+        }
+    }
+
+    /// Back in the app (or opened fresh): if his last message has no answer
+    /// yet, or Jarvis says he's still writing, read the history again every
+    /// couple of seconds until the reply is there, so a reply finished while
+    /// the app was away shows up without a duplicate.
+    func catchUp(app: AppModel) async {
+        guard !isSending, !catchingUp, loaded else { return }
+        catchingUp = true
+        defer { catchingUp = false; working = nil }
+        let started = Date()
+        while Date().timeIntervalSince(started) < ChatHistory.catchUpSeconds {
+            await load(app: app)
+            let turns = items.compactMap { item -> ChatTurn? in
+                switch item.kind {
+                case .user: return ChatTurn(role: "user", text: item.text, at: "", model: nil, id: item.turnId)
+                case .jarvis: return ChatTurn(role: "assistant", text: item.text, at: "", model: item.model, id: item.turnId)
+                case .approval: return nil
+                }
+            }
+            guard ChatHistory.replyOwed(turns, pending: lastPending), !isSending else { return }
+            working = "Catching up"
+            try? await Task.sleep(for: .seconds(ChatHistory.catchUpEvery))
+        }
     }
 
     /// Each settled approval with the text of the line before it.
@@ -209,6 +266,16 @@ final class ChatModel: ObservableObject {
         items.append(reply)
         isSending = true
         uploading = !photos.isEmpty
+        // Leaving the app right after Send must not stop the message going
+        // out: iOS gives a little time to finish the request and read the
+        // reply; Jarvis keeps going on the PC either way and the app
+        // catches up from history when it's back.
+        var background = UIBackgroundTaskIdentifier.invalid
+        background = UIApplication.shared.beginBackgroundTask(withName: "Jarvis chat") {
+            UIApplication.shared.endBackgroundTask(background)
+            background = .invalid
+        }
+        defer { if background != .invalid { UIApplication.shared.endBackgroundTask(background) } }
         problem = nil
         failed = nil
 
@@ -224,15 +291,30 @@ final class ChatModel: ObservableObject {
                 failed = (trimmed, photos)
                 items.removeAll { $0.id == mine.id }
             } else {
-                problem = error.localizedDescription
+                sendDropped(error, text: trimmed, photos: photos, mine: mine.id, reply: reply.id, app: app)
             }
             app.noteReach(error)
         } catch {
-            problem = error.localizedDescription
+            sendDropped(error, text: trimmed, photos: photos, mine: mine.id, reply: reply.id, app: app)
             app.noteReach(error)
         }
         uploading = false
         finish(reply.id)
+    }
+
+    /// A send that broke. Nothing back yet: it didn't go, so say so and
+    /// offer Try again (never sent again on its own). Words had started
+    /// coming: Jarvis has it and carries on, so fetch the rest instead.
+    private func sendDropped(_ error: Error, text: String, photos: [PickedPhoto], mine: String, reply: String, app: AppModel) {
+        let started = !(items.first { $0.id == reply }?.text.isEmpty ?? true)
+        if started {
+            problem = nil
+            Task { await self.catchUp(app: app) }
+        } else {
+            problem = ErrorWording.sendFailed
+            failed = (text, photos)
+            items.removeAll { $0.id == mine }
+        }
     }
 
     /// Answers "is this the meal I logged?" under a reply; his answer comes
@@ -407,7 +489,9 @@ enum DemoChat {
         ```
         I'll check again at 8 and tell you if anything moves.
         """
-        for i in 0..<120 {
+        // `-demoChatBig`: 2,000 turns, for the lazy-loading check.
+        let turns = ProcessInfo.processInfo.arguments.contains("-demoChatBig") ? 1000 : 120
+        for i in 0..<turns {
             var me = ChatItem.user(i % 5 == 0 ? "Can you look at tomorrow and tell me what I need to bring?" : "ok \(i)", photoCount: i % 9 == 0 ? 2 : 0)
             me.turnId = i
             out.append(me)

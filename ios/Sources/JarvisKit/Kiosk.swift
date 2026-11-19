@@ -278,3 +278,28 @@ public enum ComposerSize {
         atBottom || lastIsMine || sending
     }
 }
+
+/// How much of the chat is on screen (Dylan, 2026-11-19: "the chat
+/// shouldnt load all history- it should lazy load as you scroll up"): the
+/// newest `page` messages at first, then `page` more each time he reaches
+/// the top. Everything else stays in memory, undrawn.
+public enum ChatWindow {
+    public static let page = 40
+
+    /// How many of `total` to show at first.
+    public static func first(total: Int) -> Int { min(total, page) }
+
+    /// One more page, never past the whole history.
+    public static func grow(_ shown: Int, total: Int) -> Int { min(total, shown + page) }
+
+    /// Enough to include the message at `index` (a notice opening an old
+    /// turn), rounded up to whole pages so the top isn't right at it.
+    public static func including(index: Int, shown: Int, total: Int) -> Int {
+        let need = total - index
+        guard need > shown else { return shown }
+        return min(total, ((need + page - 1) / page) * page + page)
+    }
+
+    /// Whether there's more above what's shown.
+    public static func hasMore(shown: Int, total: Int) -> Bool { shown < total }
+}

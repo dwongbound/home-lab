@@ -14,9 +14,56 @@ public enum JarvisError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .unreachable:
-            return "Can’t reach Jarvis. Is Tailscale on?"
-        case .server(_, let message):
-            return message
+            return ErrorWording.unreachable
+        case .server(let status, let message):
+            return ErrorWording.server(status: status, message: message)
+        }
+    }
+
+    /// Worth asking again (a read, never a write): Jarvis restarting
+    /// (502, 503, 504) or the line dropped on the way.
+    public var isPassing: Bool {
+        switch self {
+        case .unreachable: return true
+        case .server(let status, _): return [502, 503, 504].contains(status)
+        }
+    }
+}
+
+/// The one place errors are put into words (Dylan, 2026-11-19: "a lot of
+/// jarvis 502 error logs"). No status codes ever reach the screen.
+public enum ErrorWording {
+    public static let unreachable = "Can’t reach Jarvis. Check Tailscale."
+    public static let restarting = "Jarvis is restarting. Try again in a moment."
+    public static let sendFailed = "Didn’t send. Tap Try again."
+
+    /// A server answer in words: its own message when it gave one that
+    /// isn't just a code, else plain words for the kind of failure.
+    public static func server(status: Int, message: String) -> String {
+        if [502, 503, 504].contains(status) { return restarting }
+        let own = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if own.isEmpty || own.hasPrefix("Jarvis answered") || own.range(of: #"\b[1-5]\d\d\b"#, options: .regularExpression) != nil && own.count < 24 {
+            return status >= 500 ? "Jarvis had a problem. Try again in a moment." : "Jarvis didn’t take that."
+        }
+        return own
+    }
+}
+
+/// How reads are retried while Jarvis restarts or the tunnel comes back:
+/// a few quick tries, then quiet until the next refresh. Writes never.
+public enum RetryPolicy {
+    public static let delays: [Double] = [0.5, 1, 2, 4]
+
+    /// Runs `read`, retrying a passing failure after each delay.
+    public static func run<T: Sendable>(delays: [Double] = RetryPolicy.delays, sleep: @Sendable (Double) async -> Void = { try? await Task.sleep(for: .seconds($0)) }, _ read: @Sendable () async throws -> T) async throws -> T {
+        var attempt = 0
+        while true {
+            do {
+                return try await read()
+            } catch let error as JarvisError where error.isPassing && attempt < delays.count && !Task.isCancelled {
+                await sleep(delays[attempt])
+                attempt += 1
+            }
         }
     }
 }
@@ -117,6 +164,14 @@ public struct JarvisClient: Sendable {
         struct Body: Decodable { let turns: [ChatTurn]? }
         let body: Body = try await get("api/jarvis/history")
         return body.turns ?? []
+    }
+
+    /// One page of chat history (JarvisKit ChatHistory); a server without
+    /// paging ignores the parameters and answers its newest turns.
+    public func history(_ query: HistoryQuery) async throws -> HistoryPage {
+        let request = request("api/jarvis/history", query: query.parameters)
+        let data = try await RetryPolicy.run { try await send(request) }
+        return try JSONDecoder().decode(HistoryPage.self, from: data)
     }
 
     /// What Jarvis is still waiting on an answer for.
@@ -346,7 +401,8 @@ public struct JarvisClient: Sendable {
 
     /// GETs `path` and decodes the JSON body.
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        let data = try await send(request(path))
+        let request = request(path)
+        let data = try await RetryPolicy.run { try await send(request) }
         return try JSONDecoder().decode(T.self, from: data)
     }
 

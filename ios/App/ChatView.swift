@@ -12,6 +12,9 @@ struct ChatView: View {
     /// (Dylan, 2026-11-19: typing felt laggy; every key used to rebuild
     /// all 240 rows). This flips only when the box goes empty or not.
     @State private var hasText = false
+    /// How many of the newest messages are drawn (JarvisKit ChatWindow);
+    /// older ones are added a page at a time as he reaches the top.
+    @State private var shown = ChatWindow.page
     /// Photos picked for the next message (up to 4).
     @State private var picked: [PickedPhoto] = []
     @State private var choosing: [PhotosPickerItem] = []
@@ -35,6 +38,7 @@ struct ChatView: View {
     @State private var unseenReply = false
     /// Whether the keyboard is up (RootView's KeyboardWatch).
     @EnvironmentObject private var keyboard: KeyboardWatch
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Status line, the scrolling chat, then the composer.
     var body: some View {
@@ -136,6 +140,12 @@ struct ChatView: View {
                 await app.client.warm()
                 await chat.load(app: app)
             }
+            // Opened fresh after leaving mid-reply: fetch what finished.
+            await chat.catchUp(app: app)
+        }
+        // Back in the app: a reply that finished while it was away.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await chat.catchUp(app: app) } }
         }
         .sheet(item: $flagging) { item in
             WrongSheet(item: item)
@@ -153,7 +163,17 @@ struct ChatView: View {
                     // The rows redraw only when what they show changes, not
                     // on every change anywhere in the app (Dylan, 2026-11-19:
                     // tab swipes and typing were rebuilding all of them).
-                    ChatRowsList(items: chat.items, highlighted: highlighted, keptTurns: keptTurns,
+                    // Older messages wait until he scrolls up to them.
+                    if ChatWindow.hasMore(shown: shown, total: chat.items.count) || chat.olderOnServer {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Loading earlier messages").font(.footnote).foregroundStyle(Theme.frostDim)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .id("older")
+                        .onAppear { loadOlder(scroller) }
+                    }
+                    ChatRowsList(items: Array(chat.items.suffix(shown)), highlighted: highlighted, keptTurns: keptTurns,
                                  mealBusy: chat.busy != nil, actions: rowActions)
                         .equatable()
                     if showDots {
@@ -215,8 +235,14 @@ struct ChatView: View {
             .onChange(of: app.focusTurn) { _, target in
                 guard let target else { return }
                 Task {
-                    if !chat.items.contains(where: { $0.turnId == target }) { await chat.load(app: app) }
-                    if let item = chat.items.first(where: { $0.turnId == target }) {
+                    // Not held: ask for a window round it (a paging server
+                    // answers one; today's sends its newest turns).
+                    if !chat.items.contains(where: { $0.turnId == target }) { await chat.load(app: app, around: target) }
+                    if let index = chat.items.firstIndex(where: { $0.turnId == target }) {
+                        // An old turn beyond the drawn window: widen it first.
+                        shown = ChatWindow.including(index: index, shown: shown, total: chat.items.count)
+                        try? await Task.sleep(for: .milliseconds(50))
+                        let item = chat.items[index]
                         withAnimation(.easeOut(duration: 0.4)) { scroller.scrollTo(item.id, anchor: .center) }
                         // A soft tint on the bubble that fades in, rests and
                         // fades out over about two seconds (Dylan, 2026-11-18:
@@ -272,6 +298,35 @@ struct ChatView: View {
 
     /// Typing dots while he thinks, looks something up, or hasn't started
     /// writing yet (the web page also shows them after 1.5 s of quiet).
+    /// Adds the next page of older messages above, keeping his place: the
+    /// message that was at the top stays where it was.
+    private func loadOlder(_ scroller: ScrollViewProxy) {
+        let total = chat.items.count
+        guard ChatWindow.hasMore(shown: shown, total: total) else {
+            // Everything held is drawn: ask the server for an older page.
+            let anchor = chat.items.first?.id
+            Task {
+                await chat.loadOlder(app: app)
+                shown = ChatWindow.grow(shown, total: chat.items.count)
+                if let anchor {
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { scroller.scrollTo(anchor, anchor: .top) }
+                }
+            }
+            return
+        }
+        let anchor = chat.items.suffix(shown).first?.id
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { shown = ChatWindow.grow(shown, total: total) }
+        if let anchor {
+            Task { @MainActor in
+                withTransaction(quiet) { scroller.scrollTo(anchor, anchor: .top) }
+            }
+        }
+    }
+
     /// The turns showing as kept (yellow), for the rows.
     private var keptTurns: Set<Int> {
         Set(chat.items.compactMap { item in
@@ -293,6 +348,7 @@ struct ChatView: View {
     }
 
     private var showDots: Bool {
+        if chat.catchingUp { return true }
         guard chat.isSending else { return false }
         if chat.working != nil { return true }
         guard let last = chat.items.last, last.kind == .jarvis else { return true }
@@ -599,6 +655,10 @@ private struct ComposerField: View {
     let sending: Bool
     let onSend: (String) -> Void
     @State private var text = ""
+    /// Saves the unsent words half a second after the last keystroke, so
+    /// they survive leaving the app or it being closed.
+    @State private var saving: Task<Void, Never>?
+    static let draftKey = "chat.draft"
 
     private var canSend: Bool {
         (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasPhotos) && !sending
@@ -628,6 +688,15 @@ private struct ComposerField: View {
         .onChange(of: text) { _, new in
             let filled = !new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if filled != hasText { hasText = filled }
+            saving?.cancel()
+            saving = Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                UserDefaults.standard.set(new, forKey: Self.draftKey)
+            }
+        }
+        .onAppear {
+            if text.isEmpty, let saved = UserDefaults.standard.string(forKey: Self.draftKey), !saved.isEmpty { text = saved }
         }
     }
 
@@ -635,6 +704,8 @@ private struct ComposerField: View {
         guard canSend else { return }
         let words = text
         text = ""
+        saving?.cancel()
+        UserDefaults.standard.removeObject(forKey: Self.draftKey)
         onSend(words)
     }
 }
@@ -687,7 +758,8 @@ private struct ChatRowsList: View, Equatable {
                         .background(Capsule().fill(Theme.userBubble.opacity(0.6)))
                 }
                 if !item.text.isEmpty {
-                    Text(item.text)
+                    // The same light markdown as his replies (bold, italic, code).
+                    Text(MarkdownCache.shared.attributed(item.text))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))

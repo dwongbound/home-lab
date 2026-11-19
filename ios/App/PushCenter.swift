@@ -131,10 +131,19 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
     /// Dylan 2026-11-18).
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         nonisolated(unsafe) let done = completionHandler
+        let turnId = PushWords.turnId(from: notification.request.content.userInfo)
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
-                if let app = self.app { Task { await app.today.load(app: app) } }
-                done([.banner, .list, .sound])
+                guard let app = self.app else { done([.banner, .list, .sound]); return }
+                Task { await app.today.load(app: app) }
+                // A reply to the chat he's looking at: it's already on
+                // screen (the app catches up), so no banner or sound.
+                if turnId != nil, app.tab == .chat {
+                    Task { await app.chat.catchUp(app: app) }
+                    done([.list])
+                } else {
+                    done([.banner, .list, .sound])
+                }
             }
         }
     }
