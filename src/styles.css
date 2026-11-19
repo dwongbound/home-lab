@@ -611,6 +611,8 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .bgtasks__item[data-state='queued'] .bgtasks__ring { border-style: dashed; border-color: rgba(255,255,255,.3); }
 .bgtasks__label { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-wrap: pretty; }
 .bgtasks__queued { grid-column: 2; color: var(--frost-dim); font-size: .85em; }
+.bgtasks__model { grid-column: 2; margin: 2px 0 0; }
+.bgtasks__step { grid-column: 2; color: var(--frost-dim); font-size: .85em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* "Jarvis" sits above the orb on /talk. */
 /* Kept for screen readers, hidden from view. */
 .chat__status[data-quiet] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

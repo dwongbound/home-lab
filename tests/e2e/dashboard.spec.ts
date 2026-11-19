@@ -899,6 +899,9 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   await expect(tasks.getByRole('listitem')).toHaveCount(2)
   await expect(tasks.getByText('Making drive times mention parking')).toBeVisible()
   await expect(tasks.getByText('Up next')).toBeVisible()
+  // The running one says who's doing it, with the chat chip, and where it's at.
+  await expect(tasks.getByRole('listitem').first()).toContainText('Jarvis (CO)')
+  await expect(tasks.getByRole('listitem').first()).toContainText('Running tests')
   const tasksBox = (await tasks.boundingBox())!
   expect(tasksBox.x).toBeGreaterThanOrEqual(orbBox.x + orbBox.width)
   expect(tasksBox.x + tasksBox.width).toBeLessThanOrEqual(viewport.width)
