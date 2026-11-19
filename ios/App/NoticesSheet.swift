@@ -78,8 +78,12 @@ struct NoticesSheet: View {
                             ProgressView().tint(OrbView.taskBlue(onLight: false))
                         }
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(task.label).font(.body.weight(.semibold)).foregroundStyle(Theme.frost)
-                            Text(task.runningWords(now: context.date)).font(.subheadline).foregroundStyle(Theme.frostDim)
+                            HStack(spacing: 6) {
+                                JobChip(model: task.model)
+                                Text(task.label).font(.body.weight(.semibold)).foregroundStyle(Theme.frost)
+                            }
+                            // Where it's at ("Running tests"), else its status.
+                            Text(task.stageLine(now: context.date)).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(1).truncationMode(.tail)
                         }
                         Spacer()
                         if let timer = Orbit.elapsed(since: task.startedAt, now: context.date), task.state != "queued" {
@@ -97,6 +101,7 @@ struct NoticesSheet: View {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
                                 Text(entry.job.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost)
+                                JobChip(model: entry.job.model)
                                 Spacer()
                                 Text("\(entry.word) · \(entry.at.formatted(date: .omitted, time: .shortened))")
                                     .font(.caption)

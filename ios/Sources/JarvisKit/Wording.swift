@@ -142,6 +142,15 @@ public enum ModelWording {
         public let source: String
     }
 
+    /// The chip for a running or finished job (Dylan, 2026-11-19: "be sure
+    /// when indicating parallel jobs what's doing it"): the model's chip, or
+    /// nil for a plain code job with no model.
+    public static func jobChip(_ model: String?) -> Chip? {
+        guard let model = model?.trimmingCharacters(in: .whitespaces), !model.isEmpty else { return nil }
+        let chip = chip(model: model)
+        return chip.label.isEmpty ? nil : chip
+    }
+
     /// The chip for one turn (the page's chipFor). A reply: its model's
     /// label and colour. An unasked message: the writer's label and colour
     /// ("Jarvis" in the plain notice tone when no model wrote it) plus the

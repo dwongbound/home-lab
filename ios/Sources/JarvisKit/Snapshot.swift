@@ -410,9 +410,11 @@ public struct JobRecord: Decodable, Identifiable, Sendable {
     public let lastRun: String?
     /// One plain sentence about the last run.
     public let lastResult: String?
+    /// The model doing it (same raw names as chat turns); nil for plain code.
+    public let model: String?
 
-    public init(id: String, name: String, status: String, lastRun: String?, lastResult: String?) {
-        self.id = id; self.name = name; self.status = status; self.lastRun = lastRun; self.lastResult = lastResult
+    public init(id: String, name: String, status: String, lastRun: String?, lastResult: String?, model: String? = nil) {
+        self.id = id; self.name = name; self.status = status; self.lastRun = lastRun; self.lastResult = lastResult; self.model = model
     }
 }
 
@@ -423,12 +425,25 @@ public struct RunningTask: Decodable, Identifiable, Sendable {
     public let state: String
     /// When it started (ISO), if Jarvis said.
     public let startedAt: String?
+    /// The model doing it ("claude-opus-5-5"); nil for plain code.
+    public let model: String?
+    /// Where it's at, in a few plain words ("Running tests"); nil when unsaid.
+    public let stage: String?
 
-    public init(id: String, label: String, state: String, startedAt: String? = nil) {
+    public init(id: String, label: String, state: String, startedAt: String? = nil, model: String? = nil, stage: String? = nil) {
         self.id = id
         self.label = label
         self.state = state
         self.startedAt = startedAt
+        self.model = model
+        self.stage = stage
+    }
+
+    /// The one line under the name: the stage when Jarvis says it, else
+    /// the usual status ("Running for 4 min", "Queued").
+    public func stageLine(now: Date = Date()) -> String {
+        if let stage = stage?.trimmingCharacters(in: .whitespacesAndNewlines), !stage.isEmpty { return stage }
+        return runningWords(now: now)
     }
 
     /// "Queued", "Just started", "Running for 4 min", "Running for 1 h 5 min".

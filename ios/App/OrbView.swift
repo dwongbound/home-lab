@@ -678,6 +678,8 @@ struct OrbitCallout: View {
             HStack(alignment: .top, spacing: 10) {
                 Circle().fill(color).frame(width: 10, height: 10).padding(.top, 5)
                 VStack(alignment: .leading, spacing: 3) {
+                    // Who's doing a task: the chat chip ("Jarvis (CO)").
+                    if item.kind == .task { JobChip(model: item.model) }
                     Text(item.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.frost)
@@ -756,5 +758,23 @@ struct OrbitCallout: View {
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(color.opacity(0.55), lineWidth: 1))
         .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Who's doing a job, as the same chip chat replies carry ("Jarvis (CO)").
+struct JobChip: View {
+    let model: String?
+
+    var body: some View {
+        if let chip = ModelWording.jobChip(model) {
+            let tone: Color = chip.tone == .claude ? Theme.ember : chip.tone == .local ? Theme.glacier : Theme.frostDim
+            Text(chip.label)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .foregroundStyle(tone)
+                .background(Capsule().fill(tone.opacity(0.14)))
+                .fixedSize()
+        }
     }
 }

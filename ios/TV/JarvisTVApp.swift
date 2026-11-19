@@ -780,7 +780,19 @@ struct AlwaysOnView: View {
                             HStack(alignment: .firstTextBaseline, spacing: 18) {
                                 Circle().fill(OrbView.taskBlue(onLight: palette.darkInk)).frame(width: 16, height: 16)
                                     .frame(width: 44)
-                                Text(TaskCard.title(task, index: index, guest: guest)).lineLimit(2)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(TaskCard.title(task, index: index, guest: guest)).lineLimit(2)
+                                    // Where it's at, one line, when Jarvis says.
+                                    if !guest, let stage = task.stage, !stage.isEmpty {
+                                        Text(stage).font(.callout).foregroundStyle(inkDim).lineLimit(1)
+                                    }
+                                }
+                                // Who's doing it, the chat chip's words ("Jarvis (CO)").
+                                if let chip = ModelWording.jobChip(task.model) {
+                                    Text(chip.label)
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(chip.tone == .claude ? warm : accent)
+                                }
                                 Spacer(minLength: 24)
                                 Text(task.state == "queued" ? "Queued" : Orbit.elapsed(since: task.startedAt, now: tick.date) ?? "Running")
                                     .font(.headline.monospacedDigit())

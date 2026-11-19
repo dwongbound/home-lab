@@ -51,3 +51,34 @@ final class RecentlyFinishedTests: XCTestCase {
         XCTAssertEqual(recent.map(\.word), ["Done", "Failed"])
     }
 }
+
+final class JobChipTests: XCTestCase {
+    func testAChipWhenAModelIsDoingIt() throws {
+        let running = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"a","label":"Adding your calendar","state":"running","model":"claude-opus-5-5"}"#.utf8))
+        XCTAssertEqual(ModelWording.jobChip(running.model)?.label, "Jarvis (CO)")
+        XCTAssertEqual(ModelWording.jobChip("claude-fable-5-2")?.label, "Jarvis (CF)")
+        XCTAssertEqual(ModelWording.jobChip("ornith-1.5:9b")?.label, "Jarvis (O)")
+        XCTAssertEqual(Orbit.items(running: [running], notices: []).first?.model, "claude-opus-5-5")
+    }
+
+    func testNoChipForPlainCode() throws {
+        let plain = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"b","label":"Disk check","state":"running"}"#.utf8))
+        XCTAssertNil(plain.model)
+        XCTAssertNil(ModelWording.jobChip(plain.model))
+        XCTAssertNil(ModelWording.jobChip("  "))
+        let job = try JSONDecoder().decode(JobRecord.self, from: Data(#"{"id":"disk","name":"Disk space check","status":"ok","model":null}"#.utf8))
+        XCTAssertNil(ModelWording.jobChip(job.model))
+    }
+}
+
+final class StageLineTests: XCTestCase {
+    func testTheStageOrTheStatus() throws {
+        let staged = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"a","label":"Fix reminders","state":"running","stage":"Running tests"}"#.utf8))
+        XCTAssertEqual(staged.stageLine(), "Running tests")
+        XCTAssertEqual(Orbit.items(running: [staged], notices: []).first?.detail, "Running tests")
+        let plain = RunningTask(id: "b", label: "x", state: "queued")
+        XCTAssertNil(plain.stage)
+        XCTAssertEqual(plain.stageLine(), "Queued")
+        XCTAssertEqual(RunningTask(id: "c", label: "x", state: "running", stage: "  ").stageLine(), "Running")
+    }
+}
