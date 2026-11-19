@@ -16,7 +16,7 @@ import { buildGpu, ollamaRows, parseJarvisGpu, parseSmi } from './gpu.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
 import { parseNotice, parseNotices } from './notices.mjs'
-import { parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek } from './nutrition.mjs'
+import { parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek, photoType } from './nutrition.mjs'
 import { parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
 import { parseReport, parseReports } from './reports.mjs'
 import { createPickStore } from '../money-picks.mjs'
@@ -829,6 +829,23 @@ export function createLiveSource(config, deps = {}) {
         return parseNutritionDays(await res.json())
       } catch {
         return null
+      }
+    },
+
+    /** One meal's photo, or its thumbnail (Jarvis GET /nutrition/photo/{id}, ?size=thumb), as the caller. `gone` when that meal has none. */
+    async mealPhoto(id, thumb, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to see meal photos' }
+      try {
+        const query = thumb ? '?size=thumb' : ''
+        const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/photo/${encodeURIComponent(id)}${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+        })
+        if (res.status === 404) return { ok: false, gone: true, message: 'No photo for that meal' }
+        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        return { ok: true, type: photoType(res.headers.get('content-type')), bytes: new Uint8Array(await res.arrayBuffer()) }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
       }
     },
 

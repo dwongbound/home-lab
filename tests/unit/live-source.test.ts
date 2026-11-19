@@ -58,6 +58,11 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url.startsWith(`${config.jarvisApiUrl}/voice/sample?`)) {
       return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })
     }
+    if (url.startsWith(`${config.jarvisApiUrl}/nutrition/photo/`)) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      if (url.includes('/photo/9')) return Response.json({ error: 'no photo' }, { status: 404 })
+      return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg; charset=binary' } })
+    }
     if (url.startsWith(`${config.jarvisApiUrl}/nutrition/days`)) {
       const older = { date: '2026-11-16', goals: {}, totals: {}, items: [] }
       const newer = { date: '2026-11-17', goals: {}, totals: {}, items: [{ id: 4, at: '2026-11-17T08:00:00-08:00', name: 'Latte' }] }
@@ -445,6 +450,12 @@ describe('live chat with Jarvis', () => {
     expect((call?.[1]?.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
     expect((await source.nutritionWeek('', login))?.days).toEqual([{ date: '2026-11-15', calories: 1600, goal: 1750, protein: 120.3, proteinGoal: 140 }])
     expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/nutrition/week'))).toBe(true)
+    const thumb = await source.mealPhoto('4', true, login)
+    expect(thumb).toEqual({ ok: true, type: 'image/jpeg', bytes: new Uint8Array([1, 2, 3]) })
+    expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/nutrition/photo/4?size=thumb'))).toBe(true)
+    expect(await source.mealPhoto('9', false, login)).toMatchObject({ ok: false, gone: true })
+    expect((await source.mealPhoto('4', false, {})).ok).toBe(false)
+    expect(await liveWith({ jarvisAnswers: false }).source.mealPhoto('4', false, login)).toEqual({ ok: false, message: 'Jarvis is not answering' })
     const run = await source.nutritionDays('2026-11-17', 2, login)
     expect(run?.days.map((d: { date: string }) => d.date)).toEqual(['2026-11-17', '2026-11-16'])
     expect(run?.earliest).toBe('2026-10-02')

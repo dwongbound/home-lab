@@ -129,6 +129,18 @@ describe('Diet screen (meal log)', () => {
     expect((await callApi(api, 'GET', '/api/jarvis/nutrition/week?start=11/15')).statusCode).toBe(400)
   })
 
+  it('serves a meal photo or its thumbnail, 404 when the meal has none', async () => {
+    const api = createApi(createMockSource())
+    const photo = await callApi(api, 'GET', '/api/jarvis/nutrition/photo/m1?size=thumb')
+    expect(photo.statusCode).toBe(200)
+    expect(photo.headers['content-type']).toBe('image/png')
+    expect(photo.headers['cache-control']).toBe('private, max-age=86400')
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/photo/m2')).statusCode).toBe(200)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/photo/m3')).statusCode).toBe(404)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/photo/m1?size=huge')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/photo/..%2Fsecret')).statusCode).toBe(400)
+  })
+
   it("passes the date and the caller's login on to the source", async () => {
     const seen: unknown[] = []
     const source = {

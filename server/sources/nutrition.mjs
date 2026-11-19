@@ -104,3 +104,19 @@ export function parseNutritionDays(raw) {
   days.sort((a, b) => b.date.localeCompare(a.date))
   return { days, earliest: isDay(raw.earliest) ? raw.earliest : null }
 }
+
+// A meal's photo (Dylan, 2026-11-19): the food list shows a small thumbnail,
+// and the full picture only on a tap.
+const MEAL_ID = /^[\w-]{1,80}$/
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
+
+/** True for an id a meal can have (what the day's items carry). */
+export function isMealId(value) {
+  return typeof value === 'string' && MEAL_ID.test(value)
+}
+
+/** The picture kind Jarvis named, or JPEG when it isn't one of the kinds the apps can show. */
+export function photoType(value) {
+  const type = typeof value === 'string' ? value.split(';')[0].trim().toLowerCase() : ''
+  return PHOTO_TYPES.includes(type) ? type : 'image/jpeg'
+}
