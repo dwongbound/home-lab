@@ -2,12 +2,14 @@ import type { Snapshot } from '../types'
 import { ServicesPanel } from '../components/ServicesPanel'
 import { ModelCard } from '../components/ModelCard'
 import { LoadedModels } from '../components/LoadedModels'
+import { GpuPie } from '../components/GpuPie'
 import { TerminalPanel } from '../components/TerminalPanel'
 import { JobsPanel } from '../components/JobsPanel'
 import { ReportsPanel } from '../components/ReportsPanel'
 import { useInKiosk } from '../useKiosk'
 
-// The Services page: every service with response times, the local model card,
+// The Services page: every service with response times, the graphics card
+// pie (who holds its memory), the local model card,
 // what's in GPU memory and why, what Jarvis is doing in the background,
 // the reports he has written (with how long each is kept),
 // and a terminal on jarvis (the same tmux
@@ -23,6 +25,7 @@ export function Services({ data, now, onToast }: { data: Snapshot; now: Date; on
       <div className="grid grid--split">
         <div className="stack">
           <ServicesPanel services={data.services} detailed />
+          <GpuPie gpu={data.gpu} />
           <LoadedModels models={data.models} now={now} />
         </div>
         <div className="stack">
