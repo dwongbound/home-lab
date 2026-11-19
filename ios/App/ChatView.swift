@@ -150,6 +150,7 @@ struct ChatView: View {
             // Opens on the newest message, like Messages.
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
+            .reportsScrollToTabBar()
             .refreshable { await chat.load(app: app) }
             // "Build it with Jarvis" and the like: words ready in the box.
             .onChange(of: app.chatPrefill) { _, words in

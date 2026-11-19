@@ -208,3 +208,27 @@ public enum TalkSettle {
         onTalk && !started && now.timeIntervalSince(landedAt) >= seconds
     }
 }
+
+/// When the bottom tab bar is full size (Dylan, 2026-11-19: "the bottom
+/// glass navbar shrinks and just shows the icons unless it's in focus like
+/// I'm using it"). It rests compact; it opens while he's using it.
+public enum TabBarSize {
+    /// How long it stays open after the last touch, tab change or scroll up.
+    public static let holdSeconds: Double = 2
+
+    /// Full size when touched, changed or scrolled up within the last two
+    /// seconds; compact at once on a scroll down, on Talk, and otherwise.
+    public static func expanded(lastInteraction: Date?, now: Date = Date(), scrollingDown: Bool, onTalk: Bool) -> Bool {
+        if onTalk || scrollingDown { return false }
+        guard let lastInteraction else { return false }
+        return now.timeIntervalSince(lastInteraction) < holdSeconds
+    }
+
+    /// Whether a scroll by `delta` points (positive = content moved down the
+    /// page, i.e. reading further) counts as scrolling down; small jitters don't.
+    public static func isScrollDown(_ delta: Double) -> Bool? {
+        if delta > 6 { return true }
+        if delta < -6 { return false }
+        return nil
+    }
+}

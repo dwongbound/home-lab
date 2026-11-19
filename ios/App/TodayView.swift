@@ -95,6 +95,7 @@ struct TodayView: View {
                     await today.load(app: app)
                     await loadPlaybooksLine()
                 }
+                .reportsScrollToTabBar()
             }
         }
         .sheet(item: $shortcut) { which in

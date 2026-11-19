@@ -49,6 +49,49 @@ struct RootView: View {
     @StateObject private var bedside = PhoneKioskMonitor()
     /// Whether the keyboard is up.
     @StateObject private var keyboard = KeyboardWatch()
+    /// The last touch on the bar, tab change or scroll up.
+    @State private var barTouched: Date?
+    /// True while the page is being scrolled down (the bar tucks away).
+    @State private var scrollingDown = false
+    /// Whether the bar is full size right now (JarvisKit TabBarSize).
+    @State private var barExpanded = false
+    /// Shrinks the bar two seconds after the last use.
+    @State private var barTimer: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The bar was touched or a tab changed: open it, and shrink it again
+    /// two seconds later.
+    private func touchBar() {
+        barTouched = Date()
+        scrollingDown = false
+        settleBar()
+        barTimer?.cancel()
+        barTimer = Task {
+            try? await Task.sleep(for: .seconds(TabBarSize.holdSeconds + 0.05))
+            guard !Task.isCancelled else { return }
+            settleBar()
+        }
+    }
+
+    /// A page scrolled: down tucks the bar away at once, up opens it.
+    private func barScrolled(_ delta: Double) {
+        guard let down = TabBarSize.isScrollDown(delta) else { return }
+        if down {
+            scrollingDown = true
+            settleBar()
+        } else if scrollingDown || !barExpanded {
+            touchBar()
+        }
+    }
+
+    /// Sets the bar's size from the rule, with a spring (a quick fade
+    /// with Reduce Motion).
+    private func settleBar() {
+        let open = TabBarSize.expanded(lastInteraction: barTouched, scrollingDown: scrollingDown, onTalk: app.tab == .talk)
+        guard open != barExpanded else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.85)) { barExpanded = open }
+    }
+
     /// A Talk call waiting for the page to settle; cancelled if he moves on.
     @State private var pendingTalk: Task<Void, Never>?
 
@@ -81,12 +124,14 @@ struct RootView: View {
         // The keyboard covers the bar rather than lifting it (Dylan,
         // 2026-11-18): it stays at the bottom, out of sight while typing.
         .overlay(alignment: .bottom) {
-            TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount)
+            TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount, expanded: barExpanded) { touchBar() }
                 .opacity(keyboard.up ? 0 : 1)
                 .allowsHitTesting(!keyboard.up)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .environmentObject(keyboard)
+        // Pages report their scrolling so the bar can shrink or open.
+        .environment(\.tabBarScroll, TabBarScroll { delta in barScrolled(delta) })
         .modifier(PadKioskAndNotices(app: app))
         .fullScreenCover(isPresented: Binding(get: { bedside.showing }, set: { if !$0 { bedside.dismiss() } })) {
             PhoneKioskView(today: app.today, talk: app.talk, app: app) { bedside.dismiss() }
@@ -159,6 +204,7 @@ struct RootView: View {
         }
         // Opening Talk the first time starts the call, like the page's /talk.
         .onChange(of: app.tab) { _, tab in
+            touchBar()
             // Swiping or tapping to another page puts the keyboard away.
             KeyboardWatch.dismiss()
             // Only a settled landing on Talk calls Jarvis: swiping from
@@ -277,24 +323,30 @@ struct StatusLine: View {
 struct TabBar: View {
     @Binding var tab: AppTab
     var chatBadge: Int
+    /// Full size (icons and labels) while in use; compact icons at rest.
+    var expanded = true
+    /// A touch on the bar (it opens while used).
+    var onTouch: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: expanded ? 4 : 2) {
             // Home, Talk, Chat (Dylan, 2026-11-18); "Home" on iPhone and
             // iPad alike (2026-11-17).
             item(.today, "Home", "square.grid.2x2.fill", badge: 0)
             item(.talk, "Talk", "waveform", badge: 0)
             item(.chat, "Chat", "bubble.left.fill", badge: chatBadge)
         }
-        .padding(5)
+        .padding(expanded ? 5 : 3)
         .glassPanel(radius: 32)
-        // A compact pill on iPad too, not a bar across the whole screen.
-        .frame(maxWidth: 420)
+        // A compact pill on iPad too; narrower and lower while resting.
+        .frame(maxWidth: expanded ? 420 : 200)
         .padding(.horizontal, 40)
-        .padding(.bottom, 6)
+        .padding(.bottom, expanded ? 6 : 0)
+        .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in onTouch() })
     }
 
-    /// One tab: symbol over label, a soft pill behind the current one.
+    /// One tab: symbol over label (the label only while open), a soft pill
+    /// behind the current one. One tap switches, open or not.
     private func item(_ target: AppTab, _ title: String, _ symbol: String, badge: Int) -> some View {
         let on = tab == target
         return Button {
@@ -302,7 +354,7 @@ struct TabBar: View {
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: symbol)
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.system(size: expanded ? 19 : 17, weight: .semibold))
                     .overlay(alignment: .topTrailing) {
                         if badge > 0 {
                             Text("\(badge)")
@@ -313,10 +365,12 @@ struct TabBar: View {
                                 .offset(x: 10, y: -6)
                         }
                     }
-                Text(title).font(.caption2.weight(.semibold))
+                if expanded {
+                    Text(title).font(.caption2.weight(.semibold)).transition(.opacity)
+                }
             }
             .foregroundStyle(on ? Theme.glacier : Theme.frostDim)
-            .frame(maxWidth: .infinity, minHeight: 50)
+            .frame(maxWidth: .infinity, minHeight: expanded ? 50 : 44)
             .background {
                 if on {
                     Capsule().fill(Color.white.opacity(0.10))
@@ -327,6 +381,49 @@ struct TabBar: View {
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// How a page tells the tab bar it scrolled (points; positive = reading
+/// further down).
+struct TabBarScroll {
+    var report: (Double) -> Void = { _ in }
+}
+
+private struct TabBarScrollKey: EnvironmentKey {
+    static let defaultValue = TabBarScroll()
+}
+
+extension EnvironmentValues {
+    var tabBarScroll: TabBarScroll {
+        get { self[TabBarScrollKey.self] }
+        set { self[TabBarScrollKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Reports this scroll view's movement to the tab bar (iOS 18 and up;
+    /// on 17 the bar just follows touches and tab changes).
+    @ViewBuilder
+    func reportsScrollToTabBar() -> some View {
+        if #available(iOS 18.0, *) {
+            modifier(ScrollReporter())
+        } else {
+            self
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+private struct ScrollReporter: ViewModifier {
+    @Environment(\.tabBarScroll) private var scroll
+
+    func body(content: Content) -> some View {
+        content.onScrollGeometryChange(for: Double.self) { geometry in
+            geometry.contentOffset.y
+        } action: { old, new in
+            scroll.report(new - old)
+        }
     }
 }
 

@@ -82,3 +82,21 @@ final class CardStepTests: XCTestCase {
         XCTAssertEqual(CardSwipe.index(turn: 5, count: 1), 0)
     }
 }
+
+final class TabBarSizeTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testOpenWhileInUseCompactOtherwise() {
+        XCTAssertFalse(TabBarSize.expanded(lastInteraction: nil, now: t0, scrollingDown: false, onTalk: false), "rests compact")
+        XCTAssertTrue(TabBarSize.expanded(lastInteraction: t0, now: t0.addingTimeInterval(1.5), scrollingDown: false, onTalk: false))
+        XCTAssertFalse(TabBarSize.expanded(lastInteraction: t0, now: t0.addingTimeInterval(2.1), scrollingDown: false, onTalk: false), "shrinks after 2 s")
+        XCTAssertFalse(TabBarSize.expanded(lastInteraction: t0, now: t0.addingTimeInterval(0.5), scrollingDown: true, onTalk: false), "scrolling down shrinks it at once")
+        XCTAssertFalse(TabBarSize.expanded(lastInteraction: t0, now: t0, scrollingDown: false, onTalk: true), "compact on Talk")
+    }
+
+    func testScrollDirection() {
+        XCTAssertEqual(TabBarSize.isScrollDown(20), true)
+        XCTAssertEqual(TabBarSize.isScrollDown(-20), false)
+        XCTAssertNil(TabBarSize.isScrollDown(3))
+    }
+}
