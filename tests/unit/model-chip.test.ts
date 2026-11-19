@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { modelLabel, modelTone } from '../../src/lib/model'
+import { chipFor, modelLabel, modelTone } from '../../src/lib/model'
 
 describe('model chip', () => {
   it('names Jarvis with the initial of who answered', () => {
@@ -23,10 +23,11 @@ describe('model chip', () => {
     expect(modelTone('haiku')).toBe('claude')
     expect(modelTone('qwen')).toBe('local')
   })
-  it('gives a message he sent unasked a plain word and no model colour', () => {
-    expect(modelLabel('notice:reminder')).toBe('Reminder')
-    expect(modelLabel('notice:lookout')).toBe('Lookout')
-    expect(modelLabel('notice:message')).toBe('Jarvis')
-    expect(modelTone('notice:reminder')).toBe('notice')
+  it('names who wrote a message he sent unasked, then where it came from', () => {
+    expect(chipFor('notice:lookout', 'claude-opus-5-5')).toEqual({ label: 'Jarvis (CO)', tone: 'claude', source: 'Lookout' })
+    expect(chipFor('notice:job', 'ornith-1.5:9b')).toEqual({ label: 'Jarvis (O)', tone: 'local', source: 'Finished' })
+    expect(chipFor('notice:reminder')).toEqual({ label: 'Jarvis', tone: 'notice', source: 'Reminder' })
+    expect(chipFor('notice:message', '')).toEqual({ label: 'Jarvis', tone: 'notice', source: '' })
+    expect(chipFor('claude-haiku-5-5')).toEqual({ label: 'Jarvis (CH)', tone: 'claude', source: '' })
   })
 })

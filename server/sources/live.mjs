@@ -699,6 +699,8 @@ export function createLiveSource(config, deps = {}) {
             const turn = { role: t.role === 'user' ? 'user' : 'jarvis', text: t.text, at: String(t.at ?? '') }
             // Older Jarvis lines don't say who wrote them; the chip only shows when one does.
             if (typeof t.model === 'string' && t.model) turn.model = t.model
+            // For a message he sent unasked (model "notice:lookout"): the model that wrote it.
+            if (typeof t.writer === 'string' && t.writer) turn.writer = t.writer.slice(0, 80)
             // How many photos went with it (the bytes aren't in the history).
             if (Number.isInteger(t.images) && t.images > 0) turn.images = t.images
             // His number for the turn, so a notice's turnId can find the message it previews.

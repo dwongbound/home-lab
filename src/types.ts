@@ -380,8 +380,8 @@ export type ChatEvent =
   | { type: 'meal_question'; key: string; choices: string[] }
 /** One saved line of the web chat. model: who wrote one of Jarvis's lines, when known. */
 /** `images` = how many photos went with the message (the bytes aren't kept in the history). */
-/** One line of the chat. `id` is Jarvis's number for it; `model` is who wrote it, or "notice:reminder" for a message he sent unasked. */
-export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; images?: number; id?: number }
+/** One line of the chat. `id` is Jarvis's number for it; `model` is who wrote it, or "notice:reminder" for a message he sent unasked, and then `writer` is the model that wrote that message (none for a plain reminder). */
+export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; writer?: string; images?: number; id?: number }
 
 /** One photo on a chat message: its kind and base64 bytes. */
 export interface ChatImage { type: string; data: string }
