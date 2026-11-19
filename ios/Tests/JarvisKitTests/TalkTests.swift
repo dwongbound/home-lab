@@ -87,4 +87,13 @@ final class TalkTests: XCTestCase {
     func testParsesBye() {
         XCTAssertEqual(TalkEvent.parse(#"{"type":"bye"}"#), .bye)
     }
+
+    /// "woke" brings him back to listening whatever woke him, including
+    /// speech (Jarvis build 69) and reasons this app doesn't know yet.
+    func testWokeMeansListeningWhateverWokeHim() {
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"woke","by":"speech"}"#), .state(.listening))
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"woke","by":"voice"}"#), .state(.listening))
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"woke","by":"something-new"}"#), .state(.listening))
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"woke"}"#), .state(.listening))
+    }
 }

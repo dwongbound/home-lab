@@ -60,6 +60,12 @@ public enum TalkEvent: Equatable, Sendable {
         case "hello":
             let rate = (object["rate"] as? NSNumber)?.doubleValue ?? 22050
             return .hello(rate: rate, wakeWord: object["wake_word"] as? Bool ?? false)
+        case "woke":
+            // He's awake again after dozing, whatever woke him: the wake
+            // word, or (Jarvis build 69) speech within 10 s of dozing off by
+            // himself ("by": "speech"), or a reason not known yet. Any of
+            // them means listening, even before his own "state" arrives.
+            return .state(.listening)
         case "state":
             guard let raw = object["state"] as? String, let state = TalkState(rawValue: raw) else { return nil }
             return .state(state)
