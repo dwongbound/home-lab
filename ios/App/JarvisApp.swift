@@ -50,9 +50,9 @@ struct RootView: View {
     /// Whether the keyboard is up.
     @StateObject private var keyboard = KeyboardWatch()
     /// One page, with room for the tab bar.
-    private func page<Page: View>(_ content: Page, _ screen: GeometryProxy, hugsBar: Bool = false) -> some View {
+    private func page<Page: View>(_ content: Page, _ screen: GeometryProxy) -> some View {
         content
-            .roomForTabBar(hugsBar: hugsBar)
+            .roomForTabBar()
     }
 
     /// The last touch on the bar, tab change or scroll up.
@@ -116,16 +116,15 @@ struct RootView: View {
             TabView(selection: $app.tab) {
                 // Home, Talk, Chat, left to right (AppTab's order).
                 page(TodayView(today: app.today), screen).tag(AppTab.today)
-                page(TalkView(talk: app.talk), screen)
-                    .environment(\.orbOffScreen, app.tab != .talk)
-                    .tag(AppTab.talk)
-                // Chat's input bar sits right on the tab bar, shrinking with it
-                // (Dylan, 2026-11-19: it "takes a lot of vertical space").
-                page(ChatView(chat: app.chat), screen, hugsBar: true).tag(AppTab.chat)
+                page(TalkView(talk: app.talk), screen).tag(AppTab.talk)
+                // Chat keeps the same fixed room as every page. Build 19 let
+                // it follow the bar's size, and that looped on 2026-11-19:
+                // the bar shrinking moved Chat's content, which read as a
+                // scroll, which moved the bar, until the app froze.
+                page(ChatView(chat: app.chat), screen).tag(AppTab.chat)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea(.container, edges: .vertical)
-            .environment(\.tabBarExpanded, barExpanded)
         }
         // The keyboard goes as soon as a page swipe starts, not only once
         // the next page has landed.
@@ -440,48 +439,40 @@ extension View {
 private struct ScrollReporter: ViewModifier {
     @Environment(\.tabBarScroll) private var scroll
 
+    /// Only his own scrolling counts. Content moving because a page's
+    /// room or its text changed must never move the bar, or the two can
+    /// chase each other forever (the 2026-11-19 freeze).
+    @State private var byHand = false
+
     func body(content: Content) -> some View {
-        content.onScrollGeometryChange(for: Double.self) { geometry in
-            geometry.contentOffset.y
-        } action: { old, new in
-            scroll.report(new - old)
-        }
+        content
+            .onScrollPhaseChange { _, phase in
+                byHand = phase == .interacting || phase == .decelerating
+            }
+            .onScrollGeometryChange(for: Double.self) { geometry in
+                geometry.contentOffset.y
+            } action: { old, new in
+                if byHand { scroll.report(new - old) }
+            }
     }
 }
 
 extension View {
     /// Keeps a page's content clear of the floating tab bar. While the
     /// keyboard is up the bar is hidden under it, so no gap is kept.
-    func roomForTabBar(hugsBar: Bool = false) -> some View {
-        modifier(RoomForTabBar(hugsBar: hugsBar))
+    func roomForTabBar() -> some View {
+        modifier(RoomForTabBar())
     }
 }
 
 /// The space under a page for the tab bar, none while typing.
-/// Most pages keep room for the full bar (66 pt); a page that hugs the bar
-/// (Chat) keeps only what the bar takes right now: 66 open, 54 shrunk
-/// (its 50 pt plus a hair), so there's no empty band above a shrunk bar.
+/// The space under a page for the tab bar, none while typing. Fixed:
+/// it must never follow the bar's size (see the Chat page above).
 private struct RoomForTabBar: ViewModifier {
-    var hugsBar = false
     @EnvironmentObject private var keyboard: KeyboardWatch
-    @Environment(\.tabBarExpanded) private var expanded
 
     func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: keyboard.up ? 0 : (hugsBar && !expanded ? 54 : 66))
-        }
-    }
-}
-
-private struct TabBarExpandedKey: EnvironmentKey {
-    static let defaultValue = true
-}
-
-extension EnvironmentValues {
-    /// Whether the tab bar is full size right now.
-    var tabBarExpanded: Bool {
-        get { self[TabBarExpandedKey.self] }
-        set { self[TabBarExpandedKey.self] = newValue }
+        content.safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: keyboard.up ? 0 : 66) }
     }
 }
 
