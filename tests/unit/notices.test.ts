@@ -97,6 +97,14 @@ describe('keeping a notice or a chat message', () => {
     ])
   })
 
+  it('counts kept ones apart from the 30 unread ones', () => {
+    const unread = Array.from({ length: 35 }, (_, i) => ({ id: `n${i}`, kind: 'fyi', title: 'x' }))
+    const kept = Array.from({ length: 3 }, (_, i) => ({ id: `k${i}`, kind: 'fyi', title: 'y', kept: true }))
+    const list = parseNotices({ notices: [...unread, ...kept] })!
+    expect(list).toHaveLength(33)
+    expect(list.slice(30).map((n) => n.id)).toEqual(['k0', 'k1', 'k2'])
+  })
+
   it('takes a turn id or a notice id to keep, and an id to let go', () => {
     expect(parseKeep({ turnId: 12 })).toEqual({ turnId: 12 })
     expect(parseKeep({ id: 'n1' })).toEqual({ id: 'n1' })
