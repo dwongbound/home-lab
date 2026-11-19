@@ -124,6 +124,14 @@ struct OrbView: View {
         .onChange(of: orbit.map(\.id)) { _, ids in
             if let opened, !ids.contains(opened) { self.opened = nil }
         }
+        #if DEBUG
+        // `-openNotice` opens the first orange dot's label a few seconds in.
+        .task {
+            guard tappable, ProcessInfo.processInfo.arguments.contains("-openNotice") else { return }
+            try? await Task.sleep(for: .seconds(8))
+            opened = orbit.first { $0.notice != nil }?.id
+        }
+        #endif
     }
 
     #if !os(tvOS)
@@ -677,17 +685,17 @@ struct OrbitCallout: View {
                         .foregroundStyle(Theme.frostDim)
                         .frame(width: 44, height: 44)
                 }
-                .accessibilityLabel(onKeep == nil ? "Close" : "Close and keep")
+                .accessibilityLabel(onKeep == nil ? "Close" : "Keep for later")
             }
             if let notice = item.notice, !notice.isApproval, onOpen != nil || onKeep != nil {
                 HStack(spacing: 10) {
                     if let onOpen {
                         Button("Open in Chat", action: onOpen).buttonStyle(.bordered)
                     }
-                    // Clearing is its own button: it reads the notice, so the
-                    // dot goes everywhere (a reminder's says it stops the nag).
+                    // Close reads the notice, so the dot goes everywhere (a
+                    // reminder's says it stops the nag).
                     if onKeep != nil {
-                        Button(notice.clearLabel, action: onClose).buttonStyle(.borderedProminent)
+                        Button(notice.source == "reminder" ? notice.clearLabel : "Close", action: onClose).buttonStyle(.borderedProminent)
                     }
                 }
                 .font(.footnote.weight(.semibold))
