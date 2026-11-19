@@ -50,9 +50,9 @@ struct RootView: View {
     /// Whether the keyboard is up.
     @StateObject private var keyboard = KeyboardWatch()
     /// One page, with room for the tab bar.
-    private func page<Page: View>(_ content: Page, _ screen: GeometryProxy) -> some View {
+    private func page<Page: View>(_ content: Page, _ screen: GeometryProxy, hugsBar: Bool = false) -> some View {
         content
-            .roomForTabBar()
+            .roomForTabBar(hugsBar: hugsBar)
     }
 
     /// The last touch on the bar, tab change or scroll up.
@@ -119,10 +119,13 @@ struct RootView: View {
                 page(TalkView(talk: app.talk), screen)
                     .environment(\.orbOffScreen, app.tab != .talk)
                     .tag(AppTab.talk)
-                page(ChatView(chat: app.chat), screen).tag(AppTab.chat)
+                // Chat's input bar sits right on the tab bar, shrinking with it
+                // (Dylan, 2026-11-19: it "takes a lot of vertical space").
+                page(ChatView(chat: app.chat), screen, hugsBar: true).tag(AppTab.chat)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea(.container, edges: .vertical)
+            .environment(\.tabBarExpanded, barExpanded)
         }
         // The keyboard goes as soon as a page swipe starts, not only once
         // the next page has landed.
@@ -443,17 +446,36 @@ private struct ScrollReporter: ViewModifier {
 extension View {
     /// Keeps a page's content clear of the floating tab bar. While the
     /// keyboard is up the bar is hidden under it, so no gap is kept.
-    func roomForTabBar() -> some View {
-        modifier(RoomForTabBar())
+    func roomForTabBar(hugsBar: Bool = false) -> some View {
+        modifier(RoomForTabBar(hugsBar: hugsBar))
     }
 }
 
 /// The space under a page for the tab bar, none while typing.
+/// Most pages keep room for the full bar (66 pt); a page that hugs the bar
+/// (Chat) keeps only what the bar takes right now: 66 open, 54 shrunk
+/// (its 50 pt plus a hair), so there's no empty band above a shrunk bar.
 private struct RoomForTabBar: ViewModifier {
+    var hugsBar = false
     @EnvironmentObject private var keyboard: KeyboardWatch
+    @Environment(\.tabBarExpanded) private var expanded
 
     func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: keyboard.up ? 0 : 66) }
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: keyboard.up ? 0 : (hugsBar && !expanded ? 54 : 66))
+        }
+    }
+}
+
+private struct TabBarExpandedKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// Whether the tab bar is full size right now.
+    var tabBarExpanded: Bool {
+        get { self[TabBarExpandedKey.self] }
+        set { self[TabBarExpandedKey.self] = newValue }
     }
 }
 

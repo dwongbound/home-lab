@@ -243,7 +243,8 @@ struct ChatView: View {
             }
             .overlay(alignment: .bottom) {
                 // Typing while scrolled up: a plain way back down.
-                if !atBottom && !collapsed {
+                // Only after he scrolled up by hand, so it never flashes while the chat loads.
+                if readingUp && !collapsed {
                     Button {
                         withAnimation(.easeOut(duration: 0.3)) {
                             scroller.scrollTo("bottom", anchor: .bottom)
