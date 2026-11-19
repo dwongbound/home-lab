@@ -116,6 +116,8 @@ struct DietView: View {
     @StateObject private var model = DietModel()
     /// The block at the top of the timeline.
     @State private var topBlock: String?
+    /// The entry whose full photo is open.
+    @State private var photo: FoodItem?
 
     var body: some View {
         NavigationStack {
@@ -140,6 +142,9 @@ struct DietView: View {
         }
         .preferredColorScheme(.dark)
         .fontDesign(.rounded)
+        .fullScreenCover(item: $photo) { item in
+            MealPhotoViewer(item: item).environmentObject(app)
+        }
         .task { await model.loadFirst(client: app.client) }
         .onChange(of: model.dayInView) { _, date in
             Task { await model.loadWeek(for: date, client: app.client) }
@@ -350,6 +355,10 @@ struct DietView: View {
             }
             .frame(width: 12)
             HStack(alignment: .top, spacing: 10) {
+                // The meal's photo, when it was logged from one.
+                if MealPhotos.shouldFetch(item) {
+                    MealThumbnail(item: item) { photo = item }
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name).font(.subheadline).foregroundStyle(Theme.frost).fixedSize(horizontal: false, vertical: true)
                     if let portion = item.portion {

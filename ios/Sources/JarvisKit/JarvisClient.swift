@@ -177,6 +177,18 @@ public struct JarvisClient: Sendable {
         return NutritionDays(days: days, earliest: body.earliest)
     }
 
+    /// A meal's photo (a thumbnail, or the full one); nil when there's none
+    /// or Jarvis isn't answering. Only asked for items with hasPhoto.
+    public func mealPhoto(id: String, thumb: Bool) async -> Data? {
+        guard let path = MealPhotos.path(id: id) else { return nil }
+        let query = MealPhotos.query(thumb: thumb)
+        var request = query.isEmpty ? request(path) : request(path, query: query)
+        request.timeoutInterval = 30
+        guard let (data, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { return nil }
+        return data
+    }
+
     /// The week's calorie rings, Monday first; nil when Jarvis can't say.
     public func nutritionWeek(start: String) async throws -> NutritionWeek? {
         struct Body: Decodable { let week: NutritionWeek? }

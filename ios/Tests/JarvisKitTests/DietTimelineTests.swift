@@ -62,3 +62,22 @@ final class DietTimelineTests: XCTestCase {
         XCTAssertEqual(week.protein, 127)
     }
 }
+
+final class MealPhotosTests: XCTestCase {
+    func testOnlyItemsWithPhotosAreAskedFor() throws {
+        let with = try JSONDecoder().decode(FoodItem.self, from: Data(#"{"id":"m42","name":"Poke bowl","hasPhoto":true}"#.utf8))
+        let without = try JSONDecoder().decode(FoodItem.self, from: Data(#"{"id":"m43","name":"Yogurt"}"#.utf8))
+        XCTAssertTrue(MealPhotos.shouldFetch(with))
+        XCTAssertFalse(MealPhotos.shouldFetch(without))
+        XCTAssertFalse(MealPhotos.shouldFetch(FoodItem(id: "../x", at: "", name: "x", macros: Macros(), hasPhoto: true)), "unsafe id")
+    }
+
+    func testTheURLs() {
+        let client = JarvisClient()
+        let thumb = client.request(MealPhotos.path(id: "m42")!, query: MealPhotos.query(thumb: true))
+        XCTAssertEqual(thumb.url?.absoluteString, "https://jarvis.snakebird-ph.ts.net/api/jarvis/nutrition/photo/m42?size=thumb")
+        XCTAssertEqual(client.request(MealPhotos.path(id: "m42")!).url?.absoluteString, "https://jarvis.snakebird-ph.ts.net/api/jarvis/nutrition/photo/m42")
+        XCTAssertNil(MealPhotos.path(id: "a/b"))
+        XCTAssertEqual(MealPhotos.cacheKey(id: "m42", thumb: true), "m42-thumb")
+    }
+}

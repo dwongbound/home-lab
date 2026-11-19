@@ -39,12 +39,14 @@ public struct FoodItem: Decodable, Identifiable, Equatable, Sendable {
     /// "1 bowl"; nil when the meal had several items.
     public let portion: String?
     public let macros: Macros
+    /// True when the meal was logged from a photo (a thumbnail shows).
+    public let hasPhoto: Bool
 
-    public init(id: String, at: String, name: String, portion: String? = nil, macros: Macros) {
-        self.id = id; self.at = at; self.name = name; self.portion = portion; self.macros = macros
+    public init(id: String, at: String, name: String, portion: String? = nil, macros: Macros, hasPhoto: Bool = false) {
+        self.id = id; self.at = at; self.name = name; self.portion = portion; self.macros = macros; self.hasPhoto = hasPhoto
     }
 
-    enum CodingKeys: String, CodingKey { case id, at, name, portion }
+    enum CodingKeys: String, CodingKey { case id, at, name, portion, hasPhoto }
 
     /// Needs an id and a name; the id may come as a number.
     public init(from decoder: Decoder) throws {
@@ -59,6 +61,7 @@ public struct FoodItem: Decodable, Identifiable, Equatable, Sendable {
         let portion = ((try? c.decodeIfPresent(String.self, forKey: .portion)) ?? nil)?.trimmingCharacters(in: .whitespaces)
         self.portion = (portion?.isEmpty ?? true) ? nil : portion
         macros = try Macros(from: decoder)
+        hasPhoto = ((try? c.decodeIfPresent(Bool.self, forKey: .hasPhoto)) ?? nil) ?? false
     }
 }
 
@@ -462,5 +465,37 @@ public enum DietTimeline {
         var words = "\(name), \(Diet.whole(calories)) of \(Diet.whole(day.goal)) calories"
         if let protein = day.protein { words += ", \(Diet.whole(protein)) of \(Diet.whole(day.proteinGoal)) grams protein" }
         return words
+    }
+}
+
+/// Meal photos in the Diet timeline (Dylan, 2026-11-19): a thumbnail on an
+/// entry that has one, the full photo on tap. GET
+/// /api/jarvis/nutrition/photo/{id}?size=thumb is a ~320 px JPEG; without
+/// size it's the full photo. A meal's photo never changes, so both are
+/// cached by id and size.
+public enum MealPhotos {
+    /// True for an id safe to put in the path: letters, digits, "-" and "_".
+    public static func isId(_ id: String) -> Bool {
+        !id.isEmpty && id.count <= 80 && id.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+    }
+
+    /// Only an item that says it has a photo, with a safe id, is ever asked for.
+    public static func shouldFetch(_ item: FoodItem) -> Bool {
+        item.hasPhoto && isId(item.id)
+    }
+
+    /// The path under the server, nil for an unsafe id.
+    public static func path(id: String) -> String? {
+        isId(id) ? "api/jarvis/nutrition/photo/\(id)" : nil
+    }
+
+    /// The query: size=thumb for a thumbnail, none for the full photo.
+    public static func query(thumb: Bool) -> [String: String] {
+        thumb ? ["size": "thumb"] : [:]
+    }
+
+    /// The cache key: "<id>-thumb" or "<id>-full".
+    public static func cacheKey(id: String, thumb: Bool) -> String {
+        "\(id)-\(thumb ? "thumb" : "full")"
     }
 }
