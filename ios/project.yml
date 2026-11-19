@@ -24,6 +24,20 @@ settings:
     CODE_SIGN_STYLE: Automatic
 
 targets:
+  # Scripted swipes for the Home-to-Talk freeze (2026-11-19); simulator only.
+  JarvisUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Jarvis
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis.uitests
+        TEST_TARGET_NAME: Jarvis
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
   Jarvis:
     type: application
     platform: iOS
@@ -198,3 +212,13 @@ targets:
           UIColorName: ""
         UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
+
+schemes:
+  JarvisUITests:
+    build:
+      targets:
+        Jarvis: all
+        JarvisUITests: [test]
+    test:
+      targets:
+        - JarvisUITests
