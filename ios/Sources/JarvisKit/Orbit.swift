@@ -107,6 +107,13 @@ public enum Orbit {
         notice.kind != .need
     }
 
+    /// Whether a notice's label offers "Keep" (Dylan, 2026-11-19: "an option
+    /// in the popup to keep the orange dots"): only one that closing would
+    /// clear. A need stays anyway until he answers it.
+    public static func offersKeep(_ notice: Notice) -> Bool {
+        readOnView(notice) && !notice.isApproval
+    }
+
     /// How often to refresh: every 5 s while an orange dot is up (so a
     /// notice read on another device fades here soon after), else 15 s.
     public static func refreshSeconds(orangeShowing: Bool) -> Double {

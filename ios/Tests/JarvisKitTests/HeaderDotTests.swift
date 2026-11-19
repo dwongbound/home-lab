@@ -14,3 +14,12 @@ final class HeaderDotTests: XCTestCase {
         XCTAssertEqual(Notices.countLabel(four), "4 new", "the count still says how many")
     }
 }
+
+final class KeepDotTests: XCTestCase {
+    func testKeepIsOfferedOnlyWhereClosingWouldClear() {
+        XCTAssertTrue(Orbit.offersKeep(Notice(id: "a", kind: .heads, title: "Laundry done", source: "alert", created: "")))
+        XCTAssertTrue(Orbit.offersKeep(Notice(id: "b", kind: .fyi, title: "x", source: "job", created: "")))
+        XCTAssertFalse(Orbit.offersKeep(Notice(id: "c", kind: .need, title: "x", source: "lookout", created: "")), "a need stays until answered anyway")
+        XCTAssertFalse(Orbit.offersKeep(Notice(id: "d", kind: .need, title: "x", source: "approval", created: "", approvalId: "ap")))
+    }
+}

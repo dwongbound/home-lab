@@ -92,7 +92,7 @@ struct OrbView: View {
                         if let notice = item.notice { open(notice) }
                         opened = nil
                     }
-                }) { close() }
+                }, onKeep: (item.notice.map(Orbit.offersKeep) ?? false) ? { keep() } : nil) { close() }
                     .position(x: size / 2, y: min(size - 20, spot.y + 52))
                     .frame(width: size, height: size)
                     .background {
@@ -106,11 +106,13 @@ struct OrbView: View {
             }
         }
         .animation(.smooth(duration: 0.3), value: opened)
-        // A label closes by itself after a few seconds and it all moves on.
+        // A label closes by itself after a few seconds and it all moves on,
+        // leaving the notice as it was (only Close clears it).
         .task(id: opened) {
             guard opened != nil else { return }
             try? await Task.sleep(for: .seconds(Orbit.holdSeconds))
-            if !Task.isCancelled { close() }
+            // Timing out isn't choosing Close: the notice stays unread.
+            if !Task.isCancelled { keep() }
         }
         #if DEBUG
         // Screenshot check: `-openWork` opens the first dot's label.
@@ -156,6 +158,12 @@ struct OrbView: View {
 
     /// Closes the label; the orb eases back into turning. A notice that
     /// was looked at is read (cleared everywhere), unless it needs an answer.
+    /// "Keep": closes the label without reading the notice, so its orange
+    /// dot stays here and on every other device.
+    private func keep() {
+        opened = nil
+    }
+
     private func close() {
         if let id = opened, let notice = animator.item(id)?.notice, Orbit.readOnView(notice) {
             onRead?(notice)
@@ -629,6 +637,8 @@ struct OrbitCallout: View {
     let onAnswer: ((Bool) -> Void)?
     /// Opens the full message in Chat; nil hides the button.
     var onOpen: (() -> Void)? = nil
+    /// Closes without clearing, so the dot stays; nil hides the button.
+    var onKeep: (() -> Void)? = nil
     let onClose: () -> Void
 
     var body: some View {
@@ -662,10 +672,14 @@ struct OrbitCallout: View {
                     .frame(minWidth: 44, minHeight: 44)
                     .tint(Theme.glacier)
             }
-            if let notice = item.notice, !notice.isApproval, onOpen != nil || notice.source == "reminder" {
+            if let notice = item.notice, !notice.isApproval, onOpen != nil || onKeep != nil || notice.source == "reminder" {
                 HStack(spacing: 10) {
                     if let onOpen {
                         Button("Open in Chat", action: onOpen).buttonStyle(.bordered)
+                    }
+                    // Keep the dot: close without clearing it anywhere.
+                    if let onKeep {
+                        Button("Keep", action: onKeep).buttonStyle(.bordered)
                     }
                     // Closing a reminder's label reads it, which stops the nag.
                     if notice.source == "reminder" {
