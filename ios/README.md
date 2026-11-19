@@ -36,6 +36,11 @@ Home; swiping and the tab bar follow that order.
   must be 16 lowercase hex (`JarvisKit/Reports.swift`, wording in step with
   `src/lib/reports.ts`). The TV shows a read-only Reports card and the
   Watch a line, both "Open on your iPhone to read the report".
+- **Diet:** the Diet card on Home opens one day's food (`App/DietView.swift`):
+  the week's calorie rings (tap a day), calories, protein, fat and carbs
+  against their goals, and what was eaten hour by hour. Read-only, from
+  `GET /api/jarvis/nutrition/day` and `/week`; the grouping, totals and
+  rings are `JarvisKit/Diet.swift`, Pacific time.
 - **Settings:** the server address and a connection check.
 - The orb (design D: a glass core in a 3D constellation) and the app icon.
 

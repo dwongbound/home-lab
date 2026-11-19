@@ -64,6 +64,8 @@ struct TodayView: View {
     @State private var deleting: Report?
     /// True once "Show all" has been tapped on the Reports card.
     @State private var allReports = false
+    /// True while the Diet screen is up.
+    @State private var showingDiet = false
 
     /// Status line over a scrolling column of cards. Refreshes every 15 s
     /// while showing, like the page.
@@ -93,6 +95,9 @@ struct TodayView: View {
                 .padding(28)
                 .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
             }
+        }
+        .sheet(isPresented: $showingDiet) {
+            DietView().environmentObject(app)
         }
         .confirmationDialog("Delete this report?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { report in
             Button("Delete", role: .destructive) { Task { await app.deleteReport(report.id) } }
@@ -136,6 +141,7 @@ struct TodayView: View {
                     lockedMoney
                 }
             }
+            dietCard(snapshot.nutrition)
             if let health = snapshot.health, health.sleep?.asleepMin != nil || health.yesterday?.steps != nil {
                 healthCard(health)
             }
@@ -444,6 +450,50 @@ struct TodayView: View {
     }
 
     /// A glass card with a small header (symbol, title, optional note).
+    // MARK: Diet
+
+    /// Calories left and protein today; a tap opens the Diet screen.
+    private func dietCard(_ food: Nutrition?) -> some View {
+        Button {
+            showingDiet = true
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "fork.knife")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.glacier)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Diet").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost)
+                    if let food, food.isToday() {
+                        Text(dietLine(food)).font(.caption).foregroundStyle(Theme.frostDim)
+                    } else {
+                        Text("What you've eaten today").font(.caption).foregroundStyle(Theme.frostDim)
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.frostDim)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .glassPanel()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        #if DEBUG
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("-openDiet") { showingDiet = true } }
+        #endif
+    }
+
+    /// "570 left · 59 / 140 g protein".
+    private func dietLine(_ food: Nutrition) -> String {
+        var line = food.leftWords
+        if let protein = food.protein {
+            line += " · \(Diet.whole(protein))"
+            if let goal = food.proteinGoal { line += " / \(Diet.whole(goal))" }
+            line += " g protein"
+        }
+        return line
+    }
+
     // MARK: Reports
 
     /// Jarvis's reports: how long they're kept and the room they take, then

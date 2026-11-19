@@ -153,6 +153,23 @@ public struct JarvisClient: Sendable {
         }
     }
 
+    /// One day's food (the Diet screen); nil when Jarvis can't say (an
+    /// older Jarvis, Jarvis down, or no Tailscale login).
+    public func nutritionDay(date: String) async throws -> NutritionDay? {
+        struct Body: Decodable { let day: NutritionDay? }
+        let data = try await send(request("api/jarvis/nutrition/day", query: ["date": date]))
+        let body = try JSONDecoder().decode(Body.self, from: data)
+        return body.day
+    }
+
+    /// The week's calorie rings, Monday first; nil when Jarvis can't say.
+    public func nutritionWeek(start: String) async throws -> NutritionWeek? {
+        struct Body: Decodable { let week: NutritionWeek? }
+        let data = try await send(request("api/jarvis/nutrition/week", query: ["start": start]))
+        let body = try JSONDecoder().decode(Body.self, from: data)
+        return body.week
+    }
+
     /// Keep a report past its days, or let it go again.
     public func keepReport(id: String, keep: Bool) async throws {
         try await post("api/jarvis/reports", ["op": "keep", "id": id, "keep": keep])
@@ -181,6 +198,16 @@ public struct JarvisClient: Sendable {
     /// The home page snapshot (Today tab).
     public func snapshot() async throws -> Snapshot {
         try await get("api/snapshot")
+    }
+
+    /// A GET with query parameters (`appendingPathComponent` would escape a "?").
+    func request(_ path: String, query: [String: String]) -> URLRequest {
+        var request = request(path)
+        if let url = request.url, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            parts.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+            request.url = parts.url
+        }
+        return request
     }
 
     /// GETs `path` and decodes the JSON body.
