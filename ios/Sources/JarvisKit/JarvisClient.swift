@@ -257,6 +257,21 @@ public struct JarvisClient: Sendable {
         try await playbookChange(["op": "run", "id": id])
     }
 
+    /// Has Jarvis write a playbook from a description; nothing is saved.
+    /// It takes about 6 s, so the wait allows 45.
+    public func draftPlaybook(text: String) async throws -> PlaybookDraftAnswer {
+        let words = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(PlaybookDraftAnswer.maxText))
+        var request = request("api/jarvis/playbooks", method: "POST", json: ["op": "draft", "text": words])
+        request.timeoutInterval = 45
+        let data: Data
+        do {
+            (data, _) = try await session.data(for: request)
+        } catch {
+            throw JarvisError.unreachable
+        }
+        return PlaybookDraftAnswer.read(data)
+    }
+
     /// One POST to /api/jarvis/playbooks; a refusal comes back as a result,
     /// not an error, so its words can go on screen.
     private func playbookChange(_ body: [String: Any]) async throws -> PlaybookResult {

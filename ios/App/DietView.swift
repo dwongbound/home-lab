@@ -54,6 +54,10 @@ final class DietModel: ObservableObject {
         earliest = page.earliest
         reachedEnd = !DietTimeline.shouldLoadOlder(loaded: days, earliest: earliest)
         state = .ready
+        #if DEBUG
+        // `-dietYesterday` shows yesterday's totals (simulator check of an over day).
+        if ProcessInfo.processInfo.arguments.contains("-dietYesterday") { dayInView = Diet.shift(Diet.dayString(Date()), by: -1) ?? dayInView }
+        #endif
         await loadWeek(for: dayInView, client: client)
     }
 
@@ -227,45 +231,80 @@ struct DietView: View {
 
     // MARK: Totals
 
-    /// The day in view against its goals; no bar where there's no goal.
+    /// The day in view against its goals: one strict grid of four equal
+    /// columns, every column the same four rows (label, number, caption,
+    /// bar) so labels, numbers and bars share their lines (Dylan,
+    /// 2026-11-19). Over a limit turns that column's number and bar orange.
     private var totals: some View {
         let day = model.day(model.dayInView)
         // Fat and carbs are limits on a cut: Jarvis's goals, else 55 g and 175 g.
         let goals = DietGoals.effective(day?.goals ?? Macros())
         let sums = day?.totals ?? Macros()
-        return HStack(spacing: 12) {
-            total("Calories", sums.calories, goal: goals.calories, unit: "", tint: Theme.moss)
-            total("Protein", sums.protein, goal: goals.protein, unit: "g", tint: Theme.glacier)
-            total("Fat", sums.fat, goal: goals.fat, unit: "g", tint: Theme.glacier.opacity(0.7), limit: true)
-            total("Carbs", sums.carbs, goal: goals.carbs, unit: "g", tint: Theme.moss.opacity(0.8), limit: true)
+        let columns: [TotalColumn] = [
+            TotalColumn(name: "Calories", value: sums.calories, goal: goals.calories, unit: "", tint: Theme.moss, limit: true),
+            TotalColumn(name: "Protein", value: sums.protein, goal: goals.protein, unit: "g", tint: Theme.glacier, limit: false),
+            TotalColumn(name: "Fat", value: sums.fat, goal: goals.fat, unit: "g", tint: Theme.glacier.opacity(0.7), limit: true),
+            TotalColumn(name: "Carbs", value: sums.carbs, goal: goals.carbs, unit: "g", tint: Theme.moss.opacity(0.8), limit: true),
+        ]
+        return Grid(horizontalSpacing: 12, verticalSpacing: 4) {
+            GridRow {
+                ForEach(columns) { c in
+                    Text(c.name).font(.caption2.weight(.semibold)).foregroundStyle(Theme.frostDim)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            GridRow {
+                ForEach(columns) { c in
+                    Text(Diet.whole(c.value ?? 0) + c.unit)
+                        .font(.headline.monospacedDigit())
+                        .foregroundStyle(c.caption.over ? Theme.ember : Theme.frost)
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            GridRow {
+                ForEach(columns) { c in
+                    Text(c.caption.words)
+                        .font(.caption2.weight(c.caption.over ? .semibold : .regular).monospacedDigit())
+                        .foregroundStyle(c.caption.over ? Theme.ember : Theme.frostDim)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            GridRow {
+                ForEach(columns) { c in
+                    // Every column keeps its bar track, so all four sit on one line.
+                    GeometryReader { area in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.white.opacity(0.10))
+                            Capsule().fill(c.caption.over ? Theme.ember : c.tint)
+                                .frame(width: area.size.width * (Diet.fraction(c.value ?? 0, of: c.goal) ?? 0))
+                        }
+                    }
+                    .frame(height: 4)
+                    .padding(.top, 2)
+                    .accessibilityHidden(true)
+                }
+            }
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .glassPanel()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(columns.map { "\($0.name) \(Diet.whole($0.value ?? 0))\($0.unit), \($0.caption.words)" }.joined(separator: "; "))
     }
 
-    /// One total: the number over its goal, and a thin bar (ember when over).
-    private func total(_ name: String, _ value: Double?, goal: Double?, unit: String, tint: Color, limit: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(name).font(.caption2.weight(.semibold)).foregroundStyle(Theme.frostDim)
-            Text(Diet.whole(value ?? 0) + unit).font(.headline).foregroundStyle(Theme.frost).lineLimit(1).minimumScaleFactor(0.7)
-            Text(goal.map { "of \(Diet.whole($0))\(unit)" } ?? "no goal").font(.caption2).foregroundStyle(Theme.frostDim).lineLimit(1)
-            // A limit (fat, carbs) says what's left, or how far over in orange.
-            if limit, let line = DietGoals.limitLine(eaten: value, goal: goal) {
-                Text(line.words).font(.caption2.weight(.semibold)).foregroundStyle(line.over ? Theme.ember : Theme.frostDim).lineLimit(1)
-            }
-            if let fraction = Diet.fraction(value ?? 0, of: goal) {
-                GeometryReader { area in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.10))
-                        Capsule().fill(Diet.isOver(value, goal: goal) ? Theme.ember : tint).frame(width: area.size.width * fraction)
-                    }
-                }
-                .frame(height: 4)
-                .accessibilityHidden(true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+    /// One column of the totals grid.
+    private struct TotalColumn: Identifiable {
+        let name: String
+        let value: Double?
+        let goal: Double?
+        let unit: String
+        let tint: Color
+        let limit: Bool
+        var id: String { name }
+        var caption: (words: String, over: Bool) { DietGoals.caption(eaten: value, goal: goal, unit: unit, limit: limit) }
     }
 
     // MARK: Timeline
@@ -364,16 +403,20 @@ struct DietView: View {
                 if MealPhotos.shouldFetch(item) {
                     MealThumbnail(item: item) { photo = item }
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.name).font(.subheadline).foregroundStyle(Theme.frost).fixedSize(horizontal: false, vertical: true)
-                    if let portion = item.portion {
-                        Text(portion).font(.caption).foregroundStyle(Theme.frostDim)
+                // The title gets the width: calories top right, the macros
+                // under the title (Dylan, 2026-11-19: titles wrapped to six lines).
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(item.name).font(.subheadline).foregroundStyle(Theme.frost)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(Diet.whole(item.macros.calories)).font(.subheadline.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.frost)
+                            .layoutPriority(1)
                     }
-                }
-                Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(Diet.whole(item.macros.calories)).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost)
-                    Text(Diet.macroLine(item.macros)).font(.caption).foregroundStyle(Theme.frostDim)
+                    Text([item.portion, Diet.macroLine(item.macros)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.caption.monospacedDigit()).foregroundStyle(Theme.frostDim)
+                        .lineLimit(2)
                 }
             }
             .padding(10)

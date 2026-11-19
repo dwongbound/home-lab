@@ -205,6 +205,36 @@ public enum DraftStep: Equatable, Sendable {
         }
     }
 
+    /// The step as a short sentence for its folded row in the editor:
+    /// "Turn off Desk lamp", "Run the Movie scene", "Wait 2 min". A field
+    /// not filled in yet reads as what to do ("Pick a device").
+    public func sentence(_ options: PlaybookOptions) -> String {
+        func or(_ text: String, _ blank: String) -> String {
+            let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? blank : PlaybookWording.clip(t)
+        }
+        switch self {
+        case .device(let entity, let command, let value):
+            guard !entity.isEmpty else { return "Pick a device" }
+            let name = options.name(of: entity)
+            let verb = PlaybookWording.commandLabel(command)
+            if PlaybookWording.commandTakesValue(command) {
+                return "\(name): \(verb.lowercased()) \(or(value, "…"))"
+            }
+            return "\(verb) \(name)"
+        case .scene(let entity): return entity.isEmpty ? "Pick a scene" : "Run the \(options.name(of: entity)) scene"
+        case .app(let entity, let app):
+            if entity.isEmpty { return "Pick a TV" }
+            return app.isEmpty ? "Pick an app for \(options.name(of: entity))" : "Open \(app) on \(options.name(of: entity))"
+        case .notify(let text): return "Notify me: " + or(text, "write what it says")
+        case .think(let text, _): return "Ask Jarvis: " + or(text, "write what to work out")
+        case .email(let to, let subject, _, _):
+            let who = to.trimmingCharacters(in: .whitespaces)
+            return who.isEmpty ? "Email: pick who it goes to" : "Email \(PlaybookWording.clip(who, max: 28)): " + or(subject, "no subject yet")
+        case .wait(let seconds): return seconds % 60 == 0 ? "Wait \(seconds / 60) min" : "Wait \(seconds) s"
+        }
+    }
+
     /// The step as one line (stepLine).
     public func line(_ options: PlaybookOptions) -> String {
         switch self {
@@ -335,6 +365,21 @@ public enum PlaybookWording {
         ("notify", "Send me a notification"), ("think", "Have Jarvis work something out"),
         ("email", "Send an email"), ("wait", "Wait"),
     ]
+    /// The "Add a step" row's buttons (the page's STEP_CHOICES `short`), with an icon each.
+    public static let stepButtons: [(type: String, short: String, icon: String)] = [
+        ("device", "Device", "lightbulb"), ("scene", "Scene", "sparkles"), ("app", "TV app", "tv"),
+        ("notify", "Notify me", "bell"), ("think", "Ask Jarvis", "brain"), ("email", "Email", "envelope"),
+        ("wait", "Wait", "hourglass"),
+    ]
+    /// The icon for a step's kind.
+    public static func stepIcon(_ type: String) -> String {
+        stepButtons.first { $0.type == type }?.icon ?? "circle"
+    }
+    /// The trigger choices as short tiles, with an icon each.
+    public static let triggerTiles: [(type: String, short: String, icon: String)] = [
+        ("time", "At a time", "clock"), ("arrive", "I get home", "house"), ("leave", "I leave home", "figure.walk"),
+        ("asleep", "I go to sleep", "moon.zzz"), ("awake", "I wake up", "sun.max"), ("manual", "When I ask", "hand.tap"),
+    ]
     public static let thinkers: [(model: String, label: String)] = [
         ("auto", "Jarvis picks"), ("worker", "Ornith (simple, stays on the PC)"), ("claude", "Claude (judgment and writing)"),
     ]
@@ -399,5 +444,36 @@ extension Playbook {
     /// The playbook as the editor's draft.
     public var draft: PlaybookDraft {
         PlaybookDraft(json: ((try? JSONSerialization.jsonObject(with: raw)) as? [String: Any]) ?? [:])
+    }
+}
+
+/// What "Write it for me" got back (Dylan, 2026-11-19: "make this edit /
+/// create playbook page more smooth and intuitive"). POST
+/// /api/jarvis/playbooks {op: "draft", text} answers {ok: true, playbook}
+/// in the listed shape minus id, madeBy and lastRun, NOT saved; or
+/// {ok: false, message}.
+public enum PlaybookDraftAnswer: Equatable, Sendable {
+    /// The form, filled in; `assumed` is what Jarvis guessed (its edgeCases).
+    case drafted(PlaybookDraft, assumed: [String])
+    /// Why he couldn't, in words for the screen.
+    case refused(String)
+
+    /// The longest description the server passes on.
+    public static let maxText = 1000
+
+    /// Reads the answer; anything unreadable is a plain refusal.
+    public static func read(_ data: Data) -> PlaybookDraftAnswer {
+        guard let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return .refused("Jarvis didn't answer properly. Try again in a minute.")
+        }
+        if body["ok"] as? Bool == true, let object = body["playbook"] as? [String: Any] {
+            var draft = PlaybookDraft(json: object)
+            // A draft is always new, whatever came back.
+            draft.id = nil
+            let assumed = draft.edgeCases.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            return .drafted(draft, assumed: assumed)
+        }
+        let message = (body["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return .refused(message.isEmpty ? "Jarvis couldn't write it just now. Try again, or fill it in yourself." : message)
     }
 }

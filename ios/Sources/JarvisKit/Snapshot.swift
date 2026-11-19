@@ -556,6 +556,11 @@ public struct Nutrition: Decodable, Equatable, Sendable {
     public let burned: Double?
     public let protein: Double?
     public let proteinGoal: Double?
+    /// Grams of fat and carbs today and their goals; nil on an older Jarvis or an empty day.
+    public var fat: Double? = nil
+    public var fatGoal: Double? = nil
+    public var carbs: Double? = nil
+    public var carbsGoal: Double? = nil
 
     public init(date: String, eaten: Double, goal: Double, left: Double, burned: Double? = nil, protein: Double? = nil, proteinGoal: Double? = nil) {
         self.date = date; self.eaten = eaten; self.goal = goal; self.left = left
@@ -601,6 +606,10 @@ public struct Nutrition: Decodable, Equatable, Sendable {
         if let burned { out["burned"] = burned }
         if let protein { out["protein"] = protein }
         if let proteinGoal { out["proteinGoal"] = proteinGoal }
+        if let fat { out["fat"] = fat }
+        if let fatGoal { out["fatGoal"] = fatGoal }
+        if let carbs { out["carbs"] = carbs }
+        if let carbsGoal { out["carbsGoal"] = carbsGoal }
         return out
     }
 
@@ -609,6 +618,10 @@ public struct Nutrition: Decodable, Equatable, Sendable {
               let goal = dictionary["goal"] as? Double, let left = dictionary["left"] as? Double else { return nil }
         self.init(date: date, eaten: eaten, goal: goal, left: left, burned: dictionary["burned"] as? Double,
                   protein: dictionary["protein"] as? Double, proteinGoal: dictionary["proteinGoal"] as? Double)
+        fat = dictionary["fat"] as? Double
+        fatGoal = dictionary["fatGoal"] as? Double
+        carbs = dictionary["carbs"] as? Double
+        carbsGoal = dictionary["carbsGoal"] as? Double
     }
 }
 

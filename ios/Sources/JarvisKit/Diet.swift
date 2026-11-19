@@ -119,7 +119,9 @@ public struct WeekDay: Decodable, Equatable, Sendable, Identifiable {
     /// Grams of protein eaten (nil when nothing was logged).
     public let protein: Double?
     public let proteinGoal: Double?
-    /// Fat and carb goals in grams, when Jarvis sends them.
+    /// Grams of fat and carbs eaten and their goals, when Jarvis sends them.
+    public var fat: Double? = nil
+    public var carbs: Double? = nil
     public var fatGoal: Double? = nil
     public var carbsGoal: Double? = nil
     public var id: String { date }
@@ -128,7 +130,7 @@ public struct WeekDay: Decodable, Equatable, Sendable, Identifiable {
         self.date = date; self.calories = calories; self.goal = goal; self.protein = protein; self.proteinGoal = proteinGoal
     }
 
-    enum CodingKeys: String, CodingKey { case date, calories, goal, protein, proteinGoal, fatGoal, carbsGoal }
+    enum CodingKeys: String, CodingKey { case date, calories, goal, protein, proteinGoal, fat, fatGoal, carbs, carbsGoal }
 
     /// Reads leniently; only the date is needed.
     public init(from decoder: Decoder) throws {
@@ -138,6 +140,8 @@ public struct WeekDay: Decodable, Equatable, Sendable, Identifiable {
         goal = Diet.number(c, .goal)
         protein = Diet.number(c, .protein)
         proteinGoal = Diet.number(c, .proteinGoal)
+        fat = Diet.number(c, .fat)
+        carbs = Diet.number(c, .carbs)
         fatGoal = Diet.number(c, .fatGoal)
         carbsGoal = Diet.number(c, .carbsGoal)
     }
@@ -518,6 +522,20 @@ public enum DietGoals {
     }
 
     /// For a limit (fat, carbs): "35 g left", or "12 g over" (over = true).
+    /// The one caption under a total in the Diet card, the same shape in
+    /// every column (Dylan, 2026-11-19: the card read as two mismatched
+    /// pairs): "of 1,750" or "of 55 g" while under; on a limit (calories,
+    /// fat and carbs, since he's cutting) past its goal, "120 over" or
+    /// "12 g over", flagged so the number and bar turn orange. Protein is a
+    /// target, so reaching it is never "over". "no goal" without one.
+    public static func caption(eaten: Double?, goal: Double?, unit: String, limit: Bool) -> (words: String, over: Bool) {
+        guard let goal, goal > 0 else { return ("no goal", false) }
+        let gap = Int(((eaten ?? 0) - goal).rounded())
+        let suffix = unit.isEmpty ? "" : " \(unit)"
+        if limit, gap > 0 { return ("\(Diet.whole(Double(gap)))\(suffix) over", true) }
+        return ("of \(Diet.whole(goal))\(suffix)", false)
+    }
+
     public static func limitLine(eaten: Double?, goal: Double?) -> (words: String, over: Bool)? {
         guard let goal, goal > 0 else { return nil }
         let used = eaten ?? 0

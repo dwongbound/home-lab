@@ -259,3 +259,22 @@ public enum SeenTracker {
         return current != seen
     }
 }
+
+/// The Chat input bar (Dylan, 2026-11-19: it "takes a lot of vertical space
+/// by always being there"): a slim one-line pill at the bottom of the chat,
+/// tucked into a small compose button while he reads further up.
+public enum ComposerSize {
+    /// Tucked away only while scrolled up and idle: never while the field is
+    /// focused, holds words or photos, or Jarvis is answering what he just
+    /// sent, nor right after he tapped to open it.
+    public static func collapsed(atBottom: Bool, focused: Bool, hasDraft: Bool, sending: Bool, opened: Bool) -> Bool {
+        !atBottom && !focused && !hasDraft && !sending && !opened
+    }
+
+    /// Whether a new line should pull the chat down to it: at the bottom
+    /// already, or it's his own message or the reply to it. Otherwise the
+    /// place he's reading stays put and the compose button shows a dot.
+    public static func follows(atBottom: Bool, lastIsMine: Bool, sending: Bool) -> Bool {
+        atBottom || lastIsMine || sending
+    }
+}

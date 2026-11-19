@@ -21,6 +21,14 @@ struct ChatView: View {
     /// Whether the newest line is on screen; when it isn't, "Scroll to
     /// bottom" shows (Dylan, 2026-11-17).
     @State private var atBottom = true
+    /// Scrolled up by hand, well clear of the newest line: the bar tucks
+    /// away. Set from the scroll's own geometry (iOS 18), never by content
+    /// loading, so the chat can't open tucked.
+    @State private var readingUp = false
+    /// Tapped the compose button: the bar stays open until he scrolls up again.
+    @State private var opened = false
+    /// A reply arrived while he was reading further up (the compose button's orange dot).
+    @State private var unseenReply = false
     /// Whether the keyboard is up (RootView's KeyboardWatch).
     @EnvironmentObject private var keyboard: KeyboardWatch
 
@@ -55,8 +63,13 @@ struct ChatView: View {
                     PickedStrip(photos: $picked)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                composer
+                if !collapsed {
+                    composer
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            // The same spring as the tab bar's shrink, so the two move as one.
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.85), value: collapsed)
             // A blocking "Sending photos…" (or "Telling Jarvis…") while it goes.
             if chat.uploading || chat.busy != nil {
                 Color.black.opacity(0.35).ignoresSafeArea()
@@ -141,8 +154,9 @@ struct ChatView: View {
                     Color.clear
                         .frame(height: 1)
                         .id("bottom")
-                        .onAppear { atBottom = true }
-                        .onDisappear { atBottom = false }
+                        // iOS 17 only; on 18 the scroll's own geometry decides (ReadingUpWatch).
+                        .onAppear { if #unavailable(iOS 18.0) { atBottom = true } }
+                        .onDisappear { if #unavailable(iOS 18.0) { atBottom = false } }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -151,6 +165,7 @@ struct ChatView: View {
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .reportsScrollToTabBar()
+            .modifier(ReadingUpWatch(readingUp: $readingUp, atBottom: $atBottom))
             .refreshable { await chat.load(app: app) }
             // "Build it with Jarvis" and the like: words ready in the box.
             .onChange(of: app.chatPrefill) { _, words in
@@ -167,9 +182,30 @@ struct ChatView: View {
             }
             .onChange(of: chat.items) {
                 guard app.focusTurn == nil && highlighted == nil else { return }
+                // Reading further up: stay put, and dot the compose button instead.
+                guard ComposerSize.follows(atBottom: atBottom, lastIsMine: chat.items.last?.kind == .user, sending: chat.isSending) else {
+                    if chat.items.last?.kind == .jarvis { unseenReply = true }
+                    return
+                }
                 withAnimation(.easeOut(duration: 0.2)) {
                     scroller.scrollTo(chat.items.last?.id, anchor: .bottom)
                 }
+            }
+            #if DEBUG
+            // `-scrollChatUp` scrolls to the oldest line (simulator check of the tucked bar).
+            .task {
+                guard ProcessInfo.processInfo.arguments.contains("-scrollChatUp") else { return }
+                try? await Task.sleep(for: .seconds(4))
+                scroller.scrollTo(chat.items.first?.id, anchor: .top)
+                readingUp = true
+                if ProcessInfo.processInfo.arguments.contains("-pretendNew") { unseenReply = true }
+            }
+            #endif
+            .onChange(of: atBottom) { _, bottom in
+                if bottom { unseenReply = false }
+            }
+            .onChange(of: readingUp) { _, up in
+                if up { opened = false } else { unseenReply = false }
             }
             // A notice or notification opened a turn: find it (loading the
             // history if it isn't here yet), scroll to it and let it glow.
@@ -197,8 +233,17 @@ struct ChatView: View {
                     app.focusTurn = nil
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                if collapsed {
+                    compactComposer(scroller)
+                        .padding(.trailing, 12)
+                        .padding(.bottom, 8)
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
+                }
+            }
             .overlay(alignment: .bottom) {
-                if !atBottom {
+                // Typing while scrolled up: a plain way back down.
+                if !atBottom && !collapsed {
                     Button {
                         withAnimation(.easeOut(duration: 0.3)) {
                             scroller.scrollTo("bottom", anchor: .bottom)
@@ -207,7 +252,7 @@ struct ChatView: View {
                         Label("Scroll to bottom", systemImage: "arrow.down")
                             .font(.footnote.weight(.semibold))
                             .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
+                            .frame(minHeight: 44)
                             .background(Capsule().fill(Theme.glass))
                             .overlay(Capsule().strokeBorder(Theme.glassEdge))
                             .background(.ultraThinMaterial, in: Capsule())
@@ -334,9 +379,52 @@ struct ChatView: View {
         }
     }
 
-    /// The Ask box and Send.
+    /// Whether the input bar is tucked into the compose button (JarvisKit ComposerSize).
+    private var collapsed: Bool {
+        ComposerSize.collapsed(atBottom: !readingUp, focused: typing,
+                               hasDraft: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !picked.isEmpty,
+                               sending: chat.isSending, opened: opened)
+    }
+
+    /// Scrolled up reading: compose (opens the bar, focused, at the newest
+    /// line) and jump to newest, with an orange dot for a reply not seen yet.
+    private func compactComposer(_ scroller: ScrollViewProxy) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                opened = true
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+                Task { try? await Task.sleep(for: .milliseconds(120)); typing = true }
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Write a message")
+            Button {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+            } label: {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .overlay(alignment: .topTrailing) {
+                        if unseenReply {
+                            Circle().fill(OrbView.noticeOrange(onLight: false)).frame(width: 9, height: 9).offset(x: -8, y: 9)
+                        }
+                    }
+            }
+            .accessibilityLabel(unseenReply ? "Newest message, a new reply" : "Newest message")
+        }
+        .foregroundStyle(Theme.frost)
+        .padding(.horizontal, 2)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(Capsule().fill(Theme.glass))
+        .overlay(Capsule().strokeBorder(Theme.glassEdge))
+    }
+
+    /// The Ask box: one slim pill with the photo and send buttons inside,
+    /// growing only as he types more lines (Dylan, 2026-11-19).
     private var composer: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .bottom, spacing: 0) {
             // Photos: take one, or choose up to four.
             Menu {
                 if UIImagePickerController.isSourceTypeAvailable(.camera) {
@@ -345,9 +433,8 @@ struct ChatView: View {
                 Button { showLibrary = true } label: { Label("Choose Photos", systemImage: "photo.on.rectangle") }
             } label: {
                 Image(systemName: "photo.badge.plus")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 17, weight: .medium))
                     .frame(width: 44, height: 44)
-                    .background(Circle().fill(Theme.glass))
                     .foregroundStyle(PhotoLimits.room(holding: picked.count) > 0 ? Theme.frost : Theme.frostFaint)
             }
             .disabled(PhotoLimits.room(holding: picked.count) == 0 || chat.isSending)
@@ -355,24 +442,27 @@ struct ChatView: View {
             TextField("Ask Jarvis", text: $draft, axis: .vertical)
                 .lineLimit(1...5)
                 .focused($typing)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Theme.glass))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.glassEdge))
+                .padding(.vertical, 11)
                 .submitLabel(.send)
                 .onSubmit(send)
             Button(action: send) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(canSend ? Theme.glacier : Theme.glass))
+                    .font(.system(size: 15, weight: .bold))
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(canSend ? Theme.glacier : Color.white.opacity(0.08)))
                     .foregroundStyle(canSend ? Theme.basalt : Theme.frostFaint)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .disabled(!canSend)
             .accessibilityLabel("Send")
         }
+        .padding(.horizontal, 2)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Theme.glass))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.glassEdge))
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
     }
 
     /// Something typed (or a photo picked) and no reply still coming.
@@ -505,5 +595,49 @@ struct TypingDots: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label ?? "Jarvis is thinking")
+    }
+}
+
+/// Whether he has scrolled up by hand, away from the newest line (more than
+/// 120 pt above it); back within 40 pt counts as the bottom again. Only a
+/// drag (or its fling) can tuck the bar, never content loading in.
+private struct ReadingUpWatch: ViewModifier {
+    @Binding var readingUp: Bool
+    /// Within 60 pt of the newest line (out past 100 pt is no longer).
+    @Binding var atBottom: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.modifier(Watch(readingUp: $readingUp, atBottom: $atBottom))
+        } else {
+            content
+        }
+    }
+
+    @available(iOS 18.0, *)
+    private struct Watch: ViewModifier {
+        @Binding var readingUp: Bool
+        @Binding var atBottom: Bool
+        @State private var byHand = false
+
+        func body(content: Content) -> some View {
+            content
+                .onScrollPhaseChange { _, phase in
+                    if phase == .interacting { byHand = true }
+                    if phase == .idle { byHand = false }
+                }
+                .onScrollGeometryChange(for: Double.self) { g in
+                    // How far the newest line is below the visible area.
+                    g.contentSize.height + g.contentInsets.bottom - (g.contentOffset.y + g.containerSize.height)
+                } action: { _, gap in
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("-logGap") { print("GAP", gap) }
+                    #endif
+                    if gap < 60 { if !atBottom { atBottom = true } }
+                    else if gap > 100 { if atBottom { atBottom = false } }
+                    if gap < 40 { if readingUp { readingUp = false } }
+                    else if gap > 120, byHand, !readingUp { readingUp = true }
+                }
+        }
     }
 }
