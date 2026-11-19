@@ -536,10 +536,4 @@ public enum DietGoals {
         return ("of \(Diet.whole(goal))\(suffix)", false)
     }
 
-    public static func limitLine(eaten: Double?, goal: Double?) -> (words: String, over: Bool)? {
-        guard let goal, goal > 0 else { return nil }
-        let used = eaten ?? 0
-        let gap = Int((goal - used).rounded())
-        return gap >= 0 ? ("\(gap) g left", false) : ("\(-gap) g over", true)
-    }
 }

@@ -235,21 +235,6 @@ public enum DraftStep: Equatable, Sendable {
         }
     }
 
-    /// The step as one line (stepLine).
-    public func line(_ options: PlaybookOptions) -> String {
-        switch self {
-        case .device(let entity, let command, let value):
-            let name = options.name(of: entity)
-            if value.isEmpty { return "\(PlaybookWording.commandLabel(command)): \(name)" }
-            return "\(name): \(PlaybookWording.commandLabel(command).lowercased()) \(value)"
-        case .scene(let entity): return "Scene: \(options.name(of: entity))"
-        case .app(let entity, let app): return "Open \(app) on \(options.name(of: entity))"
-        case .notify(let text): return "Notify me: \(PlaybookWording.clip(text))"
-        case .think(let text, _): return "Jarvis: \(PlaybookWording.clip(text))"
-        case .email(let to, let subject, _, _): return "Email \(to): \(PlaybookWording.clip(subject))"
-        case .wait(let seconds): return seconds % 60 == 0 ? "Wait \(seconds / 60) min" : "Wait \(seconds) s"
-        }
-    }
 }
 
 /// A playbook being written: a new one has no id yet.
@@ -356,10 +341,6 @@ public enum PlaybookWording {
     public static let days: [(id: String, label: String)] = [
         ("mon", "Mon"), ("tue", "Tue"), ("wed", "Wed"), ("thu", "Thu"), ("fri", "Fri"), ("sat", "Sat"), ("sun", "Sun"),
     ]
-    public static let triggers: [(type: String, label: String)] = [
-        ("time", "At a time"), ("arrive", "When I get home"), ("leave", "When I leave home"),
-        ("asleep", "When I go to sleep"), ("awake", "When I wake up"), ("manual", "When I ask, or the job comes up"),
-    ]
     public static let steps: [(type: String, label: String)] = [
         ("device", "Control a device"), ("scene", "Run a scene"), ("app", "Open an app on a TV"),
         ("notify", "Send me a notification"), ("think", "Have Jarvis work something out"),
@@ -426,8 +407,6 @@ public enum PlaybookWording {
         words.count <= max ? words : String(words.prefix(max - 1)).trimmingCharacters(in: .whitespaces) + "…"
     }
 
-    /// The Chat message that starts building a playbook with Jarvis.
-    public static let buildWithJarvis = "I'd like to make a new playbook. Interview me: ask what it's for, when it should run, the steps, and how you'll know it's done, one question at a time, then save it."
 }
 
 extension Playbooks {

@@ -162,12 +162,6 @@ public enum Playbooks {
         checks.filter { !$0.ok }.map { "Not done: " + ($0.why.isEmpty ? $0.item : "\($0.item): \($0.why)") }
     }
 
-    /// The tile's live line: "3 on", or "None on" / "No playbooks".
-    public static func tileLine(_ playbooks: [Playbook]) -> String {
-        if playbooks.isEmpty { return "No playbooks" }
-        let on = playbooks.filter(\.enabled).count
-        return on == 0 ? "None on" : "\(on) on"
-    }
 }
 
 /// Jarvis's raw failure text in words Dylan can act on (Dylan, 2026-11-19:
