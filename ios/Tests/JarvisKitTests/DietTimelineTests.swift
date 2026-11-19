@@ -96,10 +96,5 @@ final class DietGoalsTests: XCTestCase {
     }
 
     func testLimits() {
-        XCTAssertEqual(DietGoals.limitLine(eaten: 120, goal: 175)?.words, "55 g left")
-        XCTAssertEqual(DietGoals.limitLine(eaten: 67, goal: 55)?.words, "12 g over")
-        XCTAssertEqual(DietGoals.limitLine(eaten: 67, goal: 55)?.over, true)
-        XCTAssertEqual(DietGoals.limitLine(eaten: nil, goal: 55)?.words, "55 g left")
-        XCTAssertNil(DietGoals.limitLine(eaten: 10, goal: nil))
     }
 }

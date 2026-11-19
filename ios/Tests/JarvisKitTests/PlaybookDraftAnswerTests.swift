@@ -93,3 +93,40 @@ final class ComposerSizeTests: XCTestCase {
         XCTAssertTrue(ComposerSize.follows(atBottom: false, lastIsMine: true, sending: false))
     }
 }
+
+final class NoticeActionTests: XCTestCase {
+    private func notice(_ source: String = "jarvis", approval: String? = nil, turn: Int? = 5) -> Notice {
+        Notice(id: "n1", kind: .heads, title: "T", source: source, created: "2026-11-19T10:00:00Z", approvalId: approval, turnId: turn)
+    }
+
+    /// The card's buttons are one or two words (Dylan, 2026-11-19).
+    func testCardLabelsAreShort() {
+        for action in NoticeAction.allCases where action != .seeInChat {
+            XCTAssertLessThanOrEqual(action.label.split(separator: " ").count, 2, action.label)
+        }
+        XCTAssertEqual(notice("reminder").clearLabel, "Done")
+        XCTAssertEqual(notice().clearLabel, "Dismiss")
+    }
+
+    func testEachKindGetsItsButtons() {
+        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice(approval: "a1"), canOpen: true, canDismiss: true), [.deny, .approve])
+        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice("reminder"), canOpen: true, canDismiss: true), [.open, .done])
+        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice(), canOpen: true, canDismiss: true), [.dismiss, .open])
+        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice(turn: nil), canOpen: false, canDismiss: true), [.dismiss])
+        XCTAssertEqual(NoticeAction.card(kind: .kept, notice: notice(), canOpen: true, canDismiss: false), [.unkeep, .open])
+        XCTAssertEqual(NoticeAction.card(kind: .task, notice: nil, canOpen: true, canDismiss: false), [.open])
+    }
+}
+
+final class PendingClearsTests: XCTestCase {
+    /// A swiped notice disappears at once and comes back if the server didn't take it.
+    func testHideThenRollBack() {
+        let a = Notice(id: "a", kind: .heads, title: "A", source: "job", created: "")
+        let b = Notice(id: "b", kind: .fyi, title: "B", source: "job", created: "")
+        var pending = PendingClears()
+        pending.hide(["a"])
+        XCTAssertEqual(pending.visible([a, b]).map(\.id), ["b"])
+        pending.restore(["a"])
+        XCTAssertEqual(pending.visible([a, b]).map(\.id), ["a", "b"])
+    }
+}

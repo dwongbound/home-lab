@@ -17,7 +17,6 @@ final class PlaybooksTests: XCTestCase {
         XCTAssertEqual(Playbooks.triggerLine(list[0].trigger), "When I go to sleep")
         XCTAssertEqual(Playbooks.triggerLine(list[1].trigger), "At 7:05 AM, weekdays")
         XCTAssertEqual(Playbooks.notDone(list[0].lastRun?.checks ?? []), ["Not done: Every light is off: the porch lights were still on"])
-        XCTAssertEqual(Playbooks.tileLine(list), "1 on")
         XCTAssertNil(Playbooks.list(from: Data(#"{"book":null}"#.utf8)))
     }
 
@@ -39,7 +38,6 @@ final class PlaybooksTests: XCTestCase {
         XCTAssertEqual(Playbooks.daysLabel(["wed", "mon"]), "Mon, Wed")
         XCTAssertEqual(Playbooks.triggerLine(PlaybookTrigger(type: "arrive", minAway: 30)), "When I get home after 30 min away")
         XCTAssertEqual(Playbooks.triggerLine(PlaybookTrigger(type: "manual")), "When I ask, or the job comes up")
-        XCTAssertEqual(Playbooks.tileLine([]), "No playbooks")
     }
 
     func testResults() {

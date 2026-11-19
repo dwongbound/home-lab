@@ -50,7 +50,8 @@ public enum DemoSnapshot {
         }.joined(separator: ",")
         let json = """
         {"generatedAt":"x",
-         "notices":[{"id":"n1","kind":"need","title":"Turn off the bedroom lights?","body":"Jarvis wants to run home_service light.turn_off","source":"approval","created":"\(iso(-3))","approvalId":"ap1"},
+         "notices":[{"id":"n0","kind":"heads","title":"⏰ Buy Natalia's Secret Santa gift.","body":"Secret Santa Overflow is Wednesday, November 25th. Tell me once it's bought and I'll stop reminding you.","source":"reminder","created":"\(iso(-1440))","turnId":12},
+                    {"id":"n1","kind":"need","title":"Turn off the bedroom lights?","body":"Jarvis wants to run home_service light.turn_off","source":"approval","created":"\(iso(-3))","approvalId":"ap1"},
                     {"id":"n2","kind":"heads","title":"PS5 Pro back in stock at Target","body":"Lookout spotted it 10 minutes ago","source":"lookout","created":"\(iso(-12))"},
                     {"id":"n3","kind":"fyi","title":"Reminder code rewrite finished","body":"Changing my code so reminders repeat: done","source":"job","created":"\(iso(-95))"}],
          "services":[{"id":"h","name":"Home Assistant","detail":"","status":"up"},{"id":"o","name":"Ollama","detail":"","status":"idle"},{"id":"j","name":"Jarvis","detail":"","status":"up"}],

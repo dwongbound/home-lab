@@ -151,8 +151,15 @@ struct OrbView: View {
         // `-openNotice` opens the first orange dot's label a few seconds in.
         .task {
             guard tappable, ProcessInfo.processInfo.arguments.contains("-openNotice") else { return }
-            try? await Task.sleep(for: .seconds(8))
-            opened = orbit.first { $0.notice != nil }?.id
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .seconds(1))
+                let args = ProcessInfo.processInfo.arguments
+                let want = args.firstIndex(of: "-openNoticeId").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+                if let id = orbit.first(where: { $0.notice != nil && (want == nil || $0.notice?.id == want) })?.id, animator.item(id) != nil {
+                    opened = id
+                    return
+                }
+            }
         }
         #endif
     }
@@ -689,41 +696,57 @@ struct OrbitCallout: View {
     var onOpen: (() -> Void)? = nil
     /// Closes without clearing, so the dot stays; nil hides the button.
     var onKeep: (() -> Void)? = nil
-    /// A kept (yellow) item's "Let go"; nil hides the button.
+    /// A kept (yellow) item's "Unkeep"; nil hides the button.
     var onLetGo: (() -> Void)? = nil
     let onClose: () -> Void
 
+    /// The screen's width less the usual margins, capped for reading on an
+    /// iPad (Dylan, 2026-11-19: the old 300 pt card wrapped a title over four
+    /// lines and its buttons over three).
+    static var width: CGFloat {
+        #if os(iOS)
+        min(UIScreen.main.bounds.width - 32, 440)
+        #else
+        360
+        #endif
+    }
+
+    private var actions: [NoticeAction] {
+        NoticeAction.card(kind: item.kind, notice: item.notice, canOpen: onOpen != nil,
+                          canDismiss: onKeep != nil || item.kind == .notice && onAnswer == nil)
+    }
+
     var body: some View {
         let color = OrbView.dotColor(item.kind, onLight: false)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
-                Circle().fill(color).frame(width: 10, height: 10).padding(.top, 5)
-                VStack(alignment: .leading, spacing: 3) {
+                Circle().fill(color).frame(width: 8, height: 8).padding(.top, 6)
+                VStack(alignment: .leading, spacing: 4) {
                     // Who's doing a task: the chat chip ("Jarvis (CO)").
                     if item.kind == .task { JobChip(model: item.model) }
-                    Text(item.title)
+                    Text(Self.plainTitle(item.title))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.frost)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
                     if item.kind == .task {
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             Text(item.detail.isEmpty ? "Running · \(Orbit.elapsed(since: item.startedAt, now: context.date) ?? "now")" : item.detail)
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(Theme.frostDim)
+                                .lineLimit(1)
                         }
                     } else {
                         if !item.detail.isEmpty {
-                            Text(item.detail).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(3)
+                            Text(item.detail).font(.footnote).foregroundStyle(Theme.frostDim).lineLimit(3).truncationMode(.tail)
                         }
                         if let created = item.notice?.created, !Notices.when(created).isEmpty {
                             Text(Notices.when(created)).font(.caption2).foregroundStyle(Theme.frostFaint)
                         }
                     }
                 }
-                Spacer(minLength: 0)
-                // The (x) closes and keeps the dot (Dylan, 2026-11-19: "can
-                // keep just be an (x) on the top right"); where there's
-                // nothing to keep it simply closes.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // The (x) closes and keeps the dot; where there's nothing to
+                // keep it simply closes.
                 Button(action: onKeep ?? onClose) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title3)
@@ -731,54 +754,58 @@ struct OrbitCallout: View {
                         .foregroundStyle(Theme.frostDim)
                         .frame(width: 44, height: 44)
                 }
-                .accessibilityLabel(onKeep == nil ? "Close" : "Keep for later")
+                .padding(.top, -10)
+                .padding(.trailing, -10)
+                .accessibilityLabel("Close")
             }
-            // A kept item: Open in Chat and Let go; the (x) just closes.
-            if item.kind == .kept, onOpen != nil || onLetGo != nil {
+            if !actions.isEmpty {
+                // One row of equal buttons, one or two words each; the main
+                // one on the right.
                 HStack(spacing: 10) {
-                    if let onOpen {
-                        Button("Open in Chat", action: onOpen).buttonStyle(.bordered)
-                    }
-                    if let onLetGo {
-                        Button("Let go", action: onLetGo).buttonStyle(.bordered)
+                    ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
+                        let main = index == actions.count - 1 && actions.count > 1 || actions.count == 1 && action != .open
+                        Button { perform(action) } label: {
+                            Text(action.label)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .foregroundStyle(main ? Theme.basalt : Theme.frost)
+                                .background(Capsule().fill(main ? Theme.glacier : Color.white.opacity(0.10)))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .font(.footnote.weight(.semibold))
-                .padding(.leading, 20)
-            } else if let notice = item.notice, !notice.isApproval, onOpen != nil || onKeep != nil {
-                HStack(spacing: 10) {
-                    if let onOpen {
-                        Button("Open in Chat", action: onOpen).buttonStyle(.bordered)
-                    }
-                    // Close reads the notice, so the dot goes everywhere (a
-                    // reminder's says it stops the nag).
-                    if onKeep != nil {
-                        Button(notice.source == "reminder" ? notice.clearLabel : "Close", action: onClose).buttonStyle(.borderedProminent)
-                    }
-                }
-                .font(.footnote.weight(.semibold))
-                .padding(.leading, 20)
-            }
-            if let onAnswer, item.notice?.isApproval == true {
-                HStack(spacing: 10) {
-                    Button("Deny") { onAnswer(false) }
-                        .buttonStyle(.bordered)
-                    Button("Approve") { onAnswer(true) }
-                        .buttonStyle(.borderedProminent)
-                }
-                .font(.footnote.weight(.semibold))
-                .padding(.leading, 20)
             }
         }
-        .padding(.leading, 12)
-        .padding(.vertical, 6)
-        .padding(.trailing, 4)
-        .frame(maxWidth: 300)
-        // Solid, so the words under it don't show through.
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(red: 0.13, green: 0.16, blue: 0.21)))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(color.opacity(0.55), lineWidth: 1))
-        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
+        .padding(14)
+        .frame(width: Self.width)
+        // Solid, so the words under it don't show through; a hairline edge.
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(red: 0.13, green: 0.16, blue: 0.21)))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func perform(_ action: NoticeAction) {
+        switch action {
+        case .approve: onAnswer?(true)
+        case .deny: onAnswer?(false)
+        case .open, .seeInChat: onOpen?()
+        case .unkeep: onLetGo?()
+        case .dismiss, .done: onClose()
+        }
+    }
+
+    /// The title without a leading emoji; the dot already says what it is.
+    static func plainTitle(_ title: String) -> String {
+        var rest = Substring(title)
+        while let first = rest.first, first.unicodeScalars.first?.properties.isEmojiPresentation == true || first.unicodeScalars.contains(where: { $0.properties.isEmoji && $0.value > 0x238C }) {
+            rest = rest.dropFirst()
+        }
+        let trimmed = rest.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? title : trimmed
     }
 }
 

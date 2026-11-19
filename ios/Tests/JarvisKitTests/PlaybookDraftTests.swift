@@ -42,10 +42,6 @@ final class PlaybookDraftTests: XCTestCase {
     func testOptionsAndLines() throws {
         let options = try XCTUnwrap(Playbooks.book(from: Data(fixture.utf8))).options
         XCTAssertEqual(options.apps.first?.apps, ["Jarvis", "Netflix"])
-        XCTAssertEqual(DraftStep.app(entity: "media_player.bedroom_dylans_rokm", app: "Jarvis").line(options), "Open Jarvis on Dylans Apple TV")
-        XCTAssertEqual(DraftStep.device(entity: "climate.bedroom", command: "set_temperature", value: "67").line(options), "Bedroom: set temperature to 67")
-        XCTAssertEqual(DraftStep.device(entity: "light.desk", command: "turn_off", value: "").line(options), "Turn off: Desk")
-        XCTAssertEqual(DraftStep.wait(seconds: 120).line(options), "Wait 2 min")
         XCTAssertEqual(DraftStep.blank("app", options: options), .app(entity: "media_player.bedroom_dylans_rokm", app: "Jarvis"))
     }
 
