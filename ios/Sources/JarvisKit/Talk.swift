@@ -233,3 +233,28 @@ extension JarvisClient {
         return request
     }
 }
+
+/// Where the words Jarvis just heard go on the Talk screen (Dylan,
+/// 2026-11-18: "it didnt print what i said at all, and it was doing it out
+/// of order"). The native twin of the page's canJoin (src/lib/heard.ts):
+/// keep the two in step. Partials are sparse or absent, so nothing here
+/// depends on them: a transcript alone opens or fills an exchange.
+public enum HeardPlacement: Equatable, Sendable {
+    /// Into the open exchange, replacing what was heard so far.
+    case same
+    /// The open exchange moves up into the transcript; these words start a new one.
+    case new
+
+    /// Where words go, given the open exchange. Joined words (Jarvis carried
+    /// on the question he was answering) stay in it only while he hasn't
+    /// answered and it isn't done: canJoin. Words that aren't joined are the
+    /// same turn still being heard (a partial, then its transcript) under
+    /// the same condition. Once there's an answer, or the exchange is done,
+    /// any words start a new one, so the last question and its answer stay
+    /// where they were.
+    public static func of(openReply: String, openDone: Bool, joined: Bool) -> HeardPlacement {
+        let stillOpen = openReply.isEmpty && !openDone
+        if joined { return stillOpen ? .same : .new }
+        return stillOpen ? .same : .new
+    }
+}

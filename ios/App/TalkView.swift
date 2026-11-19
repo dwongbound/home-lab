@@ -50,6 +50,8 @@ final class TalkModel: ObservableObject {
     @Published private(set) var approvals: [(approval: Approval, outcome: String?, exchange: Int)] = []
     /// The exchange in progress (the one not yet moved into `turns`).
     @Published private(set) var exchange = 0
+    /// True once Jarvis has finished answering the open exchange.
+    private var exchangeDone = false
     @Published private(set) var level: Float = 0
     /// How bright the voice sounds (0..1), for the orb's ripples.
     @Published private(set) var tone: Float = 0
@@ -206,13 +208,16 @@ final class TalkModel: ObservableObject {
             // Listening starts quiet; dozing (paused by him or by Jarvis on
             // "that's all") drops the voice so the orb settles.
             if state == .listening || state == .dozing { level = 0; tone = 0 }
-        case .partial(let words, _), .transcript(let words, _):
-            if reply.isEmpty == false && !isJoining(event) {
-                // A new question: the last exchange moves up into the transcript.
+        case .partial(let words, let joined), .transcript(let words, let joined):
+            // Same exchange or a new one (JarvisKit HeardPlacement, the
+            // page's canJoin): a joined transcript after an answer starts a
+            // new exchange instead of overwriting the last question.
+            if HeardPlacement.of(openReply: reply, openDone: exchangeDone, joined: joined) == .new {
                 archiveTurn()
                 heard = ""
                 reply = ""
                 model = nil
+                exchangeDone = false
             }
             heard = words
         case .reply(let words):
@@ -225,6 +230,7 @@ final class TalkModel: ObservableObject {
             working = nil
         case .done:
             working = nil
+            exchangeDone = true
             // Spoken turns land in the web chat too, so the Chat tab catches up.
             Task { await app.chat.load(app: app) }
         case .stop:
@@ -277,14 +283,6 @@ final class TalkModel: ObservableObject {
         turns.append(TalkTurn(number: exchange, heard: heard, reply: reply, model: model))
         exchange += 1
         if turns.count > 6 { turns.removeFirst(turns.count - 6) }
-    }
-
-    /// Whether words carry on the question he's already answering.
-    private func isJoining(_ event: TalkEvent) -> Bool {
-        switch event {
-        case .partial(_, let joined), .transcript(_, let joined): return joined
-        default: return false
-        }
     }
 
     /// Settles an approval: its card collapses into a one-line entry in the
