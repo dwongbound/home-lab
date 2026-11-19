@@ -525,7 +525,6 @@ struct TalkView: View {
     }
 
     /// One exchange as two bubbles (either may be missing yet).
-    @ViewBuilder
     /// What he heard: settled words solid, the tentative tail lighter. Only
     /// the open exchange has a tail; earlier turns are all settled.
     private func heardText(_ words: String) -> Text {
@@ -537,6 +536,7 @@ struct TalkView: View {
         return Text(parts.settled + " ") + tail
     }
 
+    @ViewBuilder
     private func bubbles(heard: String, reply: String, model: String?) -> some View {
         if !heard.isEmpty {
             heardText(heard)
