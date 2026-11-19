@@ -195,7 +195,8 @@ struct DietView: View {
     /// Calories, protein, fat and carbs against their goals, each with a
     /// thin bar (full when over). A total with no goal shows no bar.
     private func totals(_ day: NutritionDay) -> some View {
-        let columns = width == .regular ? 4 : 2
+        // All four in one row, like the screen it's drawn from.
+        let columns = 4
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columns), spacing: 12) {
             total("Calories", day.totals.calories, goal: day.goals.calories, unit: "", tint: Theme.moss)
             total("Protein", day.totals.protein, goal: day.goals.protein, unit: "g", tint: Theme.glacier)
@@ -210,11 +211,17 @@ struct DietView: View {
     private func total(_ name: String, _ value: Double?, goal: Double?, unit: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(name).font(.caption.weight(.semibold)).foregroundStyle(Theme.frostDim)
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(Diet.whole(value) + unit).font(.title3.weight(.semibold)).foregroundStyle(Theme.frost)
-                if let goal {
-                    Text("/ \(Diet.whole(goal))\(unit)").font(.footnote).foregroundStyle(Theme.frostDim)
-                }
+            // The number over its goal, so four fit across a phone.
+            VStack(alignment: .leading, spacing: 0) {
+                Text(Diet.whole(value) + unit)
+                    .font(width == .regular ? .title3.weight(.semibold) : .headline)
+                    .foregroundStyle(Theme.frost)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(goal.map { "of \(Diet.whole($0))\(unit)" } ?? "no goal")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.frostDim)
+                    .lineLimit(1)
             }
             if let fraction = Diet.fraction(value ?? 0, of: goal) {
                 GeometryReader { area in
