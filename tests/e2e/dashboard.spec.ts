@@ -1225,6 +1225,7 @@ test('Playbooks: write one with a done checklist, switch it off, run it, edit it
   await editor.getByRole('button', { name: 'Write it for me' }).click()
   await expect(editor.getByRole('status')).toContainText('Jarvis filled it in below')
   await expect(editor.getByLabel('Name')).toHaveValue('At 11 pm turn')
+  await expect(editor.getByRole('list', { name: 'What Jarvis assumed' })).toContainText('one step for Jarvis')
   await expect(editor.getByLabel('Time', { exact: true })).toHaveValue('23:00')
   await expect(editor.getByRole('listitem', { name: 'Step 1' }).getByLabel('What Jarvis should do')).toHaveValue('At 11 pm turn everything off')
   expect(await editor.boundingBox()).toEqual(size)

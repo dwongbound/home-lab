@@ -740,6 +740,7 @@ function sampleDraft(text) {
     trigger,
     steps: [{ type: 'think', text, model: 'auto' }],
     done: ['It did what I asked'],
+    edgeCases: ['This is the demo page, so the whole job is one step for Jarvis.'],
   }
 }
 

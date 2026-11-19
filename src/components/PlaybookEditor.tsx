@@ -37,6 +37,7 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
   const [wish, setWish] = useState('')
   const [drafting, setDrafting] = useState(false)
   const [draftNote, setDraftNote] = useState<string | null>(null)
+  const [assumed, setAssumed] = useState<string[]>([])
   useScrollLock()
   // Jarvis writing a draft blocks the box just as saving does.
   const blocked = busy || drafting
@@ -85,6 +86,8 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
     setDraft(result.playbook)
     setProblem(null)
     setDraftNote('Jarvis filled it in below. Check it over, change anything, then Save.')
+    // What he assumed (a lamp that isn't listed, say) is said up front, not left folded away.
+    setAssumed(result.playbook.edgeCases)
   }
 
   /** Checks the playbook and hands it up, or says what's missing. */
@@ -116,6 +119,11 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
             </label>
             <button type="button" className="btn btn--primary playbook__add" onClick={() => void writeDraft()} disabled={blocked}>Write it for me</button>
             {draftNote ? <p className="playbook__hint" role="status">{draftNote}</p> : <p className="playbook__hint">Or fill it in yourself below.</p>}
+            {assumed.length > 0 ? (
+              <ul className="playbook__assumed" aria-label="What Jarvis assumed">
+                {assumed.map((line) => <li key={line}>{line}</li>)}
+              </ul>
+            ) : null}
           </div>
         )}
         <label className="field">
