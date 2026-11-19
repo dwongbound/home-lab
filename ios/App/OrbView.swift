@@ -667,22 +667,26 @@ struct OrbitCallout: View {
                     }
                 }
                 Spacer(minLength: 0)
-                Button("Close", action: onClose)
-                    .font(.footnote.weight(.semibold))
-                    .frame(minWidth: 44, minHeight: 44)
-                    .tint(Theme.glacier)
+                // The (x) closes and keeps the dot (Dylan, 2026-11-19: "can
+                // keep just be an (x) on the top right"); where there's
+                // nothing to keep it simply closes.
+                Button(action: onKeep ?? onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(Theme.frostDim)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(onKeep == nil ? "Close" : "Close and keep")
             }
-            if let notice = item.notice, !notice.isApproval, onOpen != nil || onKeep != nil || notice.source == "reminder" {
+            if let notice = item.notice, !notice.isApproval, onOpen != nil || onKeep != nil {
                 HStack(spacing: 10) {
                     if let onOpen {
                         Button("Open in Chat", action: onOpen).buttonStyle(.bordered)
                     }
-                    // Keep the dot: close without clearing it anywhere.
-                    if let onKeep {
-                        Button("Keep", action: onKeep).buttonStyle(.bordered)
-                    }
-                    // Closing a reminder's label reads it, which stops the nag.
-                    if notice.source == "reminder" {
+                    // Clearing is its own button: it reads the notice, so the
+                    // dot goes everywhere (a reminder's says it stops the nag).
+                    if onKeep != nil {
                         Button(notice.clearLabel, action: onClose).buttonStyle(.borderedProminent)
                     }
                 }
