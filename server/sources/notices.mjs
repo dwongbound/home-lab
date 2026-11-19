@@ -2,12 +2,16 @@
 // he wants Dylan to see, newest first. The apps show one dot on the orb per
 // notice and one shared list; clearing a notice clears it on every device
 // (Dylan, 2026-11-18). Jarvis writes snake_case; anything malformed is dropped.
+// A notice or chat message Dylan chose to keep carries `kept: true`: it stays on
+// the list (a yellow dot in the apps) until he lets it go, whatever gets cleared
+// (Dylan, 2026-11-19).
 
 const MAX_NOTICES = 30
 const MAX_TEXT = 300
 // "need" = waiting on Dylan (an approval), "heads" = worth knowing, "fyi" = just so he knows.
 const KINDS = ['need', 'heads', 'fyi']
-const SOURCES = ['approval', 'lookout', 'reminder', 'alert', 'job', 'message']
+// "kept" = a chat message he asked to keep, which never was a notification.
+const SOURCES = ['approval', 'lookout', 'reminder', 'alert', 'job', 'message', 'kept']
 const ID = /^[\w-]{1,64}$/
 
 /** Trimmed text cut to a card's length, or '' when it isn't text. */
@@ -17,7 +21,7 @@ function words(value) {
 }
 
 /** One notice, or null when it lacks an id, a known kind or a title. */
-function parseNotice(raw) {
+export function parseNotice(raw) {
   const id = typeof raw?.id === 'string' && ID.test(raw.id) ? raw.id : null
   const title = words(raw?.title)
   if (id === null || !KINDS.includes(raw?.kind) || title === '') return null
@@ -28,6 +32,8 @@ function parseNotice(raw) {
   if (typeof raw.approval_id === 'string' && ID.test(raw.approval_id)) notice.approvalId = raw.approval_id
   // The chat turn holding the full message (the notice is only a preview), so a tap can open the chat there.
   if (Number.isInteger(raw.turn_id) && raw.turn_id > 0) notice.turnId = raw.turn_id
+  // Kept until he lets it go; left off the ones that aren't.
+  if (raw.kept === true) notice.kept = true
   return notice
 }
 
@@ -50,6 +56,22 @@ export function parseClear(body) {
     if (typeof id !== 'string' || !ID.test(id)) return null
   }
   return { ids: body.ids }
+}
+
+/**
+ * What to keep, from a request body: {turnId: 12} (a chat message) or {id: "n1"}
+ * (a notice already on the list), or null when it's neither.
+ */
+export function parseKeep(body) {
+  if (Number.isInteger(body?.turnId) && body.turnId > 0) return { turnId: body.turnId }
+  if (typeof body?.id === 'string' && ID.test(body.id)) return { id: body.id }
+  return null
+}
+
+/** The kept notice to let go, from a request body ({id: "n1"}), or null when there's no proper id. */
+export function parseUnkeep(body) {
+  if (typeof body?.id === 'string' && ID.test(body.id)) return body.id
+  return null
 }
 
 /** A device asking for pushes, from a request body, or null when a field is wrong. */

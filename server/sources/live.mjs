@@ -15,7 +15,7 @@ import { createHomeReader } from './home.mjs'
 import { buildGpu, ollamaRows, parseJarvisGpu, parseSmi } from './gpu.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
-import { parseNotices } from './notices.mjs'
+import { parseNotice, parseNotices } from './notices.mjs'
 import { parseNutrition, parseNutritionDay, parseNutritionWeek } from './nutrition.mjs'
 import { parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
 import { parseReport, parseReports } from './reports.mjs'
@@ -634,6 +634,40 @@ export function createLiveSource(config, deps = {}) {
       return postToJarvis('/notices/clear', which, caller, 'Cleared', 'Jarvis can’t keep notifications yet')
     },
 
+    /**
+     * Keep on a chat message ({turnId}) or a notice ({id}): POST /notices/keep with
+     * turn_id or notice_id. The answer carries the kept notice when Jarvis sends one.
+     */
+    async keepNotice(what, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
+      let body = { notice_id: what.id }
+      if (what.turnId !== undefined) body = { turn_id: what.turnId }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/notices/keep`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        // 404 with a JSON answer = no such message; without one, a Jarvis too old to keep things.
+        const answer = await res.json().catch(() => null)
+        if (res.status === 404 && answer?.ok === false) return { ok: false, message: 'Jarvis can’t find that message' }
+        if (res.status === 404) return { ok: false, message: 'Jarvis can’t keep messages yet' }
+        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        const result = { ok: true, message: 'Kept' }
+        const notice = parseNotice(answer?.notice)
+        if (notice !== null) result.notice = notice
+        return result
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /** Letting a kept one go (POST /notices/unkeep with {id}). */
+    async unkeepNotice(id, caller = {}) {
+      return postToJarvis('/notices/unkeep', { id }, caller, 'Let go', 'Jarvis can’t keep messages yet')
+    },
+
     /** An app's push token (POST /push/register), so Jarvis can notify that device. */
     async registerPush(device, caller = {}) {
       return postToJarvis('/push/register', device, caller, 'Registered', 'Jarvis can’t send notifications yet')
@@ -716,6 +750,8 @@ export function createLiveSource(config, deps = {}) {
             if (Number.isInteger(t.images) && t.images > 0) turn.images = t.images
             // His number for the turn, so a notice's turnId can find the message it previews.
             if (Number.isInteger(t.id) && t.id > 0) turn.id = t.id
+            // Dylan asked to keep this one (it's on the notices list until he lets it go).
+            if (t.kept === true) turn.kept = true
             return turn
           })
       } catch {

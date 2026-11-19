@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseClear, parseNotices, parsePushDevice } from '../../server/sources/notices.mjs'
+import { parseClear, parseKeep, parseNotices, parsePushDevice, parseUnkeep } from '../../server/sources/notices.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
 import { createApi } from '../../server/app.mjs'
 import { callApi } from './helpers'
@@ -85,5 +85,48 @@ describe('POST /api/jarvis/push/register', () => {
     expect((await callApi(api, 'POST', '/api/jarvis/push/register', {}, JSON.stringify(device))).statusCode).toBe(403)
     expect((await callApi(api, 'POST', '/api/jarvis/push/register', ACTION_HEADER, JSON.stringify({ ...device, token: 'nope' }))).statusCode).toBe(400)
     expect((await callApi(api, 'POST', '/api/jarvis/push/register', ACTION_HEADER, JSON.stringify(device))).json()).toEqual({ ok: true, message: 'Registered' })
+  })
+})
+
+describe('keeping a notice or a chat message', () => {
+  it('reads kept: true off a notice and knows the "kept" source', () => {
+    const raw = { notices: [{ id: 'k7', kind: 'fyi', title: 'Call the shop', source: 'kept', turn_id: 7, kept: true }, { id: 'n1', kind: 'heads', title: 'Rain', kept: 'yes' }] }
+    expect(parseNotices(raw)).toEqual([
+      { id: 'k7', kind: 'fyi', title: 'Call the shop', body: '', source: 'kept', created: null, turnId: 7, kept: true },
+      { id: 'n1', kind: 'heads', title: 'Rain', body: '', source: 'message', created: null },
+    ])
+  })
+
+  it('takes a turn id or a notice id to keep, and an id to let go', () => {
+    expect(parseKeep({ turnId: 12 })).toEqual({ turnId: 12 })
+    expect(parseKeep({ id: 'n1' })).toEqual({ id: 'n1' })
+    expect(parseKeep({ turnId: 0 })).toBeNull()
+    expect(parseKeep({ turnId: '12' })).toBeNull()
+    expect(parseKeep({ id: 'has spaces' })).toBeNull()
+    expect(parseKeep(null)).toBeNull()
+    expect(parseUnkeep({ id: 'k12' })).toBe('k12')
+    expect(parseUnkeep({ id: 5 })).toBeNull()
+  })
+
+  it('keeps a notice through Clear all, keeps a chat message once, and lets both go', async () => {
+    const api = createApi(createMockSource())
+    const before = (await callApi(api, 'GET', '/api/snapshot')).json().notices
+    expect((await callApi(api, 'POST', '/api/jarvis/notices/keep', {}, JSON.stringify({ id: before[1].id }))).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/jarvis/notices/keep', ACTION_HEADER, JSON.stringify({ turn: 3 }))).statusCode).toBe(400)
+    expect((await callApi(api, 'POST', '/api/jarvis/notices/keep', ACTION_HEADER, JSON.stringify({ id: 'nope' }))).statusCode).toBe(409)
+    const kept = (await callApi(api, 'POST', '/api/jarvis/notices/keep', ACTION_HEADER, JSON.stringify({ id: before[1].id }))).json()
+    expect(kept).toMatchObject({ ok: true, message: 'Kept', notice: { id: before[1].id, kept: true } })
+    await callApi(api, 'POST', '/api/jarvis/notices/keep', ACTION_HEADER, JSON.stringify({ turnId: 12 }))
+    const again = (await callApi(api, 'POST', '/api/jarvis/notices/keep', ACTION_HEADER, JSON.stringify({ turnId: 12 }))).json()
+    expect(again.notice).toMatchObject({ id: 'k12', source: 'kept', turnId: 12, kept: true })
+    await callApi(api, 'POST', '/api/jarvis/notices/clear', ACTION_HEADER, JSON.stringify({ all: true }))
+    await callApi(api, 'POST', '/api/jarvis/notices/clear', ACTION_HEADER, JSON.stringify({ ids: ['k12'] }))
+    const left = (await callApi(api, 'GET', '/api/snapshot')).json().notices
+    expect(left.map((n: { id: string }) => n.id)).toEqual(['k12', before[1].id])
+    expect((await callApi(api, 'POST', '/api/jarvis/notices/unkeep', {}, JSON.stringify({ id: 'k12' }))).statusCode).toBe(403)
+    expect((await callApi(api, 'POST', '/api/jarvis/notices/unkeep', ACTION_HEADER, JSON.stringify({}))).statusCode).toBe(400)
+    expect((await callApi(api, 'POST', '/api/jarvis/notices/unkeep', ACTION_HEADER, JSON.stringify({ id: 'k12' }))).json()).toEqual({ ok: true, message: 'Let go' })
+    await callApi(api, 'POST', '/api/jarvis/notices/unkeep', ACTION_HEADER, JSON.stringify({ id: before[1].id }))
+    expect((await callApi(api, 'GET', '/api/snapshot')).json().notices).toEqual([])
   })
 })

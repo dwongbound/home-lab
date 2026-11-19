@@ -21,6 +21,8 @@
 //   POST /api/jarvis/chat/meal     {"key", "choice"} -> same | leftovers | new, for a meal photo he may have logged already
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
 //   POST /api/jarvis/notices/clear {"ids"} or {"all": true} -> clears notifications on every device
+//   POST /api/jarvis/notices/keep {"turnId"} or {"id"} -> keeps a chat message or a notice until he lets it go
+//   POST /api/jarvis/notices/unkeep {"id"} -> lets a kept one go
 //   POST /api/jarvis/push/register {"token", "platform", "environment", "bundle"} -> an app asking for pushes
 //   POST /api/jarvis/feedback      {question, answer, note} -> "That was wrong" on one of his replies
 //   POST /api/jarvis/sleep          {"asleep": true|false, "source"?} -> tells Jarvis you've gone to bed, or are up
@@ -35,7 +37,7 @@ import { createMockSource } from './sources/mock.mjs'
 import { isDay } from './sources/nutrition.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
-import { parseClear, parsePushDevice } from './sources/notices.mjs'
+import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
 import { REPORT_CSP, isReportId, missingReportPage } from './sources/reports.mjs'
 
@@ -401,6 +403,34 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
+  /** Keep on a chat message or a notice: it stays on the list, on every device, until he lets it go. */
+  async function handleKeepNotice(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const what = parseKeep(await readJson(req))
+    if (what === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"turnId": 12} or {"id": "n1"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.keepNotice(what, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
+  /** Letting a kept one go: it leaves the list on every device. */
+  async function handleUnkeepNotice(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const id = parseUnkeep(await readJson(req))
+    if (id === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"id": "n1"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.unkeepNotice(id, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
   /** An app's push token, passed to Jarvis so he can send lock-screen notifications to that device. */
   async function handleRegisterPush(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -571,6 +601,12 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/notices/clear') {
         return await handleClearNotices(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/notices/keep') {
+        return await handleKeepNotice(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/notices/unkeep') {
+        return await handleUnkeepNotice(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/push/register') {
         return await handleRegisterPush(req, res)
