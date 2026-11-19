@@ -20,10 +20,14 @@ public enum TalkEvent: Equatable, Sendable {
     /// doze and wake on "Hey Jarvis" (older ones can only hang up).
     case hello(rate: Double, wakeWord: Bool)
     case state(TalkState)
-    /// What Whisper has heard so far while Dylan is still talking.
-    case partial(String, joined: Bool)
-    /// One whole turn heard. joined: carries on the question he was answering.
-    case transcript(String, joined: Bool)
+    /// What Whisper has heard so far while Dylan is still talking. `stable`
+    /// is how many leading words are settled and won't change again (nil
+    /// from an older Jarvis: all tentative).
+    case partial(String, joined: Bool, stable: Int? = nil)
+    /// One whole turn heard. joined: carries on the question he was
+    /// answering. same: the final says what the live words already said, so
+    /// the shown words stay as they are.
+    case transcript(String, joined: Bool, same: Bool = false)
     /// More of his reply's text.
     case reply(String)
     case working(String)
@@ -61,10 +65,11 @@ public enum TalkEvent: Equatable, Sendable {
             return .state(state)
         case "partial":
             if words.isEmpty { return nil }
-            return .partial(words, joined: joined)
+            let stable = (object["stable"] as? NSNumber).map { max(0, $0.intValue) }
+            return .partial(words, joined: joined, stable: stable)
         case "transcript":
             if words.isEmpty { return nil }
-            return .transcript(words, joined: joined)
+            return .transcript(words, joined: joined, same: object["same"] as? Bool ?? false)
         case "reply":
             if words.isEmpty { return nil }
             return .reply(words)
@@ -256,5 +261,30 @@ public enum HeardPlacement: Equatable, Sendable {
         let stillOpen = openReply.isEmpty && !openDone
         if joined { return stillOpen ? .same : .new }
         return stillOpen ? .same : .new
+    }
+}
+
+/// The live words on the Talk screen (Dylan, 2026-11-18: the live words got
+/// rewritten a lot). Jarvis marks how many leading words are settled; those
+/// show solid and only the tail is light. When the final transcript says
+/// the same as what's shown, the shown words stay put instead of being
+/// swapped. The native twin of src/lib/heard.ts; keep the two in step.
+public enum HeardWords {
+    /// How light the tentative tail is (the page's 55%).
+    public static let tailOpacity = 0.55
+
+    /// The settled words and the tentative tail. `stable` nil (an older
+    /// Jarvis) means nothing is settled; more than there are means all is.
+    public static func split(_ text: String, stable: Int?) -> (settled: String, tail: String) {
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let n = min(max(stable ?? 0, 0), words.count)
+        return (words[..<n].joined(separator: " "), words[n...].joined(separator: " "))
+    }
+
+    /// What the bubble says once the final transcript arrives: the shown
+    /// words when Jarvis says they match (`same`) and something was shown,
+    /// otherwise the final.
+    public static func afterFinal(shown: String, final: String, same: Bool) -> String {
+        same && !shown.trimmingCharacters(in: .whitespaces).isEmpty ? shown : final
     }
 }

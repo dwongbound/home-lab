@@ -38,6 +38,8 @@ final class TalkModel: ObservableObject {
     private var islandTicker: Task<Void, Never>?
     /// What Whisper is hearing right now, or the last thing it heard.
     @Published private(set) var heard = ""
+    /// How many of `heard`'s leading words are settled (nil: none known).
+    @Published private(set) var heardStable: Int?
     /// His reply so far.
     @Published private(set) var reply = ""
     @Published private(set) var model: String?
@@ -208,18 +210,30 @@ final class TalkModel: ObservableObject {
             // Listening starts quiet; dozing (paused by him or by Jarvis on
             // "that's all") drops the voice so the orb settles.
             if state == .listening || state == .dozing { level = 0; tone = 0 }
-        case .partial(let words, let joined), .transcript(let words, let joined):
+        case .partial(let words, let joined, _), .transcript(let words, let joined, _):
             // Same exchange or a new one (JarvisKit HeardPlacement, the
             // page's canJoin): a joined transcript after an answer starts a
             // new exchange instead of overwriting the last question.
             if HeardPlacement.of(openReply: reply, openDone: exchangeDone, joined: joined) == .new {
                 archiveTurn()
                 heard = ""
+                heardStable = nil
                 reply = ""
                 model = nil
                 exchangeDone = false
             }
-            heard = words
+            // Settled words show solid, the rest light; a final that says
+            // the same as what's shown leaves it alone (JarvisKit HeardWords).
+            switch event {
+            case .partial(_, _, let stable):
+                heard = words
+                heardStable = stable
+            case .transcript(_, _, let same):
+                heard = HeardWords.afterFinal(shown: heard, final: words, same: same)
+                heardStable = Int.max
+            default:
+                break
+            }
         case .reply(let words):
             reply += words
         case .model(let name):
@@ -512,9 +526,20 @@ struct TalkView: View {
 
     /// One exchange as two bubbles (either may be missing yet).
     @ViewBuilder
+    /// What he heard: settled words solid, the tentative tail lighter. Only
+    /// the open exchange has a tail; earlier turns are all settled.
+    private func heardText(_ words: String) -> Text {
+        guard words == talk.heard else { return Text(words) }
+        let parts = HeardWords.split(words, stable: talk.heardStable)
+        if parts.tail.isEmpty { return Text(parts.settled) }
+        let tail = Text(parts.tail).foregroundColor(.white.opacity(HeardWords.tailOpacity))
+        if parts.settled.isEmpty { return tail }
+        return Text(parts.settled + " ") + tail
+    }
+
     private func bubbles(heard: String, reply: String, model: String?) -> some View {
         if !heard.isEmpty {
-            Text(heard)
+            heardText(heard)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))

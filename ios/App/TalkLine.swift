@@ -390,7 +390,7 @@ final class TalkLine: @unchecked Sendable {
                 talkLog("unread event: \(text.prefix(200))")
                 return
             }
-            if case .transcript(let words, _) = event { talkLog("heard: \(words)") }
+            if case .transcript(let words, _, _) = event { talkLog("heard: \(words)") }
             apply(event)
             onMain { self.handlers.onEvent(event) }
         @unknown default:
