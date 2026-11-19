@@ -348,7 +348,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
         notices: currentNotices(t).map((n) => ({ ...n })),
         // Made-up calories for today.
         reports: mockReports(state.reports),
-        nutrition: { date: pacificDay(t), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140 },
+        nutrition: { date: pacificDay(t), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140, fat: 38, fatGoal: 55, carbs: 110, carbsGoal: 175 },
       }
     },
 
@@ -599,7 +599,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const t = now()
       const eaten = [1690, 1820, 1540, 1760, 2010, 1480, 1180]
       const first = start ? new Date(`${start}T12:00:00Z`) : new Date(t.getTime() - 6 * 86_400_000)
-      const days = eaten.map((calories, i) => ({ date: pacificDay(new Date(first.getTime() + i * 86_400_000)), calories, goal: 1750, protein: 90 + i * 9, proteinGoal: 140 }))
+      const days = eaten.map((calories, i) => ({ date: pacificDay(new Date(first.getTime() + i * 86_400_000)), calories, goal: 1750, protein: 90 + i * 9, proteinGoal: 140, fat: 40 + i * 3, fatGoal: 55, carbs: 120 + i * 10, carbsGoal: 175 }))
       return { start: days[0].date, days }
     },
 

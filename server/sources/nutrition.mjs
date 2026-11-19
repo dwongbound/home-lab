@@ -23,6 +23,11 @@ export function parseNutrition(raw) {
     burned: whole(raw.burned, 0),
     protein: whole(raw.protein, 0),
     proteinGoal: whole(raw.protein_goal, 1),
+    // Fat and carbs against their daily goals, in grams (Dylan, 2026-11-19: he's cutting); null on an older Jarvis.
+    fat: amount(raw.fat),
+    fatGoal: amount(raw.fat_goal),
+    carbs: amount(raw.carbs),
+    carbsGoal: amount(raw.carbs_goal),
   }
 }
 
@@ -72,13 +77,13 @@ export function parseNutritionDay(raw) {
   return { date: raw.date, goals: macros(raw.goals), totals: { ...macros(raw.totals), burned: amount(raw.totals?.burned) }, items }
 }
 
-/** A week of calories and protein eaten against their goals, one row per day, or null when it isn't one. */
+/** A week of calories, protein, fat and carbs eaten against their goals, one row per day, or null when it isn't one. */
 export function parseNutritionWeek(raw) {
   if (!isDay(raw?.start) || !Array.isArray(raw.days)) return null
   const days = raw.days
     .filter((day) => isDay(day?.date))
     .slice(0, 7)
-    .map((day) => ({ date: day.date, calories: amount(day.calories), goal: amount(day.goal), protein: amount(day.protein), proteinGoal: amount(day.protein_goal) }))
+    .map((day) => ({ date: day.date, calories: amount(day.calories), goal: amount(day.goal), protein: amount(day.protein), proteinGoal: amount(day.protein_goal), fat: amount(day.fat), fatGoal: amount(day.fat_goal), carbs: amount(day.carbs), carbsGoal: amount(day.carbs_goal) }))
   return { start: raw.start, days }
 }
 

@@ -4,7 +4,7 @@ import { dayCount, isDay, isMealId, photoType, parseNutrition, parseNutritionDay
 describe('parseNutrition', () => {
   it('keeps the numbers, renames protein_goal and lets left go negative', () => {
     expect(parseNutrition({ date: '2026-11-18', eaten: 1900, goal: 1750, left: 0, burned: 410, protein: 120, protein_goal: 140 })).toEqual({
-      date: '2026-11-18', eaten: 1900, goal: 1750, left: -150, burned: 410, protein: 120, proteinGoal: 140,
+      date: '2026-11-18', eaten: 1900, goal: 1750, left: -150, burned: 410, protein: 120, proteinGoal: 140, fat: null, fatGoal: null, carbs: null, carbsGoal: null,
     })
   })
 
@@ -14,7 +14,7 @@ describe('parseNutrition', () => {
     expect(parseNutrition({ date: '2026-11-18', eaten: '1200', goal: 1750 })).toBeNull()
     expect(parseNutrition({ date: '2026-11-18', eaten: 1200, goal: 0 })).toBeNull()
     expect(parseNutrition({ date: '2026-11-18', eaten: 0, goal: 1750, burned: 'lots', meals: ['ramen'] })).toEqual({
-      date: '2026-11-18', eaten: 0, goal: 1750, left: 1750, burned: null, protein: null, proteinGoal: null,
+      date: '2026-11-18', eaten: 0, goal: 1750, left: 1750, burned: null, protein: null, proteinGoal: null, fat: null, fatGoal: null, carbs: null, carbsGoal: null,
     })
   })
 })
@@ -54,11 +54,11 @@ describe('parseNutritionWeek', () => {
     const week = parseNutritionWeek({ start: '2026-11-10', days: [{ date: 'nope' }, ...days] })
     expect(week?.start).toBe('2026-11-10')
     expect(week?.days).toHaveLength(7)
-    expect(week?.days[0]).toEqual({ date: '2026-11-10', calories: 1500, goal: 1750, protein: 100, proteinGoal: 140 })
+    expect(week?.days[0]).toEqual({ date: '2026-11-10', calories: 1500, goal: 1750, protein: 100, proteinGoal: 140, fat: null, fatGoal: null, carbs: null, carbsGoal: null })
   })
 
   it('gives null numbers for a day with nothing logged, and null for a non-week', () => {
-    expect(parseNutritionWeek({ start: '2026-11-10', days: [{ date: '2026-11-10' }] })?.days).toEqual([{ date: '2026-11-10', calories: null, goal: null, protein: null, proteinGoal: null }])
+    expect(parseNutritionWeek({ start: '2026-11-10', days: [{ date: '2026-11-10' }] })?.days).toEqual([{ date: '2026-11-10', calories: null, goal: null, protein: null, proteinGoal: null, fat: null, fatGoal: null, carbs: null, carbsGoal: null }])
     expect(parseNutritionWeek({ start: '2026-11-10' })).toBeNull()
     expect(parseNutritionWeek({ start: 'monday', days: [] })).toBeNull()
   })
@@ -101,5 +101,12 @@ describe('meal photos', () => {
     expect(photoType('IMAGE/JPEG; q=1')).toBe('image/jpeg')
     expect(photoType('text/html')).toBe('image/jpeg')
     expect(photoType(null)).toBe('image/jpeg')
+  })
+
+  it('carries fat and carbs against their goals, today and across a week', () => {
+    const today = parseNutrition({ date: '2026-11-19', eaten: 900, goal: 1750, fat: 30.4, fat_goal: 55, carbs: 88, carbs_goal: 175 })
+    expect(today).toMatchObject({ fat: 30.4, fatGoal: 55, carbs: 88, carbsGoal: 175 })
+    const week = parseNutritionWeek({ start: '2026-11-16', days: [{ date: '2026-11-16', fat: 41, fat_goal: 55, carbs: 150, carbs_goal: 175 }] })
+    expect(week?.days[0]).toMatchObject({ fat: 41, fatGoal: 55, carbs: 150, carbsGoal: 175 })
   })
 })
