@@ -25,14 +25,15 @@ export const TRIGGER_CHOICES: { type: PlaybookTrigger['type']; label: string }[]
   { type: 'manual', label: 'When I ask, or the job comes up' },
 ]
 
-export const STEP_CHOICES: { type: PlaybookStep['type']; label: string }[] = [
-  { type: 'device', label: 'Control a device' },
-  { type: 'scene', label: 'Run a scene' },
-  { type: 'app', label: 'Open an app on a TV' },
-  { type: 'notify', label: 'Send me a notification' },
-  { type: 'think', label: 'Have Jarvis work something out' },
-  { type: 'email', label: 'Send an email' },
-  { type: 'wait', label: 'Wait' },
+// `label` heads a step; `short` is its button in the editor's "Add a step" row.
+export const STEP_CHOICES: { type: PlaybookStep['type']; label: string; short: string }[] = [
+  { type: 'device', label: 'Control a device', short: 'Device' },
+  { type: 'scene', label: 'Run a scene', short: 'Scene' },
+  { type: 'app', label: 'Open an app on a TV', short: 'TV app' },
+  { type: 'notify', label: 'Send me a notification', short: 'Notify me' },
+  { type: 'think', label: 'Have Jarvis work something out', short: 'Ask Jarvis' },
+  { type: 'email', label: 'Send an email', short: 'Email' },
+  { type: 'wait', label: 'Wait', short: 'Wait' },
 ]
 
 // Who does a thinking step, as the editor offers it.

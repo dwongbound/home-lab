@@ -12,7 +12,7 @@
 //   GET  /api/jarvis/nutrition/day?date=    one day of the meal log, with what was eaten ({day})
 //   GET  /api/jarvis/nutrition/week?start=  seven days of calories against the goal ({week})
 //   GET  /api/jarvis/playbooks       Jarvis's playbooks and what their steps can use ({book})
-//   POST /api/jarvis/playbooks       {"op": "save", "playbook"} | {"op": "delete" | "run", "id"}
+//   POST /api/jarvis/playbooks       {"op": "save", "playbook"} | {"op": "delete" | "run", "id"} | {"op": "draft", "text"}
 //   GET  /api/jarvis/voice          how Jarvis sounds + every voice; POST saves {voice, speed, blend}
 //   GET  /api/jarvis/voice/sample   a WAV of ?voice=&speed=&voice2=&mix=
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
@@ -39,6 +39,9 @@ import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
+
+// The most a "describe it" box may send Jarvis to turn into a playbook.
+const DRAFT_TEXT_MAX = 1000
 import { REPORT_CSP, isReportId, parseKeepChoice, missingReportPage } from './sources/reports.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
@@ -279,7 +282,7 @@ export function createApi(source) {
     return sendJson(res, 200, { book: await source.playbooks({ login }) })
   }
 
-  /** Saves, deletes or runs one playbook. */
+  /** Saves, deletes or runs one playbook, or has Jarvis draft one from a description. */
   async function handlePlaybookChange(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
       return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
@@ -290,6 +293,13 @@ export function createApi(source) {
       const checked = cleanPlaybook(body.playbook)
       if (checked.problem) return sendJson(res, 400, { ok: false, message: checked.problem })
       const result = await source.changePlaybook({ op: 'save', playbook: checked.playbook }, { login })
+      return sendJson(res, result.ok ? 200 : 502, result)
+    }
+    if (body?.op === 'draft') {
+      if (typeof body.text !== 'string' || body.text.trim() === '') {
+        return sendJson(res, 400, { ok: false, message: 'Say what the playbook should do' })
+      }
+      const result = await source.draftPlaybook(body.text.trim().slice(0, DRAFT_TEXT_MAX), { login })
       return sendJson(res, result.ok ? 200 : 502, result)
     }
     const known = body?.op === 'delete' || body?.op === 'run'

@@ -1178,7 +1178,12 @@ html[data-modal] { overflow: hidden; }
 .field__box:focus, .field__box:focus-visible { outline: none; border-color: rgba(255,255,255,.4); }
 .field__box--tall { min-height: 88px; padding: 10px 14px; resize: none; }
 select.field__box option { color: #111; }
-.playbook__heading { font-size: 15px; margin-top: 6px; }
+.playbook__heading { font-size: 16px; margin-top: 10px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.playbook__more .playbook__heading { border-top: 0; padding-top: 0; font-size: 15px; }
+.playbook__optional { font-size: 12.5px; font-weight: 400; color: var(--frost-faint); }
+.playbook__describe { display: grid; gap: 8px; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); }
+.playbook__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.playbook__chips .segmented__opt { min-height: 44px; padding: 0 14px; }
 .playbook__hint { font-size: 13px; color: var(--frost-faint); }
 .playbook__days { display: flex; flex-wrap: wrap; gap: 6px; }
 .playbook__days .segmented__opt[aria-pressed='true'] { background: var(--frost); color: var(--basalt); border-color: transparent; }

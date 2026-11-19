@@ -6,7 +6,7 @@ import { createApi } from '../../server/app.mjs'
 import { loadConfig } from '../../server/config.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
-import { cleanPlaybook, fromJarvisPlaybook, parsePlaybookBook, toJarvisPlaybook } from '../../server/sources/playbooks.mjs'
+import { cleanPlaybook, fromJarvisDraft, fromJarvisPlaybook, parsePlaybookBook, toJarvisPlaybook } from '../../server/sources/playbooks.mjs'
 import { blankPlaybook, blankStep, blankTrigger, clockLabel, daysLabel, draftOf, failedChecks, playbookProblem, stepLine, triggerLine } from '../../src/lib/playbooks'
 import type { Playbook, PlaybookOptions } from '../../src/types'
 import { callApi } from './helpers'
@@ -230,6 +230,13 @@ describe('/api/jarvis/playbooks (sample data)', () => {
     expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, JSON.stringify({ op: 'save', playbook: { ...playbook, steps: [] } }))).json().message).toBe('Add at least one step')
     expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, '{"op":"explode","id":"r1"}')).statusCode).toBe(400)
     expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, '{"op":"run"}')).statusCode).toBe(400)
+    // A draft from a description comes back to look over and isn't saved.
+    expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, '{"op":"draft","text":" "}')).statusCode).toBe(400)
+    const drafted = (await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, JSON.stringify({ op: 'draft', text: 'At 11 pm turn everything off' }))).json()
+    expect(drafted.ok).toBe(true)
+    expect(drafted.playbook.trigger).toEqual({ type: 'time', at: '23:00', days: [] })
+    expect(drafted.playbook.id).toBeUndefined()
+    expect(await names()).not.toContain(drafted.playbook.name)
 
     expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, JSON.stringify({ op: 'save', playbook }))).json()).toEqual({ ok: true, message: 'Saved' })
     expect(await names()).toContain('Lights out')
@@ -299,5 +306,14 @@ describe('playbooks from the real Jarvis', () => {
 
     const down = liveApi(() => { throw new Error('connect ECONNREFUSED') })
     expect((await callApi(down.api, 'POST', '/api/jarvis/playbooks', LOGIN, '{"op":"delete","id":"r1"}')).json().message).toBe('Jarvis is not answering')
+  })
+
+  it('reads a playbook Jarvis drafted as an editor draft: no id, author or last run', () => {
+    const draft = fromJarvisDraft({ name: 'Lights out', trigger: { type: 'arrive', zone: 'home', min_away: 20 }, steps: [{ type: 'notify', text: 'Home' }], made_by: 'jarvis', done: ['Told me'] })
+    expect(draft).toMatchObject({ name: 'Lights out', trigger: { type: 'arrive', zone: 'home', minAway: 20 }, done: ['Told me'] })
+    expect(draft).not.toHaveProperty('id')
+    expect(draft).not.toHaveProperty('madeBy')
+    expect(fromJarvisDraft(null)).toBeNull()
+    expect(fromJarvisDraft({ steps: [] })).toBeNull()
   })
 })

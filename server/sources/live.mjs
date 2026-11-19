@@ -17,7 +17,7 @@ import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
 import { parseNotice, parseNotices } from './notices.mjs'
 import { parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek, photoType } from './nutrition.mjs'
-import { parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
+import { fromJarvisDraft, parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
 import { parseReport, parseReports } from './reports.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
@@ -29,6 +29,8 @@ const PROBE_TIMEOUT_MS = 2500
 // Running a playbook by hand waits for its steps (a TV waking, a pause between
 // steps, Jarvis thinking one through) and for him to check his done list.
 const PLAYBOOK_RUN_TIMEOUT_MS = 180_000
+// Drafting a playbook is one model call on Jarvis's side.
+const PLAYBOOK_DRAFT_TIMEOUT_MS = 45000
 // Jarvis can take a while: Claude thinking, or the local model loading first.
 const ASK_TIMEOUT_MS = 180_000
 // A chat reply can wait on an approval for up to 10 minutes, so its stream gets longer.
@@ -1002,6 +1004,31 @@ export function createLiveSource(config, deps = {}) {
         if (!result.ok && !said) result.message = `Jarvis answered ${res.status}`
         if (change.op === 'run' && Array.isArray(answer?.checks)) result.checks = parseChecks(answer.checks)
         return result
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
+     * Has Jarvis write a playbook from a few plain words (POST
+     * /playbooks/draft). He thinks it through, so it gets a long wait. Nothing
+     * is saved: the draft goes back to the editor to look over.
+     */
+    async draftPlaybook(text, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to write playbooks' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/playbooks/draft`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login, 'content-type': 'application/json' },
+          body: JSON.stringify({ text }),
+          signal: AbortSignal.timeout(PLAYBOOK_DRAFT_TIMEOUT_MS),
+        })
+        const answer = await res.json().catch(() => ({}))
+        if (res.status === 404) return { ok: false, message: 'Jarvis can’t draft playbooks yet. Fill it in below.' }
+        const playbook = fromJarvisDraft(answer?.playbook)
+        if (res.ok && answer?.ok !== false && playbook !== null) return { ok: true, playbook }
+        const said = answer?.message ?? answer?.detail ?? answer?.error
+        return { ok: false, message: typeof said === 'string' && said ? said : 'Jarvis couldn’t write that one. Fill it in below.' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }

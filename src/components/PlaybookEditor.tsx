@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import { draftPlaybook } from '../api/client'
 import { DAYS, STEP_CHOICES, THINKER_CHOICES, TRIGGER_CHOICES, blankStep, blankTrigger, commandLabel, commandTakesValue, commandTakesWords, playbookProblem } from '../lib/playbooks'
 import type { PlaybookDay, PlaybookDraft, PlaybookOptions, PlaybookStep, PlaybookThinker, PlaybookTrigger } from '../types'
 import { useScrollLock } from '../useScrollLock'
 import { Spinner } from './Spinner'
 
-// The pop-up where a playbook is written: its name and purpose, when it
-// runs, its steps in order, the checklist that says it's done, and (folded
-// away under "More for Jarvis") what it needs, the rules behind its
+// The pop-up where a playbook is written. It reads top to bottom as three
+// plain questions (Dylan, 2026-11-19: the first one was too hard to follow):
+// 1 when does it run, 2 what happens, 3 how Jarvis knows it worked. A new
+// playbook starts with a "Describe it" box: a sentence or two, and Jarvis
+// fills the whole form in to look over (nothing is saved until Save). Steps
+// are added from a row of buttons. Folded away under "More for Jarvis" are what it needs, the rules behind its
 // decisions, what has gone wrong before and the standard to hit. Native <dialog> at a fixed size; the steps scroll inside
 // it. Nothing is saved until Save, and while Jarvis is saving the whole
 // box is blocked with a labelled spinner.
@@ -30,7 +34,12 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
   const [draft, setDraft] = useState<PlaybookDraft>(start)
   // Shown only after a Save that couldn't go, so the box doesn't nag while it's being filled in.
   const [problem, setProblem] = useState<string | null>(null)
+  const [wish, setWish] = useState('')
+  const [drafting, setDrafting] = useState(false)
+  const [draftNote, setDraftNote] = useState<string | null>(null)
   useScrollLock()
+  // Jarvis writing a draft blocks the box just as saving does.
+  const blocked = busy || drafting
 
   // Open as a modal on mount. jsdom (the unit test DOM) has no showModal.
   useEffect(() => {
@@ -59,6 +68,25 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
     })
   }
 
+  /** Has Jarvis fill the form in from the description. */
+  async function writeDraft() {
+    if (wish.trim() === '') {
+      setDraftNote('Say what it should do first')
+      return
+    }
+    setDrafting(true)
+    setDraftNote(null)
+    const result = await draftPlaybook(wish.trim())
+    setDrafting(false)
+    if (!result.ok) {
+      setDraftNote(result.message)
+      return
+    }
+    setDraft(result.playbook)
+    setProblem(null)
+    setDraftNote('Jarvis filled it in below. Check it over, change anything, then Save.')
+  }
+
   /** Checks the playbook and hands it up, or says what's missing. */
   function save() {
     const missing = playbookProblem(draft)
@@ -72,14 +100,24 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
       className="dialog dialog--detail dialog--playbook glass"
       tabIndex={-1}
       aria-labelledby="playbook-title"
-      aria-busy={busy}
-      // Esc fires "cancel"; ignored while Jarvis is saving.
-      onCancel={(e) => { e.preventDefault(); if (!busy) onClose() }}
+      aria-busy={blocked}
+      // Esc fires "cancel"; ignored while Jarvis is saving or writing.
+      onCancel={(e) => { e.preventDefault(); if (!blocked) onClose() }}
     >
       <header className="detail__head">
         <h2 id="playbook-title" className="dialog__title">{start.id ? 'Edit playbook' : 'New playbook'}</h2>
       </header>
       <div className="detail__body playbook__form">
+        {start.id ? null : (
+          <div className="playbook__describe">
+            <label className="field">
+              <span className="field__label">Describe it, and Jarvis fills in the rest</span>
+              <textarea className="field__box field__box--tall" value={wish} maxLength={1000} placeholder="At 11 on weeknights, turn off the lights and tell me tomorrow’s first meeting" onChange={(e) => setWish(e.target.value)} />
+            </label>
+            <button type="button" className="btn btn--primary playbook__add" onClick={() => void writeDraft()} disabled={blocked}>Write it for me</button>
+            {draftNote ? <p className="playbook__hint" role="status">{draftNote}</p> : <p className="playbook__hint">Or fill it in yourself below.</p>}
+          </div>
+        )}
         <label className="field">
           <span className="field__label">Name</span>
           <input className="field__box" value={draft.name} maxLength={60} placeholder="Bedtime" autoComplete="off" onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
@@ -90,16 +128,17 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
           <input className="field__box" value={draft.purpose} maxLength={200} placeholder="Shut the place down for the night" autoComplete="off" onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} />
         </label>
 
+        <h3 className="playbook__heading"><span className="playbook__num">1</span>When does it run?</h3>
         <label className="field">
-          <span className="field__label">When</span>
+          <span className="field__label">Start it</span>
           <select className="field__box" value={draft.trigger.type} onChange={(e) => setDraft({ ...draft, trigger: blankTrigger(e.target.value as PlaybookTrigger['type']) })}>
             {TRIGGER_CHOICES.map((c) => <option key={c.type} value={c.type}>{c.label}</option>)}
           </select>
         </label>
         <TriggerFields trigger={draft.trigger} onChange={(trigger) => setDraft({ ...draft, trigger })} />
 
-        <h3 className="playbook__heading">Then</h3>
-        {draft.steps.length === 0 ? <p className="playbook__hint">No steps yet. Add the first one below.</p> : null}
+        <h3 className="playbook__heading"><span className="playbook__num">2</span>What happens?</h3>
+        {draft.steps.length === 0 ? <p className="playbook__hint">Nothing yet. Tap a button below to add the first step; they run top to bottom.</p> : null}
         <ol className="playbook__steps">
           {draft.steps.map((step, i) => (
             <li key={i} className="playbook__step" aria-label={`Step ${i + 1}`}>
@@ -114,27 +153,21 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
             </li>
           ))}
         </ol>
-        <label className="field">
-          <span className="field__label">Add a step</span>
-          {/* Picking a kind adds the step and the box goes back to its prompt. */}
-          <select
-            className="field__box"
-            value=""
-            onChange={(e) => {
-              const type = e.target.value as PlaybookStep['type']
-              if (type) setDraft({ ...draft, steps: [...draft.steps, blankStep(type, options)] })
-            }}
-          >
-            <option value="">Choose what happens…</option>
-            {STEP_CHOICES.map((c) => <option key={c.type} value={c.type}>{c.label}</option>)}
-          </select>
-        </label>
-        <h3 className="playbook__heading">Done when</h3>
-        <p className="playbook__hint">Jarvis checks each of these after every run, and tells you if one didn’t hold.</p>
+        <div className="field">
+          <span className="field__label" id="playbook-add">Add a step</span>
+          {/* One tap adds that kind of step at the end. */}
+          <div className="playbook__chips" role="group" aria-labelledby="playbook-add">
+            {STEP_CHOICES.map((c) => (
+              <button key={c.type} type="button" className="segmented__opt" title={c.label} onClick={() => setDraft({ ...draft, steps: [...draft.steps, blankStep(c.type, options)] })}>{c.short}</button>
+            ))}
+          </div>
+        </div>
+        <h3 className="playbook__heading"><span className="playbook__num">3</span>How does Jarvis know it worked? <span className="playbook__optional">Optional</span></h3>
+        <p className="playbook__hint">He checks each of these after every run, and tells you if one didn’t hold.</p>
         <LineList label="Done item" placeholder="Every light is off" add="Add a check" lines={draft.done} onChange={(done) => setDraft({ ...draft, done })} />
 
         <details className="playbook__more">
-          <summary>More for Jarvis</summary>
+          <summary>More for Jarvis <span className="playbook__optional">Optional, for jobs that need judgment</span></summary>
           <label className="field">
             <span className="field__label">When he should use it without being told</span>
             <textarea className="field__box field__box--tall" value={draft.whenToUse} maxLength={500} placeholder="When I ask what my week looks like" onChange={(e) => setDraft({ ...draft, whenToUse: e.target.value })} />
@@ -157,11 +190,12 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
         {problem || error ? <p className="dialog__error" role="alert">{problem ?? error}</p> : null}
       </div>
       <div className="dialog__actions">
-        {onDelete ? <button type="button" className="btn btn--quiet playbook__delete" onClick={onDelete} disabled={busy}>Delete</button> : null}
-        <button type="button" className="btn btn--quiet" onClick={onClose} disabled={busy}>Close</button>
-        <button type="button" className="btn btn--primary" onClick={save} disabled={busy}>Save</button>
+        {onDelete ? <button type="button" className="btn btn--quiet playbook__delete" onClick={onDelete} disabled={blocked}>Delete</button> : null}
+        <button type="button" className="btn btn--quiet" onClick={onClose} disabled={blocked}>Close</button>
+        <button type="button" className="btn btn--primary" onClick={save} disabled={blocked}>Save</button>
       </div>
       {busy ? <div className="dialog__block"><Spinner label="Saving…" /></div> : null}
+      {drafting ? <div className="dialog__block"><Spinner label="Jarvis is writing it…" /></div> : null}
     </dialog>
   )
 }
