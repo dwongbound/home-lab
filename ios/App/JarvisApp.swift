@@ -116,7 +116,9 @@ struct RootView: View {
             TabView(selection: $app.tab) {
                 // Home, Talk, Chat, left to right (AppTab's order).
                 page(TodayView(today: app.today), screen).tag(AppTab.today)
-                page(TalkView(talk: app.talk), screen).tag(AppTab.talk)
+                page(TalkView(talk: app.talk), screen)
+                    .environment(\.orbOffScreen, app.tab != .talk)
+                    .tag(AppTab.talk)
                 page(ChatView(chat: app.chat), screen).tag(AppTab.chat)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))

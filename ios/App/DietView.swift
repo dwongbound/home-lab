@@ -390,6 +390,9 @@ struct DietView: View {
         HStack(alignment: .top, spacing: 10) {
             Text(DietTimeline.timeLabel(item))
                 .font(.caption.monospacedDigit())
+                // One line at any text size: shrinks rather than splitting "PM" off.
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .foregroundStyle(Theme.frostDim)
                 .frame(width: 64, alignment: .trailing)
                 .padding(.top, 2)

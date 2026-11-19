@@ -507,9 +507,12 @@ struct TodayView: View {
             shortcut = which
         } label: {
             VStack(alignment: .leading, spacing: 6) {
+                // A fixed box for the icon, so the three names share one line
+                // however tall each symbol draws.
                 Image(systemName: icon)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Theme.glacier)
+                    .frame(width: 26, height: 26, alignment: .leading)
                 HStack(spacing: 6) {
                     Text(name)
                         .font(.subheadline.weight(.semibold))

@@ -22,6 +22,9 @@ struct NoticesSheet: View {
                 runningPage.tag(1)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            // The lists start just under the switch, not a band below it.
+            .contentMargins(.top, 6, for: .scrollContent)
+            .listSectionSpacing(.compact)
             .onAppear {
                 if app.notices.isEmpty && !running.isEmpty { page = 1 }
                 #if DEBUG

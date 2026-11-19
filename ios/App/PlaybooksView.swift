@@ -233,7 +233,17 @@ struct PlaybooksView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(last.ok ? Theme.moss : Theme.ember)
                     if !last.detail.isEmpty {
-                        Text(last.detail).font(.caption).foregroundStyle(Theme.frostDim)
+                        // Plain words first; Jarvis's own text folded under Details.
+                        if let friendly = PlaybookTrouble.runWords(last.detail) {
+                            Text(friendly).font(.caption).foregroundStyle(Theme.frost)
+                            DisclosureGroup("Details") {
+                                Text(last.detail).font(.caption2).foregroundStyle(Theme.frostDim).textSelection(.enabled)
+                            }
+                            .font(.caption)
+                            .tint(Theme.frostDim)
+                        } else {
+                            Text(last.detail).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(3)
+                        }
                     }
                     ForEach(Playbooks.notDone(last.checks), id: \.self) { line in
                         Text(line).font(.caption).foregroundStyle(Theme.ember)

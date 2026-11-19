@@ -57,9 +57,14 @@ struct OrbView: View {
     @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
     @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
 
-    /// Redraws every frame (or once, with Reduce Motion on).
+    /// True while the orb's page isn't the one showing (the Talk page is
+    /// kept alive beside Home and Chat), so it stops drawing 60 frames a
+    /// second nobody sees.
+    @Environment(\.orbOffScreen) private var offScreen
+
+    /// Redraws every frame (or once, with Reduce Motion on, or off screen).
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { context in
+        TimelineView(.animation(paused: reduceMotion || offScreen)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             ZStack {
                 // The canvas reaches past the orb's own box on every side,
@@ -791,5 +796,17 @@ struct JobChip: View {
                 .background(Capsule().fill(tone.opacity(0.14)))
                 .fixedSize()
         }
+    }
+}
+
+private struct OrbOffScreenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Set by a page that isn't on screen, so its orb stops animating.
+    var orbOffScreen: Bool {
+        get { self[OrbOffScreenKey.self] }
+        set { self[OrbOffScreenKey.self] = newValue }
     }
 }
