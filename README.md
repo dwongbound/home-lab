@@ -192,8 +192,9 @@ the glass frosted the whole time. Chrome keeps the crossfade.
 
 ### States every page handles
 
-- **First load:** a full-page loader, Jarvis's orb breathing inside its orbits with "Jarvis is thinking...", until the first
-  snapshot arrives.
+- **First load:** a full-page loader, Jarvis's own orb turning over "Jarvis is thinking...", until the first
+  snapshot arrives. Then it leaves smoothly: the words fade, the orb lifts and shrinks away, and the panels fade in
+  underneath. With reduced motion it's a still orb that's simply replaced by the page.
 - **Server unreachable:** a panel saying what's wrong and how to fix it,
   with **Try again**.
 - **A refresh fails after data has loaded:** the page keeps the last
