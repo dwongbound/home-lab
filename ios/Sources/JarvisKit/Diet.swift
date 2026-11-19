@@ -112,13 +112,16 @@ public struct WeekDay: Decodable, Equatable, Sendable, Identifiable {
     public let date: String
     public let calories: Double?
     public let goal: Double?
+    /// Grams of protein eaten (nil when nothing was logged).
+    public let protein: Double?
+    public let proteinGoal: Double?
     public var id: String { date }
 
-    public init(date: String, calories: Double?, goal: Double?) {
-        self.date = date; self.calories = calories; self.goal = goal
+    public init(date: String, calories: Double?, goal: Double?, protein: Double? = nil, proteinGoal: Double? = nil) {
+        self.date = date; self.calories = calories; self.goal = goal; self.protein = protein; self.proteinGoal = proteinGoal
     }
 
-    enum CodingKeys: String, CodingKey { case date, calories, goal }
+    enum CodingKeys: String, CodingKey { case date, calories, goal, protein, proteinGoal }
 
     /// Reads leniently; only the date is needed.
     public init(from decoder: Decoder) throws {
@@ -126,10 +129,22 @@ public struct WeekDay: Decodable, Equatable, Sendable, Identifiable {
         date = try c.decode(String.self, forKey: .date)
         calories = Diet.number(c, .calories)
         goal = Diet.number(c, .goal)
+        protein = Diet.number(c, .protein)
+        proteinGoal = Diet.number(c, .proteinGoal)
     }
 
-    /// How full the ring is, 0...1; nil (an empty ring) when nothing was logged.
+    /// The outer ring, calories, 0...1; nil (an empty track) when nothing was logged.
     public var ring: Double? { Diet.fraction(calories, of: goal) }
+
+    /// The inner ring, protein, 0...1 (full when the goal is met); nil for an empty track.
+    public var proteinRing: Double? { Diet.fraction(protein, of: proteinGoal) }
+
+    /// The same day with protein filled in from a loaded day, when the
+    /// week answer had none (an older Jarvis).
+    public func withProtein(from day: NutritionDay?) -> WeekDay {
+        guard protein == nil, let day, !day.isEmpty else { return self }
+        return WeekDay(date: date, calories: calories ?? day.totals.calories, goal: goal ?? day.goals.calories, protein: day.totals.protein, proteinGoal: proteinGoal ?? day.goals.protein)
+    }
 }
 
 /// The week, Monday first.
@@ -327,5 +342,125 @@ public enum DemoDiet {
             WeekDay(date: Diet.shift(start, by: i) ?? start, calories: eaten[i], goal: 1750)
         }
         return NutritionWeek(start: start, days: days)
+    }
+}
+
+/// GET /api/jarvis/nutrition/days: up to 14 days, newest first, empty days
+/// included, and the date of the first meal ever logged.
+public struct NutritionDays: Decodable, Equatable, Sendable {
+    public let days: [NutritionDay]
+    public let earliest: String?
+
+    public init(days: [NutritionDay], earliest: String?) {
+        self.days = days; self.earliest = earliest
+    }
+}
+
+/// The Diet screen's endless timeline (Dylan, 2026-11-19: "the data should
+/// be an infinite timeline … as I scroll it should go back in the past and
+/// highlight the date accordingly"; "each entry should get its own slot").
+public enum DietTimeline {
+    /// One block of the timeline: a day with food, or one or more empty days.
+    public enum Block: Equatable, Sendable, Identifiable {
+        /// A day: its header carries the totals; each item is its own entry.
+        case day(NutritionDay)
+        /// One to three empty days each get a slim row of their own.
+        case empty(date: String)
+        /// More than three empty days in a row collapse into one row,
+        /// newest first: `from` is the newest, `to` the oldest.
+        case emptyRun(from: String, to: String, count: Int)
+
+        public var id: String {
+            switch self {
+            case .day(let day): return day.date
+            case .empty(let date): return date
+            case .emptyRun(let from, _, _): return from
+            }
+        }
+
+        /// The newest date the block covers.
+        public var newest: String { id }
+    }
+
+    /// How many empty days in a row stay separate rows.
+    public static let longestEmptyRun = 3
+
+    /// The blocks for days newest first: days with food as they are, empty
+    /// days as slim rows, runs longer than three collapsed into one.
+    public static func blocks(_ days: [NutritionDay]) -> [Block] {
+        var out: [Block] = []
+        var run: [String] = []
+        func flush() {
+            if run.count > longestEmptyRun, let first = run.first, let last = run.last {
+                out.append(.emptyRun(from: first, to: last, count: run.count))
+            } else {
+                out.append(contentsOf: run.map { Block.empty(date: $0) })
+            }
+            run = []
+        }
+        for day in days {
+            if day.isEmpty { run.append(day.date) } else { flush(); out.append(.day(day)) }
+        }
+        flush()
+        return out
+    }
+
+    /// The block that holds `date` (for "tap a ring, scroll to that day").
+    public static func block(holding date: String, in blocks: [Block]) -> Block? {
+        blocks.first { block in
+            switch block {
+            case .day(let day): return day.date == date
+            case .empty(let d): return d == date
+            case .emptyRun(let from, let to, _): return date <= from && date >= to
+            }
+        }
+    }
+
+    /// Whether to load more older days: not past the first meal ever, and
+    /// not after 30 empty days in a row when Jarvis doesn't say when that was.
+    public static func shouldLoadOlder(loaded days: [NutritionDay], earliest: String?) -> Bool {
+        guard let oldest = days.last?.date else { return true }
+        if let earliest { return oldest > earliest }
+        let trailingEmpty = days.reversed().prefix { $0.isEmpty }.count
+        return trailingEmpty < 30
+    }
+
+    /// The end date for the next page: the day before the oldest held.
+    public static func nextEnd(after days: [NutritionDay]) -> String? {
+        days.last.flatMap { Diet.shift($0.date, by: -1) }
+    }
+
+    /// An item's time on the rail: "12:10 PM" (Pacific); "" when unreadable.
+    public static func timeLabel(_ item: FoodItem) -> String {
+        guard let date = Diet.date(item.at) else { return "" }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US")
+        format.timeZone = Diet.timeZone
+        format.dateFormat = "h:mm a"
+        return format.string(from: date)
+    }
+
+    /// A collapsed run's words: "Nothing logged Nov 3 – Nov 9".
+    public static func runLabel(from: String, to: String) -> String {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US")
+        format.timeZone = Diet.timeZone
+        format.dateFormat = "MMM d"
+        guard let a = Diet.day(to), let b = Diet.day(from) else { return "Nothing logged" }
+        return "Nothing logged \(format.string(from: a)) – \(format.string(from: b))"
+    }
+
+    /// The week strip's day for VoiceOver: "Wednesday 18, 2300 of 1750
+    /// calories, 127 of 140 grams protein".
+    public static func ringLabel(_ day: WeekDay) -> String {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US")
+        format.timeZone = Diet.timeZone
+        format.dateFormat = "EEEE d"
+        let name = Diet.day(day.date).map(format.string(from:)) ?? day.date
+        guard let calories = day.calories else { return "\(name), nothing logged" }
+        var words = "\(name), \(Diet.whole(calories)) of \(Diet.whole(day.goal)) calories"
+        if let protein = day.protein { words += ", \(Diet.whole(protein)) of \(Diet.whole(day.proteinGoal)) grams protein" }
+        return words
     }
 }

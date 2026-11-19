@@ -162,6 +162,21 @@ public struct JarvisClient: Sendable {
         return body.day
     }
 
+    /// Up to 14 days running back from `end`, newest first; nil when Jarvis
+    /// can't say (then the screen falls back to one day at a time).
+    public func nutritionDays(end: String, count: Int = 14) async throws -> NutritionDays? {
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request("api/jarvis/nutrition/days", query: ["end": end, "count": String(count)]))
+        } catch {
+            throw JarvisError.unreachable
+        }
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        struct Body: Decodable { let days: [NutritionDay]?; let earliest: String? }
+        guard let body = try? JSONDecoder().decode(Body.self, from: data), let days = body.days else { return nil }
+        return NutritionDays(days: days, earliest: body.earliest)
+    }
+
     /// The week's calorie rings, Monday first; nil when Jarvis can't say.
     public func nutritionWeek(start: String) async throws -> NutritionWeek? {
         struct Body: Decodable { let week: NutritionWeek? }
