@@ -319,9 +319,12 @@ export interface JarvisReport {
   title: string
   summary: string
   created: string
-  /** When Jarvis deletes it (created + the days kept); null while Keep is on. */
+  /** When Jarvis deletes it (created + the days kept); null when it's kept for good. */
   expires: string | null
+  /** True when it's kept for good. */
   kept: boolean
+  /** How many days it's kept for (14, 30 or 90); null when it's kept for good. */
+  keepDays: number | null
   bytes: number
 }
 
@@ -334,8 +337,8 @@ export interface JarvisReports {
   maxBytes: number
 }
 
-/** A change to one report: keep it past its days (or let it go again), or delete it now. */
-export type ReportChange = { op: 'keep'; id: string; keep: boolean } | { op: 'delete'; id: string }
+/** A change to one report: keep it for a number of days, for good (`keep: true`) or the usual two weeks (`keep: false`), or delete it now. */
+export type ReportChange = { op: 'keep'; id: string; days: 14 | 30 | 90 } | { op: 'keep'; id: string; keep: boolean } | { op: 'delete'; id: string }
 
 /** One of Jarvis's background jobs: Lookout, Messenger, Nightly, or housekeeping. */
 export interface JarvisJob {

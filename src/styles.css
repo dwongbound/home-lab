@@ -1143,9 +1143,17 @@ html[data-modal] { overflow: hidden; }
 .reports__text { min-width: 0; }
 .reports__title { display: inline-block; min-height: 44px; padding: 10px 0; color: var(--frost); font: 600 16px var(--font-body); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .reports__controls { display: flex; align-items: center; gap: 8px; flex: none; }
-.reports__keep { margin-top: 0; }
-.reports__keep:disabled { opacity: .5; cursor: default; }
-.reports__block { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(22, 33, 44, 0.72); border-radius: 12px; cursor: progress; }
+/* A report's description stays to two lines, so a long one can't crowd the row (Dylan, 2026-11-19). */
+.reports__summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+/* A report's keep choices (ReportKeepDialog): fixed size, the four lengths, then Save a copy and Share. */
+.dialog.dialog--keep { height: min(470px, calc(var(--safe-h) - 32px)); }
+.keep__body { min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 12px; }
+.keep__choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+/* Named with :hover too, so a phone's sticky hover after a tap can't grey out the chosen one. */
+.btn.keep__choice[aria-pressed='true'], .btn.keep__choice[aria-pressed='true']:hover:not(:disabled) { background: var(--frost); color: var(--basalt); border-color: transparent; }
+.keep__share { display: flex; gap: 8px; }
+.keep__share > * { flex: 1; }
+.keep__link { display: inline-grid; place-items: center; text-decoration: none; }
 @media (max-width: 640px) {
   .reports__item { flex-direction: column; align-items: stretch; }
 }
