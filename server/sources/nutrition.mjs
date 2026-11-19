@@ -72,12 +72,35 @@ export function parseNutritionDay(raw) {
   return { date: raw.date, goals: macros(raw.goals), totals: { ...macros(raw.totals), burned: amount(raw.totals?.burned) }, items }
 }
 
-/** A week of calories eaten against the goal, one row per day, or null when it isn't one. */
+/** A week of calories and protein eaten against their goals, one row per day, or null when it isn't one. */
 export function parseNutritionWeek(raw) {
   if (!isDay(raw?.start) || !Array.isArray(raw.days)) return null
   const days = raw.days
     .filter((day) => isDay(day?.date))
     .slice(0, 7)
-    .map((day) => ({ date: day.date, calories: amount(day.calories), goal: amount(day.goal) }))
+    .map((day) => ({ date: day.date, calories: amount(day.calories), goal: amount(day.goal), protein: amount(day.protein), proteinGoal: amount(day.protein_goal) }))
   return { start: raw.start, days }
+}
+
+// The Diet screen's food list scrolls back into the past (Dylan, 2026-11-19),
+// so it asks for a run of days at a time (GET /nutrition/days) instead of one.
+export const MAX_DAYS = 14
+const DEFAULT_DAYS = 7
+
+/** How many days to send for a `count` from the address: 7 when it's missing, 1 to 14, or null when it isn't a whole number. */
+export function dayCount(value) {
+  if (value === null || value === '') return DEFAULT_DAYS
+  if (!/^\d{1,3}$/.test(value)) return null
+  return Math.min(MAX_DAYS, Math.max(1, Number(value)))
+}
+
+/**
+ * A run of days of the meal log, newest first, each like parseNutritionDay's,
+ * plus the earliest day with anything logged (where the list ends); null when it isn't one.
+ */
+export function parseNutritionDays(raw) {
+  if (!Array.isArray(raw?.days)) return null
+  const days = raw.days.map(parseNutritionDay).filter((day) => day !== null).slice(0, MAX_DAYS)
+  days.sort((a, b) => b.date.localeCompare(a.date))
+  return { days, earliest: isDay(raw.earliest) ? raw.earliest : null }
 }

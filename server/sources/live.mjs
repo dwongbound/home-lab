@@ -16,7 +16,7 @@ import { buildGpu, ollamaRows, parseJarvisGpu, parseSmi } from './gpu.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
 import { parseNotice, parseNotices } from './notices.mjs'
-import { parseNutrition, parseNutritionDay, parseNutritionWeek } from './nutrition.mjs'
+import { parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek } from './nutrition.mjs'
 import { parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
 import { parseReport, parseReports } from './reports.mjs'
 import { createPickStore } from '../money-picks.mjs'
@@ -810,6 +810,23 @@ export function createLiveSource(config, deps = {}) {
         })
         if (!res.ok) return null
         return parseNutritionWeek(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /** `count` days of the meal log ending at `end` ('' = today), newest first (Jarvis GET /nutrition/days), as the caller; null when he can't be asked. */
+    async nutritionDays(end, count, caller = {}) {
+      if (!caller.login) return null
+      try {
+        let query = `?count=${count}`
+        if (end) query += `&end=${encodeURIComponent(end)}`
+        const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/days${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+        })
+        if (!res.ok) return null
+        return parseNutritionDays(await res.json())
       } catch {
         return null
       }

@@ -116,6 +116,14 @@ describe('Diet screen (meal log)', () => {
     const week = (await callApi(api, 'GET', '/api/jarvis/nutrition/week?start=2026-11-15')).json().week
     expect(week.start).toBe('2026-11-15')
     expect(week.days).toHaveLength(7)
+    expect(week.days[0]).toMatchObject({ protein: expect.any(Number), proteinGoal: 140 })
+    const run = (await callApi(api, 'GET', '/api/jarvis/nutrition/days?end=2026-11-17&count=3')).json()
+    expect(run.days.map((d: { date: string }) => d.date)).toEqual(['2026-11-17', '2026-11-16', '2026-11-15'])
+    expect(run.earliest).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days')).json().days).toHaveLength(7)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days?count=99')).json().days).toHaveLength(14)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days?count=lots')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days?end=tuesday')).statusCode).toBe(400)
 
     expect((await callApi(api, 'GET', '/api/jarvis/nutrition/day?date=yesterday')).statusCode).toBe(400)
     expect((await callApi(api, 'GET', '/api/jarvis/nutrition/week?start=11/15')).statusCode).toBe(400)
@@ -127,11 +135,13 @@ describe('Diet screen (meal log)', () => {
       ...createMockSource(),
       nutritionDay: async (date: string, caller: unknown) => { seen.push([date, caller]); return null },
       nutritionWeek: async (start: string, caller: unknown) => { seen.push([start, caller]); return null },
+      nutritionDays: async () => null,
     }
     const api = createApi(source)
     const login = { 'tailscale-user-login': 'dylan@example.com' }
     expect((await callApi(api, 'GET', '/api/jarvis/nutrition/day?date=2026-11-17', login)).json()).toEqual({ day: null })
     expect((await callApi(api, 'GET', '/api/jarvis/nutrition/week', login)).json()).toEqual({ week: null })
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days', login)).json()).toEqual({ days: null, earliest: null })
     expect(seen).toEqual([['2026-11-17', { login: 'dylan@example.com' }], ['', { login: 'dylan@example.com' }]])
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isDay, parseNutrition, parseNutritionDay, parseNutritionWeek } from '../../server/sources/nutrition.mjs'
+import { dayCount, isDay, parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek } from '../../server/sources/nutrition.mjs'
 
 describe('parseNutrition', () => {
   it('keeps the numbers, renames protein_goal and lets left go negative', () => {
@@ -50,15 +50,15 @@ describe('parseNutritionDay', () => {
 
 describe('parseNutritionWeek', () => {
   it('keeps at most seven dated days', () => {
-    const days = Array.from({ length: 9 }, (_, index) => ({ date: `2026-11-1${index}`, calories: 1500 + index, goal: 1750 }))
+    const days = Array.from({ length: 9 }, (_, index) => ({ date: `2026-11-1${index}`, calories: 1500 + index, goal: 1750, protein: 100.04, protein_goal: 140 }))
     const week = parseNutritionWeek({ start: '2026-11-10', days: [{ date: 'nope' }, ...days] })
     expect(week?.start).toBe('2026-11-10')
     expect(week?.days).toHaveLength(7)
-    expect(week?.days[0]).toEqual({ date: '2026-11-10', calories: 1500, goal: 1750 })
+    expect(week?.days[0]).toEqual({ date: '2026-11-10', calories: 1500, goal: 1750, protein: 100, proteinGoal: 140 })
   })
 
   it('gives null numbers for a day with nothing logged, and null for a non-week', () => {
-    expect(parseNutritionWeek({ start: '2026-11-10', days: [{ date: '2026-11-10' }] })?.days).toEqual([{ date: '2026-11-10', calories: null, goal: null }])
+    expect(parseNutritionWeek({ start: '2026-11-10', days: [{ date: '2026-11-10' }] })?.days).toEqual([{ date: '2026-11-10', calories: null, goal: null, protein: null, proteinGoal: null }])
     expect(parseNutritionWeek({ start: '2026-11-10' })).toBeNull()
     expect(parseNutritionWeek({ start: 'monday', days: [] })).toBeNull()
   })
@@ -69,5 +69,25 @@ describe('isDay', () => {
     expect(isDay('2026-11-18')).toBe(true)
     expect(isDay('11/18/2026')).toBe(false)
     expect(isDay(20261118)).toBe(false)
+  })
+})
+
+describe('parseNutritionDays', () => {
+  it('gives the days newest first with where the log begins, and drops what is not a day', () => {
+    const day = (date: string) => ({ date, goals: {}, totals: {}, items: [] })
+    const run = parseNutritionDays({ days: [day('2026-11-16'), { date: 'nope' }, day('2026-11-17')], earliest: '2026-10-02' })
+    expect(run?.days.map((d: { date: string }) => d.date)).toEqual(['2026-11-17', '2026-11-16'])
+    expect(run?.earliest).toBe('2026-10-02')
+    expect(parseNutritionDays({ days: [], earliest: 'long ago' })).toEqual({ days: [], earliest: null })
+    expect(parseNutritionDays({ earliest: '2026-10-02' })).toBeNull()
+  })
+
+  it('reads how many days were asked for', () => {
+    expect(dayCount(null)).toBe(7)
+    expect(dayCount('3')).toBe(3)
+    expect(dayCount('0')).toBe(1)
+    expect(dayCount('99')).toBe(14)
+    expect(dayCount('-2')).toBeNull()
+    expect(dayCount('many')).toBeNull()
   })
 })
