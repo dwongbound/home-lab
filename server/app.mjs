@@ -5,7 +5,7 @@
 //   POST /api/actions/ollama-load   load it back
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
 //   POST /api/jarvis/chat           {"text": "..."} -> Jarvis's reply, streamed as NDJSON
-//   GET  /api/jarvis/history        the web chat so far
+//   GET  /api/jarvis/history        the web chat, a page at a time (?limit=&before=&around=)
 //   GET  /api/jarvis/memory         what Jarvis remembers ({memory})
 //   GET  /api/jarvis/memory/search?q=  past conversations matching q ({hits})
 //   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
@@ -38,6 +38,7 @@ import { dayCount, isDay, isMealId } from './sources/nutrition.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
+import { parseHistoryPage } from './sources/history.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
 
 // The most a "describe it" box may send Jarvis to turn into a playbook.
@@ -183,9 +184,18 @@ export function createApi(source) {
     res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' })
     // If the phone leaves mid-reply, keep reading Jarvis's answer to the end
     // (he saves it to the chat history) and just stop writing to the page.
+    // Jarvis is told the asker has gone, so he sends the reply as a push instead.
+    let turnId = null
+    let finished = false
+    res.on('close', () => {
+      if (!finished) void source.chatLeft(turnId, { login })
+    })
     await source.chat(text, caller, (event) => {
+      if (event.type === 'turn') turnId = event.id
+      if (event.type === 'done' || event.type === 'error') finished = true
       if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`)
     })
+    finished = true
     res.end()
   }
 
@@ -203,10 +213,18 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
-  /** The web chat so far, so the page can show it after a reload. */
+  /**
+   * The web chat, newest turns first time round (so a reload keeps the
+   * conversation), then a page at a time: ?before=<turn id> for the turns just
+   * older, ?around=<turn id> for a window centred on one, ?limit= up to 100.
+   */
   async function handleHistory(req, res) {
+    const page = parseHistoryPage(new URL(req.url ?? '/', 'http://localhost').searchParams)
+    if (!page) {
+      return sendJson(res, 400, { ok: false, message: 'Send limit (1 to 100) and at most one of before or around, each a turn id' })
+    }
     const login = req.headers['tailscale-user-login'] ?? ''
-    return sendJson(res, 200, { turns: await source.history({ login }) })
+    return sendJson(res, 200, await source.history({ login }, page))
   }
 
   /** What Jarvis remembers. */

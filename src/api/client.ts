@@ -250,7 +250,7 @@ export async function loadApprovals(): Promise<Approval[]> {
 export async function loadChatHistory(): Promise<ChatTurn[]> {
   if (IS_STATIC_BUILD) {
     const source = await getStaticSource()
-    return source.history()
+    return (await source.history()).turns
   }
   try {
     const res = await fetch('/api/jarvis/history')
