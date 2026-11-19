@@ -229,7 +229,7 @@ export interface NutritionDay {
 /** A week of calories and protein eaten against their goals, for the Diet screen's rings (Jarvis GET /nutrition/week). */
 export interface NutritionWeek {
   start: string
-  days: { date: string; calories: number | null; goal: number | null; protein: number | null; proteinGoal: number | null }[]
+  days: { date: string; calories: number | null; goal: number | null; protein: number | null; proteinGoal: number | null; fat: number | null; fatGoal: number | null; carbs: number | null; carbsGoal: number | null }[]
 }
 
 /** One meal's picture, or why there isn't one (`gone` = that meal has no photo). */
@@ -256,6 +256,11 @@ export interface NutritionToday {
   /** Protein so far and its goal, in grams. */
   protein: number | null
   proteinGoal: number | null
+  /** Grams of fat and carbs eaten today and their daily goals; null on an older Jarvis. */
+  fat: number | null
+  fatGoal: number | null
+  carbs: number | null
+  carbsGoal: number | null
 }
 
 /** How much a notification asks of Dylan: an answer, a look, or nothing. */

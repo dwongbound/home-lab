@@ -448,7 +448,7 @@ describe('live chat with Jarvis', () => {
     expect(day?.totals.burned).toBe(300)
     const call = fetch.mock.calls.find((c) => String(c[0]).endsWith('/nutrition/day?date=2026-11-17'))
     expect((call?.[1]?.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
-    expect((await source.nutritionWeek('', login))?.days).toEqual([{ date: '2026-11-15', calories: 1600, goal: 1750, protein: 120.3, proteinGoal: 140 }])
+    expect((await source.nutritionWeek('', login))?.days).toEqual([{ date: '2026-11-15', calories: 1600, goal: 1750, protein: 120.3, proteinGoal: 140, fat: null, fatGoal: null, carbs: null, carbsGoal: null }])
     expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/nutrition/week'))).toBe(true)
     const thumb = await source.mealPhoto('4', true, login)
     expect(thumb).toEqual({ ok: true, type: 'image/jpeg', bytes: new Uint8Array([1, 2, 3]) })
@@ -530,7 +530,7 @@ describe('live chat with Jarvis', () => {
 
   it('puts today’s calories in the snapshot, working out what is left itself', async () => {
     const snapshot = await liveWith({}).source.snapshot()
-    expect(snapshot.nutrition).toEqual({ date: '2026-11-18', eaten: 1200, goal: 1750, left: 550, burned: null, protein: 90, proteinGoal: 140 })
+    expect(snapshot.nutrition).toEqual({ date: '2026-11-18', eaten: 1200, goal: 1750, left: 550, burned: null, protein: 90, proteinGoal: 140, fat: null, fatGoal: null, carbs: null, carbsGoal: null })
   })
 
   it('sends a chat message’s photos to Jarvis as media_type and data', async () => {
