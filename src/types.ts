@@ -226,10 +226,17 @@ export interface NutritionDay {
   items: NutritionItem[]
 }
 
-/** A week of calories eaten against the goal, for the Diet screen's day strip (Jarvis GET /nutrition/week). */
+/** A week of calories and protein eaten against their goals, for the Diet screen's rings (Jarvis GET /nutrition/week). */
 export interface NutritionWeek {
   start: string
-  days: { date: string; calories: number | null; goal: number | null }[]
+  days: { date: string; calories: number | null; goal: number | null; protein: number | null; proteinGoal: number | null }[]
+}
+
+/** A run of days of the meal log, newest first, for the Diet screen's endless list (Jarvis GET /nutrition/days). */
+export interface NutritionDays {
+  days: NutritionDay[]
+  /** The earliest day with anything logged, where the list ends; null when nothing is. */
+  earliest: string | null
 }
 
 /** Today's food numbers from Jarvis's meal log. Numbers only, never meal names. */
@@ -621,6 +628,8 @@ export interface DataSource {
   nutritionDay(date: string, caller?: { login?: string }): Promise<NutritionDay | null>
   /** Seven days of calories against the goal, from `start`; '' = this week. Null when Jarvis can't be asked. */
   nutritionWeek(start: string, caller?: { login?: string }): Promise<NutritionWeek | null>
+  /** `count` days of the meal log ending at `end` ('' = today), newest first. Null when Jarvis can't be asked. */
+  nutritionDays(end: string, count: number, caller?: { login?: string }): Promise<NutritionDays | null>
   /** Searches past conversations (newest and best matches first). */
   searchMemory(query: string, caller?: { login?: string }): Promise<MemoryHit[]>
   /** Adds or forgets one fact. */

@@ -34,7 +34,7 @@
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
 import { createMockSource } from './sources/mock.mjs'
-import { isDay } from './sources/nutrition.mjs'
+import { dayCount, isDay } from './sources/nutrition.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
@@ -230,6 +230,17 @@ export function createApi(source) {
     const login = req.headers['tailscale-user-login'] ?? ''
     if (which === 'week') return sendJson(res, 200, { week: await source.nutritionWeek(value, { login }) })
     return sendJson(res, 200, { day: await source.nutritionDay(value, { login }) })
+  }
+
+  /** A run of days of the meal log ending at `end` ('' = today), newest first, for the Diet screen's endless list. */
+  async function handleNutritionDays(req, res, end, count) {
+    const howMany = dayCount(count)
+    if ((end !== '' && !isDay(end)) || howMany === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send end as YYYY-MM-DD and count as a number' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const run = await source.nutritionDays(end, howMany, { login })
+    return sendJson(res, 200, { days: run?.days ?? null, earliest: run?.earliest ?? null })
   }
 
   /** Adds or forgets one fact. */
@@ -564,6 +575,10 @@ export function createApi(source) {
       if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/day') {
         const date = new URL(req.url ?? '/', 'http://localhost').searchParams.get('date') ?? ''
         return await handleNutrition(req, res, 'day', date)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/days') {
+        const params = new URL(req.url ?? '/', 'http://localhost').searchParams
+        return await handleNutritionDays(req, res, params.get('end') ?? '', params.get('count'))
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/week') {
         const start = new URL(req.url ?? '/', 'http://localhost').searchParams.get('start') ?? ''

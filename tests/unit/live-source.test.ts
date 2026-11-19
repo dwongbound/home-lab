@@ -58,12 +58,17 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url.startsWith(`${config.jarvisApiUrl}/voice/sample?`)) {
       return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })
     }
+    if (url.startsWith(`${config.jarvisApiUrl}/nutrition/days`)) {
+      const older = { date: '2026-11-16', goals: {}, totals: {}, items: [] }
+      const newer = { date: '2026-11-17', goals: {}, totals: {}, items: [{ id: 4, at: '2026-11-17T08:00:00-08:00', name: 'Latte' }] }
+      return Response.json({ days: [older, newer], earliest: '2026-10-02' }, { status: jarvisStatusCode })
+    }
     if (url.startsWith(`${config.jarvisApiUrl}/nutrition/day`)) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ date: '2026-11-17', goals: { calories: 1750 }, totals: { calories: 250, burned: 300 }, items: [{ id: 4, at: '2026-11-17T08:00:00-08:00', name: 'Latte', calories: 250, has_photo: true }] }, { status: jarvisStatusCode })
     }
     if (url.startsWith(`${config.jarvisApiUrl}/nutrition/week`)) {
-      return Response.json({ start: '2026-11-15', days: [{ date: '2026-11-15', calories: 1600, goal: 1750 }] })
+      return Response.json({ start: '2026-11-15', days: [{ date: '2026-11-15', calories: 1600, goal: 1750, protein: 120.26, protein_goal: 140 }] })
     }
     if (url === `${config.jarvisApiUrl}/gpu`) {
       if (jarvisVersion === undefined) return new Response('not found', { status: 404 })
@@ -438,8 +443,14 @@ describe('live chat with Jarvis', () => {
     expect(day?.totals.burned).toBe(300)
     const call = fetch.mock.calls.find((c) => String(c[0]).endsWith('/nutrition/day?date=2026-11-17'))
     expect((call?.[1]?.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
-    expect((await source.nutritionWeek('', login))?.days).toEqual([{ date: '2026-11-15', calories: 1600, goal: 1750 }])
+    expect((await source.nutritionWeek('', login))?.days).toEqual([{ date: '2026-11-15', calories: 1600, goal: 1750, protein: 120.3, proteinGoal: 140 }])
     expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/nutrition/week'))).toBe(true)
+    const run = await source.nutritionDays('2026-11-17', 2, login)
+    expect(run?.days.map((d: { date: string }) => d.date)).toEqual(['2026-11-17', '2026-11-16'])
+    expect(run?.earliest).toBe('2026-10-02')
+    expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/nutrition/days?count=2&end=2026-11-17'))).toBe(true)
+    expect(await source.nutritionDays('', 7, {})).toBeNull()
+    expect(await liveWith({ jarvisStatusCode: 404 }).source.nutritionDays('', 7, login)).toBeNull()
     expect(await source.nutritionDay('2026-11-17', {})).toBeNull()
     expect(await source.nutritionWeek('', {})).toBeNull()
     expect(await liveWith({ jarvisAnswers: false }).source.nutritionDay('', login)).toBeNull()

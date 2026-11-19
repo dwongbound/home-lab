@@ -596,8 +596,22 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const t = now()
       const eaten = [1690, 1820, 1540, 1760, 2010, 1480, 1180]
       const first = start ? new Date(`${start}T12:00:00Z`) : new Date(t.getTime() - 6 * 86_400_000)
-      const days = eaten.map((calories, i) => ({ date: pacificDay(new Date(first.getTime() + i * 86_400_000)), calories, goal: 1750 }))
+      const days = eaten.map((calories, i) => ({ date: pacificDay(new Date(first.getTime() + i * 86_400_000)), calories, goal: 1750, protein: 90 + i * 9, proteinGoal: 140 }))
       return { start: days[0].date, days }
+    },
+
+    /** `count` made-up days ending at `end` (today when ''), newest first; the pretend log starts 30 days back. */
+    async nutritionDays(end, count) {
+      const last = end ? new Date(`${end}T20:00:00Z`) : now()
+      const earliest = pacificDay(new Date(now().getTime() - 30 * 86_400_000))
+      const days = []
+      for (let i = 0; i < count; i += 1) {
+        const day = await this.nutritionDay(pacificDay(new Date(last.getTime() - i * 86_400_000)))
+        // Before the log began there's nothing to show.
+        if (day.date < earliest) day.items = []
+        days.push(day)
+      }
+      return { days, earliest }
     },
 
     /** Finds sample past moments containing the words searched for. */
