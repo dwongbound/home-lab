@@ -28,10 +28,10 @@ export type TalkState = 'listening' | 'thinking' | 'speaking' | 'dozing'
 export interface TalkHandlers {
   /** Jarvis's side of the line changed state. */
   onState: (state: TalkState) => void
-  /** What Whisper has heard so far while you're still talking (replaced by each newer guess). joined: it carries on the question he was already answering. */
-  onHearing: (text: string, joined: boolean) => void
-  /** What Whisper heard you say (one whole turn). joined: the earlier words plus what you added after he thought you were done. */
-  onHeard: (text: string, joined: boolean) => void
+  /** What he has heard so far while you're still talking (replaced by each newer guess). joined: it carries on the question he was already answering. stable: how many leading words won't change again (null from an older Jarvis). */
+  onHearing: (text: string, joined: boolean, stable: number | null) => void
+  /** What he heard you say (one whole turn). joined: the earlier words plus what you added after he thought you were done. same: it says what the live words already said, so the bubble can stay as it is. */
+  onHeard: (text: string, joined: boolean, same: boolean) => void
   /** More of Jarvis's reply text. */
   onReply: (added: string) => void
   /** Jarvis started something slow (label says what, e.g. "Searching the web."), or finished it (null). */
@@ -65,6 +65,10 @@ interface TalkEvent {
   summary?: string
   expires?: string
   joined?: boolean
+  /** On a partial: how many leading words are settled. */
+  stable?: number
+  /** On a transcript: the final matches the live words but for punctuation and capitals. */
+  same?: boolean
   model?: string
   ok?: boolean
   by?: string
@@ -190,6 +194,12 @@ const PLAYBACK_CUSHION_S = 0.15
 const RECOVERY_CUSHION_S = 0.4
 /** Each sentence fades in and out over this long, so its edges don't click (seconds). */
 const EDGE_FADE_S = 0.004
+
+/** A partial's settled word count as a whole number of zero or more, or null when Jarvis sent none. */
+export function stableCount(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
+  return value
+}
 
 /**
  * True when Jarvis just decided you're done talking: he goes from listening
@@ -501,8 +511,8 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       // Dozing by himself ("that's all"): anything still queued of his sign-off plays out.
       state = event.state
       on.onState(event.state)
-    } else if (event.type === 'partial' && event.text) on.onHearing(event.text, event.joined === true)
-    else if (event.type === 'transcript' && event.text) on.onHeard(event.text, event.joined === true)
+    } else if (event.type === 'partial' && event.text) on.onHearing(event.text, event.joined === true, stableCount(event.stable))
+    else if (event.type === 'transcript' && event.text) on.onHeard(event.text, event.joined === true, event.same === true)
     else if (event.type === 'reply' && event.text) on.onReply(event.text)
     else if (event.type === 'working') on.onWorking(event.label ?? '')
     else if (event.type === 'working_done') on.onWorking(null)

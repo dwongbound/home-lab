@@ -698,7 +698,9 @@ html[data-modal] { overflow: hidden; }
 .approval__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .approval__hint { color: var(--frost-dim); font-size: 13.5px; }
 .approval__error { color: #ffc2c8; font-size: 13.5px; }
-.chat__q--heard { opacity: .6; border: 1px dashed var(--glass-edge); background: rgba(255,255,255,.06); }
+.chat__q--heard { border: 1px dashed var(--glass-edge); background: rgba(255,255,255,.06); }
+/* The last words he's still unsure of; the settled ones before them are solid and never change. */
+.chat__tentative { opacity: .55; }
 /* Still your turn: he went back to listening for the rest of this sentence, so the bubble stays open. */
 .chat__q--open { border: 1px dashed var(--glass-edge); }
 /* Listening: the orb goes a touch greener so it's clear it's your turn. */

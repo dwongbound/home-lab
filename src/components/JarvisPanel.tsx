@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { answerApproval, loadApprovals, loadChatHistory, sendFeedback, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
 import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
-import { canJoin, joinHeard } from '../lib/heard'
+import { canJoin, joinHeard, settledQuestion, splitHeard } from '../lib/heard'
 import { chipFor } from '../lib/model'
 import { Markdown } from './Markdown'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, RunningTask } from '../types'
@@ -197,6 +197,10 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
   // /talk, paused but still on the line: Jarvis listens only for "Hey Jarvis" (Dylan, 2026-11-14).
   const [dozing, setDozing] = useState(false)
   const [heard, setHeard] = useState('')
+  // How many of those live words are settled (null: an older Jarvis, or the demo, doesn't say).
+  const [heardStable, setHeardStable] = useState<number | null>(null)
+  // The live words as last shown, for keeping them when the final says the same.
+  const shownHeard = useRef('')
   // Why Talk ended by itself (no microphone, the line dropped), shown in the status line.
   const [notice, setNotice] = useState('')
   // What Jarvis is off doing while the orb shows working ("Searching the web.").
@@ -434,12 +438,16 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
         },
         // Your words as Whisper hears them, shown while you're still talking.
         // Carrying on past where he thought you'd finished, they update the bubble he was answering.
-        onHearing: (sofar, joined) => {
+        onHearing: (sofar, joined, stable) => {
           if (!talking.current) return
+          shownHeard.current = sofar
           if (canJoin(savedTurns, talkTurn.current, joined)) setTurns((t) => joinHeard(t, talkTurn.current, sofar))
-          else setHeard(sofar)
+          else { setHeard(sofar); setHeardStable(stable) }
         },
-        onHeard: (question, joined) => {
+        onHeard: (final, joined, same) => {
+          // Words that already say the same thing stay exactly as shown: no rewrite at the end.
+          const question = settledQuestion(shownHeard.current, final, same)
+          shownHeard.current = ''
           setHeard('')
           if (canJoin(savedTurns, talkTurn.current, joined)) {
             setTurns((t) => joinHeard(t, talkTurn.current, question))
@@ -515,6 +523,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
     setTalkingOn(false)
     setDozing(false)
     setHeard('')
+    setHeardStable(null)
     line.current?.close()
     line.current = null
     // The demo loop and ask() reset the state themselves; the voice line doesn't.
@@ -624,6 +633,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
       tapToStart={tapToStart}
       onTapStart={tapStart}
       heard={heard}
+      heardStable={heardStable}
       notice={notice}
       onTalk={talkNow}
       onPause={pauseTalk}
@@ -705,6 +715,8 @@ interface SheetProps {
   onTapStart: () => void
   /** What's being heard right now, while listening. */
   heard: string
+  /** How many of its leading words are settled; null when Jarvis doesn't say. */
+  heardStable: number | null
   /** Why Talk ended by itself, if it did. */
   notice: string
   onTalk: () => void
@@ -728,12 +740,23 @@ interface SheetProps {
   onClose: () => void
 }
 
+/** Your words while you're still talking: the settled ones solid, the tail that may still change lighter. */
+function HeardBubble({ text, stable }: { text: string; stable: number | null }) {
+  const parts = splitHeard(text, stable)
+  return (
+    <p className="chat__q chat__q--heard">
+      {parts.settled}
+      {parts.tentative ? <span className="chat__tentative">{parts.tentative}</span> : null}
+    </p>
+  )
+}
+
 /**
  * The chat itself: a fixed-size native dialog, so focus and Esc come from
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, stalled, onFlagged, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, heardStable, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, stalled, onFlagged, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -862,7 +885,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
           </li>
           )
         })}
-        {heard ? <li className="chat__turn"><p className="chat__q chat__q--heard">{heard}</p></li> : null}
+        {heard ? <li className="chat__turn"><HeardBubble text={heard} stable={heardStable} /></li> : null}
       </ol>
       {/* A pop-up over the chat, not a form inside it, so the chat never moves (Dylan, 2026-11-16). */}
       {wrongTurn ? <WrongDialog turn={wrongTurn} onFlagged={onFlagged} onClose={() => setWrongOpen(null)} /> : null}
