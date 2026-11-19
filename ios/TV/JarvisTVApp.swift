@@ -43,6 +43,11 @@ final class AlwaysOnModel: ObservableObject {
 
     /// The unread notices, newest first, less any just cleared.
     var notices: [Notice] {
+        Notices.unread(orbitNotices)
+    }
+
+    /// Unread and kept together: what orbits the orb (kept ones yellow).
+    var orbitNotices: [Notice] {
         TVSettled.shared.record.showing(Notices.sorted((snapshot?.notices ?? []).filter { !cleared.contains($0.id) }))
     }
 
@@ -449,7 +454,7 @@ struct AlwaysOnView: View {
         VStack(spacing: 26) {
             // The orb follows the chat while it's open: thinking, working,
             // speaking with each word.
-            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, orbit: Orbit.items(running: model.snapshot?.jobs?.running ?? [], notices: model.notices), tappable: false, onLight: palette.darkInk)
+            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, orbit: Orbit.items(running: model.snapshot?.jobs?.running ?? [], notices: model.orbitNotices), tappable: false, onLight: palette.darkInk)
                 // Dim at night so the bedroom stays dark (the text is dimmed
                 // by the palette instead, only as far as it stays readable).
                 .opacity(0.35 + 0.65 * min(1, lamp.brightness * 3))

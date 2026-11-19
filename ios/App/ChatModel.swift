@@ -37,6 +37,8 @@ struct ChatItem: Identifiable, Equatable {
     var turnId: Int?
     /// A message he sent unasked: the model that wrote it, when one did.
     var writer: String?
+    /// True when Jarvis's record says this message is kept (a yellow dot).
+    var kept = false
 
     /// A line of Dylan's.
     static func user(_ text: String, photos: [UIImage] = [], photoCount: Int? = nil) -> ChatItem {
@@ -176,6 +178,7 @@ final class ChatModel: ObservableObject {
             }
             item.turnId = turn.id
             item.writer = turn.writer
+            item.kept = turn.kept ?? false
             out.append(item)
         }
         return out

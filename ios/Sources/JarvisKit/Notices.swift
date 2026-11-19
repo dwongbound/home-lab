@@ -39,14 +39,18 @@ public struct Notice: Decodable, Identifiable, Equatable, Sendable {
     /// The report a "Report ready" notice is about (16 lowercase hex), so a
     /// tap opens /reports/{id}. Anything else reads as none.
     public let reportId: String?
+    /// Kept to remember later (Dylan, 2026-11-19): a yellow dot, never
+    /// unread, untouched by Clear; only Let go removes it.
+    public let kept: Bool
 
-    public init(id: String, kind: NoticeKind, title: String, body: String = "", source: String, created: String, approvalId: String? = nil, turnId: Int? = nil, reportId: String? = nil) {
+    public init(id: String, kind: NoticeKind, title: String, body: String = "", source: String, created: String, approvalId: String? = nil, turnId: Int? = nil, reportId: String? = nil, kept: Bool = false) {
         self.id = id; self.kind = kind; self.title = title; self.body = body
         self.source = source; self.created = created; self.approvalId = approvalId; self.turnId = turnId
         self.reportId = reportId.flatMap { Reports.isId($0) ? $0 : nil }
+        self.kept = kept
     }
 
-    enum CodingKeys: String, CodingKey { case id, kind, title, body, source, created, approvalId, turnId, reportId }
+    enum CodingKeys: String, CodingKey { case id, kind, title, body, source, created, approvalId, turnId, reportId, kept }
 
     /// Missing optional parts read as empty rather than failing the notice.
     public init(from decoder: Decoder) throws {
@@ -60,6 +64,7 @@ public struct Notice: Decodable, Identifiable, Equatable, Sendable {
         approvalId = try? c.decodeIfPresent(String.self, forKey: .approvalId)
         turnId = try? c.decodeIfPresent(Int.self, forKey: .turnId)
         reportId = (try? c.decodeIfPresent(String.self, forKey: .reportId)).flatMap { $0 }.flatMap { Reports.isId($0) ? $0 : nil }
+        kept = ((try? c.decodeIfPresent(Bool.self, forKey: .kept)) ?? nil) ?? false
     }
 
     /// The report page this notice opens, if it's a "Report ready" one.
@@ -93,6 +98,21 @@ public enum Notices {
     /// unread notice's kind, which sets its shade; nil (no dot) with none.
     public static func headerDot(_ notices: [Notice]) -> NoticeKind? {
         notices.map(\.kind).min()
+    }
+
+    /// The unread ones: everything not kept. Kept items never count as new.
+    public static func unread(_ notices: [Notice]) -> [Notice] {
+        notices.filter { !$0.kept }
+    }
+
+    /// The kept ones (yellow dots), oldest kept first as they came.
+    public static func kept(_ notices: [Notice]) -> [Notice] {
+        notices.filter(\.kept)
+    }
+
+    /// The kept notice for a chat turn, if that message is kept.
+    public static func kept(turnId: Int, in notices: [Notice]) -> Notice? {
+        notices.first { $0.kept && $0.turnId == turnId }
     }
 
     /// "3 new", or nil with none.
@@ -168,5 +188,21 @@ public enum TVBanner {
         let extra = more > 0 ? "+\(more) more" : nil
         let body = [notice.body.isEmpty ? nil : notice.body, extra].compactMap { $0 }.joined(separator: " · ")
         return (notice.title, body.isEmpty ? nil : body)
+    }
+}
+
+/// What a keep or unkeep said back: ok, its words, and the kept item when
+/// Jarvis sends it (otherwise the next snapshot has it).
+public struct KeepResult: Equatable, Sendable {
+    public let ok: Bool
+    public let message: String
+    public let notice: Notice?
+
+    /// Reads {ok, message, notice?}; anything but a 2xx with ok is a refusal.
+    public static func read(status: Int, data: Data) -> KeepResult {
+        struct Body: Decodable { let ok: Bool?; let message: String?; let notice: Notice? }
+        let body = try? JSONDecoder().decode(Body.self, from: data)
+        let ok = (200..<300).contains(status) && (body?.ok ?? true)
+        return KeepResult(ok: ok, message: body?.message ?? (ok ? "" : "Jarvis answered \(status)"), notice: body?.notice)
     }
 }

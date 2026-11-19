@@ -33,12 +33,14 @@ struct KioskTalkOrb: View {
                 // Blue tasks and orange notices orbit; tapping one holds the
                 // orb still and says what it is (a tap on the orb itself
                 // still starts Talk).
-                orbit: Orbit.items(running: work, notices: app.notices),
+                orbit: Orbit.items(running: work, notices: app.orbitNotices),
                 dim: dim,
                 onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } },
                 onRead: { notice in Task { await app.readNotice(notice) } },
                 // The inner orb, off any dot, starts and stops Talk.
-                onCoreTap: tap
+                onCoreTap: tap,
+                // A kept (yellow) dot's label can let it go.
+                onLetGo: { notice in Task { await app.letGo(notice) } }
             )
             // A little bigger while a call is on.
             .scaleEffect(callOpen ? 1.08 : 1)

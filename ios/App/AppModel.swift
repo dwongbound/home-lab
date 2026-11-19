@@ -74,7 +74,87 @@ final class AppModel: ObservableObject {
     /// The unread notices, newest first, less any just cleared here and any
     /// approval that's already over.
     var notices: [Notice] {
-        settled.showing(Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.contains($0.id) }))
+        Notices.unread(allNotices)
+    }
+
+    /// Everything from the snapshot: unread and kept, with this device's own
+    /// keeps and let-gos laid over until the next snapshot catches up.
+    private var allNotices: [Notice] {
+        var list = settled.showing(Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.contains($0.id) }))
+        list.removeAll { $0.kept && letGoHere.contains($0.id) }
+        for notice in keptNoticesHere where !list.contains(where: { $0.id == notice.id }) { list.append(notice) }
+        return list
+    }
+
+    /// Kept to remember (yellow dots): never unread, untouched by Clear.
+    var keptNotices: [Notice] {
+        Notices.kept(allNotices)
+    }
+
+    /// What orbits the orb: the unread (orange) and the kept (yellow).
+    var orbitNotices: [Notice] {
+        notices + keptNotices
+    }
+
+    /// Kept here and not yet in a snapshot.
+    @Published private var keptNoticesHere: [Notice] = []
+    /// Let go here and maybe still in the last snapshot.
+    @Published private var letGoHere: Set<String> = []
+    /// Chat turns kept here (by turn id), until the next history load says so.
+    @Published private(set) var keptTurnsHere: Set<Int> = []
+
+    /// True when a chat turn is kept (by Jarvis's record or just now here).
+    func isKept(turnId: Int?, historyKept: Bool) -> Bool {
+        guard let turnId else { return false }
+        if let notice = Notices.kept(turnId: turnId, in: allNotices) { return !letGoHere.contains(notice.id) }
+        return keptTurnsHere.contains(turnId) || historyKept
+    }
+
+    /// Keeps a chat message as a yellow dot (Dylan, 2026-11-19: "jarvis
+    /// tells me something and i want to keep it so i remember it later").
+    func keep(turnId: Int) async {
+        keptTurnsHere.insert(turnId)
+        do {
+            let result = try await client.keep(turnId: turnId)
+            if result.ok {
+                if let notice = result.notice { keptNoticesHere.append(notice) }
+                await today.load(app: self)
+            } else {
+                keptTurnsHere.remove(turnId)
+                chat.problem = result.message.isEmpty ? "Jarvis couldn't keep that." : result.message
+            }
+        } catch {
+            keptTurnsHere.remove(turnId)
+            noteReach(error)
+        }
+    }
+
+    /// Lets a kept item go (from its yellow dot, or the message in chat).
+    func letGo(_ notice: Notice) async {
+        letGoHere.insert(notice.id)
+        keptNoticesHere.removeAll { $0.id == notice.id }
+        if let turnId = notice.turnId { keptTurnsHere.remove(turnId) }
+        do {
+            let result = try await client.unkeep(noticeId: notice.id)
+            if result.ok {
+                await today.load(app: self)
+            } else {
+                letGoHere.remove(notice.id)
+                chat.problem = result.message.isEmpty ? "Jarvis couldn't let that go." : result.message
+            }
+        } catch {
+            letGoHere.remove(notice.id)
+            noteReach(error)
+        }
+    }
+
+    /// Let go of a chat message by its turn: finds its kept item.
+    func letGo(turnId: Int) async {
+        if let notice = Notices.kept(turnId: turnId, in: allNotices) {
+            await letGo(notice)
+        } else {
+            keptTurnsHere.remove(turnId)
+        }
     }
 
     /// An approval is over (answered here, out loud, timed out,

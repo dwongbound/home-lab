@@ -262,7 +262,19 @@ struct ChatView: View {
             if !item.text.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     // A notice opened here: the bubble itself glows softly.
-                    JarvisBubble(item: item, glowing: item.turnId != nil && item.turnId == highlighted) { flagging = item }
+                    JarvisBubble(item: item, glowing: item.turnId != nil && item.turnId == highlighted, kept: app.isKept(turnId: item.turnId, historyKept: item.kept)) { flagging = item }
+                        // Keep any finished message as a yellow dot, or let
+                        // a kept one go (Dylan, 2026-11-19).
+                        .contextMenu {
+                            if let turnId = item.turnId, item.finished {
+                                if app.isKept(turnId: turnId, historyKept: item.kept) {
+                                    Button("Let go", systemImage: "bookmark.slash") { Task { await app.letGo(turnId: turnId) } }
+                                } else {
+                                    Button("Keep", systemImage: "bookmark") { Task { await app.keep(turnId: turnId) } }
+                                }
+                            }
+                            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.text }
+                        }
                     // "Is this the meal I already logged?"
                     if item.mealKey != nil && item.mealAnswer == nil && item.finished {
                         HStack(spacing: 8) {
@@ -384,6 +396,8 @@ struct JarvisBubble: View {
     /// True while a notice that opened this message is pointing at it: the
     /// bubble takes a soft orange tint in its own shape.
     var glowing = false
+    /// Kept to remember: a small yellow marker by the chip.
+    var kept = false
     let onWrong: () -> Void
 
     /// The bubble's own shape, shared by its fill, edge and glow.
@@ -394,8 +408,16 @@ struct JarvisBubble: View {
     /// Chip over a glass bubble.
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let model = item.model {
-                chip(ModelWording.chip(model: model, writer: item.writer))
+            HStack(spacing: 6) {
+                if let model = item.model {
+                    chip(ModelWording.chip(model: model, writer: item.writer))
+                }
+                if kept {
+                    Label("Kept", systemImage: "bookmark.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(OrbView.keptYellow(onLight: false))
+                        .accessibilityLabel("Kept")
+                }
             }
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(markdown(item.text))

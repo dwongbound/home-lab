@@ -8,10 +8,10 @@
 // reading a notice clears it. The iPhone, iPad and TV all draw from here.
 import Foundation
 
-/// One dot round the orb: a task Jarvis is running (blue) or an unread
-/// notice (orange).
+/// One dot round the orb: a task Jarvis is running (blue), an unread
+/// notice (orange), or something kept to remember (yellow).
 public struct OrbitItem: Equatable, Identifiable, Sendable {
-    public enum Kind: Equatable, Sendable { case task, notice }
+    public enum Kind: Equatable, Sendable { case task, notice, kept }
     public let id: String
     public let kind: Kind
     public let title: String
@@ -56,13 +56,17 @@ public enum Orbit {
     /// The dots: unread notices first (needs, then heads-ups, then FYIs),
     /// then running tasks. At night only the notices that need Dylan, so the
     /// bedroom stays dark.
+    /// Kept items (yellow) come after them; a kept item is never orange
+    /// whatever its kind, and none show at night.
     public static func items(running: [RunningTask], notices: [Notice], night: Bool = false) -> [OrbitItem] {
         let orange = notices
+            .filter { !$0.kept }
             .filter { !night || $0.kind == .need }
             .sorted { $0.kind < $1.kind }
             .map { OrbitItem(id: "notice-" + $0.id, kind: .notice, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
         let blue = night ? [] : running.map { OrbitItem(id: "task-" + $0.id, kind: .task, title: $0.label, detail: $0.state == "queued" ? "Queued" : "", startedAt: $0.startedAt, notice: nil) }
-        return Array((orange + blue).prefix(maxDots))
+        let yellow = night ? [] : notices.filter(\.kept).map { OrbitItem(id: "kept-" + $0.id, kind: .kept, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
+        return Array((orange + blue + yellow).prefix(maxDots))
     }
 
     /// Each dot's own orbit, the same on every device and every launch (a
@@ -104,7 +108,7 @@ public enum Orbit {
     /// Seeing a notice reads it, and reading clears it everywhere, except
     /// one that needs Dylan: that stays until he answers it.
     public static func readOnView(_ notice: Notice) -> Bool {
-        notice.kind != .need
+        notice.kind != .need && !notice.kept
     }
 
     /// Whether a notice's label offers "Keep" (Dylan, 2026-11-19: "an option

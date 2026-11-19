@@ -45,6 +45,8 @@ struct OrbView: View {
     var onCoreTap: (() -> Void)? = nil
     /// "Open in Chat" on a notice's label (nil: no button, as in kiosks).
     var onOpen: ((Notice) -> Void)? = nil
+    /// "Let go" on a kept (yellow) dot's label (nil: no button).
+    var onLetGo: ((Notice) -> Void)? = nil
     /// The dot whose label is open, if any.
     @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -92,7 +94,12 @@ struct OrbView: View {
                         if let notice = item.notice { open(notice) }
                         opened = nil
                     }
-                }, onKeep: (item.notice.map(Orbit.offersKeep) ?? false) ? { keep() } : nil) { close() }
+                }, onKeep: (item.notice.map(Orbit.offersKeep) ?? false) ? { keep() } : nil, onLetGo: item.kind == .kept ? onLetGo.map { letGo in
+                    {
+                        if let notice = item.notice { letGo(notice) }
+                        opened = nil
+                    }
+                } : nil) { close() }
                     .position(x: size / 2, y: min(size - 20, spot.y + 52))
                     .frame(width: size, height: size)
                     .background {
@@ -157,7 +164,7 @@ struct OrbView: View {
             .accessibilityAction { onCoreTap?() }
             .accessibilityActions {
                 ForEach(orbit) { item in
-                    Button(item.kind == .task ? "Jarvis is working: \(item.title)" : "Notice: \(item.title)") { opened = item.id }
+                    Button(item.kind == .task ? "Jarvis is working: \(item.title)" : item.kind == .kept ? "Kept: \(item.title)" : "Notice: \(item.title)") { opened = item.id }
                 }
             }
     }
@@ -219,6 +226,20 @@ struct OrbView: View {
         onLight ? Color(red: 0.08, green: 0.36, blue: 0.72) : Color(red: 0.42, green: 0.72, blue: 1.0)
     }
 
+    /// Yellow for something kept to remember; darker on the TV's day sky.
+    static func keptYellow(onLight: Bool) -> Color {
+        onLight ? Color(red: 0.62, green: 0.50, blue: 0.02) : Color(red: 1.0, green: 0.86, blue: 0.30)
+    }
+
+    /// A dot's colour: blue Jarvis working, orange new, yellow kept.
+    static func dotColor(_ kind: OrbitItem.Kind, onLight: Bool) -> Color {
+        switch kind {
+        case .task: return taskBlue(onLight: onLight)
+        case .notice: return noticeOrange(onLight: onLight)
+        case .kept: return keptYellow(onLight: onLight)
+        }
+    }
+
     /// Orange for a notice; darker on the TV's day sky.
     static func noticeOrange(onLight: Bool) -> Color {
         onLight ? Color(red: 0.80, green: 0.36, blue: 0.04) : Color(red: 1.0, green: 0.56, blue: 0.20)
@@ -233,7 +254,7 @@ struct OrbView: View {
             let dx = dot.point.x - center.x, dy = dot.point.y - center.y
             if back && (dx * dx + dy * dy).squareRoot() < coreRadius { alpha *= 0.35 }
             let isOpen = dot.item.id == opened
-            let color = dot.item.kind == .task ? Self.taskBlue(onLight: onLight) : Self.noticeOrange(onLight: onLight)
+            let color = Self.dotColor(dot.item.kind, onLight: onLight)
             let core = side * 0.03 * (0.7 + near * 0.4) * (0.8 + dot.item.emphasis * 0.3) * (isOpen ? 1.45 : 1)
             let pulse = reduceMotion || opened != nil ? 0.5 : 0.5 + 0.5 * sin(t * 2.4 + dot.z * 3)
             let halo = core * (2.6 + pulse)
@@ -647,10 +668,12 @@ struct OrbitCallout: View {
     var onOpen: (() -> Void)? = nil
     /// Closes without clearing, so the dot stays; nil hides the button.
     var onKeep: (() -> Void)? = nil
+    /// A kept (yellow) item's "Let go"; nil hides the button.
+    var onLetGo: (() -> Void)? = nil
     let onClose: () -> Void
 
     var body: some View {
-        let color = item.kind == .task ? OrbView.taskBlue(onLight: false) : OrbView.noticeOrange(onLight: false)
+        let color = OrbView.dotColor(item.kind, onLight: false)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 Circle().fill(color).frame(width: 10, height: 10).padding(.top, 5)
@@ -687,7 +710,19 @@ struct OrbitCallout: View {
                 }
                 .accessibilityLabel(onKeep == nil ? "Close" : "Keep for later")
             }
-            if let notice = item.notice, !notice.isApproval, onOpen != nil || onKeep != nil {
+            // A kept item: Open in Chat and Let go; the (x) just closes.
+            if item.kind == .kept, onOpen != nil || onLetGo != nil {
+                HStack(spacing: 10) {
+                    if let onOpen {
+                        Button("Open in Chat", action: onOpen).buttonStyle(.bordered)
+                    }
+                    if let onLetGo {
+                        Button("Let go", action: onLetGo).buttonStyle(.bordered)
+                    }
+                }
+                .font(.footnote.weight(.semibold))
+                .padding(.leading, 20)
+            } else if let notice = item.notice, !notice.isApproval, onOpen != nil || onKeep != nil {
                 HStack(spacing: 10) {
                     if let onOpen {
                         Button("Open in Chat", action: onOpen).buttonStyle(.bordered)

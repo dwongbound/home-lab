@@ -65,7 +65,8 @@ public struct WatchBoard: Equatable, Sendable {
     /// and the next event or agenda item still to come today.
     /// Approval rows already over (`settled`, the phone's record) are left off.
     public init(snapshot: Snapshot?, settled: SettledApprovals = SettledApprovals(), now: Date = Date()) {
-        notices = settled.showing(Notices.sorted(snapshot?.notices ?? [])).prefix(12).map(WatchNotice.init)
+        // Kept items (yellow) aren't new: the Watch shows only the unread.
+        notices = settled.showing(Notices.unread(Notices.sorted(snapshot?.notices ?? []))).prefix(12).map(WatchNotice.init)
         tasks = (snapshot?.jobs?.running ?? []).map { ($0.label, $0.startedAt) }
         let next = snapshot.flatMap { s in
             NowNext.pick(events: s.events, agenda: s.today, now: now).flatMap { $0.kind == .tomorrow ? nil : $0 }

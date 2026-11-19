@@ -377,7 +377,7 @@ struct TalkView: View {
                     VStack(spacing: 14) {
                         // The orb stays put; it shrinks a little once
                         // there's a conversation to make room for it.
-                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone), orbit: Orbit.items(running: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, notices: app.notices), dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } }, onRead: { notice in Task { await app.readNotice(notice) } }, onOpen: { notice in Task { await app.openTurn(notice.turnId, clearing: notice) } })
+                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone), orbit: Orbit.items(running: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, notices: app.orbitNotices), dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } }, onRead: { notice in Task { await app.readNotice(notice) } }, onOpen: { notice in Task { await app.openTurn(notice.turnId, clearing: notice.kept ? nil : notice) } }, onLetGo: { notice in Task { await app.letGo(notice) } })
                             // Above the words below it, so a work callout isn't covered.
                             .zIndex(1)
                             .padding(.top, hasWords ? 8 : 24)

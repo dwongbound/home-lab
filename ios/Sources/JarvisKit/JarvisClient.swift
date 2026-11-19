@@ -170,6 +170,32 @@ public struct JarvisClient: Sendable {
         return body.week
     }
 
+    /// Keeps a chat message (by its history turn id) as a yellow dot.
+    public func keep(turnId: Int) async throws -> KeepResult {
+        try await keepChange("api/jarvis/notices/keep", ["turnId": turnId])
+    }
+
+    /// Keeps an existing notice (by its id) instead of clearing it.
+    public func keep(noticeId: String) async throws -> KeepResult {
+        try await keepChange("api/jarvis/notices/keep", ["id": noticeId])
+    }
+
+    /// Lets a kept item go.
+    public func unkeep(noticeId: String) async throws -> KeepResult {
+        try await keepChange("api/jarvis/notices/unkeep", ["id": noticeId])
+    }
+
+    /// One keep or unkeep POST; a refusal comes back as a result.
+    private func keepChange(_ path: String, _ body: [String: Any]) async throws -> KeepResult {
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request(path, method: "POST", json: body))
+        } catch {
+            throw JarvisError.unreachable
+        }
+        return KeepResult.read(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
+    }
+
     /// Jarvis's playbooks; nil when he can't say (older Jarvis, or down).
     public func playbooks() async throws -> [Playbook]? {
         Playbooks.list(from: try await send(request("api/jarvis/playbooks")))
