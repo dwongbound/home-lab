@@ -44,7 +44,7 @@ function fakeServer(options: { actionGate?: Promise<void>; live?: boolean } = {}
       })
       return new Response(body, { headers: { 'content-type': 'application/x-ndjson' } })
     }
-    if (url === '/api/jarvis/history') return Response.json({ turns: await source.history() })
+    if (url === '/api/jarvis/history') return Response.json(await source.history())
     if (url === '/api/jarvis/voice' && init?.method === 'POST') return Response.json(await source.setVoice(JSON.parse(String(init.body))))
     if (url === '/api/jarvis/voice') return Response.json({ voice: await source.voice() })
     if (url.startsWith('/api/jarvis/voice/sample?')) return new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'audio/wav' } })

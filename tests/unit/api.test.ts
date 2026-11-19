@@ -1,6 +1,6 @@
 // The API handler: routes, the action guard, one action at a time, and
 // that the Home Assistant token never appears in a response.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createApi } from '../../server/app.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
@@ -56,6 +56,53 @@ describe('POST /api/jarvis/ask', () => {
     expect((await callApi(api, 'POST', '/api/jarvis/ask', ACTION_HEADER, '{"text":"  "}')).statusCode).toBe(400)
     expect((await callApi(api, 'POST', '/api/jarvis/ask', ACTION_HEADER, 'not json')).statusCode).toBe(400)
   })
+
+  it('tells Jarvis when the asker closes the app before the reply is done, and not when the reply finished first', async () => {
+    const left: unknown[] = []
+    let finish = () => {}
+    const source = {
+      ...createMockSource(),
+      chat: async (_text: string, _caller: unknown, onEvent: (e: unknown) => void) => {
+        onEvent({ type: 'turn', id: 41 })
+        await new Promise<void>((resolve) => { finish = resolve })
+        onEvent({ type: 'done', ok: true })
+      },
+      chatLeft: async (...args: unknown[]) => { left.push(args) },
+    }
+    // A response that can be closed from the client's side, like a phone going away.
+    const listeners: Record<string, () => void> = {}
+    const res = { destroyed: false, writableEnded: false, writeHead() {}, write() {}, end() { this.writableEnded = true }, on(event: string, fn: () => void) { listeners[event] = fn } }
+    const req = { method: 'POST', url: '/api/jarvis/chat', headers: { ...ACTION_HEADER, 'tailscale-user-login': 'd@example.com' }, async *[Symbol.asyncIterator]() { yield '{"text":"hi"}' } }
+    const handled = createApi(source)(req as never, res as never)
+    await vi.waitFor(() => expect(listeners.close).toBeTypeOf('function'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    res.destroyed = true
+    listeners.close()
+    expect(left).toEqual([[41, { login: 'd@example.com' }]])
+    finish()
+    await handled
+    // The socket closing after a finished reply is the normal end, not someone leaving.
+    listeners.close()
+    expect(left).toHaveLength(1)
+  })
+
+  it('pages the history: the newest turns, the ones before a turn, a window around one, and 400 on a bad ask', async () => {
+    const api = createApi(createMockSource())
+    for (const text of ['one', 'two', 'three']) await callApi(api, 'POST', '/api/jarvis/chat', ACTION_HEADER, JSON.stringify({ text }))
+    const ids = (path: string) => {
+      const body = callApi(api, 'GET', path).then((res) => res.json())
+      return body.then((page: { turns: { id: number }[]; hasMore: boolean; hasNewer: boolean }) => ({ ids: page.turns.map((t) => t.id), hasMore: page.hasMore, hasNewer: page.hasNewer }))
+    }
+    expect(await ids('/api/jarvis/history')).toEqual({ ids: [1, 2, 3, 4, 5, 6], hasMore: false, hasNewer: false })
+    expect(await ids('/api/jarvis/history?limit=2')).toEqual({ ids: [5, 6], hasMore: true, hasNewer: false })
+    expect(await ids('/api/jarvis/history?limit=2&before=5')).toEqual({ ids: [3, 4], hasMore: true, hasNewer: false })
+    expect(await ids('/api/jarvis/history?limit=2&before=3')).toEqual({ ids: [1, 2], hasMore: false, hasNewer: false })
+    expect(await ids('/api/jarvis/history?limit=2&around=3')).toEqual({ ids: [2, 3], hasMore: true, hasNewer: true })
+    expect(await ids('/api/jarvis/history?limit=2&around=99')).toEqual({ ids: [5, 6], hasMore: true, hasNewer: false })
+    for (const bad of ['limit=0', 'limit=101', 'before=abc', 'around=-1', 'before=2&around=3']) {
+      expect((await callApi(api, 'GET', `/api/jarvis/history?${bad}`)).statusCode).toBe(400)
+    }
+  }, 20_000)
 
   it("passes the caller's Tailscale login to the source", async () => {
     let seen: unknown = null

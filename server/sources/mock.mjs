@@ -6,6 +6,7 @@
 // Load buttons visibly do something in the preview.
 
 import { createPickStore } from '../money-picks.mjs'
+import { HISTORY_DEFAULT, pageOfTurns } from './history.mjs'
 import { SAMPLE_VOICES, sampleWav } from '../voice.mjs'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -520,6 +521,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const turn = { role: 'user', text, at }
       if (photos > 0) turn.images = photos
       state.chat.push(turn)
+      // The message's number, as the real Jarvis says first.
+      onEvent({ type: 'turn', id: state.chat.length })
       await delay(700)
       // A question that needs a lookup shows the orb's working sweep first, like the real Jarvis.
       const work = sampleWork(text)
@@ -565,9 +568,13 @@ export function createMockSource({ now = () => new Date() } = {}) {
       onEvent({ type: 'done', ok: true })
     },
 
-    /** The sample conversation so far, oldest first. */
-    async history() {
-      return state.chat.slice(-50)
+    /** The asker closed the app mid-reply; the pretend Jarvis has no phone to push to, so nothing happens. */
+    async chatLeft() {},
+
+    /** One page of the sample conversation, oldest first; each turn numbered in the order it was said. */
+    async history(_caller, page) {
+      const numbered = state.chat.map((turn, index) => ({ ...turn, id: index + 1 }))
+      return pageOfTurns(numbered, page ?? { limit: HISTORY_DEFAULT })
     },
 
     /** The pretend facts, newest first, and a made-up count of saved turns. */

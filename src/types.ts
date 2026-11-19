@@ -467,12 +467,20 @@ export type ChatEvent =
   | { type: 'working_done' }
   /** Which brain is answering: "claude", or "ornith" when he has fallen back to the local model. */
   | { type: 'model'; model: string }
+  /** Jarvis's number for the message just sent (ChatTurn.id), said first, so its reply can be found in the history later. */
+  | { type: 'turn'; id: number }
   /** A meal photo that looks like one already logged; answered with POST /api/jarvis/chat/meal (the apps show the choices as buttons). */
   | { type: 'meal_question'; key: string; choices: string[] }
 /** One saved line of the web chat. model: who wrote one of Jarvis's lines, when known. */
 /** `images` = how many photos went with the message (the bytes aren't kept in the history). */
 /** One line of the chat. `id` is Jarvis's number for it; `model` is who wrote it, or "notice:reminder" for a message he sent unasked, and then `writer` is the model that wrote that message (none for a plain reminder). */
 export interface ChatTurn { role: 'user' | 'jarvis'; text: string; at: string; model?: string; writer?: string; images?: number; id?: number; kept?: boolean }
+
+/** Which part of the chat to fetch: the newest `limit` turns, or the ones just older than `before`, or a window centred on `around` (both turn ids). */
+export interface HistoryPage { limit: number; before?: number; around?: number }
+
+/** One page of the chat, oldest first. hasMore: older turns exist; hasNewer: newer ones do (only after `around`); pending: Jarvis is still writing the newest reply. */
+export interface ChatHistory { turns: ChatTurn[]; hasMore: boolean; hasNewer: boolean; pending: boolean }
 
 /** One photo on a chat message: its kind and base64 bytes. */
 export interface ChatImage { type: string; data: string }
@@ -632,7 +640,9 @@ export interface DataSource {
   /** Chats with Jarvis, calling onEvent as his reply streams in. */
   chat(text: string, caller: { login?: string; offerId?: string; images?: ChatImage[] }, onEvent: (event: ChatEvent) => void): Promise<void>
   /** The web chat with Jarvis so far, oldest first. */
-  history(caller?: { login?: string }): Promise<ChatTurn[]>
+  history(caller?: { login?: string }, page?: HistoryPage): Promise<ChatHistory>
+  /** The asker closed the app before the reply was done; Jarvis pushes it to the phone instead. */
+  chatLeft(turnId: number | null, caller?: { login?: string }): Promise<void>
   /** Approves or denies one waiting request; false when Jarvis doesn't know it (answered or expired). */
   answerApproval(id: string, ok: boolean, caller?: { login?: string }): Promise<ApprovalAnswerResult>
   /** Requests still waiting for an answer, e.g. after a reload. */

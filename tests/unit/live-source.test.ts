@@ -1,7 +1,7 @@
 // The live source with every probe faked: status rules, failures that
 // shouldn't break the page, and the Ollama load/unload call.
 import { describe, expect, it, vi } from 'vitest'
-import { createLiveSource, parseKeepAlive } from '../../server/sources/live.mjs'
+import { createLiveSource, jarvisSaid, parseKeepAlive } from '../../server/sources/live.mjs'
 import { loadConfig } from '../../server/config.mjs'
 
 const config = loadConfig({ DATA_SOURCE: 'live', HA_TOKEN: 'token' })
@@ -128,6 +128,9 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     if (url === `${config.jarvisApiUrl}/approvals`) {
       return Response.json({ pending: [{ id: 'a2', tool: 'edit_file', summary: '~/x.md', expires: 'z' }, { tool: 'broken' }] })
     }
+    if (url === `${config.jarvisApiUrl}/chat/history?limit=20&before=7`) {
+      return Response.json({ turns: [{ role: 'user', text: 'earlier', at: '0', id: 5 }], has_more: true, pending: true })
+    }
     if (url === `${config.jarvisApiUrl}/chat/history?limit=50`) {
       return Response.json({ turns: [{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'assistant', text: 'Lamp is off.', at: 'b', model: 'claude', id: 7 }, { role: 'assistant', text: 'Leave by 7:05.', at: 'c', model: 'notice:lookout', writer: 'claude-opus-5-5', id: 8 }, { role: 'user' }] })
     }
@@ -150,7 +153,7 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
     throw Object.assign(new Error('exit 3'), { stdout: `${unitState}\n` })
   })
   const statfs = async () => ({ bavail: 93 * GB, bsize: 1, blocks: 237 * GB })
-  return { source: createLiveSource(config, { fetch, execFile, statfs }), fetch }
+  return { source: createLiveSource(config, { fetch, execFile, statfs, restartWaitMs: 0 }), fetch }
 }
 
 /** Finds a service row by id. */
@@ -403,10 +406,50 @@ describe('live chat with Jarvis', () => {
     ])
   })
 
+  it('says Jarvis is restarting in plain words, and sends a chat message once more when he was', async () => {
+    expect(jarvisSaid(502)).toBe('Jarvis is restarting. Try again in a moment.')
+    expect(jarvisSaid(500)).toBe('Jarvis answered 500')
+    // Down for the first try, back for the second: the reply comes through with no error shown.
+    let tries = 0
+    const fetch = vi.fn(async () => {
+      tries += 1
+      if (tries === 1) return new Response('bad gateway', { status: 502 })
+      return new Response('{"type":"delta","text":"Hi."}\n{"type":"done"}\n')
+    })
+    const source = createLiveSource(config, { fetch, execFile: vi.fn(), statfs: vi.fn(), restartWaitMs: 0 })
+    const events: unknown[] = []
+    await source.chat('hello', { login: 'dylan@example.com' }, (e: unknown) => events.push(e))
+    expect(events).toEqual([{ type: 'delta', text: 'Hi.' }, { type: 'done', ok: true }])
+    expect(tries).toBe(2)
+    // Still down on the second try: one plain message, and no third try.
+    const down = vi.fn(async () => new Response('bad gateway', { status: 503 }))
+    const stuck: unknown[] = []
+    await createLiveSource(config, { fetch: down, execFile: vi.fn(), statfs: vi.fn(), restartWaitMs: 0 }).chat('hello', { login: 'dylan@example.com' }, (e: unknown) => stuck.push(e))
+    expect(stuck).toEqual([{ type: 'error', message: 'Jarvis is restarting. Try again in a moment.' }])
+    expect(down).toHaveBeenCalledTimes(2)
+  })
+
+  it('tells Jarvis the asker left, with the turn id when it has one, as the caller', async () => {
+    const { source, fetch } = liveWith({})
+    await source.chatLeft(41, { login: 'dylan@example.com' })
+    await source.chatLeft(null, { login: 'dylan@example.com' })
+    const calls = fetch.mock.calls.filter((c) => c[0] === `${config.jarvisApiUrl}/chat/left`)
+    expect(calls.map(([, init]) => [(init!.headers as Record<string, string>)['tailscale-user-login'], init!.body])).toEqual([['dylan@example.com', '{"turn_id":41}'], ['dylan@example.com', '{}']])
+    // No login, nobody to speak for: nothing is sent.
+    await source.chatLeft(41, {})
+    expect(fetch.mock.calls.filter((c) => c[0] === `${config.jarvisApiUrl}/chat/left`)).toHaveLength(2)
+  })
+
   it("reads the web chat history, naming Jarvis's lines and dropping broken ones", async () => {
-    const turns = await liveWith({}).source.history({ login: 'dylan@example.com' })
+    const { turns, hasMore, hasNewer, pending } = await liveWith({}).source.history({ login: 'dylan@example.com' })
+    expect([hasMore, hasNewer, pending]).toEqual([false, false, false])
     expect(turns).toEqual([{ role: 'user', text: 'lamp off', at: 'a' }, { role: 'jarvis', text: 'Lamp is off.', at: 'b', model: 'claude', id: 7 }, { role: 'jarvis', text: 'Leave by 7:05.', at: 'c', model: 'notice:lookout', writer: 'claude-opus-5-5', id: 8 }])
-    expect(await liveWith({}).source.history({})).toEqual([])
+    expect(await liveWith({}).source.history({})).toEqual({ turns: [], hasMore: false, hasNewer: false, pending: false })
+  })
+
+  it('asks Jarvis for the turns before one, and says when older ones exist or a reply is still being written', async () => {
+    const page = await liveWith({}).source.history({ login: 'dylan@example.com' }, { limit: 20, before: 7 })
+    expect(page).toEqual({ turns: [{ role: 'user', text: 'earlier', at: '0', id: 5 }], hasMore: true, hasNewer: false, pending: true })
   })
 
   it("reads and saves Jarvis's voice and fetches samples as the caller", async () => {
