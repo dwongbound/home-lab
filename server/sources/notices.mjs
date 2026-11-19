@@ -7,6 +7,8 @@
 // (Dylan, 2026-11-19).
 
 const MAX_NOTICES = 30
+// Kept ones come after the unread ones and have their own, roomier limit.
+const MAX_KEPT = 100
 const MAX_TEXT = 300
 // "need" = waiting on Dylan (an approval), "heads" = worth knowing, "fyi" = just so he knows.
 const KINDS = ['need', 'heads', 'fyi']
@@ -41,11 +43,21 @@ export function parseNotice(raw) {
 export function parseNotices(raw) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.notices)) return null
   const notices = []
+  let unread = 0
+  let kept = 0
   for (const item of raw.notices) {
     const notice = parseNotice(item)
-    if (notice !== null) notices.push(notice)
+    if (notice === null) continue
+    // Each kind is cut at its own limit, so a long unread list can't push the kept ones out.
+    if (notice.kept === true) {
+      kept += 1
+      if (kept <= MAX_KEPT) notices.push(notice)
+    } else {
+      unread += 1
+      if (unread <= MAX_NOTICES) notices.push(notice)
+    }
   }
-  return notices.slice(0, MAX_NOTICES)
+  return notices
 }
 
 /** Which notices to clear, from a request body: {all: true}, {ids: [...]}, or null when it's neither. */
