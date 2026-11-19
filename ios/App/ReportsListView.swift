@@ -89,23 +89,17 @@ struct ReportsListView: View {
     }
 
     /// One report: its title and summary (two lines each at most), a short
-    /// "Nov 18 · 240 KB" line, the retention button and the "…" menu. At
-    /// large text sizes the buttons drop under the words, so nothing is
-    /// pushed off the row.
+    /// "Nov 18 · 240 KB · Deletes Dec 3" line, then the retention menu at
+    /// the bottom left and "…" (Share, Delete) at the right.
     private func row(_ report: Report) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                words(report)
-                RetentionButton(report: report).fixedSize()
+        VStack(alignment: .leading, spacing: 2) {
+            words(report)
+            // The retention menu at the bottom left; Share and Delete
+            // tucked in the "…" menu, so the card stays uncluttered.
+            HStack {
+                RetentionButton(report: report)
+                Spacer()
                 menu(report)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                words(report)
-                HStack {
-                    RetentionButton(report: report)
-                    Spacer()
-                    menu(report)
-                }
             }
         }
         .padding(12)
@@ -129,7 +123,7 @@ struct ReportsListView: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                 }
-                Text(Reports.metaLine(report))
+                Text(Reports.metaLine(report) + " · " + Reports.deleteLine(report, retention: Reports.retention(report, defaultDays: app.reportShelf?.keepDays ?? 14)))
                     .font(.caption2)
                     .foregroundStyle(Theme.frostDim)
                     .lineLimit(1)

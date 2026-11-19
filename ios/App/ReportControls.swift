@@ -6,8 +6,9 @@ import SwiftUI
 import UIKit
 import JarvisKit
 
-/// "Keep 2 weeks": a compact button; tapping it picks 2 weeks, 1 month,
-/// 3 months or forever (the one in force ticked), with the delete date.
+/// "Keep 2 weeks ⌄": a small plain menu at the card's bottom left (Dylan,
+/// 2026-11-19: "just be a very simple selector"). It drops down the four
+/// choices in place, the one in force ticked; picking one saves at once.
 struct RetentionButton: View {
     @EnvironmentObject private var app: AppModel
     let report: Report
@@ -16,22 +17,21 @@ struct RetentionButton: View {
         let defaultDays = app.reportShelf?.keepDays ?? 14
         let current = Reports.retention(report, defaultDays: defaultDays)
         Menu {
-            Section(Reports.deleteLine(report, retention: current)) {
-                ForEach(Retention.choices, id: \.self) { choice in
-                    Button {
-                        guard choice != current else { return }
-                        Task { await app.setRetention(report.id, choice) }
-                    } label: {
-                        if choice == current { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
-                    }
+            ForEach(Retention.choices, id: \.self) { choice in
+                Button {
+                    guard choice != current else { return }
+                    Task { await app.setRetention(report.id, choice) }
+                } label: {
+                    if choice == current { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
                 }
             }
         } label: {
-            Text(current.label)
-                .font(.footnote.weight(.semibold))
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background(Capsule().fill(Color.white.opacity(0.08)))
+            HStack(spacing: 4) {
+                Text(current.label)
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+            }
+            .font(.footnote.weight(.semibold))
+            .frame(minHeight: 44)
         }
         .tint(Theme.glacier)
         .accessibilityHint("Changes how long the report is kept")
