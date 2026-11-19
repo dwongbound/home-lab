@@ -100,6 +100,15 @@ public enum Notices {
         notices.map(\.kind).min()
     }
 
+    /// The kind in words for VoiceOver: "Kept", "Needs you", "Reminder",
+    /// "Heads up" or "For your information".
+    public static func kindWords(_ notice: Notice) -> String {
+        if notice.kept { return "Kept" }
+        if notice.kind == .need { return "Needs you" }
+        if notice.source == "reminder" { return "Reminder" }
+        return notice.kind == .heads ? "Heads up" : "For your information"
+    }
+
     /// The unread ones: everything not kept. Kept items never count as new.
     public static func unread(_ notices: [Notice]) -> [Notice] {
         notices.filter { !$0.kept }

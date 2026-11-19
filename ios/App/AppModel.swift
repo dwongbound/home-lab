@@ -224,6 +224,16 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Words to put in the Chat box without sending them ("Build it with
+    /// Jarvis"); the Chat tab takes them and clears this.
+    @Published var chatPrefill: String?
+
+    /// Opens Chat with `words` ready in the box, not sent.
+    func startChat(with words: String) {
+        chatPrefill = words
+        tab = .chat
+    }
+
     /// The report showing in the app's reader, if any.
     @Published var report: ReportPage?
     /// What a Keep or Delete is waiting on ("Deleting the report…"), shown

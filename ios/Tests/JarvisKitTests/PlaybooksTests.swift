@@ -49,3 +49,17 @@ final class PlaybooksTests: XCTestCase {
         XCTAssertEqual(PlaybookResult(json: ["ok": false, "message": "Give the playbook a name"]).detail, "Give the playbook a name")
     }
 }
+
+final class PlaybookTroubleTests: XCTestCase {
+    func testRunWords() {
+        XCTAssertEqual(PlaybookTrouble.runWords("1 of 1 steps failed: 1. app: Home Assistant refused it (500): pyatv.exceptions.ProtocolError: Command _launchApp failed"), "The TV refused to open the app. Open it once on the TV, then try again.")
+        XCTAssertEqual(PlaybookTrouble.runWords("… Command _hidC failed"), "The TV didn't answer. It may have been asleep; try again.")
+        XCTAssertNil(PlaybookTrouble.runWords("Ran 3 steps"))
+    }
+
+    func testSaveWords() {
+        XCTAssertEqual(PlaybookTrouble.saveWords("a playbook needs at least one step", hasSteps: true), "Jarvis couldn't save this just now. Try again in a minute.")
+        XCTAssertEqual(PlaybookTrouble.saveWords("a playbook needs at least one step", hasSteps: false), "a playbook needs at least one step")
+        XCTAssertEqual(PlaybookTrouble.saveWords("", hasSteps: true), "Jarvis didn't save it.")
+    }
+}

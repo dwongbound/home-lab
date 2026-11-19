@@ -194,3 +194,17 @@ public enum PageSwipe {
         abs(width) >= minDistance && abs(width) > abs(height) * ratio
     }
 }
+
+/// When landing on the Talk page starts a call (Dylan, 2026-11-19: with the
+/// pages Home, Talk, Chat, swiping from Home to Chat passes Talk and must
+/// not call Jarvis). The page has to stay selected for a moment first.
+public enum TalkSettle {
+    /// How long Talk must stay the page before the call starts.
+    public static let seconds: Double = 0.7
+
+    /// Whether to start the call now: Talk is still the page, it has been
+    /// for long enough, and no call has started yet.
+    public static func shouldStart(onTalk: Bool, landedAt: Date, now: Date = Date(), started: Bool) -> Bool {
+        onTalk && !started && now.timeIntervalSince(landedAt) >= seconds
+    }
+}

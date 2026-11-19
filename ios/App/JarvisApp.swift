@@ -49,6 +49,8 @@ struct RootView: View {
     @StateObject private var bedside = PhoneKioskMonitor()
     /// Whether the keyboard is up.
     @StateObject private var keyboard = KeyboardWatch()
+    /// A Talk call waiting for the page to settle; cancelled if he moves on.
+    @State private var pendingTalk: Task<Void, Never>?
 
     /// Each page draws its own status line instead of a big title
     /// (Dylan, 2026-11-16: no "Chat"/"Talk" headings).
@@ -154,8 +156,17 @@ struct RootView: View {
         .onChange(of: app.tab) { _, tab in
             // Swiping or tapping to another page puts the keyboard away.
             KeyboardWatch.dismiss()
+            // Only a settled landing on Talk calls Jarvis: swiping from
+            // Home to Chat passes Talk and mustn't (JarvisKit TalkSettle).
+            pendingTalk?.cancel()
+            pendingTalk = nil
             if tab == .talk && !app.talk.started {
-                Task { await app.talk.start(app: app) }
+                let landed = Date()
+                pendingTalk = Task {
+                    try? await Task.sleep(for: .seconds(TalkSettle.seconds))
+                    guard !Task.isCancelled, TalkSettle.shouldStart(onTalk: app.tab == .talk, landedAt: landed, started: app.talk.started) else { return }
+                    await app.talk.start(app: app)
+                }
             }
         }
     }

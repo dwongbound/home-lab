@@ -53,7 +53,9 @@ struct NoticesSheet: View {
         .fontDesign(.rounded)
     }
 
-    /// One notice: its pip colour, icon, title, a line of body, and when.
+    /// One notice: its dot (orange unread, yellow kept), title, a line of
+    /// body, and when. No icon beside the dot (Dylan, 2026-11-19: "we don't
+    /// need both … get rid of the bell"); VoiceOver still says the kind.
     /// A need row with an approval carries Approve and Deny.
     private func row(_ notice: Notice) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -74,10 +76,8 @@ struct NoticesSheet: View {
                 dismiss()
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Circle().fill(color(notice.kind)).frame(width: 10, height: 10)
-                    Image(systemName: Notices.symbol(notice.source))
-                        .foregroundStyle(color(notice.kind))
-                        .frame(width: 24)
+                    Circle().fill(notice.kept ? OrbView.keptYellow(onLight: false) : color(notice.kind)).frame(width: 10, height: 10)
+                        .accessibilityLabel(Notices.kindWords(notice))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(notice.title).font(.body.weight(.semibold)).foregroundStyle(Theme.frost)
                         if !notice.body.isEmpty {

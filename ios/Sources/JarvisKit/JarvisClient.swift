@@ -201,6 +201,24 @@ public struct JarvisClient: Sendable {
         Playbooks.list(from: try await send(request("api/jarvis/playbooks")))
     }
 
+    /// The playbooks and what their steps can use (devices, scenes, TVs),
+    /// for the editor; nil when Jarvis can't say.
+    public func playbookBook() async throws -> (playbooks: [Playbook], options: PlaybookOptions)? {
+        let data = try await send(request("api/jarvis/playbooks"))
+        guard let list = Playbooks.list(from: data), let book = Playbooks.book(from: data) else { return nil }
+        return (list, book.options)
+    }
+
+    /// Saves a playbook the editor wrote (new or changed), as the page does.
+    public func savePlaybook(_ draft: PlaybookDraft) async throws -> PlaybookResult {
+        try await playbookChange(["op": "save", "playbook": draft.json])
+    }
+
+    /// Deletes a playbook.
+    public func deletePlaybook(id: String) async throws -> PlaybookResult {
+        try await playbookChange(["op": "delete", "id": id])
+    }
+
     /// Switches a playbook on or off by saving it whole with only that changed.
     public func setPlaybook(_ playbook: Playbook, enabled: Bool) async throws -> PlaybookResult {
         try await playbookChange(["op": "save", "playbook": playbook.draft(enabled: enabled)])

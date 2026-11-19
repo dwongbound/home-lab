@@ -169,3 +169,23 @@ public enum Playbooks {
         return on == 0 ? "None on" : "\(on) on"
     }
 }
+
+/// Jarvis's raw failure text in words Dylan can act on (Dylan, 2026-11-19:
+/// "not able to run arrive home"). The raw text stays under Details.
+public enum PlaybookTrouble {
+    /// A run's detail, in plain words when it's one we recognise; nil otherwise.
+    public static func runWords(_ detail: String) -> String? {
+        if detail.contains("_launchApp failed") { return "The TV refused to open the app. Open it once on the TV, then try again." }
+        if detail.contains("_hidC failed") { return "The TV didn't answer. It may have been asleep; try again." }
+        return nil
+    }
+
+    /// A refused save, in plain words: the "needs at least one step" Jarvis
+    /// bug reads as try-again when the playbook does have steps.
+    public static func saveWords(_ message: String, hasSteps: Bool) -> String {
+        if hasSteps, message.lowercased().contains("needs at least one step") {
+            return "Jarvis couldn't save this just now. Try again in a minute."
+        }
+        return message.isEmpty ? "Jarvis didn't save it." : message
+    }
+}

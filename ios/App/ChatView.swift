@@ -151,6 +151,13 @@ struct ChatView: View {
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await chat.load(app: app) }
+            // "Build it with Jarvis" and the like: words ready in the box.
+            .onChange(of: app.chatPrefill) { _, words in
+                guard let words else { return }
+                draft = words
+                typing = true
+                app.chatPrefill = nil
+            }
             // The keyboard coming up keeps the newest message in view above
             // the field, like Messages.
             .onChange(of: keyboard.up) { _, up in

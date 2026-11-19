@@ -47,3 +47,28 @@ final class KeepTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(ChatTurn.self, from: Data(#"{"role":"assistant","text":"x","at":""}"#.utf8)).kept)
     }
 }
+
+final class KindWordsTests: XCTestCase {
+    func testTheKindInWords() {
+        XCTAssertEqual(Notices.kindWords(Notice(id: "a", kind: .fyi, title: "x", source: "kept", created: "", kept: true)), "Kept")
+        XCTAssertEqual(Notices.kindWords(Notice(id: "b", kind: .need, title: "x", source: "approval", created: "")), "Needs you")
+        XCTAssertEqual(Notices.kindWords(Notice(id: "c", kind: .heads, title: "x", source: "reminder", created: "")), "Reminder")
+        XCTAssertEqual(Notices.kindWords(Notice(id: "d", kind: .heads, title: "x", source: "lookout", created: "")), "Heads up")
+    }
+}
+
+final class TalkSettleTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testPassingThroughTalkDoesNotCall() {
+        // Swiped on to Chat 0.3 s later: no longer on Talk.
+        XCTAssertFalse(TalkSettle.shouldStart(onTalk: false, landedAt: t0, now: t0.addingTimeInterval(0.7), started: false))
+        // Still settling.
+        XCTAssertFalse(TalkSettle.shouldStart(onTalk: true, landedAt: t0, now: t0.addingTimeInterval(0.3), started: false))
+    }
+
+    func testStayingOnTalkCallsOnce() {
+        XCTAssertTrue(TalkSettle.shouldStart(onTalk: true, landedAt: t0, now: t0.addingTimeInterval(0.7), started: false))
+        XCTAssertFalse(TalkSettle.shouldStart(onTalk: true, landedAt: t0, now: t0.addingTimeInterval(5), started: true), "already called")
+    }
+}
