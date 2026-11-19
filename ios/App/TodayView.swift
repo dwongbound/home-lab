@@ -79,6 +79,9 @@ struct TodayView: View {
     /// Status line over a scrolling column of cards. Refreshes every 15 s
     /// while showing, like the page.
     var body: some View {
+        #if DEBUG
+        let _ = PerfCount.bump("home")
+        #endif
         ZStack {
             Theme.sky.ignoresSafeArea()
             VStack(spacing: 0) {

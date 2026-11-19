@@ -64,7 +64,7 @@ final class TalkModel: ObservableObject {
     /// A quiet line under the orb ("Goodbye. Tap Talk…"), not an error.
     @Published private(set) var notice: String?
     /// True once Talk has been started from this tab, so it only auto-starts once.
-    private(set) var started = false
+    var started = false
     private var line: TalkLine?
 
     /// Opens the line (Talk). Throws nothing: problems land in `problem`.
@@ -369,6 +369,9 @@ struct TalkView: View {
 
     /// Status line, the orb and words in the middle, the buttons at the bottom.
     var body: some View {
+        #if DEBUG
+        let _ = PerfCount.bump("talk")
+        #endif
         ZStack {
             Theme.sky.ignoresSafeArea()
             VStack(spacing: 0) {

@@ -7,7 +7,11 @@ import JarvisKit
 struct ChatView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject var chat: ChatModel
-    @State private var draft = ""
+    /// Whether the box holds any words. The words themselves live in
+    /// ComposerField, so a keystroke redraws only the box, never the list
+    /// (Dylan, 2026-11-19: typing felt laggy; every key used to rebuild
+    /// all 240 rows). This flips only when the box goes empty or not.
+    @State private var hasText = false
     /// Photos picked for the next message (up to 4).
     @State private var picked: [PickedPhoto] = []
     @State private var choosing: [PhotosPickerItem] = []
@@ -34,6 +38,9 @@ struct ChatView: View {
 
     /// Status line, the scrolling chat, then the composer.
     var body: some View {
+        #if DEBUG
+        let _ = PerfCount.bump("chat")
+        #endif
         ZStack {
             Theme.sky.ignoresSafeArea()
             VStack(spacing: 0) {
@@ -143,9 +150,12 @@ struct ChatView: View {
                     if chat.items.isEmpty && chat.loaded {
                         emptyState
                     }
-                    ForEach(chat.items) { item in
-                        row(item).id(item.id)
-                    }
+                    // The rows redraw only when what they show changes, not
+                    // on every change anywhere in the app (Dylan, 2026-11-19:
+                    // tab swipes and typing were rebuilding all of them).
+                    ChatRowsList(items: chat.items, highlighted: highlighted, keptTurns: keptTurns,
+                                 mealBusy: chat.busy != nil, actions: rowActions)
+                        .equatable()
                     if showDots {
                         TypingDots(label: chat.working).id("dots")
                     }
@@ -167,13 +177,6 @@ struct ChatView: View {
             .reportsScrollToTabBar()
             .modifier(ReadingUpWatch(readingUp: $readingUp, atBottom: $atBottom))
             .refreshable { await chat.load(app: app) }
-            // "Build it with Jarvis" and the like: words ready in the box.
-            .onChange(of: app.chatPrefill) { _, words in
-                guard let words else { return }
-                draft = words
-                typing = true
-                app.chatPrefill = nil
-            }
             // The keyboard coming up keeps the newest message in view above
             // the field, like Messages.
             .onChange(of: keyboard.up) { _, up in
@@ -269,6 +272,26 @@ struct ChatView: View {
 
     /// Typing dots while he thinks, looks something up, or hasn't started
     /// writing yet (the web page also shows them after 1.5 s of quiet).
+    /// The turns showing as kept (yellow), for the rows.
+    private var keptTurns: Set<Int> {
+        Set(chat.items.compactMap { item in
+            guard let turn = item.turnId, app.isKept(turnId: turn, historyKept: item.kept) else { return nil }
+            return turn
+        })
+    }
+
+    /// What a row can do, without the rows watching the whole app.
+    private var rowActions: ChatRowActions {
+        let app = app, chat = chat
+        let flag = $flagging
+        return ChatRowActions(
+            flag: { flag.wrappedValue = $0 },
+            keep: { turn in Task { await app.keep(turnId: turn) } },
+            letGo: { turn in Task { await app.letGo(turnId: turn) } },
+            answerMeal: { item, choice in Task { await chat.answerMeal(item, choice: choice, app: app) } }
+        )
+    }
+
     private var showDots: Bool {
         guard chat.isSending else { return false }
         if chat.working != nil { return true }
@@ -285,79 +308,6 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 80)
-    }
-
-    /// One chat line, drawn by kind.
-    @ViewBuilder
-    private func row(_ item: ChatItem) -> some View {
-        switch item.kind {
-        case .user:
-            VStack(alignment: .trailing, spacing: 6) {
-                if !item.photos.isEmpty {
-                    BubblePhotos(photos: item.photos)
-                } else if item.photoCount > 0 {
-                    // Past photos aren't kept on the device: a chip says so.
-                    Label(PhotoLimits.chip(item.photoCount), systemImage: "photo.on.rectangle")
-                        .font(.footnote.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(Theme.userBubble.opacity(0.6)))
-                }
-                if !item.text.isEmpty {
-                    Text(item.text)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.leading, 60)
-        case .jarvis:
-            if !item.text.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    // A notice opened here: the bubble itself glows softly.
-                    JarvisBubble(item: item, glowing: item.turnId != nil && item.turnId == highlighted, kept: app.isKept(turnId: item.turnId, historyKept: item.kept)) { flagging = item }
-                        // Keep any finished message as a yellow dot, or let
-                        // a kept one go (Dylan, 2026-11-19).
-                        .contextMenu {
-                            if let turnId = item.turnId, item.finished {
-                                if app.isKept(turnId: turnId, historyKept: item.kept) {
-                                    Button("Let go", systemImage: "bookmark.slash") { Task { await app.letGo(turnId: turnId) } }
-                                } else {
-                                    Button("Keep", systemImage: "bookmark") { Task { await app.keep(turnId: turnId) } }
-                                }
-                            }
-                            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.text }
-                        }
-                    // "Is this the meal I already logged?"
-                    if item.mealKey != nil && item.mealAnswer == nil && item.finished {
-                        HStack(spacing: 8) {
-                            ForEach(item.mealChoices, id: \.self) { choice in
-                                Button(MealChoice.label(choice)) {
-                                    Task { await chat.answerMeal(item, choice: choice, app: app) }
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(Theme.glacier)
-                                .frame(minHeight: 44)
-                                .disabled(chat.busy != nil)
-                            }
-                        }
-                    } else if let answer = item.mealAnswer {
-                        Text(MealChoice.label(answer))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Theme.frostDim)
-                    }
-                }
-                .padding(.trailing, 40)
-            }
-        case .approval:
-            // Waiting ones are pinned above the Ask box; settled ones are a
-            // single line here, where they happened.
-            if let line = item.outcome {
-                ApprovalLine(text: line)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
-            }
-        }
     }
 
     /// Approvals still waiting, pinned just above the Ask box until
@@ -383,7 +333,7 @@ struct ChatView: View {
     /// Whether the input bar is tucked into the compose button (JarvisKit ComposerSize).
     private var collapsed: Bool {
         ComposerSize.collapsed(atBottom: !readingUp, focused: typing,
-                               hasDraft: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !picked.isEmpty,
+                               hasDraft: hasText || !picked.isEmpty,
                                sending: chat.isSending, opened: opened)
     }
 
@@ -440,23 +390,8 @@ struct ChatView: View {
             }
             .disabled(PhotoLimits.room(holding: picked.count) == 0 || chat.isSending)
             .accessibilityLabel("Add photos")
-            TextField("Ask Jarvis", text: $draft, axis: .vertical)
-                .lineLimit(1...5)
-                .focused($typing)
-                .padding(.vertical, 11)
-                .submitLabel(.send)
-                .onSubmit(send)
-            Button(action: send) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 15, weight: .bold))
-                    .frame(width: 32, height: 32)
-                    .background(Circle().fill(canSend ? Theme.glacier : Color.white.opacity(0.08)))
-                    .foregroundStyle(canSend ? Theme.basalt : Theme.frostFaint)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .disabled(!canSend)
-            .accessibilityLabel("Send")
+            ComposerField(hasText: $hasText, focus: $typing,
+                          hasPhotos: !picked.isEmpty, sending: chat.isSending) { text in send(text) }
         }
         .padding(.horizontal, 2)
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Theme.glass))
@@ -466,17 +401,10 @@ struct ChatView: View {
         .padding(.bottom, 2)
     }
 
-    /// Something typed (or a photo picked) and no reply still coming.
-    private var canSend: Bool {
-        (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !picked.isEmpty) && !chat.isSending
-    }
-
-    /// Sends the draft and any photos, and clears both.
-    private func send() {
-        guard canSend else { return }
-        let text = draft
+    /// Sends the words (the box has already cleared itself) and any photos.
+    private func send(_ text: String) {
+        guard !chat.isSending, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !picked.isEmpty else { return }
         let photos = picked
-        draft = ""
         picked = []
         Task { await chat.send(text, photos: photos, app: app) }
     }
@@ -658,5 +586,160 @@ final class MarkdownCache: @unchecked Sendable {
         let value = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
         cache.setObject(Box(value), forKey: text as NSString)
         return value
+    }
+}
+
+/// The Ask box's words and its send button. It owns the typed text, so a
+/// keystroke redraws this and nothing else; the Chat screen only hears
+/// when the box goes from empty to not (or back).
+private struct ComposerField: View {
+    @Binding var hasText: Bool
+    var focus: FocusState<Bool>.Binding
+    let hasPhotos: Bool
+    let sending: Bool
+    let onSend: (String) -> Void
+    @State private var text = ""
+
+    private var canSend: Bool {
+        (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasPhotos) && !sending
+    }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            TextField("Ask Jarvis", text: $text, axis: .vertical)
+                .lineLimit(1...5)
+                .focused(focus)
+                .padding(.vertical, 11)
+                .submitLabel(.send)
+                .onSubmit(send)
+                .accessibilityIdentifier("composer")
+            Button(action: send) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 15, weight: .bold))
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(canSend ? Theme.glacier : Color.white.opacity(0.08)))
+                    .foregroundStyle(canSend ? Theme.basalt : Theme.frostFaint)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(!canSend)
+            .accessibilityLabel("Send")
+        }
+        .onChange(of: text) { _, new in
+            let filled = !new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if filled != hasText { hasText = filled }
+        }
+    }
+
+    private func send() {
+        guard canSend else { return }
+        let words = text
+        text = ""
+        onSend(words)
+    }
+}
+
+/// What a chat row can do (closures, so the rows needn't watch the app).
+struct ChatRowActions {
+    let flag: (ChatItem) -> Void
+    let keep: (Int) -> Void
+    let letGo: (Int) -> Void
+    let answerMeal: (ChatItem, String) -> Void
+}
+
+/// Every chat row. Equatable on what it shows, so a redraw of the Chat
+/// screen (a tab swipe, the bar, a keystroke) skips all of them unless a
+/// message, the glow or a kept mark actually changed.
+private struct ChatRowsList: View, Equatable {
+    let items: [ChatItem]
+    let highlighted: Int?
+    let keptTurns: Set<Int>
+    let mealBusy: Bool
+    let actions: ChatRowActions
+
+    static func == (a: ChatRowsList, b: ChatRowsList) -> Bool {
+        a.items == b.items && a.highlighted == b.highlighted && a.keptTurns == b.keptTurns && a.mealBusy == b.mealBusy
+    }
+
+    var body: some View {
+        ForEach(items) { item in
+            row(item).id(item.id)
+        }
+    }
+
+    /// One chat line, drawn by kind.
+    @ViewBuilder
+    private func row(_ item: ChatItem) -> some View {
+        #if DEBUG
+        let _ = PerfCount.bump("row")
+        #endif
+        switch item.kind {
+        case .user:
+            VStack(alignment: .trailing, spacing: 6) {
+                if !item.photos.isEmpty {
+                    BubblePhotos(photos: item.photos)
+                } else if item.photoCount > 0 {
+                    // Past photos aren't kept on the device: a chip says so.
+                    Label(PhotoLimits.chip(item.photoCount), systemImage: "photo.on.rectangle")
+                        .font(.footnote.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Theme.userBubble.opacity(0.6)))
+                }
+                if !item.text.isEmpty {
+                    Text(item.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.leading, 60)
+        case .jarvis:
+            if !item.text.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    // A notice opened here: the bubble itself glows softly.
+                    JarvisBubble(item: item, glowing: item.turnId != nil && item.turnId == highlighted, kept: keptTurns.contains(item.turnId ?? -1)) { actions.flag(item) }
+                        // Keep any finished message as a yellow dot, or let
+                        // a kept one go (Dylan, 2026-11-19).
+                        .contextMenu {
+                            if let turnId = item.turnId, item.finished {
+                                if keptTurns.contains(turnId) {
+                                    Button("Let go", systemImage: "bookmark.slash") { actions.letGo(turnId) }
+                                } else {
+                                    Button("Keep", systemImage: "bookmark") { actions.keep(turnId) }
+                                }
+                            }
+                            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.text }
+                        }
+                    // "Is this the meal I already logged?"
+                    if item.mealKey != nil && item.mealAnswer == nil && item.finished {
+                        HStack(spacing: 8) {
+                            ForEach(item.mealChoices, id: \.self) { choice in
+                                Button(MealChoice.label(choice)) {
+                                    actions.answerMeal(item, choice)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(Theme.glacier)
+                                .frame(minHeight: 44)
+                                .disabled(mealBusy)
+                            }
+                        }
+                    } else if let answer = item.mealAnswer {
+                        Text(MealChoice.label(answer))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.frostDim)
+                    }
+                }
+                .padding(.trailing, 40)
+            }
+        case .approval:
+            // Waiting ones are pinned above the Ask box; settled ones are a
+            // single line here, where they happened.
+            if let line = item.outcome {
+                ApprovalLine(text: line)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+            }
+        }
     }
 }

@@ -10,7 +10,7 @@ enum PerfCount {
     static func bump(_ name: String) {
         let n = (counts[name] ?? 0) + 1
         counts[name] = n
-        if n % 50 == 0 { log.notice("\(name, privacy: .public) \(n)") }
+        if n % 10 == 0 { log.notice("\(name, privacy: .public) \(n)") }
     }
 }
 #endif

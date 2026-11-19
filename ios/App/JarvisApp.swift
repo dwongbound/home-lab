@@ -191,6 +191,12 @@ struct RootView: View {
                 await app.openReport(id: args[at + 1])
                 return
             }
+            // `-onTalkQuiet` opens on Talk without calling Jarvis (layout checks).
+            if args.contains("-onTalkQuiet") {
+                app.talk.started = true
+                app.tab = .talk
+                return
+            }
             if args.contains("-onHome") {
                 app.tab = .today
                 // `-openNoticesSheet` opens the drawer (simulator checks).
