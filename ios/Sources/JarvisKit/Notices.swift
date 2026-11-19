@@ -72,10 +72,12 @@ public struct Notice: Decodable, Identifiable, Equatable, Sendable {
         reportId.flatMap { Reports.url(id: $0, base: base) }
     }
 
-    /// The words on the control that clears it: a reminder's says it's been
-    /// heard, since clearing one acknowledges the nag.
+    /// The words on the control that clears it: a reminder's "Done" (it's
+    /// been heard, so the nag stops), anything else "Dismiss". One word
+    /// each (Dylan, 2026-11-19: "buttons shouldnt be more than one or two
+    /// words"; this used to read "Got it, stop reminding me").
     public var clearLabel: String {
-        source == "reminder" ? "Got it, stop reminding me" : "Clear"
+        (source == "reminder" ? NoticeAction.done : .dismiss).label
     }
 
     /// True when the row carries Approve and Deny.
@@ -226,4 +228,52 @@ public struct KeepResult: Equatable, Sendable {
         let ok = (200..<300).contains(status) && (body?.ok ?? true)
         return KeepResult(ok: ok, message: body?.message ?? (ok ? "" : "Jarvis answered \(status)"), notice: body?.notice)
     }
+}
+
+/// What can be done to a notice, in one or two words each, so every button
+/// and swipe that shows one reads the same.
+public enum NoticeAction: Equatable, Sendable, CaseIterable {
+    case open, dismiss, done, approve, deny, unkeep, seeInChat
+
+    public var label: String {
+        switch self {
+        case .open: return "Open"
+        case .dismiss: return "Dismiss"
+        case .done: return "Done"
+        case .approve: return "Approve"
+        case .deny: return "Deny"
+        case .unkeep: return "Unkeep"
+        case .seeInChat: return "See in chat"
+        }
+    }
+
+    /// The buttons along the bottom of the orb's note card, secondary first
+    /// and the main one last (it sits on the right). `canOpen`: the note
+    /// has a message to open; `canDismiss`: it can be cleared from here.
+    public static func card(kind: OrbitItem.Kind, notice: Notice?, canOpen: Bool, canDismiss: Bool) -> [NoticeAction] {
+        if notice?.isApproval == true { return [.deny, .approve] }
+        switch kind {
+        case .task:
+            return canOpen ? [.open] : []
+        case .kept:
+            return [.unkeep] + (canOpen ? [.open] : [])
+        case .notice:
+            let clear: NoticeAction = notice?.source == "reminder" ? .done : .dismiss
+            if notice?.source == "reminder" {
+                // A reminder's main act is "Done" (stop the nag).
+                return (canOpen ? [.open] : []) + (canDismiss ? [clear] : [])
+            }
+            return (canDismiss ? [clear] : []) + (canOpen ? [.open] : [])
+        }
+    }
+}
+
+/// Notices cleared here before the server has confirmed it: hidden at once,
+/// shown again if the server didn't take it (the drawer's swipe, Dismiss).
+public struct PendingClears: Equatable, Sendable {
+    public private(set) var ids: Set<String> = []
+    public init() {}
+    public mutating func hide(_ some: [String]) { ids.formUnion(some) }
+    public mutating func restore(_ some: [String]) { ids.subtract(some) }
+    public func visible(_ notices: [Notice]) -> [Notice] { notices.filter { !ids.contains($0.id) } }
 }

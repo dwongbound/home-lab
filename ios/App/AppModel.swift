@@ -51,7 +51,9 @@ final class AppModel: ObservableObject {
     @Published var focusTurn: Int?
     /// Notices cleared here but not yet gone from the snapshot: hidden at
     /// once so the list doesn't flicker back before the next poll.
-    @Published private(set) var clearedNotices: Set<String> = []
+    @Published private(set) var clearedNotices = PendingClears()
+    /// Said in the drawer when a dismiss didn't go through.
+    @Published var noticeProblem: String?
 
     /// The Settings switch "Kiosk when idle on charge", on by default.
     static let idleKioskKey = "kiosk.padIdle"
@@ -80,7 +82,7 @@ final class AppModel: ObservableObject {
     /// Everything from the snapshot: unread and kept, with this device's own
     /// keeps and let-gos laid over until the next snapshot catches up.
     private var allNotices: [Notice] {
-        var list = settled.showing(Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.contains($0.id) }))
+        var list = settled.showing(Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.ids.contains($0.id) }))
         list.removeAll { $0.kept && letGoHere.contains($0.id) }
         for notice in keptNoticesHere where !list.contains(where: { $0.id == notice.id }) { list.append(notice) }
         return list
@@ -172,7 +174,7 @@ final class AppModel: ObservableObject {
         chat.showSettled(id, line: line)
         talk.showSettled(id, line: line)
         let noticeIds = (today.snapshot?.notices ?? []).filter { $0.approvalId == id }.map(\.id)
-        if !noticeIds.isEmpty { clearedNotices.formUnion(noticeIds) }
+        if !noticeIds.isEmpty { clearedNotices.hide(Array(noticeIds)) }
     }
 
     /// Approve or Deny from any screen. The card settles at once; if Jarvis
@@ -215,23 +217,14 @@ final class AppModel: ObservableObject {
     /// they fade here at once and come back if the server didn't hear. The
     /// snapshot is fetched again right after, so this device is current.
     func clearNotices(_ ids: [String]) async {
-        clearedNotices.formUnion(ids)
+        clearedNotices.hide(ids)
         do {
             try await client.clearNotices(ids: ids)
             await today.load(app: self)
         } catch {
-            clearedNotices.subtract(ids)
+            clearedNotices.restore(ids)
+            noticeProblem = "Couldn't reach Jarvis, so that notice is back. Try again in a moment."
         }
-    }
-
-    /// Words to put in the Chat box without sending them ("Build it with
-    /// Jarvis"); the Chat tab takes them and clears this.
-    @Published var chatPrefill: String?
-
-    /// Opens Chat with `words` ready in the box, not sent.
-    func startChat(with words: String) {
-        chatPrefill = words
-        tab = .chat
     }
 
     /// The report showing in the app's reader, if any.
@@ -357,11 +350,11 @@ final class AppModel: ObservableObject {
     /// Clears every notice.
     func clearAllNotices() async {
         let ids = notices.map(\.id)
-        clearedNotices.formUnion(ids)
+        clearedNotices.hide(ids)
         do {
             try await client.clearAllNotices()
         } catch {
-            clearedNotices.subtract(ids)
+            clearedNotices.restore(ids)
         }
     }
 

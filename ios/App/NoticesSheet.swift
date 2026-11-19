@@ -17,11 +17,21 @@ struct NoticesSheet: View {
 
     var body: some View {
         NavigationStack {
-            TabView(selection: $page) {
-                noticesPage.tag(0)
-                runningPage.tag(1)
+            // Not a swiping pager any more: a notice row's sideways swipe is
+            // its own (Dismiss, See in chat), so the pages change by the
+            // switch at the top, or by a sideways swipe on the Running page
+            // or an empty Notices page (Dylan, 2026-11-19).
+            ZStack {
+                if page == 0 {
+                    noticesPage
+                        .transition(.move(edge: .leading))
+                } else {
+                    runningPage
+                        .transition(.move(edge: .trailing))
+                        .simultaneousGesture(pageSwipe(to: 0, when: { $0 > 60 }))
+                }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .animation(.snappy(duration: 0.3), value: page)
             // The lists start just under the switch, not a band below it.
             .contentMargins(.top, 6, for: .scrollContent)
             .listSectionSpacing(.compact)
@@ -46,6 +56,11 @@ struct NoticesSheet: View {
                     Button("Close") { dismiss() }
                 }
             }
+        }
+        .alert("Notice", isPresented: Binding(get: { app.noticeProblem != nil }, set: { if !$0 { app.noticeProblem = nil } })) {
+            Button("Close", role: .cancel) {}
+        } message: {
+            Text(app.noticeProblem ?? "")
         }
         .presentationDetents([.medium, .large])
         .presentationBackground(.ultraThinMaterial)
@@ -133,14 +148,37 @@ struct NoticesSheet: View {
         Group {
                 if app.notices.isEmpty {
                     ContentUnavailableView("All caught up", systemImage: "checkmark.circle", description: Text("Nothing new from Jarvis."))
+                        .contentShape(Rectangle())
+                        .gesture(pageSwipe(to: 1, when: { $0 < -60 }))
                 } else {
                     List {
                         ForEach(app.notices) { notice in
                             row(notice)
                                 .listRowBackground(Color.white.opacity(0.06))
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    if !notice.isApproval {
-                                        Button(notice.clearLabel, role: .destructive) { Task { await app.clearNotices([notice.id]) } }
+                                // The usual Apple swipe: all the way dismisses;
+                                // part way shows Dismiss and See in chat.
+                                // A kept one offers Unkeep, never on a full
+                                // swipe; an approval waiting on him offers
+                                // nothing that could look like an answer.
+                                .swipeActions(edge: .trailing, allowsFullSwipe: !notice.kept && !notice.isApproval) {
+                                    if notice.kept {
+                                        Button(NoticeAction.unkeep.label, systemImage: "bookmark.slash") {
+                                            haptic()
+                                            Task { await app.letGo(notice) }
+                                        }
+                                        .tint(OrbView.keptYellow(onLight: false))
+                                    } else if !notice.isApproval {
+                                        Button(notice.clearLabel, systemImage: "xmark", role: .destructive) {
+                                            haptic()
+                                            Task { await app.clearNotices([notice.id]) }
+                                        }
+                                    }
+                                    if notice.turnId != nil {
+                                        Button(NoticeAction.seeInChat.label, systemImage: "bubble.left") {
+                                            Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) && !notice.kept ? notice : nil) }
+                                            dismiss()
+                                        }
+                                        .tint(Theme.glacier)
                                     }
                                 }
                         }
@@ -208,6 +246,18 @@ struct NoticesSheet: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
+    }
+
+    /// A sideways swipe that changes page, for the places a row doesn't own.
+    private func pageSwipe(to target: Int, when: @escaping (CGFloat) -> Bool) -> some Gesture {
+        DragGesture(minimumDistance: 30).onEnded { drag in
+            guard abs(drag.translation.width) > abs(drag.translation.height), when(drag.translation.width) else { return }
+            page = target
+        }
+    }
+
+    private func haptic() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     /// Answers the approval, then clears its notice everywhere.
