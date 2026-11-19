@@ -59,13 +59,19 @@ public struct Report: Decodable, Identifiable, Equatable, Sendable {
     public let expires: String?
     public let kept: Bool
     public let bytes: Int
+    /// How long this one is kept: 14, 30 or 90 days, nil when forever. Only
+    /// meaningful when `keepDaysKnown` (a newer server sends the field).
+    public let keepDays: Int?
+    /// True when the server sent keepDays at all (null included).
+    public let keepDaysKnown: Bool
 
-    public init(id: String, title: String, summary: String = "", created: String, expires: String?, kept: Bool, bytes: Int) {
+    public init(id: String, title: String, summary: String = "", created: String, expires: String?, kept: Bool, bytes: Int, keepDays: Int? = nil, keepDaysKnown: Bool = false) {
         self.id = id; self.title = title; self.summary = summary; self.created = created
         self.expires = kept ? nil : expires; self.kept = kept; self.bytes = bytes
+        self.keepDays = keepDays; self.keepDaysKnown = keepDaysKnown
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, summary, created, expires, kept, bytes }
+    enum CodingKeys: String, CodingKey { case id, title, summary, created, expires, kept, bytes, keepDays }
 
     /// Reads one leniently: only the id and title are needed.
     public init(from decoder: Decoder) throws {
@@ -79,8 +85,21 @@ public struct Report: Decodable, Identifiable, Equatable, Sendable {
             created: ((try? c.decodeIfPresent(String.self, forKey: .created)) ?? nil) ?? "",
             expires: (try? c.decodeIfPresent(String.self, forKey: .expires)) ?? nil,
             kept: kept,
-            bytes: ((try? c.decodeIfPresent(Int.self, forKey: .bytes)) ?? nil) ?? 0
+            bytes: ((try? c.decodeIfPresent(Int.self, forKey: .bytes)) ?? nil) ?? 0,
+            keepDays: (try? c.decodeIfPresent(Int.self, forKey: .keepDays)) ?? nil,
+            keepDaysKnown: c.contains(.keepDays)
         )
+    }
+
+    /// A copy kept for `retention` (the end date follows from when it was made).
+    public func retained(_ retention: Retention, now: Date = Date()) -> Report {
+        switch retention {
+        case .forever:
+            return Report(id: id, title: title, summary: summary, created: created, expires: nil, kept: true, bytes: bytes, keepDays: nil, keepDaysKnown: true)
+        case .days(let n):
+            let end = (Reports.date(created) ?? now).addingTimeInterval(Double(n) * 86_400)
+            return Report(id: id, title: title, summary: summary, created: created, expires: ISO8601DateFormatter().string(from: end), kept: false, bytes: bytes, keepDays: n, keepDaysKnown: true)
+        }
     }
 
     /// A copy with Keep switched (a kept report has no end date).
@@ -186,4 +205,91 @@ public enum ReportFetch: Equatable, Sendable {
         default: return .failed("Jarvis isn’t answering, so this report can’t be shown right now.")
         }
     }
+}
+
+/// How long a report is kept (Dylan, 2026-11-19: "it should just say keep 2
+/// weeks which should be the default and when you tap that it can allow you
+/// to change the retention").
+public enum Retention: Equatable, Hashable, Sendable {
+    case days(Int)
+    case forever
+
+    /// The four choices, in order.
+    public static let choices: [Retention] = [.days(14), .days(30), .days(90), .forever]
+
+    /// "Keep 2 weeks", "Keep 1 month", "Keep 3 months", "Keep forever".
+    public var label: String {
+        switch self {
+        case .forever: return "Keep forever"
+        case .days(14): return "Keep 2 weeks"
+        case .days(30): return "Keep 1 month"
+        case .days(90): return "Keep 3 months"
+        case .days(let n): return n % 7 == 0 ? "Keep \(n / 7) weeks" : "Keep \(n) days"
+        }
+    }
+
+    /// The body for POST /api/jarvis/reports: days for a span, keep true
+    /// for forever.
+    public func body(id: String) -> [String: Any] {
+        switch self {
+        case .forever: return ["op": "keep", "id": id, "keep": true]
+        case .days(let n): return ["op": "keep", "id": id, "days": n]
+        }
+    }
+}
+
+extension Reports {
+    /// The retention in force: forever when kept; the report's own days when
+    /// the server says; otherwise the shelf's default (an older server).
+    public static func retention(_ report: Report, defaultDays: Int) -> Retention {
+        if report.kept { return .forever }
+        if report.keepDaysKnown { return report.keepDays.map { .days($0) } ?? .forever }
+        return .days(defaultDays)
+    }
+
+    /// The quiet line under the choices: "Deletes Dec 3", "Deletes today",
+    /// or "Never deleted".
+    public static func deleteLine(_ report: Report, retention: Retention, now: Date = Date()) -> String {
+        if retention == .forever { return "Never deleted" }
+        if report.expires == nil { return "Never deleted" }
+        return endText(report, now: now)
+    }
+
+    /// The storage line, short enough for one line: "30-day rule · 13 KB of 200 MB".
+    public static func shortRulesText(_ shelf: ReportShelf) -> String {
+        var line = "Kept \(Retention.days(shelf.keepDays).label.dropFirst(5)) unless changed"
+        if !shelf.reports.isEmpty {
+            line += " · \(sizeText(shelf.totalBytes))"
+            if shelf.maxBytes > 0 { line += " of \(sizeText(shelf.maxBytes))" }
+        }
+        return line
+    }
+
+    /// A row's one short line: "Nov 18 · 240 KB" (when made, and its size).
+    public static func metaLine(_ report: Report) -> String {
+        guard let made = date(report.created) else { return sizeText(report.bytes) }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US")
+        format.timeZone = timeZone
+        format.dateFormat = "MMM d"
+        return "\(format.string(from: made)) · \(sizeText(report.bytes))"
+    }
+
+    /// A file name for sharing: the title made safe, with .html.
+    public static func shareFileName(_ title: String) -> String {
+        let bad = CharacterSet(charactersIn: "/\\:?%*|\"<>")
+        let cleaned = title.components(separatedBy: bad).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        return (cleaned.isEmpty ? "Report" : String(cleaned.prefix(80))) + ".html"
+    }
+}
+
+/// What a retention change said back.
+public enum RetentionReply: Equatable, Sendable {
+    case saved
+    /// The server can't take spans yet (a 400 for days on an older server).
+    case notYet
+    case failed(String)
+
+    /// The words for the screen when it didn't save.
+    public static let notYetWords = "Jarvis can't change that yet. Try again in a few minutes."
 }

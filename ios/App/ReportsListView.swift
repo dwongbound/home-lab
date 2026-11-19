@@ -13,6 +13,8 @@ struct ReportsListView: View {
     @State private var deleting: Report?
     /// The report being read, in a reader over this list.
     @State private var reading: ReportPage?
+    /// The file in the share sheet.
+    @State private var sharing: SharedFile?
 
     var body: some View {
         NavigationStack {
@@ -21,7 +23,9 @@ struct ReportsListView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if let shelf = app.reportShelf {
-                            Text(Reports.rulesText(shelf))
+                            Text(Reports.shortRulesText(shelf))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                                 .font(.footnote)
                                 .foregroundStyle(Theme.frostDim)
                             if shelf.reports.isEmpty {
@@ -30,7 +34,7 @@ struct ReportsListView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.top, 40)
                             }
-                            ForEach(shelf.reports) { report in
+                            ForEach(Self.withFixture(shelf.reports)) { report in
                                 row(report)
                             }
                         } else {
@@ -72,49 +76,97 @@ struct ReportsListView: View {
         .sheet(item: $reading) { page in
             ReportReader(page: page).environmentObject(app)
         }
+        .sheet(item: $sharing) { file in
+            ShareSheet(url: file.url)
+        }
+        .alert("Report", isPresented: Binding(get: { app.reportMessage != nil && reading == nil }, set: { if !$0 { app.reportMessage = nil } })) {
+            Button("Close", role: .cancel) {}
+        } message: {
+            Text(app.reportMessage ?? "")
+        }
         .preferredColorScheme(.dark)
         .fontDesign(.rounded)
     }
 
-    /// One report: title, a line of summary, size and when it's deleted.
+    /// One report: its title and summary (two lines each at most), a short
+    /// "Nov 18 · 240 KB" line, the retention button and the "…" menu. At
+    /// large text sizes the buttons drop under the words, so nothing is
+    /// pushed off the row.
     private func row(_ report: Report) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                reading = ReportPage(id: report.id, title: report.title)
-            } label: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(report.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.frost)
-                        .lineLimit(2)
-                    if !report.summary.isEmpty {
-                        Text(report.summary)
-                            .font(.caption)
-                            .foregroundStyle(Theme.frostDim)
-                            .lineLimit(2)
-                    }
-                    Text("\(Reports.sizeText(report.bytes)) · \(Reports.endText(report))")
-                        .font(.caption2)
-                        .foregroundStyle(report.kept ? Theme.glacier : Theme.frostDim)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                words(report)
+                RetentionButton(report: report).fixedSize()
+                menu(report)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                words(report)
+                HStack {
+                    RetentionButton(report: report)
+                    Spacer()
+                    menu(report)
                 }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .multilineTextAlignment(.leading)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            Menu {
-                Toggle("Keep", isOn: Binding(get: { report.kept }, set: { keep in Task { await app.keepReport(report.id, keep: keep) } }))
-                Button("Delete…", role: .destructive) { deleting = report }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Theme.frostDim)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Keep or delete \(report.title)")
         }
         .padding(12)
         .glassPanel()
+    }
+
+    /// The tappable words: title, summary, and the date and size.
+    private func words(_ report: Report) -> some View {
+        Button {
+            reading = ReportPage(id: report.id, title: report.title)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(report.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.frost)
+                    .lineLimit(2)
+                if !report.summary.isEmpty {
+                    Text(report.summary)
+                        .font(.caption)
+                        .foregroundStyle(Theme.frostDim)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                }
+                Text(Reports.metaLine(report))
+                    .font(.caption2)
+                    .foregroundStyle(Theme.frostDim)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .multilineTextAlignment(.leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Share and Delete.
+    private func menu(_ report: Report) -> some View {
+        Menu {
+            Button("Share", systemImage: "square.and.arrow.up") {
+                Task { if let url = await app.reportFile(id: report.id, title: report.title) { sharing = SharedFile(url: url) } }
+            }
+            Button("Delete…", role: .destructive) { deleting = report }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Theme.frostDim)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Share or delete \(report.title)")
+    }
+
+    /// `-longReport` adds a report with a very long title and summary
+    /// (simulator layout checks); otherwise the list as it is.
+    private static func withFixture(_ reports: [Report]) -> [Report] {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-longReport") {
+            let long = Report(id: "fedcba9876543210", title: "A very long report title that goes on and on about the weekly grocery budget and meal plan", summary: String(repeating: "This summary is far longer than it should be and keeps going. ", count: 8), created: "2026-11-18T20:00:00Z", expires: "2026-12-02T20:00:00Z", kept: false, bytes: 240_000)
+            return [long] + reports
+        }
+        #endif
+        return reports
     }
 }

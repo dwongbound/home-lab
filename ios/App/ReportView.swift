@@ -23,6 +23,8 @@ struct ReportReader: View {
     @State var page: ReportPage
     @State private var fetch: ReportFetch?
     @State private var confirmingDelete = false
+    /// The file in the share sheet.
+    @State private var sharing: SharedFile?
 
     var body: some View {
         NavigationStack {
@@ -55,15 +57,19 @@ struct ReportReader: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    // Share: the report as an .html file (Files, Messages, AirDrop).
+                    Button {
+                        Task { if let url = await app.reportFile(id: page.id, title: title) { sharing = SharedFile(url: url) } }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share")
+                    .disabled(fetch == .gone)
+                }
                 ToolbarItemGroup(placement: .bottomBar) {
                     if let report {
-                        Toggle("Keep", isOn: Binding(get: { report.kept }, set: { keep in Task { await app.keepReport(report.id, keep: keep) } }))
-                            .toggleStyle(.switch)
-                            .fixedSize()
-                        Text(Reports.endText(report))
-                            .font(.caption)
-                            .foregroundStyle(Theme.frostDim)
-                            .lineLimit(1)
+                        RetentionButton(report: report)
                     }
                     Spacer()
                     if fetch != .gone {
@@ -82,6 +88,14 @@ struct ReportReader: View {
             } message: {
                 Text("It's gone for good, here and on the PC.")
             }
+        }
+        .sheet(item: $sharing) { file in
+            ShareSheet(url: file.url)
+        }
+        .alert("Report", isPresented: Binding(get: { app.reportMessage != nil }, set: { if !$0 { app.reportMessage = nil } })) {
+            Button("Close", role: .cancel) {}
+        } message: {
+            Text(app.reportMessage ?? "")
         }
         .task(id: page.id) { await load() }
         .preferredColorScheme(.dark)

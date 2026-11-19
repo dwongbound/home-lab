@@ -113,3 +113,52 @@ final class TVReportsCardTests: XCTestCase {
         XCTAssertFalse(TVBoard.cards(without, guest: false).contains(.reports))
     }
 }
+
+final class RetentionTests: XCTestCase {
+    private let now = ISO8601DateFormatter().date(from: "2026-11-19T10:00:00Z")!
+
+    func testLabels() {
+        XCTAssertEqual(Retention.choices.map(\.label), ["Keep 2 weeks", "Keep 1 month", "Keep 3 months", "Keep forever"])
+    }
+
+    func testTheRetentionInForce() throws {
+        let newer = try JSONDecoder().decode(Report.self, from: Data(#"{"id":"0123456789abcdef","title":"x","created":"2026-11-19T08:00:00Z","expires":"2026-12-19T08:00:00Z","kept":false,"keepDays":30}"#.utf8))
+        XCTAssertEqual(Reports.retention(newer, defaultDays: 14), .days(30))
+        let forever = try JSONDecoder().decode(Report.self, from: Data(#"{"id":"0123456789abcdef","title":"x","created":"2026-11-19T08:00:00Z","expires":null,"kept":true,"keepDays":null}"#.utf8))
+        XCTAssertEqual(Reports.retention(forever, defaultDays: 14), .forever)
+        XCTAssertEqual(Reports.deleteLine(forever, retention: .forever, now: now), "Never deleted")
+        // An older server: no keepDays field; the shelf's default applies.
+        let older = try JSONDecoder().decode(Report.self, from: Data(#"{"id":"0123456789abcdef","title":"x","created":"2026-11-19T08:00:00Z","expires":"2026-12-19T08:00:00Z","kept":false}"#.utf8))
+        XCTAssertFalse(older.keepDaysKnown)
+        XCTAssertEqual(Reports.retention(older, defaultDays: 30), .days(30))
+        XCTAssertEqual(Reports.deleteLine(older, retention: .days(30), now: now), "Deletes Dec 19")
+    }
+
+    func testRetainedCopies() {
+        let r = Report(id: "0123456789abcdef", title: "x", created: "2026-11-19T08:00:00Z", expires: nil, kept: true, bytes: 1)
+        let two = r.retained(.days(14))
+        XCTAssertEqual(Reports.retention(two, defaultDays: 30), .days(14))
+        XCTAssertEqual(Reports.deleteLine(two, retention: .days(14), now: now), "Deletes Dec 3")
+        XCTAssertEqual(Reports.retention(r.retained(.forever), defaultDays: 14), .forever)
+    }
+
+    func testBodies() {
+        XCTAssertEqual(Retention.days(30).body(id: "a") as NSDictionary, ["op": "keep", "id": "a", "days": 30] as NSDictionary)
+        XCTAssertEqual(Retention.forever.body(id: "a") as NSDictionary, ["op": "keep", "id": "a", "keep": true] as NSDictionary)
+    }
+
+    func testShortLineAndFileName() {
+        let shelf = ReportShelf(reports: [Report(id: "0123456789abcdef", title: "x", created: "", expires: nil, kept: false, bytes: 1)], totalBytes: 13_000, keepDays: 14, maxBytes: 200_000_000)
+        XCTAssertEqual(Reports.shortRulesText(shelf), "Kept 2 weeks unless changed · 13 KB of 200 MB")
+        XCTAssertEqual(Reports.shareFileName("Your meals: the last 7 days"), "Your meals  the last 7 days.html")
+        XCTAssertEqual(Reports.shareFileName("///"), "Report.html")
+    }
+}
+
+final class ReportMetaTests: XCTestCase {
+    func testTheShortLine() {
+        let r = Report(id: "0123456789abcdef", title: "x", created: "2026-11-18T20:00:00Z", expires: nil, kept: false, bytes: 240_000)
+        XCTAssertEqual(Reports.metaLine(r), "Nov 18 · 240 KB")
+        XCTAssertEqual(Reports.metaLine(Report(id: "0123456789abcdef", title: "x", created: "", expires: nil, kept: false, bytes: 900)), "900 bytes")
+    }
+}

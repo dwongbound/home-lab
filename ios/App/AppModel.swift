@@ -240,7 +240,9 @@ final class AppModel: ObservableObject {
     /// as a labelled, blocking wait.
     @Published private(set) var reportBusy: String?
     /// Keep switched here, shown at once until the snapshot catches up.
-    @Published private var keptHere: [String: Bool] = [:]
+    @Published private var retentionHere: [String: Retention] = [:]
+    /// Something to say about a report change that didn't happen.
+    @Published var reportMessage: String?
     /// Reports deleted here, hidden at once.
     @Published private var deletedHere: Set<String> = []
 
@@ -250,7 +252,7 @@ final class AppModel: ObservableObject {
         guard var shelf = today.snapshot?.reports else { return nil }
         shelf.reports = shelf.reports
             .filter { !deletedHere.contains($0.id) }
-            .map { report in keptHere[report.id].map { report.keeping($0, days: shelf.keepDays) } ?? report }
+            .map { report in retentionHere[report.id].map { report.retained($0) } ?? report }
         return shelf
     }
 
@@ -268,16 +270,46 @@ final class AppModel: ObservableObject {
         if let notice { await clearNotices([notice.id]) }
     }
 
-    /// Keep a report past its days, or let it go again.
-    func keepReport(_ id: String, keep: Bool) async {
-        reportBusy = keep ? "Keeping the report…" : "Letting the report go…"
+    /// How long a report is kept: 2 weeks, 1 month, 3 months or forever.
+    /// Saves at once; an older server that can't take spans says so.
+    func setRetention(_ id: String, _ retention: Retention) async {
+        reportBusy = "Saving…"
         defer { reportBusy = nil }
         do {
-            try await client.keepReport(id: id, keep: keep)
-            keptHere[id] = keep
-            await today.load(app: self)
+            switch try await client.setRetention(id: id, retention) {
+            case .saved:
+                retentionHere[id] = retention
+                await today.load(app: self)
+            case .notYet:
+                reportMessage = RetentionReply.notYetWords
+            case .failed(let words):
+                reportMessage = words
+            }
         } catch {
             noteReach(error)
+            reportMessage = error.localizedDescription
+        }
+    }
+
+    /// The report's page as a .html file named from its title, ready for
+    /// the share sheet (Files, Messages, Mail, AirDrop); nil when it can't
+    /// be fetched.
+    func reportFile(id: String, title: String) async -> URL? {
+        reportBusy = "Getting the report ready…"
+        defer { reportBusy = nil }
+        guard case .page(let html) = await client.report(id: id) else {
+            reportMessage = "The report couldn't be fetched to share. Try again in a moment."
+            return nil
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("share-\(id)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent(Reports.shareFileName(title))
+        do {
+            try Data(html.utf8).write(to: file, options: .atomic)
+            return file
+        } catch {
+            reportMessage = error.localizedDescription
+            return nil
         }
     }
 

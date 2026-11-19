@@ -273,6 +273,23 @@ public struct JarvisClient: Sendable {
     }
 
     /// Keep a report past its days, or let it go again.
+    /// Sets how long a report is kept. A 400 for a span means the server
+    /// doesn't take spans yet.
+    public func setRetention(id: String, _ retention: Retention) async throws -> RetentionReply {
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request("api/jarvis/reports", method: "POST", json: retention.body(id: id)))
+        } catch {
+            throw JarvisError.unreachable
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if (200..<300).contains(status) { return .saved }
+        if status == 400, case .days = retention { return .notYet }
+        struct Body: Decodable { let message: String? }
+        let message = (try? JSONDecoder().decode(Body.self, from: data))?.message
+        return .failed(message ?? "Jarvis answered \(status)")
+    }
+
     public func keepReport(id: String, keep: Bool) async throws {
         try await post("api/jarvis/reports", ["op": "keep", "id": id, "keep": keep])
     }
