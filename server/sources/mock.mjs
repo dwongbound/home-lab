@@ -684,6 +684,11 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: true, message: 'Keeping it 2 weeks' }
     },
 
+    /** A pretend draft of a playbook from a few words. */
+    async draftPlaybook(text) {
+      return { ok: true, playbook: sampleDraft(text) }
+    },
+
     /** Saves, deletes or pretends to run one playbook, in memory. */
     async changePlaybook(change) {
       if (change?.op === 'save') {
@@ -710,6 +715,31 @@ export function createMockSource({ now = () => new Date() } = {}) {
       playbook.lastRun = { at: now().toISOString(), ok: true, detail, checks }
       return { ok: true, message: detail, checks }
     },
+  }
+}
+
+/**
+ * A pretend draft from a description: named after its first words, at a time
+ * when the words give one ("11 pm"), with one step for Jarvis holding the words.
+ */
+function sampleDraft(text) {
+  const words = text.split(/\s+/).slice(0, 4).join(' ')
+  let trigger = { type: 'manual' }
+  const clock = /\b(\d{1,2})\s*(am|pm)\b/i.exec(text)
+  if (clock) {
+    let hour = Number(clock[1]) % 12
+    if (clock[2].toLowerCase() === 'pm') hour += 12
+    trigger = { type: 'time', at: `${String(hour).padStart(2, '0')}:00`, days: [] }
+  }
+  const { madeBy: _madeBy, ...blank } = blankSample()
+  return {
+    ...blank,
+    name: words.charAt(0).toUpperCase() + words.slice(1),
+    enabled: true,
+    purpose: text.slice(0, 200),
+    trigger,
+    steps: [{ type: 'think', text, model: 'auto' }],
+    done: ['It did what I asked'],
   }
 }
 

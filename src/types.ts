@@ -584,6 +584,9 @@ export interface PlaybookBook { playbooks: Playbook[]; options: PlaybookOptions 
 /** Saving, deleting or running one playbook. */
 export type PlaybookChange = { op: 'save'; playbook: PlaybookDraft } | { op: 'delete'; id: string } | { op: 'run'; id: string }
 
+/** Jarvis's go at writing a playbook from a few plain words: the draft to look over (not saved), or why he couldn't. */
+export type PlaybookDraftResult = { ok: true; playbook: PlaybookDraft } | { ok: false; message: string }
+
 /** How a change went; a run also says how its done checklist came out. */
 export interface PlaybookResult extends ActionResult { checks?: PlaybookCheck[] }
 
@@ -663,6 +666,8 @@ export interface DataSource {
   playbooks(caller?: { login?: string }): Promise<PlaybookBook | null>
   /** Saves, deletes or runs one playbook. */
   changePlaybook(change: PlaybookChange, caller?: { login?: string }): Promise<PlaybookResult>
+  /** Has Jarvis write a playbook from a description. Nothing is saved. */
+  draftPlaybook(text: string, caller?: { login?: string }): Promise<PlaybookDraftResult>
   /** One report's HTML; `gone` when it was deleted or has expired. */
   reportHtml(id: string, caller?: { login?: string }): Promise<{ html: string | null; gone: boolean }>
   /** Keeps, lets go of, or deletes one report. */

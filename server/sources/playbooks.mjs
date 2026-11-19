@@ -225,6 +225,20 @@ export function fromJarvisPlaybook(raw) {
   return playbook
 }
 
+/**
+ * A playbook Jarvis drafted from a description (POST /playbooks/draft), as
+ * the editor's draft: no id, no author, no last run. Null when it isn't one.
+ */
+export function fromJarvisDraft(raw) {
+  if (raw === null || typeof raw !== 'object') return null
+  const playbook = fromJarvisPlaybook({ ...raw, id: 'draft' })
+  if (playbook === null) return null
+  delete playbook.id
+  delete playbook.madeBy
+  delete playbook.lastRun
+  return playbook
+}
+
 /** A run's done checklist from Jarvis, keeping only the well-formed items. */
 export function parseChecks(value) {
   if (!Array.isArray(value)) return []

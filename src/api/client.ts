@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, PlaybookBook, PlaybookChange, PlaybookResult, ReportChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
+import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, PlaybookBook, PlaybookChange, PlaybookDraftResult, PlaybookResult, ReportChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -343,6 +343,24 @@ export async function changePlaybook(change: PlaybookChange): Promise<PlaybookRe
       method: 'POST',
       headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
       body: JSON.stringify(change),
+    })
+    return await res.json()
+  } catch {
+    return { ok: false, message: 'The page couldn’t reach the server' }
+  }
+}
+
+/** Has Jarvis write a playbook from a few plain words. Never throws; nothing is saved. */
+export async function draftPlaybook(text: string): Promise<PlaybookDraftResult> {
+  if (IS_STATIC_BUILD) {
+    const source = await getStaticSource()
+    return source.draftPlaybook(text)
+  }
+  try {
+    const res = await fetch(PLAYBOOKS_KEY, {
+      method: 'POST',
+      headers: { 'x-home-lab': '1', 'content-type': 'application/json' },
+      body: JSON.stringify({ op: 'draft', text }),
     })
     return await res.json()
   } catch {
