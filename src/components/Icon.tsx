@@ -28,6 +28,10 @@ const PATHS = {
   sparkle: 'M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6z',
   // A lightning bolt: playbooks, things that run by themselves.
   bolt: 'M11 2.5 4.5 11.5H10L9 17.5l6.5-9H10z',
+  // Apple's share mark: a tray with an arrow going up out of it.
+  share: 'M10 12.5v-9M6.5 6.5 10 3l3.5 3.5M6.5 9H5a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1h-1.5',
+  // A bin: delete.
+  trash: 'M3.5 5.5h13M8 5.5V3.5h4v2M5.5 5.5l.7 10.6a1 1 0 0 0 1 .9h5.6a1 1 0 0 0 1-.9l.7-10.6M8.5 8.5v5.5M11.5 8.5v5.5',
   // Points down; turned up when a dropdown is open.
   chevron: 'M5.5 8 10 12.5 14.5 8',
 } as const

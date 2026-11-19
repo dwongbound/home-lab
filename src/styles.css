@@ -1156,6 +1156,9 @@ html[data-modal] { overflow: hidden; }
 .keep__block .spinner { gap: 8px; }
 .keep__block .spinner__ring { width: 16px; height: 16px; }
 .keep__error { color: #ffc2c8; font-size: 13px; }
+.share { display: inline-flex; align-items: center; gap: 8px; }
+.share__status { color: var(--frost-dim); font-size: 13px; white-space: nowrap; }
+.reports__controls .icon-btn, .report__keep .icon-btn { width: 44px; height: 44px; }
 /* Under an open report: keep time and Share at the left, Close at the right. */
 .report__actions { justify-content: space-between; align-items: center; }
 .report__keep { display: flex; align-items: center; gap: 8px; min-width: 0; }
