@@ -20,34 +20,42 @@ struct ReportsListView: View {
         NavigationStack {
             ZStack {
                 Theme.sky.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        if let shelf = app.reportShelf {
-                            Text(Reports.shortRulesText(shelf))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                                .font(.footnote)
-                                .foregroundStyle(Theme.frostDim)
+                // A system list, so each row also has the standard swipe
+                // actions and long-press menu (Delete, Share).
+                List {
+                    if let shelf = app.reportShelf {
+                        Section {
                             if shelf.reports.isEmpty {
                                 Text("None yet. Jarvis writes one when a long task ends.")
                                     .foregroundStyle(Theme.frostDim)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, 40)
+                                    .listRowBackground(Color.clear)
                             }
                             ForEach(Self.withFixture(shelf.reports)) { report in
                                 row(report)
+                                    .listRowBackground(Color.white.opacity(0.07))
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) { deleting = report } label: { Label("Delete", systemImage: "trash") }
+                                        Button { share(report) } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                                            .tint(Theme.glacier)
+                                    }
+                                    .contextMenu {
+                                        Button { share(report) } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                                        Button(role: .destructive) { deleting = report } label: { Label("Delete", systemImage: "trash") }
+                                    }
                             }
-                        } else {
-                            Text("Jarvis hasn't said which reports he has. Pull down to try again.")
-                                .foregroundStyle(Theme.frostDim)
-                                .frame(maxWidth: .infinity)
-                                .padding(.top, 40)
+                        } header: {
+                            Text(Reports.shortRulesText(shelf))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                                .textCase(nil)
                         }
+                    } else {
+                        Text("Jarvis hasn't said which reports he has. Pull down to try again.")
+                            .foregroundStyle(Theme.frostDim)
+                            .listRowBackground(Color.clear)
                     }
-                    .padding(16)
-                    .frame(maxWidth: 720)
-                    .frame(maxWidth: .infinity)
                 }
+                .scrollContentBackground(.hidden)
                 .refreshable { await app.today.load(app: app) }
                 // A Keep or Delete waiting on the PC: labelled and blocking.
                 if let busy = app.reportBusy, reading == nil {
@@ -92,29 +100,36 @@ struct ReportsListView: View {
     /// "Nov 18 · 240 KB · Deletes Dec 3" line, and Share and Delete icons.
     /// Tapping the words opens the reader, where its retention is set.
     private func row(_ report: Report) -> some View {
-        HStack(alignment: .top, spacing: 4) {
+        // The icons sit on the row's centre line, each in a 44 pt square,
+        // the standard symbols at one size: Share in the app's tint, Delete
+        // in the system red.
+        HStack(alignment: .center, spacing: 0) {
             words(report)
-            // Share and Delete as the standard icons; no picker here (the
-            // reader has the retention menu).
-            Button {
-                Task { if let url = await app.reportFile(id: report.id, title: report.title) { sharing = SharedFile(url: url) } }
-            } label: {
-                Image(systemName: "square.and.arrow.up").frame(width: 44, height: 44)
+            Button { share(report) } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .imageScale(.large)
+                    .offset(y: -1)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.glacier)
+            .buttonStyle(.borderless)
+            .tint(Theme.glacier)
             .accessibilityLabel("Share")
-            Button {
-                deleting = report
-            } label: {
-                Image(systemName: "trash").frame(width: 44, height: 44)
+            Button(role: .destructive) { deleting = report } label: {
+                Image(systemName: "trash")
+                    .imageScale(.large)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.rose)
+            .buttonStyle(.borderless)
             .accessibilityLabel("Delete")
         }
-        .padding(12)
-        .glassPanel()
+        .padding(.vertical, 2)
+    }
+
+    /// Fetches the report as a file and opens the share sheet.
+    private func share(_ report: Report) {
+        Task { if let url = await app.reportFile(id: report.id, title: report.title) { sharing = SharedFile(url: url) } }
     }
 
     /// The tappable words: title, summary, and the date and size.

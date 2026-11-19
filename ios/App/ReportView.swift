@@ -65,7 +65,7 @@ struct ReportReader: View {
                     Button {
                         Task { if let url = await app.reportFile(id: page.id, title: title) { sharing = SharedFile(url: url) } }
                     } label: {
-                        Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44)
+                        Image(systemName: "square.and.arrow.up").imageScale(.large)
                     }
                     .accessibilityLabel("Share")
                     .disabled(fetch == .gone)

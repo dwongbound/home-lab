@@ -18,15 +18,16 @@ public struct Macros: Decodable, Equatable, Sendable {
         self.calories = calories; self.protein = protein; self.fat = fat; self.carbs = carbs
     }
 
-    enum CodingKeys: String, CodingKey { case calories, protein, fat, carbs }
+    enum CodingKeys: String, CodingKey { case calories, protein, fat, carbs, fatGoal, carbsGoal }
 
     /// Each number read leniently: null, missing or not a number reads as nil.
+    /// A goals object may name fat and carbs as fatGoal and carbsGoal.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         calories = Diet.number(c, .calories)
         protein = Diet.number(c, .protein)
-        fat = Diet.number(c, .fat)
-        carbs = Diet.number(c, .carbs)
+        fat = Diet.number(c, .fat) ?? Diet.number(c, .fatGoal)
+        carbs = Diet.number(c, .carbs) ?? Diet.number(c, .carbsGoal)
     }
 }
 
@@ -118,13 +119,16 @@ public struct WeekDay: Decodable, Equatable, Sendable, Identifiable {
     /// Grams of protein eaten (nil when nothing was logged).
     public let protein: Double?
     public let proteinGoal: Double?
+    /// Fat and carb goals in grams, when Jarvis sends them.
+    public var fatGoal: Double? = nil
+    public var carbsGoal: Double? = nil
     public var id: String { date }
 
     public init(date: String, calories: Double?, goal: Double?, protein: Double? = nil, proteinGoal: Double? = nil) {
         self.date = date; self.calories = calories; self.goal = goal; self.protein = protein; self.proteinGoal = proteinGoal
     }
 
-    enum CodingKeys: String, CodingKey { case date, calories, goal, protein, proteinGoal }
+    enum CodingKeys: String, CodingKey { case date, calories, goal, protein, proteinGoal, fatGoal, carbsGoal }
 
     /// Reads leniently; only the date is needed.
     public init(from decoder: Decoder) throws {
@@ -134,6 +138,8 @@ public struct WeekDay: Decodable, Equatable, Sendable, Identifiable {
         goal = Diet.number(c, .goal)
         protein = Diet.number(c, .protein)
         proteinGoal = Diet.number(c, .proteinGoal)
+        fatGoal = Diet.number(c, .fatGoal)
+        carbsGoal = Diet.number(c, .carbsGoal)
     }
 
     /// The outer ring, calories, 0...1; nil (an empty track) when nothing was logged.
@@ -497,5 +503,25 @@ public enum MealPhotos {
     /// The cache key: "<id>-thumb" or "<id>-full".
     public static func cacheKey(id: String, thumb: Bool) -> String {
         "\(id)-\(thumb ? "thumb" : "full")"
+    }
+}
+
+/// Dylan's daily limits on a cut (2026-11-19): carbs 175 g and fat 55 g,
+/// used until Jarvis sends fatGoal and carbsGoal himself.
+public enum DietGoals {
+    public static let defaultCarbs = 175.0
+    public static let defaultFat = 55.0
+
+    /// The day's goals with fat and carbs filled in when Jarvis has none.
+    public static func effective(_ goals: Macros) -> Macros {
+        Macros(calories: goals.calories, protein: goals.protein, fat: goals.fat ?? defaultFat, carbs: goals.carbs ?? defaultCarbs)
+    }
+
+    /// For a limit (fat, carbs): "35 g left", or "12 g over" (over = true).
+    public static func limitLine(eaten: Double?, goal: Double?) -> (words: String, over: Bool)? {
+        guard let goal, goal > 0 else { return nil }
+        let used = eaten ?? 0
+        let gap = Int((goal - used).rounded())
+        return gap >= 0 ? ("\(gap) g left", false) : ("\(-gap) g over", true)
     }
 }

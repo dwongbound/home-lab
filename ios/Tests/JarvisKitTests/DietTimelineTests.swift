@@ -81,3 +81,25 @@ final class MealPhotosTests: XCTestCase {
         XCTAssertEqual(MealPhotos.cacheKey(id: "m42", thumb: true), "m42-thumb")
     }
 }
+
+final class DietGoalsTests: XCTestCase {
+    func testDefaultsUntilJarvisSendsThem() throws {
+        let old = try JSONDecoder().decode(Macros.self, from: Data(#"{"calories":1750,"protein":140,"fat":null,"carbs":null}"#.utf8))
+        let goals = DietGoals.effective(old)
+        XCTAssertEqual(goals.fat, 55)
+        XCTAssertEqual(goals.carbs, 175)
+        let new = try JSONDecoder().decode(Macros.self, from: Data(#"{"calories":1750,"protein":140,"fatGoal":50,"carbsGoal":160}"#.utf8))
+        XCTAssertEqual(DietGoals.effective(new).fat, 50)
+        XCTAssertEqual(DietGoals.effective(new).carbs, 160)
+        let week = try JSONDecoder().decode(WeekDay.self, from: Data(#"{"date":"2026-11-19","calories":900,"goal":1750,"fatGoal":55,"carbsGoal":175}"#.utf8))
+        XCTAssertEqual(week.carbsGoal, 175)
+    }
+
+    func testLimits() {
+        XCTAssertEqual(DietGoals.limitLine(eaten: 120, goal: 175)?.words, "55 g left")
+        XCTAssertEqual(DietGoals.limitLine(eaten: 67, goal: 55)?.words, "12 g over")
+        XCTAssertEqual(DietGoals.limitLine(eaten: 67, goal: 55)?.over, true)
+        XCTAssertEqual(DietGoals.limitLine(eaten: nil, goal: 55)?.words, "55 g left")
+        XCTAssertNil(DietGoals.limitLine(eaten: 10, goal: nil))
+    }
+}

@@ -230,24 +230,29 @@ struct DietView: View {
     /// The day in view against its goals; no bar where there's no goal.
     private var totals: some View {
         let day = model.day(model.dayInView)
-        let goals = day?.goals ?? Macros()
+        // Fat and carbs are limits on a cut: Jarvis's goals, else 55 g and 175 g.
+        let goals = DietGoals.effective(day?.goals ?? Macros())
         let sums = day?.totals ?? Macros()
         return HStack(spacing: 12) {
             total("Calories", sums.calories, goal: goals.calories, unit: "", tint: Theme.moss)
             total("Protein", sums.protein, goal: goals.protein, unit: "g", tint: Theme.glacier)
-            total("Fat", sums.fat, goal: goals.fat, unit: "g", tint: Theme.ember)
-            total("Carbs", sums.carbs, goal: goals.carbs, unit: "g", tint: Theme.rose)
+            total("Fat", sums.fat, goal: goals.fat, unit: "g", tint: Theme.glacier.opacity(0.7), limit: true)
+            total("Carbs", sums.carbs, goal: goals.carbs, unit: "g", tint: Theme.moss.opacity(0.8), limit: true)
         }
         .padding(12)
         .glassPanel()
     }
 
     /// One total: the number over its goal, and a thin bar (ember when over).
-    private func total(_ name: String, _ value: Double?, goal: Double?, unit: String, tint: Color) -> some View {
+    private func total(_ name: String, _ value: Double?, goal: Double?, unit: String, tint: Color, limit: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(name).font(.caption2.weight(.semibold)).foregroundStyle(Theme.frostDim)
             Text(Diet.whole(value ?? 0) + unit).font(.headline).foregroundStyle(Theme.frost).lineLimit(1).minimumScaleFactor(0.7)
             Text(goal.map { "of \(Diet.whole($0))\(unit)" } ?? "no goal").font(.caption2).foregroundStyle(Theme.frostDim).lineLimit(1)
+            // A limit (fat, carbs) says what's left, or how far over in orange.
+            if limit, let line = DietGoals.limitLine(eaten: value, goal: goal) {
+                Text(line.words).font(.caption2.weight(.semibold)).foregroundStyle(line.over ? Theme.ember : Theme.frostDim).lineLimit(1)
+            }
             if let fraction = Diet.fraction(value ?? 0, of: goal) {
                 GeometryReader { area in
                     ZStack(alignment: .leading) {
