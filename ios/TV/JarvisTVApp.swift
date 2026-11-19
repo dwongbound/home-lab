@@ -588,13 +588,22 @@ struct AlwaysOnView: View {
                                 ))
                             // The remote's swipes page the cards.
                             if cards.count > 1 {
-                                CardSwipeCatcher(onSwipe: { step in
+                                // Up and down on the remote change the card (a
+                                // click or a swipe); left and right stay with
+                                // the buttons.
+                                CardPager(onStep: { step in
                                     lastSwipe = Date()
+                                    // The dots brighten for a moment: the press registered.
+                                    cardFocused = true
+                                    Task {
+                                        try? await Task.sleep(for: .seconds(1.2))
+                                        cardFocused = false
+                                    }
                                     slide = step
                                     cardScroll = 0
                                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.6)) { turn += step }
-                                }, onFocus: { cardFocused = $0 })
-                                .allowsHitTesting(true)
+                                }, enabled: !calm && !asking && !showingNotices)
+                                .allowsHitTesting(false)
                             }
                         }
                         // With three or more cards the height holds still so
@@ -606,7 +615,7 @@ struct AlwaysOnView: View {
                         .onChange(of: hero == nil) { _, none in rowsMax = none ? 344 : 274 }
                         if cards.count > 1 {
                             CardDots(count: cards.count, active: active, seconds: TVBoard.turnSeconds, palette: palette)
-                                // Brighter while the remote is on the cards.
+                                // Brighter for a moment after up or down.
                                 .opacity(cardFocused ? 1 : 0.7)
                                 .scaleEffect(cardFocused ? 1.15 : 1)
                                 .animation(.smooth(duration: 0.3), value: cardFocused)

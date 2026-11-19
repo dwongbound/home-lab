@@ -72,3 +72,13 @@ final class TalkSettleTests: XCTestCase {
         XCTAssertFalse(TalkSettle.shouldStart(onTalk: true, landedAt: t0, now: t0.addingTimeInterval(5), started: true), "already called")
     }
 }
+
+final class CardStepTests: XCTestCase {
+    func testUpGoesBackAndDownGoesOnWrappingRound() {
+        // Down (+1) from the last card wraps to the first; up (-1) from the first to the last.
+        XCTAssertEqual(CardSwipe.index(turn: 2 + 1, count: 3), 0)
+        XCTAssertEqual(CardSwipe.index(turn: 0 - 1, count: 3), 2)
+        XCTAssertEqual(CardSwipe.index(turn: -7, count: 3), 2)
+        XCTAssertEqual(CardSwipe.index(turn: 5, count: 1), 0)
+    }
+}

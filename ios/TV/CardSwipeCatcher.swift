@@ -1,108 +1,87 @@
-// Swiping the TV's cards with the Siri Remote (Dylan, 2026-11-18). A thin
-// UIKit view over the card area that can take focus: a swipe left on the
-// touch surface asks for the next card, a swipe right for the previous one.
-// A swipe's own focus move is kept here so it doesn't wander off to the
-// buttons; pressing the clickpad ring (any direction) moves focus as usual. It takes focus
-// when the screen first appears, so swiping works straight away.
+// Changing the TV's cards with the Siri Remote (Dylan, 2026-11-19: "the
+// apple tv swipe functionality isn't working to change panels. if it
+// interferes with left and right click, change it so up and down clicking /
+// swiping changes panels"). Up goes to the card before, down to the next,
+// by a click on the ring or a swipe on the touch surface. Left and right are
+// left alone, so they move between the buttons as usual.
+//
+// The recognisers sit on the window, not on a focusable view, so they work
+// wherever focus is. They stand aside while `enabled` is false (the chat or
+// notices panel is open, or the night view is up), so those keep their own
+// up and down.
 import SwiftUI
 import UIKit
 
-struct CardSwipeCatcher: UIViewRepresentable {
+struct CardPager: UIViewRepresentable {
     /// +1 for the next card, -1 for the previous.
-    let onSwipe: (Int) -> Void
-    /// Whether it has focus (the page dots brighten).
-    let onFocus: (Bool) -> Void
+    let onStep: (Int) -> Void
+    /// False while another panel owns up and down.
+    let enabled: Bool
 
-    func makeUIView(context: Context) -> CatcherView {
-        let view = CatcherView()
-        view.onSwipe = onSwipe
-        view.onFocus = onFocus
+    func makeUIView(context: Context) -> PagerView {
+        let view = PagerView()
+        view.onStep = onStep
+        view.enabled = enabled
         return view
     }
 
-    func updateUIView(_ view: CatcherView, context: Context) {
-        view.onSwipe = onSwipe
-        view.onFocus = onFocus
+    func updateUIView(_ view: PagerView, context: Context) {
+        view.onStep = onStep
+        view.enabled = enabled
     }
 
-    final class CatcherView: UIView {
-        var onSwipe: (Int) -> Void = { _ in }
-        var onFocus: (Bool) -> Void = { _ in }
-        private var askedForFocus = false
+    final class PagerView: UIView {
+        var onStep: (Int) -> Void = { _ in }
+        var enabled = true
+        private var installed: [UIGestureRecognizer] = []
+        private lazy var rules = Rules(owner: self)
 
         override init(frame: CGRect) {
             super.init(frame: frame)
+            isUserInteractionEnabled = false
             backgroundColor = .clear
-            // A swipe on the touch surface.
-            let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
-            pan.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
-            addGestureRecognizer(pan)
         }
 
         required init?(coder: NSCoder) { fatalError("not used") }
 
-        override var canBecomeFocused: Bool { true }
-
-        /// Takes focus once, when it first appears, so swiping works at once.
+        /// Puts the recognisers on the window (and takes them off when it goes).
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            guard window != nil, !askedForFocus else { return }
-            askedForFocus = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self else { return }
-                UIFocusSystem.focusSystem(for: self)?.requestFocusUpdate(to: self)
+            installed.forEach { $0.view?.removeGestureRecognizer($0) }
+            installed = []
+            guard let window else { return }
+            let up = UITapGestureRecognizer(target: self, action: #selector(stepBack))
+            up.allowedPressTypes = [NSNumber(value: UIPress.PressType.upArrow.rawValue)]
+            let down = UITapGestureRecognizer(target: self, action: #selector(stepOn))
+            down.allowedPressTypes = [NSNumber(value: UIPress.PressType.downArrow.rawValue)]
+            let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(stepBack))
+            swipeUp.direction = .up
+            let swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(stepOn))
+            swipeDown.direction = .down
+            for recogniser in [up, down, swipeUp, swipeDown] {
+                recogniser.delegate = rules
+                recogniser.cancelsTouchesInView = false
+                window.addGestureRecognizer(recogniser)
             }
+            installed = [up, down, swipeUp, swipeDown]
         }
 
-        /// A swipe: left means next, right means previous, once per swipe.
-        @objc private func panned(_ pan: UIPanGestureRecognizer) {
-            guard pan.state == .ended else { return }
-            let dx = pan.translation(in: self).x
-            let vx = pan.velocity(in: self).x
-            if dx < -60 || vx < -600 { onSwipe(1) } else if dx > 60 || vx > 600 { onSwipe(-1) }
+        @objc private func stepBack() { if enabled { onStep(-1) } }
+        @objc private func stepOn() { if enabled { onStep(1) } }
+    }
+
+    /// The recognisers' rules: only while the cards own up and down, and
+    /// alongside the focus engine's own use of the touch surface.
+    final class Rules: NSObject, UIGestureRecognizerDelegate {
+        weak var owner: PagerView?
+        init(owner: PagerView) { self.owner = owner }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            owner?.enabled ?? false
         }
 
-        /// True while a left or right press on the clickpad ring is down.
-        /// Presses move focus to the buttons as usual (Dylan, 2026-11-18:
-        /// "if i press left and right i should still be able to select the
-        /// buttons"); only a swipe on the touch surface pages the cards.
-        private var arrowPressed = false
-
-        override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-            if presses.contains(where: { $0.type == .leftArrow || $0.type == .rightArrow }) {
-                arrowPressed = true
-            }
-            super.pressesBegan(presses, with: event)
-        }
-
-        override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-            releaseArrow()
-            super.pressesEnded(presses, with: event)
-        }
-
-        override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-            releaseArrow()
-            super.pressesCancelled(presses, with: event)
-        }
-
-        /// Cleared a moment after the press, so the focus move it starts
-        /// still sees it.
-        private func releaseArrow() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.arrowPressed = false }
-        }
-
-        /// A sideways swipe stays here (it pages the cards); a sideways press,
-        /// and up or down, may leave for the buttons.
-        override func shouldUpdateFocus(in context: UIFocusUpdateContext) -> Bool {
-            if context.previouslyFocusedItem === self, !arrowPressed,
-               context.focusHeading.contains(.left) || context.focusHeading.contains(.right) {
-                return false
-            }
-            return super.shouldUpdateFocus(in: context)
-        }
-
-        override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
-            onFocus(context.nextFocusedItem === self)
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
         }
     }
 }
