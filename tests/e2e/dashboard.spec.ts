@@ -131,6 +131,11 @@ test('Schedule has the requests chart; Services has every service, the model car
     await expect(jobs.getByText(name, { exact: true })).toBeVisible()
   }
   await expect(jobs).toContainText('pings sent today')
+  // Work sent to the background leads: who's doing it, the step it's on, and what finished today.
+  const working = jobs.getByRole('list', { name: 'Working on now' })
+  await expect(working.getByRole('listitem').first()).toContainText('Jarvis (CO)')
+  await expect(working.getByRole('listitem').first()).toContainText('Running tests')
+  await expect(jobs.getByRole('list', { name: 'Finished today' })).toContainText('Shorter morning greeting')
   // The terminal replaced the "Restarting Jarvis" note.
   await expect(page.locator('iframe[title="Terminal on jarvis"]')).toBeVisible()
   await expect(page.getByText('Restarting Jarvis')).toHaveCount(0)

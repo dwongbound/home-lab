@@ -337,6 +337,7 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jobs__heading { margin: 16px 0 6px; font-size: 13px; font-weight: 600; color: var(--frost-dim); }
 .jobs__plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
 .jobs__why { color: var(--frost-faint); }
+.jobs__chip { margin: 0; flex: none; }
 
 /* ---------- Graphics card pie ---------- */
 .gpu__body { display: grid; grid-template-columns: minmax(120px, 170px) 1fr; gap: clamp(14px, 3vw, 26px); align-items: center; }

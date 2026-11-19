@@ -259,7 +259,7 @@ export const JarvisOrb = forwardRef<OrbHandle, Props>(function JarvisOrb({ state
           <span className="orb__note-dot" aria-hidden="true" />
           <span className="orb__note-words">
             <strong>{openTask.label}</strong>
-            <span>{runningWords(openTask)}</span>
+            <span>{[openTask.step, runningWords(openTask)].filter(Boolean).join(' · ')}</span>
           </span>
           <button type="button" className="btn orb__note-close" onClick={() => setOpened(null)}>Close</button>
         </div>
