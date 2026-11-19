@@ -60,12 +60,16 @@ struct TodayView: View {
     @ObservedObject var today: TodayModel
     /// True once the greeting's body has been tapped open.
     @State private var greetingOpen = false
-    /// The report waiting on "Delete this report?".
-    @State private var deleting: Report?
-    /// True once "Show all" has been tapped on the Reports card.
-    @State private var allReports = false
-    /// True while the Diet screen is up.
-    @State private var showingDiet = false
+    /// Which shortcut's screen is up (Reports, Diet or Playbooks).
+    @State private var shortcut: Shortcut?
+    /// The Playbooks tile's live line ("3 on"), fetched when Home shows.
+    @State private var playbooksLine: String?
+
+    /// The three screens the pinned row opens.
+    enum Shortcut: String, Identifiable {
+        case reports, diet, playbooks
+        var id: String { rawValue }
+    }
 
     /// Status line over a scrolling column of cards. Refreshes every 15 s
     /// while showing, like the page.
@@ -74,6 +78,10 @@ struct TodayView: View {
             Theme.sky.ignoresSafeArea()
             VStack(spacing: 0) {
                 StatusLine()
+                // Reports, Diet and Playbooks, pinned above everything that
+                // scrolls (Dylan, 2026-11-19: "clear and isolated but not its
+                // own tab").
+                shortcutRow
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         content
@@ -83,28 +91,28 @@ struct TodayView: View {
                     .frame(maxWidth: 720)
                     .frame(maxWidth: .infinity)
                 }
-                .refreshable { await today.load(app: app) }
-            }
-            // A Keep or Delete waiting on the PC: labelled and blocking.
-            if let busy = app.reportBusy, app.report == nil {
-                Color.black.opacity(0.35).ignoresSafeArea()
-                VStack(spacing: 14) {
-                    ProgressView().controlSize(.large).tint(Theme.frost)
-                    Text(busy).font(.headline).foregroundStyle(Theme.frost)
+                .refreshable {
+                    await today.load(app: app)
+                    await loadPlaybooksLine()
                 }
-                .padding(28)
-                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
             }
         }
-        .sheet(isPresented: $showingDiet) {
-            DietView().environmentObject(app)
+        .sheet(item: $shortcut) { which in
+            switch which {
+            case .reports: ReportsListView().environmentObject(app)
+            case .diet: DietView().environmentObject(app)
+            case .playbooks: PlaybooksView().environmentObject(app)
+            }
         }
-        .confirmationDialog("Delete this report?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { report in
-            Button("Delete", role: .destructive) { Task { await app.deleteReport(report.id) } }
-            Button("Close", role: .cancel) {}
-        } message: { report in
-            Text("“\(report.title)” goes for good, here and on the PC.")
+        .task { await loadPlaybooksLine() }
+        #if DEBUG
+        .onAppear {
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-openDiet") { shortcut = .diet }
+            if args.contains("-openReports") { shortcut = .reports }
+            if args.contains("-openPlaybooks") { shortcut = .playbooks }
         }
+        #endif
         .fontDesign(.rounded)
         #if DEBUG
         .onAppear { if ProcessInfo.processInfo.arguments.contains("-openKiosk") { app.padKiosk = true } }
@@ -145,15 +153,11 @@ struct TodayView: View {
                     lockedMoney
                 }
             }
-            dietCard(snapshot.nutrition)
             if let health = snapshot.health, health.sleep?.asleepMin != nil || health.yesterday?.steps != nil {
                 healthCard(health)
             }
             if let share = snapshot.gpuShare {
                 GpuCard(share: share)
-            }
-            if let shelf = app.reportShelf {
-                reportsCard(shelf)
             }
             if let running = snapshot.jobs?.running, !running.isEmpty {
                 card("Jarvis is working on", icon: "sparkles") {
@@ -457,116 +461,71 @@ struct TodayView: View {
     }
 
     /// A glass card with a small header (symbol, title, optional note).
-    // MARK: Diet
+    // MARK: Shortcuts
 
-    /// Calories left and protein today; a tap opens the Diet screen.
-    private func dietCard(_ food: Nutrition?) -> some View {
+    /// Three large tiles, each with its icon, name and one live line.
+    private var shortcutRow: some View {
+        HStack(spacing: 10) {
+            tile(.reports, "Reports", "doc.richtext", reportsLine)
+            tile(.diet, "Diet", "fork.knife", dietLine)
+            tile(.playbooks, "Playbooks", "list.bullet.rectangle", playbooksLine ?? " ")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 720)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// One tile: a tap opens its screen.
+    private func tile(_ which: Shortcut, _ name: String, _ icon: String, _ line: String) -> some View {
         Button {
-            showingDiet = true
+            shortcut = which
         } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "fork.knife")
-                    .font(.footnote.weight(.semibold))
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: icon)
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(Theme.glacier)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Diet").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost)
-                    if let food, food.isToday() {
-                        Text(dietLine(food)).font(.caption).foregroundStyle(Theme.frostDim)
-                    } else {
-                        Text("What you've eaten today").font(.caption).foregroundStyle(Theme.frostDim)
-                    }
-                }
-                Spacer()
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.frostDim)
+                Text(name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.frost)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(line)
+                    .font(.caption)
+                    .foregroundStyle(Theme.frostDim)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
             .glassPanel()
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        #if DEBUG
-        .onAppear { if ProcessInfo.processInfo.arguments.contains("-openDiet") { showingDiet = true } }
-        #endif
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens \(name)")
     }
 
-    /// "570 left · 59 / 140 g protein".
-    private func dietLine(_ food: Nutrition) -> String {
-        var line = food.leftWords
-        if let protein = food.protein {
-            line += " · \(Diet.whole(protein))"
-            if let goal = food.proteinGoal { line += " / \(Diet.whole(goal))" }
-            line += " g protein"
-        }
-        return line
-    }
-
-    // MARK: Reports
-
-    /// Jarvis's reports: how long they're kept and the room they take, then
-    /// one row each (newest first, five until "Show all"). A row opens the
-    /// report in the app's reader; its "…" has Keep and Delete.
-    private func reportsCard(_ shelf: ReportShelf) -> some View {
-        card("Reports", icon: "doc.richtext", trailing: shelf.reports.isEmpty ? nil : "\(shelf.reports.count)") {
-            Text(Reports.rulesText(shelf))
-                .font(.caption)
-                .foregroundStyle(Theme.frostDim)
-            if shelf.reports.isEmpty {
-                Text("None yet. Jarvis writes one when a long task ends.")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.frostDim)
-            }
-            ForEach(allReports ? shelf.reports : Array(shelf.reports.prefix(5))) { report in
-                reportRow(report, days: shelf.keepDays)
-            }
-            if shelf.reports.count > 5 {
-                Button(allReports ? "Show fewer" : "Show all \(shelf.reports.count)") {
-                    withAnimation(.smooth) { allReports.toggle() }
-                }
-                .font(.footnote.weight(.semibold))
-                .frame(minHeight: 44)
-            }
+    /// "2 reports", "1 report", "No reports" (or nothing yet).
+    private var reportsLine: String {
+        guard let shelf = app.reportShelf else { return " " }
+        switch shelf.reports.count {
+        case 0: return "No reports"
+        case 1: return "1 report"
+        case let n: return "\(n) reports"
         }
     }
 
-    /// One report: title, a line of summary, size and when it's deleted.
-    private func reportRow(_ report: Report, days: Int) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                Task { await app.openReport(id: report.id, title: report.title) }
-            } label: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(report.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.frost)
-                        .lineLimit(2)
-                    if !report.summary.isEmpty {
-                        Text(report.summary)
-                            .font(.caption)
-                            .foregroundStyle(Theme.frostDim)
-                            .lineLimit(2)
-                    }
-                    Text("\(Reports.sizeText(report.bytes)) · \(Reports.endText(report))")
-                        .font(.caption2)
-                        .foregroundStyle(report.kept ? Theme.glacier : Theme.frostDim)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .multilineTextAlignment(.leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            Menu {
-                Toggle("Keep", isOn: Binding(get: { report.kept }, set: { keep in Task { await app.keepReport(report.id, keep: keep) } }))
-                Button("Delete…", role: .destructive) { deleting = report }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Theme.frostDim)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Keep or delete \(report.title)")
-        }
+    /// "640 kcal left" or "120 kcal over" today.
+    private var dietLine: String {
+        guard let food = today.snapshot?.nutrition, food.isToday() else { return "Today's food" }
+        let left = Int(food.left.rounded())
+        return left >= 0 ? "\(left) kcal left" : "\(-left) kcal over"
+    }
+
+    /// Fetches the playbooks for the tile's "3 on".
+    private func loadPlaybooksLine() async {
+        if let list = try? await app.client.playbooks() { playbooksLine = Playbooks.tileLine(list) }
     }
 
     private func card<Body: View>(_ title: String, icon: String, trailing: String? = nil, @ViewBuilder body: () -> Body) -> some View {

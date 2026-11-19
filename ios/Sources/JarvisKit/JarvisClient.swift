@@ -170,6 +170,37 @@ public struct JarvisClient: Sendable {
         return body.week
     }
 
+    /// Jarvis's playbooks; nil when he can't say (older Jarvis, or down).
+    public func playbooks() async throws -> [Playbook]? {
+        Playbooks.list(from: try await send(request("api/jarvis/playbooks")))
+    }
+
+    /// Switches a playbook on or off by saving it whole with only that changed.
+    public func setPlaybook(_ playbook: Playbook, enabled: Bool) async throws -> PlaybookResult {
+        try await playbookChange(["op": "save", "playbook": playbook.draft(enabled: enabled)])
+    }
+
+    /// Runs a playbook now. Jarvis answers within about 50 s; a longer run
+    /// comes back with detail "running" and carries on.
+    public func runPlaybook(id: String) async throws -> PlaybookResult {
+        try await playbookChange(["op": "run", "id": id])
+    }
+
+    /// One POST to /api/jarvis/playbooks; a refusal comes back as a result,
+    /// not an error, so its words can go on screen.
+    private func playbookChange(_ body: [String: Any]) async throws -> PlaybookResult {
+        var request = request("api/jarvis/playbooks", method: "POST", json: body)
+        request.timeoutInterval = 75
+        let data: Data
+        do {
+            (data, _) = try await session.data(for: request)
+        } catch {
+            throw JarvisError.unreachable
+        }
+        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        return PlaybookResult(json: object)
+    }
+
     /// Keep a report past its days, or let it go again.
     public func keepReport(id: String, keep: Bool) async throws {
         try await post("api/jarvis/reports", ["op": "keep", "id": id, "keep": keep])
