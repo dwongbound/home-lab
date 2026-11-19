@@ -369,8 +369,14 @@ struct TabBar: View {
             withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { tab = target }
         } label: {
             VStack(spacing: 3) {
+                // Drawn at one size and scaled. Animating the symbol's point
+                // size made SwiftUI re-interpolate the glyph's paths on every
+                // frame of the bar's spring, and on 2026-11-19 a swipe from
+                // Home to Talk hung the main thread there for 10 s until the
+                // watchdog killed the app. A scale is just a transform.
                 Image(systemName: symbol)
-                    .font(.system(size: expanded ? 19 : 17, weight: .semibold))
+                    .font(.system(size: 19, weight: .semibold))
+                    .scaleEffect(expanded ? 1 : 17.0 / 19.0)
                     .overlay(alignment: .topTrailing) {
                         if badge > 0 {
                             Text("\(badge)")
