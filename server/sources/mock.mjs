@@ -600,6 +600,13 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { start: days[0].date, days }
     },
 
+    /** A one-pixel stand-in picture for the sample meals that have a photo (m1, m2); the rest have none. */
+    async mealPhoto(id) {
+      if (id !== 'm1' && id !== 'm2') return { ok: false, gone: true, message: 'No photo for that meal' }
+      const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+      return { ok: true, type: 'image/png', bytes: Uint8Array.from(atob(pixel), (c) => c.charCodeAt(0)) }
+    },
+
     /** `count` made-up days ending at `end` (today when ''), newest first; the pretend log starts 30 days back. */
     async nutritionDays(end, count) {
       const last = end ? new Date(`${end}T20:00:00Z`) : now()

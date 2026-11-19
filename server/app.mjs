@@ -34,7 +34,7 @@
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
 import { createMockSource } from './sources/mock.mjs'
-import { dayCount, isDay } from './sources/nutrition.mjs'
+import { dayCount, isDay, isMealId } from './sources/nutrition.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
@@ -241,6 +241,18 @@ export function createApi(source) {
     const login = req.headers['tailscale-user-login'] ?? ''
     const run = await source.nutritionDays(end, howMany, { login })
     return sendJson(res, 200, { days: run?.days ?? null, earliest: run?.earliest ?? null })
+  }
+
+  /** One meal's photo, or its small thumbnail with ?size=thumb; only for the signed-in caller, kept in his device's cache for a day. */
+  async function handleMealPhoto(req, res, id, size) {
+    if (!isMealId(id) || (size !== null && size !== 'thumb')) {
+      return sendJson(res, 400, { ok: false, message: 'Send a meal id, and size=thumb for the small one' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const photo = await source.mealPhoto(id, size === 'thumb', { login })
+    if (!photo.ok) return sendJson(res, photo.gone ? 404 : 502, { ok: false, message: photo.message })
+    res.writeHead(200, { 'content-type': photo.type, 'content-length': photo.bytes.byteLength, 'cache-control': 'private, max-age=86400', 'x-content-type-options': 'nosniff' })
+    res.end(Buffer.from(photo.bytes.buffer, photo.bytes.byteOffset, photo.bytes.byteLength))
   }
 
   /** Adds or forgets one fact. */
@@ -575,6 +587,10 @@ export function createApi(source) {
       if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/day') {
         const date = new URL(req.url ?? '/', 'http://localhost').searchParams.get('date') ?? ''
         return await handleNutrition(req, res, 'day', date)
+      }
+      if (req.method === 'GET' && pathname.startsWith('/api/jarvis/nutrition/photo/')) {
+        const id = pathname.slice('/api/jarvis/nutrition/photo/'.length)
+        return await handleMealPhoto(req, res, id, new URL(req.url ?? '/', 'http://localhost').searchParams.get('size'))
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/days') {
         const params = new URL(req.url ?? '/', 'http://localhost').searchParams

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayCount, isDay, parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek } from '../../server/sources/nutrition.mjs'
+import { dayCount, isDay, isMealId, photoType, parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek } from '../../server/sources/nutrition.mjs'
 
 describe('parseNutrition', () => {
   it('keeps the numbers, renames protein_goal and lets left go negative', () => {
@@ -89,5 +89,17 @@ describe('parseNutritionDays', () => {
     expect(dayCount('99')).toBe(14)
     expect(dayCount('-2')).toBeNull()
     expect(dayCount('many')).toBeNull()
+  })
+})
+
+describe('meal photos', () => {
+  it('knows a meal id and the picture kinds the apps can show', () => {
+    expect(isMealId('42')).toBe(true)
+    expect(isMealId('../x')).toBe(false)
+    expect(isMealId('')).toBe(false)
+    expect(photoType('image/png')).toBe('image/png')
+    expect(photoType('IMAGE/JPEG; q=1')).toBe('image/jpeg')
+    expect(photoType('text/html')).toBe('image/jpeg')
+    expect(photoType(null)).toBe('image/jpeg')
   })
 })

@@ -232,6 +232,9 @@ export interface NutritionWeek {
   days: { date: string; calories: number | null; goal: number | null; protein: number | null; proteinGoal: number | null }[]
 }
 
+/** One meal's picture, or why there isn't one (`gone` = that meal has no photo). */
+export type MealPhoto = { ok: true; type: string; bytes: Uint8Array } | { ok: false; gone?: boolean; message: string }
+
 /** A run of days of the meal log, newest first, for the Diet screen's endless list (Jarvis GET /nutrition/days). */
 export interface NutritionDays {
   days: NutritionDay[]
@@ -630,6 +633,8 @@ export interface DataSource {
   nutritionWeek(start: string, caller?: { login?: string }): Promise<NutritionWeek | null>
   /** `count` days of the meal log ending at `end` ('' = today), newest first. Null when Jarvis can't be asked. */
   nutritionDays(end: string, count: number, caller?: { login?: string }): Promise<NutritionDays | null>
+  /** One meal's photo, or its small thumbnail when `thumb` is true. */
+  mealPhoto(id: string, thumb: boolean, caller?: { login?: string }): Promise<MealPhoto>
   /** Searches past conversations (newest and best matches first). */
   searchMemory(query: string, caller?: { login?: string }): Promise<MemoryHit[]>
   /** Adds or forgets one fact. */
