@@ -97,32 +97,27 @@ struct ReportsListView: View {
     }
 
     /// One report: its title and summary (two lines each at most), a short
-    /// "Nov 18 · 240 KB · Deletes Dec 3" line, and Share and Delete icons.
-    /// Tapping the words opens the reader, where its retention is set.
+    /// "Nov 18 · 240 KB · Deletes Dec 3" line, and one "More" button. Dylan,
+    /// 2026-11-19: the two loose Share and Delete icons sat off centre and
+    /// didn't look like Apple's. Now it's the system's own pattern (Files,
+    /// Voice Memos): a single ellipsis-circle menu on the row's centre line
+    /// holding Share and Delete, with the same two on a swipe and a long
+    /// press. Tapping the words opens the reader.
     private func row(_ report: Report) -> some View {
-        // The icons sit on the row's centre line, each in a 44 pt square,
-        // the standard symbols at one size: Share in the app's tint, Delete
-        // in the system red.
-        HStack(alignment: .center, spacing: 0) {
+        HStack(alignment: .center, spacing: 8) {
             words(report)
-            Button { share(report) } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .imageScale(.large)
-                    .offset(y: -1)
+            Menu {
+                Button { share(report) } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                Button(role: .destructive) { deleting = report } label: { Label("Delete", systemImage: "trash") }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .foregroundStyle(Theme.glacier)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .tint(Theme.glacier)
-            .accessibilityLabel("Share")
-            Button(role: .destructive) { deleting = report } label: {
-                Image(systemName: "trash")
-                    .imageScale(.large)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("Delete")
+            .accessibilityLabel("More for \(report.title)")
         }
         .padding(.vertical, 2)
     }
