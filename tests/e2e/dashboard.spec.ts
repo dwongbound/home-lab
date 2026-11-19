@@ -1320,7 +1320,7 @@ test('an approval already answered out loud drops its card for good when I tap i
   }
 })
 
-test('Reports: each says when it is deleted, one button sets how long it is kept, Delete asks first, and a report opens inside the page as a locked-down frame', async ({ page }) => {
+test('Reports: each says when it is deleted, a plain dropdown sets how long it is kept, Delete asks first, and a report opens inside the page as a locked-down frame', async ({ page }) => {
   await page.goto('/#services')
   const reports = page.getByRole('region', { name: 'Reports' })
   // The rule and the room used are stated up front.
@@ -1331,34 +1331,25 @@ test('Reports: each says when it is deleted, one button sets how long it is kept
   await expect(speakers).toContainText(/Deletes [A-Z][a-z]{2} \d{1,2}/)
   const week = reports.getByRole('listitem').filter({ hasText: 'Week in review' })
   await expect(week).toContainText('Kept until you change it')
-  await expect(week.getByRole('button', { name: 'Keep forever: Week in review' })).toBeVisible()
+  await expect(week.getByRole('combobox', { name: 'How long to keep Week in review' })).toHaveValue('forever')
 
-  // The button says the usual two weeks; a tap opens the choices, with a copy to save.
-  await speakers.getByRole('button', { name: 'Keep 2 weeks: Bookshelf speakers under $400' }).click()
-  const keep = page.getByRole('dialog', { name: 'Bookshelf speakers under $400' })
-  await expect(keep.getByRole('button', { name: 'Keep 2 weeks' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(keep.getByRole('link', { name: 'Save a copy' })).toHaveAttribute('href', '/reports/rep-speakers')
-  await expect(keep.getByRole('link', { name: 'Save a copy' })).toHaveAttribute('download', 'Bookshelf speakers under 400.html')
-  const size = await keep.boundingBox()
-  await keep.getByRole('button', { name: 'Keep 3 months' }).click()
-  await expect(keep).toBeHidden()
-  await expect(speakers.getByRole('button', { name: 'Keep 3 months: Bookshelf speakers under $400' })).toBeVisible()
-  await expect(reports).toContainText('Bookshelf speakers under $400: Keeping it 3 months')
+  // The dropdown reads the usual two weeks; picking another saves it at once, with no pop-up.
+  const keep = speakers.getByRole('combobox', { name: 'How long to keep Bookshelf speakers under $400' })
+  await expect(keep).toHaveValue('14')
+  await expect(keep.locator('option:checked')).toHaveText('Keep 2 weeks')
+  await expect(speakers.getByRole('button', { name: 'Share Bookshelf speakers under $400' })).toBeVisible()
+  await keep.selectOption('90')
+  await expect(keep).toHaveValue('90')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 
-  // Forever takes the end date away; the dialog is the same size each time, and Close changes nothing.
-  await speakers.getByRole('button', { name: 'Keep 3 months: Bookshelf speakers under $400' }).click()
-  expect(await keep.boundingBox()).toEqual(size)
-  await keep.getByRole('button', { name: 'Keep forever' }).click()
-  await expect(speakers).toContainText('Kept until you change it')
-  await speakers.getByRole('button', { name: 'Keep forever: Bookshelf speakers under $400' }).click()
-  await keep.getByRole('button', { name: 'Close' }).click()
-  await expect(keep).toBeHidden()
+  // Forever takes the end date away.
+  await keep.selectOption('forever')
   await expect(speakers).toContainText('Kept until you change it')
 
   // Back to the usual two weeks (the pretend server is shared by the phone and iPad runs).
-  await speakers.getByRole('button', { name: 'Keep forever: Bookshelf speakers under $400' }).click()
-  await keep.getByRole('button', { name: 'Keep 2 weeks' }).click()
+  await keep.selectOption('14')
   await expect(speakers).toContainText(/Deletes [A-Z][a-z]{2} \d{1,2}/)
+  await expect(keep).toHaveValue('14')
 
   // Delete asks first, and Close leaves the report alone.
   await speakers.getByRole('button', { name: 'Delete Bookshelf speakers under $400' }).click()
@@ -1379,6 +1370,9 @@ test('Reports: each says when it is deleted, one button sets how long it is kept
   await expect(frame).toHaveAttribute('sandbox', '')
   await expect(viewer.frameLocator('iframe').getByRole('heading', { name: 'Bookshelf speakers under $400' })).toBeVisible()
   await expect(page).toHaveURL(/#services$/)
+  // The same dropdown and Share sit at the viewer's bottom left, Close at the right.
+  await expect(viewer.getByRole('combobox', { name: 'How long to keep Bookshelf speakers under $400' })).toHaveValue('14')
+  await expect(viewer.getByRole('button', { name: 'Share Bookshelf speakers under $400' })).toBeVisible()
   await viewer.getByRole('button', { name: 'Close' }).click()
   await expect(viewer).toBeHidden()
 

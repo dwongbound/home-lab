@@ -1145,15 +1145,18 @@ html[data-modal] { overflow: hidden; }
 .reports__controls { display: flex; align-items: center; gap: 8px; flex: none; }
 /* A report's description stays to two lines, so a long one can't crowd the row (Dylan, 2026-11-19). */
 .reports__summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
-/* A report's keep choices (ReportKeepDialog): fixed size, the four lengths, then Save a copy and Share. */
-.dialog.dialog--keep { height: min(470px, calc(var(--safe-h) - 32px)); }
-.keep__body { min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 12px; }
-.keep__choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-/* Named with :hover too, so a phone's sticky hover after a tap can't grey out the chosen one. */
-.btn.keep__choice[aria-pressed='true'], .btn.keep__choice[aria-pressed='true']:hover:not(:disabled) { background: var(--frost); color: var(--basalt); border-color: transparent; }
-.keep__share { display: flex; gap: 8px; }
-.keep__share > * { flex: 1; }
-.keep__link { display: inline-grid; place-items: center; text-decoration: none; }
+/* How long a report is kept (ReportKeep): a plain dropdown shaped like the buttons beside it. */
+.keep { position: relative; display: inline-flex; flex-direction: column; }
+.keep__select { height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.1); color: var(--frost); font: 600 14.5px var(--font-body); cursor: pointer; }
+.keep__select:disabled { opacity: .5; cursor: default; }
+.keep__select option { color: #111; }
+.keep__block { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(22, 33, 44, 0.9); border-radius: 999px; cursor: progress; font-size: 13px; white-space: nowrap; }
+.keep__block .spinner { gap: 8px; }
+.keep__block .spinner__ring { width: 16px; height: 16px; }
+.keep__error { color: #ffc2c8; font-size: 13px; }
+/* Under an open report: keep time and Share at the left, Close at the right. */
+.report__actions { justify-content: space-between; align-items: center; }
+.report__keep { display: flex; align-items: center; gap: 8px; min-width: 0; }
 @media (max-width: 640px) {
   .reports__item { flex-direction: column; align-items: stretch; }
 }

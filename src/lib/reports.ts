@@ -44,6 +44,12 @@ export function keepChange(id: string, days: 14 | 30 | 90 | null): ReportChange 
   return { op: 'keep', id, days }
 }
 
+/** A file name for a shared report, from its title: "Bookshelf speakers under 400.html". */
+export function reportFile(title: string): string {
+  const plain = title.replace(/[^\w -]+/g, '').trim().slice(0, 60)
+  return `${plain || 'report'}.html`
+}
+
 /** When Jarvis deletes a report: "Kept until you change it", "Deletes today", "Deletes tomorrow" or "Deletes Dec 18". */
 export function endText(report: JarvisReport, now: Date): string {
   if (report.kept || report.expires === null) return 'Kept until you change it'

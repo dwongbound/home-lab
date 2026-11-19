@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSnapshot } from '../api/client'
 import { closeReport, useOpenReport, type OpenReport } from '../lib/reportViewer'
 import { reportHref } from '../lib/reports'
 import { useScrollLock } from '../useScrollLock'
+import { ReportKeepSelect, ReportShareButton } from './ReportKeep'
 import { Spinner } from './Spinner'
 
 // A report, opened inside Jarvis (Dylan, 2026-11-18: "the reports should
@@ -9,12 +11,17 @@ import { Spinner } from './Spinner'
 // Jarvis's own HTML in a frame that can't run scripts or reach this page
 // (the frame is sandboxed, and the server sends the same rule with it). The
 // box is a fixed size; the report scrolls inside it. Mounted once per page
-// (App and the /talk page) and shown whenever openReport is called.
+// (App and the /talk page) and shown whenever openReport is called. Under
+// the report, at the left: how long it's kept (a plain dropdown, "Keep 2
+// weeks") and Share; Close at the right (Dylan, 2026-11-19).
 
 /** The dialog for one open report. */
 function ReportDialog({ report }: { report: OpenReport }) {
   const ref = useRef<HTMLDialogElement>(null)
   const [loaded, setLoaded] = useState(false)
+  const { data } = useSnapshot()
+  // The report's row in Jarvis's list, for its keep time; missing while the list loads or once it's deleted.
+  const listed = data?.reports?.reports.find((r) => r.id === report.id) ?? null
   useScrollLock()
 
   // Open as a modal on mount, above the chat sheet when that's open. jsdom
@@ -46,7 +53,11 @@ function ReportDialog({ report }: { report: OpenReport }) {
         <iframe className="report__frame" title={report.title} src={reportHref(report.id)} sandbox="" onLoad={() => setLoaded(true)} />
         {loaded ? null : <div className="report__wait"><Spinner label="Opening the report…" /></div>}
       </div>
-      <div className="dialog__actions">
+      <div className="dialog__actions report__actions">
+        <div className="report__keep">
+          {listed ? <ReportKeepSelect report={listed} /> : null}
+          <ReportShareButton id={report.id} title={report.title} />
+        </div>
         <button type="button" className="btn btn--primary" onClick={closeReport}>Close</button>
       </div>
     </dialog>
