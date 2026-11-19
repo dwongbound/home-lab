@@ -255,6 +255,12 @@ extension Reports {
         return endText(report, now: now)
     }
 
+    /// The retention in words for a list row: "Kept forever", or when it goes.
+    public static func retentionWords(_ report: Report, defaultDays: Int, now: Date = Date()) -> String {
+        let retention = retention(report, defaultDays: defaultDays)
+        return retention == .forever ? "Kept forever" : deleteLine(report, retention: retention, now: now)
+    }
+
     /// The storage line, short enough for one line: "30-day rule · 13 KB of 200 MB".
     public static func shortRulesText(_ shelf: ReportShelf) -> String {
         var line = "Kept \(Retention.days(shelf.keepDays).label.dropFirst(5)) unless changed"

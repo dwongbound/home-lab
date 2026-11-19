@@ -162,3 +162,13 @@ final class ReportMetaTests: XCTestCase {
         XCTAssertEqual(Reports.metaLine(Report(id: "0123456789abcdef", title: "x", created: "", expires: nil, kept: false, bytes: 900)), "900 bytes")
     }
 }
+
+final class RetentionWordsTests: XCTestCase {
+    func testRowWords() {
+        let now = ISO8601DateFormatter().date(from: "2026-11-19T10:00:00Z")!
+        let forever = Report(id: "0123456789abcdef", title: "x", created: "2026-11-18T08:00:00Z", expires: nil, kept: true, bytes: 1)
+        XCTAssertEqual(Reports.retentionWords(forever, defaultDays: 14, now: now), "Kept forever")
+        let month = Report(id: "0123456789abcdef", title: "x", created: "2026-11-18T08:00:00Z", expires: "2026-12-18T08:00:00Z", kept: false, bytes: 1)
+        XCTAssertEqual(Reports.retentionWords(month, defaultDays: 14, now: now), "Deletes Dec 18")
+    }
+}

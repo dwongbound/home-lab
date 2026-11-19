@@ -54,23 +54,21 @@ struct ReportReader: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Close") { dismiss() }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    // Share: the report as an .html file (Files, Messages, AirDrop).
-                    Button {
-                        Task { if let url = await app.reportFile(id: page.id, title: title) { sharing = SharedFile(url: url) } }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .accessibilityLabel("Share")
-                    .disabled(fetch == .gone)
-                }
+                // Like the page: retention and Share at the bottom left.
                 ToolbarItemGroup(placement: .bottomBar) {
                     if let report {
                         RetentionButton(report: report)
                     }
+                    Button {
+                        Task { if let url = await app.reportFile(id: page.id, title: title) { sharing = SharedFile(url: url) } }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("Share")
+                    .disabled(fetch == .gone)
                     Spacer()
                     if fetch != .gone {
                         Button("Delete", role: .destructive) { confirmingDelete = true }

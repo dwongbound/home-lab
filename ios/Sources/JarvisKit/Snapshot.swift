@@ -342,8 +342,10 @@ public struct Jobs: Decodable, Sendable {
     public let messenger: Messenger?
     /// His regular jobs (Lookout, Messenger, Nightly…) and how each last went.
     public let jobs: [JobRecord]
+    /// What ended today, newest first; nil from an older Jarvis.
+    public let finished: [FinishedJob]?
 
-    enum CodingKeys: String, CodingKey { case running, lookout, messenger, jobs }
+    enum CodingKeys: String, CodingKey { case running, lookout, messenger, jobs, finished }
 
     /// An older Jarvis has no `running` list; read that as none. Lookout and
     /// Messenger are optional and skipped if they won't decode.
@@ -353,6 +355,22 @@ public struct Jobs: Decodable, Sendable {
         lookout = try? c.decodeIfPresent(Lookout.self, forKey: .lookout)
         messenger = try? c.decodeIfPresent(Messenger.self, forKey: .messenger)
         jobs = ((try? c.decodeIfPresent([Maybe].self, forKey: .jobs)) ?? nil)?.compactMap(\.job) ?? []
+        finished = ((try? c.decodeIfPresent([MaybeFinished].self, forKey: .finished)) ?? nil)?.compactMap(\.job)
+    }
+
+    /// One finished job that may or may not decode.
+    private struct MaybeFinished: Decodable {
+        let job: FinishedJob?
+        init(from decoder: Decoder) throws { job = try? FinishedJob(from: decoder) }
+    }
+
+    /// The Recently finished rows: from `finished` when Jarvis sends it
+    /// (Live, Failed, No change needed), else from the jobs' last runs.
+    public func finishedRows(now: Date = Date()) -> [(id: String, name: String, word: String, at: Date?, model: String?, detail: String?)] {
+        if let finished {
+            return finished.map { ($0.id, $0.label, $0.word, $0.finishedAt.flatMap(AgendaTime.parse), $0.model, nil) }
+        }
+        return recentlyFinished(now: now).map { ($0.job.id, $0.job.name, $0.word, $0.at, $0.job.model, $0.job.lastResult) }
     }
 
     /// One job that may or may not decode.
@@ -401,6 +419,26 @@ public struct Messenger: Decodable, Sendable {
 }
 
 /// One piece of background work, until it finishes.
+/// Something Jarvis finished today.
+public struct FinishedJob: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let label: String
+    /// live, failed or nothing.
+    public let state: String
+    public let finishedAt: String?
+    public let model: String?
+
+    /// The result in plain words: "Live", "Failed", "No change needed".
+    public var word: String {
+        switch state {
+        case "live": return "Live"
+        case "failed": return "Failed"
+        case "nothing": return "No change needed"
+        default: return state.prefix(1).uppercased() + state.dropFirst()
+        }
+    }
+}
+
 /// One of Jarvis's regular jobs, as the snapshot lists it.
 public struct JobRecord: Decodable, Identifiable, Sendable {
     public let id: String
@@ -427,22 +465,25 @@ public struct RunningTask: Decodable, Identifiable, Sendable {
     public let startedAt: String?
     /// The model doing it ("claude-opus-5-5"); nil for plain code.
     public let model: String?
-    /// Where it's at, in a few plain words ("Running tests"); nil when unsaid.
-    public let stage: String?
+    /// Where it's at, one plain line ("Running tests"); nil when unsaid.
+    public let step: String?
 
-    public init(id: String, label: String, state: String, startedAt: String? = nil, model: String? = nil, stage: String? = nil) {
+    public init(id: String, label: String, state: String, startedAt: String? = nil, model: String? = nil, step: String? = nil) {
         self.id = id
         self.label = label
         self.state = state
         self.startedAt = startedAt
         self.model = model
-        self.stage = stage
+        self.step = step
     }
 
-    /// The one line under the name: the stage when Jarvis says it, else
+    /// True while it waits its turn.
+    public var isQueued: Bool { state == "queued" }
+
+    /// The one line under the name: the step when Jarvis says it, else
     /// the usual status ("Running for 4 min", "Queued").
-    public func stageLine(now: Date = Date()) -> String {
-        if let stage = stage?.trimmingCharacters(in: .whitespacesAndNewlines), !stage.isEmpty { return stage }
+    public func stepLine(now: Date = Date()) -> String {
+        if let step = step?.trimmingCharacters(in: .whitespacesAndNewlines), !step.isEmpty { return step }
         return runningWords(now: now)
     }
 

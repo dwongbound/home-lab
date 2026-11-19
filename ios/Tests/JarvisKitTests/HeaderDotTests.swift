@@ -73,12 +73,29 @@ final class JobChipTests: XCTestCase {
 
 final class StageLineTests: XCTestCase {
     func testTheStageOrTheStatus() throws {
-        let staged = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"a","label":"Fix reminders","state":"running","stage":"Running tests"}"#.utf8))
-        XCTAssertEqual(staged.stageLine(), "Running tests")
+        let staged = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"a","label":"Fix reminders","state":"running","step":"Running tests"}"#.utf8))
+        XCTAssertEqual(staged.stepLine(), "Running tests")
         XCTAssertEqual(Orbit.items(running: [staged], notices: []).first?.detail, "Running tests")
         let plain = RunningTask(id: "b", label: "x", state: "queued")
-        XCTAssertNil(plain.stage)
-        XCTAssertEqual(plain.stageLine(), "Queued")
-        XCTAssertEqual(RunningTask(id: "c", label: "x", state: "running", stage: "  ").stageLine(), "Running")
+        XCTAssertNil(plain.step)
+        XCTAssertEqual(plain.stepLine(), "Queued")
+        XCTAssertEqual(RunningTask(id: "c", label: "x", state: "running", step: "  ").stepLine(), "Running")
+    }
+}
+
+final class FinishedJobsTests: XCTestCase {
+    func testFinishedWordsAndFallback() throws {
+        let json = #"{"running":[{"id":"q","label":"Next","state":"queued"}],"finished":[{"id":"a","label":"Dive calendar","state":"live","finishedAt":"2026-11-19T03:10:00-08:00","model":"claude-opus-5-5"},{"id":"b","label":"Fix","state":"failed"},{"id":"c","label":"Check","state":"nothing"}],"jobs":[{"id":"lookout","name":"Lookout","status":"ok","lastRun":"2026-11-19T02:20:01-08:00"}]}"#
+        let jobs = try JSONDecoder().decode(Jobs.self, from: Data(json.utf8))
+        XCTAssertTrue(jobs.running[0].isQueued)
+        XCTAssertEqual(jobs.finishedRows().map(\.word), ["Live", "Failed", "No change needed"])
+        XCTAssertEqual(jobs.finishedRows().first?.model, "claude-opus-5-5")
+        // An older Jarvis: no finished list at all, so the jobs' last runs.
+        let older = try JSONDecoder().decode(Jobs.self, from: Data(#"{"running":[],"jobs":[{"id":"lookout","name":"Lookout","status":"ok","lastRun":"2026-11-19T02:20:01-08:00"}]}"#.utf8))
+        XCTAssertNil(older.finished)
+        let now = ISO8601DateFormatter().date(from: "2026-11-19T11:00:00Z")!
+        XCTAssertEqual(older.finishedRows(now: now).map(\.word), ["Done"])
+        // An empty finished list stays empty (no fallback).
+        XCTAssertEqual(try JSONDecoder().decode(Jobs.self, from: Data(#"{"running":[],"finished":[],"jobs":[{"id":"x","name":"X","status":"ok","lastRun":"2026-11-19T02:20:01-08:00"}]}"#.utf8)).finishedRows(now: now).count, 0)
     }
 }

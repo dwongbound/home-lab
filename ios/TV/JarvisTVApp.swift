@@ -778,13 +778,21 @@ struct AlwaysOnView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         ForEach(Array(running.prefix(4).enumerated()), id: \.element.id) { index, task in
                             HStack(alignment: .firstTextBaseline, spacing: 18) {
-                                Circle().fill(OrbView.taskBlue(onLight: palette.darkInk)).frame(width: 16, height: 16)
-                                    .frame(width: 44)
+                                // Queued: a hollow, dimmer dot.
+                                Group {
+                                    if task.isQueued {
+                                        Circle().strokeBorder(OrbView.taskBlue(onLight: palette.darkInk).opacity(0.6), lineWidth: 3)
+                                    } else {
+                                        Circle().fill(OrbView.taskBlue(onLight: palette.darkInk))
+                                    }
+                                }
+                                .frame(width: 16, height: 16)
+                                .frame(width: 44)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(TaskCard.title(task, index: index, guest: guest)).lineLimit(2)
                                     // Where it's at, one line, when Jarvis says.
-                                    if !guest, let stage = task.stage, !stage.isEmpty {
-                                        Text(stage).font(.callout).foregroundStyle(inkDim).lineLimit(1)
+                                    if !guest, let step = task.step, !step.isEmpty {
+                                        Text(step).font(.callout).foregroundStyle(inkDim).lineLimit(1)
                                     }
                                 }
                                 // Who's doing it, the chat chip's words ("Jarvis (CO)").

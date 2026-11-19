@@ -89,18 +89,29 @@ struct ReportsListView: View {
     }
 
     /// One report: its title and summary (two lines each at most), a short
-    /// "Nov 18 · 240 KB · Deletes Dec 3" line, then the retention menu at
-    /// the bottom left and "…" (Share, Delete) at the right.
+    /// "Nov 18 · 240 KB · Deletes Dec 3" line, and Share and Delete icons.
+    /// Tapping the words opens the reader, where its retention is set.
     private func row(_ report: Report) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top, spacing: 4) {
             words(report)
-            // The retention menu at the bottom left; Share and Delete
-            // tucked in the "…" menu, so the card stays uncluttered.
-            HStack {
-                RetentionButton(report: report)
-                Spacer()
-                menu(report)
+            // Share and Delete as the standard icons; no picker here (the
+            // reader has the retention menu).
+            Button {
+                Task { if let url = await app.reportFile(id: report.id, title: report.title) { sharing = SharedFile(url: url) } }
+            } label: {
+                Image(systemName: "square.and.arrow.up").frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.glacier)
+            .accessibilityLabel("Share")
+            Button {
+                deleting = report
+            } label: {
+                Image(systemName: "trash").frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.rose)
+            .accessibilityLabel("Delete")
         }
         .padding(12)
         .glassPanel()
@@ -123,7 +134,7 @@ struct ReportsListView: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                 }
-                Text(Reports.metaLine(report) + " · " + Reports.deleteLine(report, retention: Reports.retention(report, defaultDays: app.reportShelf?.keepDays ?? 14)))
+                Text(Reports.metaLine(report) + " · " + Reports.retentionWords(report, defaultDays: app.reportShelf?.keepDays ?? 14))
                     .font(.caption2)
                     .foregroundStyle(Theme.frostDim)
                     .lineLimit(1)
@@ -133,23 +144,6 @@ struct ReportsListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    /// Share and Delete.
-    private func menu(_ report: Report) -> some View {
-        Menu {
-            Button("Share", systemImage: "square.and.arrow.up") {
-                Task { if let url = await app.reportFile(id: report.id, title: report.title) { sharing = SharedFile(url: url) } }
-            }
-            Button("Delete…", role: .destructive) { deleting = report }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(Theme.frostDim)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .accessibilityLabel("Share or delete \(report.title)")
     }
 
     /// `-longReport` adds a report with a very long title and summary

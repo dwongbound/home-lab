@@ -55,9 +55,9 @@ struct NoticesSheet: View {
         app.today.snapshot?.jobs?.running ?? []
     }
 
-    /// Jobs that finished in the last day.
-    private var finished: [(job: JobRecord, word: String, at: Date)] {
-        app.today.snapshot?.jobs?.recentlyFinished() ?? []
+    /// What finished today (or, from an older Jarvis, in the last day).
+    private var finished: [(id: String, name: String, word: String, at: Date?, model: String?, detail: String?)] {
+        app.today.snapshot?.jobs?.finishedRows() ?? []
     }
 
     /// The second page: each running or queued job with its status and a
@@ -72,8 +72,9 @@ struct NoticesSheet: View {
             ForEach(running.reversed()) { task in
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     HStack(spacing: 12) {
-                        if task.state == "queued" {
-                            Image(systemName: "clock").foregroundStyle(Theme.frostDim)
+                        if task.isQueued {
+                            // Waiting its turn: a hollow, dimmer blue dot.
+                            Circle().strokeBorder(OrbView.taskBlue(onLight: false).opacity(0.6), lineWidth: 2).frame(width: 14, height: 14)
                         } else {
                             ProgressView().tint(OrbView.taskBlue(onLight: false))
                         }
@@ -83,10 +84,12 @@ struct NoticesSheet: View {
                                 Text(task.label).font(.body.weight(.semibold)).foregroundStyle(Theme.frost)
                             }
                             // Where it's at ("Running tests"), else its status.
-                            Text(task.stageLine(now: context.date)).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(1).truncationMode(.tail)
+                            Text(task.stepLine(now: context.date)).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(1).truncationMode(.tail)
                         }
                         Spacer()
-                        if let timer = Orbit.elapsed(since: task.startedAt, now: context.date), task.state != "queued" {
+                        if task.isQueued {
+                            Text("Queued").font(.caption).foregroundStyle(Theme.frostDim)
+                        } else if let timer = Orbit.elapsed(since: task.startedAt, now: context.date) {
                             Text(timer).font(.caption.monospacedDigit()).foregroundStyle(OrbView.taskBlue(onLight: false))
                         }
                     }
@@ -97,18 +100,18 @@ struct NoticesSheet: View {
             }
             if !finished.isEmpty {
                 Section("Recently finished") {
-                    ForEach(finished, id: \.job.id) { entry in
+                    ForEach(finished, id: \.id) { entry in
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
-                                Text(entry.job.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost)
-                                JobChip(model: entry.job.model)
+                                Text(entry.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost).lineLimit(2)
+                                JobChip(model: entry.model)
                                 Spacer()
-                                Text("\(entry.word) · \(entry.at.formatted(date: .omitted, time: .shortened))")
+                                Text([entry.word, entry.at?.formatted(date: .omitted, time: .shortened)].compactMap { $0 }.joined(separator: " · "))
                                     .font(.caption)
                                     .foregroundStyle(entry.word == "Failed" ? Theme.ember : Theme.frostDim)
                             }
-                            if let result = entry.job.lastResult, !result.isEmpty {
-                                Text(result).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(2)
+                            if let detail = entry.detail, !detail.isEmpty {
+                                Text(detail).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(2)
                             }
                         }
                         .frame(minHeight: 44)

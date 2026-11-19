@@ -66,7 +66,7 @@ public enum Orbit {
             .filter { !night || $0.kind == .need }
             .sorted { $0.kind < $1.kind }
             .map { OrbitItem(id: "notice-" + $0.id, kind: .notice, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
-        let blue = night ? [] : running.map { OrbitItem(id: "task-" + $0.id, kind: .task, title: $0.label, detail: $0.state == "queued" ? "Queued" : ($0.stage ?? ""), startedAt: $0.startedAt, notice: nil, model: $0.model) }
+        let blue = night ? [] : running.map { OrbitItem(id: "task-" + $0.id, kind: .task, title: $0.label, detail: $0.state == "queued" ? "Queued" : ($0.step ?? ""), startedAt: $0.startedAt, notice: nil, model: $0.model) }
         let yellow = night ? [] : notices.filter(\.kept).map { OrbitItem(id: "kept-" + $0.id, kind: .kept, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
         return Array((orange + blue + yellow).prefix(maxDots))
     }
