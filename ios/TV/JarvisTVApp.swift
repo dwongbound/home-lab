@@ -625,7 +625,8 @@ struct AlwaysOnView: View {
         let notices = model.notices
         if let count = Notices.countLabel(notices) {
             let label = HStack(spacing: 8) {
-                ForEach(Array(Notices.pips(notices).prefix(4).enumerated()), id: \.offset) { _, kind in
+                // One dot however many there are, like the iPhone's.
+                if let kind = Notices.headerDot(notices) {
                     Circle().fill(OrbView.noticeOrange(onLight: palette.darkInk).opacity(kind == .need ? 1 : 0.75))
                         .frame(width: 12, height: 12)
                 }

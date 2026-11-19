@@ -88,6 +88,13 @@ public enum Notices {
         return Array(kinds.sorted().prefix(maxPips))
     }
 
+    /// The one dot beside the count in the top bar (Dylan, 2026-11-19: "no
+    /// matter how many there is … only one orange dot"): the most urgent
+    /// unread notice's kind, which sets its shade; nil (no dot) with none.
+    public static func headerDot(_ notices: [Notice]) -> NoticeKind? {
+        notices.map(\.kind).min()
+    }
+
     /// "3 new", or nil with none.
     public static func countLabel(_ notices: [Notice]) -> String? {
         notices.isEmpty ? nil : "\(notices.count) new"

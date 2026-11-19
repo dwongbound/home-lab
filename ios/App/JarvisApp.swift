@@ -177,13 +177,15 @@ struct StatusLine: View {
                     .foregroundStyle(Theme.frostDim)
             }
             Spacer()
-            // The notices: a small row of pips and a count, when any.
+            // The notices: one dot and a count, when any.
             if !app.notices.isEmpty {
                 Button {
                     app.showNotices = true
                 } label: {
                     HStack(spacing: 6) {
-                        ForEach(Array(Notices.pips(app.notices).prefix(4).enumerated()), id: \.offset) { _, kind in
+                        // One orange dot however many there are (Dylan,
+                        // 2026-11-19); its shade is the most urgent one's.
+                        if let kind = Notices.headerDot(app.notices) {
                             Circle().fill(pipColor(kind)).frame(width: 7, height: 7)
                         }
                         Text(Notices.countLabel(app.notices) ?? "")
