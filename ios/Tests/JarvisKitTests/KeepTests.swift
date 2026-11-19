@@ -100,3 +100,10 @@ final class TabBarSizeTests: XCTestCase {
         XCTAssertNil(TabBarSize.isScrollDown(3))
     }
 }
+
+final class NightTextTests: XCTestCase {
+    func testTheNightWordsAreDim() {
+        XCTAssertTrue((0.35...0.45).contains(NightCalm.clockOpacity))
+        XCTAssertLessThan(NightCalm.secondaryOpacity, NightCalm.clockOpacity)
+    }
+}

@@ -361,17 +361,21 @@ struct AlwaysOnView: View {
                             .monospacedDigit()
                             .fixedSize()
                             .foregroundStyle(ink)
+                            // Dimmed so it gives off little light in the dark.
+                            .opacity(NightCalm.clockOpacity)
                             .contentTransition(.numericText())
                             .animation(reduceMotion ? nil : .smooth(duration: 0.8), value: now.formatted(.dateTime.hour().minute()))
                         Text(now, format: .dateTime.weekday(.wide).month(.wide).day())
                             .font(.title3)
                             .foregroundStyle(inkDim)
+                            .opacity(NightCalm.secondaryOpacity)
                         if let snapshot = model.snapshot,
                            let line = NightCalm.morningLine(events: snapshot.events, agenda: snapshot.today, now: now, guest: guest) {
                             Label(line, systemImage: "alarm.fill")
                                 .font(.headline)
                                 .foregroundStyle(inkDim)
                                 .labelStyle(TintedIconLabel(icon: accent))
+                                .opacity(NightCalm.secondaryOpacity)
                                 .padding(.top, 8)
                         }
                     }

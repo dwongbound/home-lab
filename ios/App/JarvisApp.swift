@@ -49,6 +49,12 @@ struct RootView: View {
     @StateObject private var bedside = PhoneKioskMonitor()
     /// Whether the keyboard is up.
     @StateObject private var keyboard = KeyboardWatch()
+    /// One page, with room for the tab bar.
+    private func page<Page: View>(_ content: Page, _ screen: GeometryProxy) -> some View {
+        content
+            .roomForTabBar()
+    }
+
     /// The last touch on the bar, tab change or scroll up.
     @State private var barTouched: Date?
     /// True while the page is being scrolled down (the bar tucks away).
@@ -98,19 +104,24 @@ struct RootView: View {
     /// Each page draws its own status line instead of a big title
     /// (Dylan, 2026-11-16: no "Chat"/"Talk" headings).
     var body: some View {
-        TabView(selection: $app.tab) {
-            // Home, Talk, Chat, left to right (AppTab's order).
-            TodayView(today: app.today)
-                .roomForTabBar()
-                .tag(AppTab.today)
-            TalkView(talk: app.talk)
-                .roomForTabBar()
-                .tag(AppTab.talk)
-            ChatView(chat: app.chat)
-                .roomForTabBar()
-                .tag(AppTab.chat)
+        // The page swiper runs to the screen's very top and bottom (Dylan,
+        // 2026-11-19: on the iPhone 17 Pro the app "stops early … like a
+        // horizontal line"): a paging TabView clips its pages to the safe
+        // area, so the pages' own backgrounds and scrolling stopped short of
+        // the edges. It now ignores the container safe area; the pages still
+        // see the real insets, so content clears the Dynamic Island and the
+        // home indicator while backgrounds and scrolling reach the edges.
+        // The keyboard rule is untouched.
+        GeometryReader { screen in
+            TabView(selection: $app.tab) {
+                // Home, Talk, Chat, left to right (AppTab's order).
+                page(TodayView(today: app.today), screen).tag(AppTab.today)
+                page(TalkView(talk: app.talk), screen).tag(AppTab.talk)
+                page(ChatView(chat: app.chat), screen).tag(AppTab.chat)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea(.container, edges: .vertical)
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
         // The keyboard goes as soon as a page swipe starts, not only once
         // the next page has landed.
         .simultaneousGesture(DragGesture(minimumDistance: PageSwipe.minDistance).onChanged { drag in

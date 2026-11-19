@@ -370,6 +370,12 @@ public enum StatusChips {
 /// stars, the dimmed orb and one line if something's on before 10 AM. Any
 /// press on the remote brings the full board back for a minute.
 public enum NightCalm {
+    /// How bright the night view's words are (Dylan, 2026-11-19: the white
+    /// letters and numbers "are too bright" in a dark bedroom): the big
+    /// clock at 40%, the date and the morning line a little lower at 32%.
+    public static let clockOpacity = 0.40
+    public static let secondaryOpacity = 0.32
+
     /// When the calm layout starts (Dylan: "not from midnight, from 2:30 am").
     public static let startHour = 2, startMinute = 30
     /// Minutes before sunrise the full board comes back.

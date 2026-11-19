@@ -62,12 +62,22 @@ struct OrbView: View {
         TimelineView(.animation(paused: reduceMotion)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             ZStack {
-                Canvas { canvas, area in
+                // The canvas reaches past the orb's own box on every side,
+                // so the farthest orbit's dots and their glow are never cut
+                // off by its edge (Dylan, 2026-11-19); everything is still
+                // drawn in the orb's own coordinates, so its size, layout and
+                // tap spots don't move.
+                let bleed = size * Self.bleed
+                Canvas { canvas, _ in
                     animator.held = opened != nil
                     animator.step(to: OrbLook.of(state), speaking: state == .speaking, level: reduceMotion ? 0 : level, dotsRiseMs: dotsRiseMs, coreRiseMs: coreRiseMs, at: t)
                     animator.advanceOrbit(orbit, at: t, still: reduceMotion || opened != nil)
-                    draw(in: &canvas, area: area, t: t)
+                    canvas.translateBy(x: bleed, y: bleed)
+                    draw(in: &canvas, area: CGSize(width: size, height: size), t: t)
                 }
+                .frame(width: size + bleed * 2, height: size + bleed * 2)
+                .padding(-bleed)
+                .allowsHitTesting(false)
                 .opacity(dim)
                 .accessibilityHidden(true)
                 #if !os(tvOS)
@@ -222,6 +232,11 @@ struct OrbView: View {
     static let workAmber = Color(red: 0xE0 / 255, green: 0xA0 / 255, blue: 0x20 / 255)
 
     /// Blue for a task Jarvis is running; darker on the TV's day sky.
+    /// How far the drawing reaches past the orb's box, as a share of its
+    /// size: room for the farthest orbit (about 1.3 shell radii) plus the
+    /// biggest dot's glow.
+    static let bleed: CGFloat = 0.45
+
     static func taskBlue(onLight: Bool) -> Color {
         onLight ? Color(red: 0.08, green: 0.36, blue: 0.72) : Color(red: 0.42, green: 0.72, blue: 1.0)
     }
