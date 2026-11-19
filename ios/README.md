@@ -87,6 +87,21 @@ and Run. A paid developer account keeps the install for a year.
 2. In Xcode, Product > Archive, then Distribute App > TestFlight Internal Only.
 3. Install TestFlight on the iPhone and iPad and accept the invite.
 
+### Uploading from the command line
+
+`ios/scripts/upload-testflight.sh` archives and uploads (or pass an existing
+`.xcarchive` to upload just that), signed in with an App Store Connect API key
+rather than Xcode's account sign-in:
+
+1. In App Store Connect → Users and Access → Integrations → Team Keys, make a
+   key with the App Manager role and download `AuthKey_<KEY_ID>.p8`.
+2. Move it to `~/.appstoreconnect/private_keys/` and `chmod 600` it.
+3. Put `ASC_KEY_ID=…` and `ASC_ISSUER_ID=…` in `ios/scripts/asc.local`
+   (git-ignored), or export them.
+
+It uploads for internal testing only and never submits for review. The key
+and `asc.local` are in `.gitignore`.
+
 Builds last 90 days. Automatic uploads from CI come in milestone 5.
 
 ## The phone's side
