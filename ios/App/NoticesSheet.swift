@@ -11,9 +11,115 @@ struct NoticesSheet: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
 
+    /// Which page: the notices, or what's running (swipe across, or tap
+    /// the switch at the top).
+    @State private var page = 0
+
     var body: some View {
         NavigationStack {
-            Group {
+            TabView(selection: $page) {
+                noticesPage.tag(0)
+                runningPage.tag(1)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .onAppear {
+                if app.notices.isEmpty && !running.isEmpty { page = 1 }
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-runningPage") { page = 1 }
+                #endif
+            }
+            .background(Theme.sky.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Show", selection: $page) {
+                        Text("Notices").tag(0)
+                        Text(running.isEmpty ? "Running" : "Running (\(running.count))").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 260)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationBackground(.ultraThinMaterial)
+        .preferredColorScheme(.dark)
+        .fontDesign(.rounded)
+    }
+
+    /// What Jarvis is working on.
+    private var running: [RunningTask] {
+        app.today.snapshot?.jobs?.running ?? []
+    }
+
+    /// Jobs that finished in the last day.
+    private var finished: [(job: JobRecord, word: String, at: Date)] {
+        app.today.snapshot?.jobs?.recentlyFinished() ?? []
+    }
+
+    /// The second page: each running or queued job with its status and a
+    /// ticking timer, newest first; then what finished recently.
+    private var runningPage: some View {
+        List {
+            if running.isEmpty {
+                Text("Nothing running right now.")
+                    .foregroundStyle(Theme.frostDim)
+                    .listRowBackground(Color.white.opacity(0.06))
+            }
+            ForEach(running.reversed()) { task in
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    HStack(spacing: 12) {
+                        if task.state == "queued" {
+                            Image(systemName: "clock").foregroundStyle(Theme.frostDim)
+                        } else {
+                            ProgressView().tint(OrbView.taskBlue(onLight: false))
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(task.label).font(.body.weight(.semibold)).foregroundStyle(Theme.frost)
+                            Text(task.runningWords(now: context.date)).font(.subheadline).foregroundStyle(Theme.frostDim)
+                        }
+                        Spacer()
+                        if let timer = Orbit.elapsed(since: task.startedAt, now: context.date), task.state != "queued" {
+                            Text(timer).font(.caption.monospacedDigit()).foregroundStyle(OrbView.taskBlue(onLight: false))
+                        }
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityElement(children: .combine)
+                }
+                .listRowBackground(Color.white.opacity(0.06))
+            }
+            if !finished.isEmpty {
+                Section("Recently finished") {
+                    ForEach(finished, id: \.job.id) { entry in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(entry.job.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost)
+                                Spacer()
+                                Text("\(entry.word) · \(entry.at.formatted(date: .omitted, time: .shortened))")
+                                    .font(.caption)
+                                    .foregroundStyle(entry.word == "Failed" ? Theme.ember : Theme.frostDim)
+                            }
+                            if let result = entry.job.lastResult, !result.isEmpty {
+                                Text(result).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(2)
+                            }
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityElement(children: .combine)
+                        .listRowBackground(Color.white.opacity(0.04))
+                    }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    /// The first page: the notices.
+    @ViewBuilder
+    private var noticesPage: some View {
+        Group {
                 if app.notices.isEmpty {
                     ContentUnavailableView("All caught up", systemImage: "checkmark.circle", description: Text("Nothing new from Jarvis."))
                 } else {
@@ -38,20 +144,7 @@ struct NoticesSheet: View {
                     .animation(.smooth, value: app.notices.map(\.id))
                 }
             }
-            .background(Theme.sky.ignoresSafeArea())
-            .navigationTitle("Notices")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
-            }
         }
-        .presentationDetents([.medium, .large])
-        .presentationBackground(.ultraThinMaterial)
-        .preferredColorScheme(.dark)
-        .fontDesign(.rounded)
-    }
 
     /// One notice: its dot (orange unread, yellow kept), title, a line of
     /// body, and when. No icon beside the dot (Dylan, 2026-11-19: "we don't

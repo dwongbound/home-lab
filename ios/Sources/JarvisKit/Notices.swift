@@ -124,6 +124,18 @@ public enum Notices {
         notices.first { $0.kept && $0.turnId == turnId }
     }
 
+    /// The top bar's button (Dylan, 2026-11-19: "it should show blue and
+    /// orange if there's also a thread running"): which dots show and its
+    /// words. Nil when there's nothing new and nothing running.
+    public static func statusButton(unread: [Notice], running: Int) -> (orange: NoticeKind?, blue: Bool, words: String)? {
+        let orange = headerDot(unread)
+        let blue = running > 0
+        if orange == nil && !blue { return nil }
+        var words = countLabel(unread) ?? "\(running) running"
+        if orange != nil && blue { words += " · \(running) running" }
+        return (orange, blue, words)
+    }
+
     /// "3 new", or nil with none.
     public static func countLabel(_ notices: [Notice]) -> String? {
         notices.isEmpty ? nil : "\(notices.count) new"

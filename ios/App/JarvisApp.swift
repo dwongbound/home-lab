@@ -124,7 +124,12 @@ struct RootView: View {
                 await app.openReport(id: args[at + 1])
                 return
             }
-            if args.contains("-onHome") { app.tab = .today; return }
+            if args.contains("-onHome") {
+                app.tab = .today
+                // `-openNoticesSheet` opens the drawer (simulator checks).
+                if args.contains("-openNoticesSheet") { try? await Task.sleep(for: .seconds(4)); app.showNotices = true }
+                return
+            }
             // `-focusTurn long|short` opens Chat on a long or short message
             // the way a tapped notice does, to check its glow.
             if let at = args.firstIndex(of: "-focusTurn"), at + 1 < args.count {
@@ -189,17 +194,21 @@ struct StatusLine: View {
             }
             Spacer()
             // The notices: one dot and a count, when any.
-            if !app.notices.isEmpty {
+            if let status = Notices.statusButton(unread: app.notices, running: running.count) {
                 Button {
                     app.showNotices = true
                 } label: {
                     HStack(spacing: 6) {
-                        // One orange dot however many there are (Dylan,
-                        // 2026-11-19); its shade is the most urgent one's.
-                        if let kind = Notices.headerDot(app.notices) {
+                        // One orange dot for anything new (its shade the
+                        // most urgent one's), and a blue one beside it while
+                        // Jarvis is working on something (Dylan, 2026-11-19).
+                        if let kind = status.orange {
                             Circle().fill(pipColor(kind)).frame(width: 7, height: 7)
                         }
-                        Text(Notices.countLabel(app.notices) ?? "")
+                        if status.blue {
+                            Circle().fill(OrbView.taskBlue(onLight: false)).frame(width: 7, height: 7)
+                        }
+                        Text(status.words)
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Theme.frost)
                     }
@@ -208,7 +217,7 @@ struct StatusLine: View {
                     .background(Capsule().fill(Theme.glass))
                     .overlay(Capsule().strokeBorder(Theme.glassEdge))
                 }
-                .accessibilityLabel("\(app.notices.count) unread notices")
+                .accessibilityLabel("\(app.notices.count) unread notices, \(running.count) running")
                 .transition(.scale.combined(with: .opacity))
             }
             Button {
@@ -231,6 +240,11 @@ struct StatusLine: View {
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { drag in
             if drag.translation.height > 40 && abs(drag.translation.width) < drag.translation.height { app.showNotices = true }
         })
+    }
+
+    /// What Jarvis is working on right now.
+    private var running: [RunningTask] {
+        app.today.snapshot?.jobs?.running ?? []
     }
 
     /// Notices are orange (Dylan, 2026-11-18); one that needs him brightest.

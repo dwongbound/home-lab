@@ -340,8 +340,10 @@ public struct Jobs: Decodable, Sendable {
     public let lookout: Lookout?
     /// How many messages Jarvis has sent today.
     public let messenger: Messenger?
+    /// His regular jobs (Lookout, Messenger, Nightly…) and how each last went.
+    public let jobs: [JobRecord]
 
-    enum CodingKeys: String, CodingKey { case running, lookout, messenger }
+    enum CodingKeys: String, CodingKey { case running, lookout, messenger, jobs }
 
     /// An older Jarvis has no `running` list; read that as none. Lookout and
     /// Messenger are optional and skipped if they won't decode.
@@ -350,6 +352,25 @@ public struct Jobs: Decodable, Sendable {
         running = try c.decodeIfPresent([RunningTask].self, forKey: .running) ?? []
         lookout = try? c.decodeIfPresent(Lookout.self, forKey: .lookout)
         messenger = try? c.decodeIfPresent(Messenger.self, forKey: .messenger)
+        jobs = ((try? c.decodeIfPresent([Maybe].self, forKey: .jobs)) ?? nil)?.compactMap(\.job) ?? []
+    }
+
+    /// One job that may or may not decode.
+    private struct Maybe: Decodable {
+        let job: JobRecord?
+        init(from decoder: Decoder) throws { job = try? JobRecord(from: decoder) }
+    }
+
+    /// Jobs that finished in the last `hours`, newest first, with a result
+    /// word: "Done", or "Failed" for an error. Running and paused ones are
+    /// left out.
+    public func recentlyFinished(now: Date = Date(), hours: Double = 24) -> [(job: JobRecord, word: String, at: Date)] {
+        jobs.compactMap { job in
+            guard job.status != "running", job.status != "paused", let raw = job.lastRun, let at = AgendaTime.parse(raw) else { return nil }
+            guard now.timeIntervalSince(at) <= hours * 3600, at <= now.addingTimeInterval(60) else { return nil }
+            return (job, job.status == "error" ? "Failed" : "Done", at)
+        }
+        .sorted { $0.at > $1.at }
     }
 }
 
@@ -380,6 +401,21 @@ public struct Messenger: Decodable, Sendable {
 }
 
 /// One piece of background work, until it finishes.
+/// One of Jarvis's regular jobs, as the snapshot lists it.
+public struct JobRecord: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    /// ok, running, error or paused.
+    public let status: String
+    public let lastRun: String?
+    /// One plain sentence about the last run.
+    public let lastResult: String?
+
+    public init(id: String, name: String, status: String, lastRun: String?, lastResult: String?) {
+        self.id = id; self.name = name; self.status = status; self.lastRun = lastRun; self.lastResult = lastResult
+    }
+}
+
 public struct RunningTask: Decodable, Identifiable, Sendable {
     public let id: String
     public let label: String
