@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { useState } from 'react'
 import { useSWRConfig } from 'swr'
 import { SNAPSHOT_KEY, changeReport } from '../api/client'
@@ -54,7 +55,8 @@ export function ReportKeepSelect({ report }: { report: JarvisReport }) {
 /**
  * Share: hands the report, as its one HTML file, to the phone's share sheet
  * (Save to Files, Messages). Where the browser can't share a file, it
- * downloads the file instead.
+ * downloads the file instead. Drawn as Apple's share mark (Dylan, 2026-11-19);
+ * a word beside it only while it fetches or when it fails.
  */
 export function ReportShareButton({ id, title }: { id: string; title: string }) {
   const [busy, setBusy] = useState(false)
@@ -84,8 +86,13 @@ export function ReportShareButton({ id, title }: { id: string; title: string }) 
     setBusy(false)
   }
 
-  let label = 'Share'
-  if (busy) label = 'Getting it…'
-  if (failed) label = 'Couldn’t share'
-  return <button type="button" className="btn btn--quiet" aria-label={`Share ${title}`} disabled={busy} onClick={() => void share()}>{label}</button>
+  let status = ''
+  if (busy) status = 'Getting it…'
+  if (failed) status = 'Couldn’t share'
+  return (
+    <span className="share">
+      <button type="button" className="icon-btn" aria-label={`Share ${title}`} disabled={busy} onClick={() => void share()}><Icon name="share" /></button>
+      {status ? <span className="share__status" role="status">{status}</span> : null}
+    </span>
+  )
 }

@@ -6,14 +6,15 @@ import { openReport } from '../lib/reportViewer'
 import { endText, reportHref, rulesText, sizeText } from '../lib/reports'
 import type { JarvisReport, JarvisReports } from '../types'
 import { ConfirmDialog } from './ConfirmDialog'
-import { ReportKeepSelect, ReportShareButton } from './ReportKeep'
+import { Icon } from './Icon'
+import { ReportShareButton } from './ReportKeep'
 
 // Reports (Dylan, 2026-11-18): the pages Jarvis writes when a long task
 // ends in more than a chat reply can hold. Each row opens the report in the
-// viewer (ReportViewer) and says how big it is and when Jarvis deletes it. A
-// plain dropdown says how long the report is kept ("Keep 2 weeks", the usual)
-// and changes it, with Share beside it (ReportKeep; Dylan, 2026-11-19).
-// Delete removes it now, after a confirm. The line under the
+// viewer (ReportViewer) and says how big it is and when Jarvis deletes it.
+// The row has two icon buttons, Share and Delete (after a confirm); how long
+// a report is kept is changed inside the open report, not here (Dylan,
+// 2026-11-19). The line under the
 // title says the rule and how much room all reports take.
 
 /** "Made 2 h ago · 184 KB · Deletes Dec 18". */
@@ -77,9 +78,8 @@ export function ReportsPanel({ reports, now }: { reports: JarvisReports | null; 
                   <p className="cloud__meta loaded__meta">{metaLine(r, now)}</p>
                 </div>
                 <div className="reports__controls">
-                  <ReportKeepSelect report={r} />
                   <ReportShareButton id={r.id} title={r.title} />
-                  <button type="button" className="btn btn--quiet" aria-label={`Delete ${r.title}`} onClick={() => { setDeleteError(null); setDeleting(r) }}>Delete</button>
+                  <button type="button" className="icon-btn" aria-label={`Delete ${r.title}`} onClick={() => { setDeleteError(null); setDeleting(r) }}><Icon name="trash" /></button>
                 </div>
               </li>
             )
