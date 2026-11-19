@@ -349,10 +349,14 @@ struct AlwaysOnView: View {
     /// first press, so Select wakes the board instead of opening Ask Jarvis.
     private var calmLayout: some View {
         Button(action: wake) {
+            ZStack {
+            // A big, dim orb behind the clock (Dylan, 2026-11-19), so the
+            // night screen gives off less light than the small brighter one
+            // did; at night only the pips that need him.
+            OrbView(state: .listening, size: 620, orbit: Orbit.items(running: [], notices: model.notices, night: true), tappable: false, onLight: false)
+                .opacity(NightCalm.orbOpacity)
+                .allowsHitTesting(false)
             VStack(spacing: 22) {
-                // At night only the pips that need him.
-                OrbView(state: .listening, size: 240, orbit: Orbit.items(running: [], notices: model.notices, night: true), tappable: false, onLight: false)
-                    .opacity(0.3)
                 TimelineView(.periodic(from: .now, by: 30)) { tick in
                     let now = SunLampPreview.now(at: tick.date)
                     VStack(spacing: 10) {
@@ -380,6 +384,7 @@ struct AlwaysOnView: View {
                         }
                     }
                 }
+            }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())

@@ -107,3 +107,25 @@ final class NightTextTests: XCTestCase {
         XCTAssertLessThan(NightCalm.secondaryOpacity, NightCalm.clockOpacity)
     }
 }
+
+final class SeenTrackerTests: XCTestCase {
+    func testIds() {
+        XCTAssertFalse(SeenTracker.hasNew(current: ["a", "b"], seen: nil), "first launch: no dot")
+        XCTAssertFalse(SeenTracker.hasNew(current: ["a"], seen: ["a", "b"]), "one went away: nothing new")
+        XCTAssertTrue(SeenTracker.hasNew(current: ["a", "c"], seen: ["a", "b"]))
+        XCTAssertFalse(SeenTracker.hasNew(current: [], seen: []))
+    }
+
+    func testDiet() {
+        let now = ISO8601DateFormatter().date(from: "2026-11-19T20:00:00Z")!
+        let food = Nutrition(date: "2026-11-19", eaten: 1052, goal: 1750, left: 698)
+        let mark = SeenTracker.dietMark(food, now: now)
+        XCTAssertEqual(mark, "2026-11-19:1052")
+        XCTAssertNil(SeenTracker.dietMark(Nutrition(date: "2026-11-19", eaten: 0, goal: 1750, left: 1750), now: now))
+        XCTAssertFalse(SeenTracker.dietHasNew(current: mark, seen: .none), "first launch")
+        XCTAssertFalse(SeenTracker.dietHasNew(current: mark, seen: .some(mark)))
+        XCTAssertTrue(SeenTracker.dietHasNew(current: mark, seen: .some("2026-11-19:900")), "logged more since")
+        XCTAssertTrue(SeenTracker.dietHasNew(current: mark, seen: .some(nil)), "first entry of the day")
+        XCTAssertFalse(SeenTracker.dietHasNew(current: nil, seen: .some("2026-11-18:1200")), "nothing logged today")
+    }
+}

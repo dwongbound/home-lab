@@ -375,6 +375,8 @@ public enum NightCalm {
     /// clock at 40%, the date and the morning line a little lower at 32%.
     public static let clockOpacity = 0.40
     public static let secondaryOpacity = 0.32
+    /// The big orb behind the clock: dim and low, so the room stays dark.
+    public static let orbOpacity = 0.16
 
     /// When the calm layout starts (Dylan: "not from midnight, from 2:30 am").
     public static let startHour = 2, startMinute = 30

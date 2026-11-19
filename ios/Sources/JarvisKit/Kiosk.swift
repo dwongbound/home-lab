@@ -232,3 +232,30 @@ public enum TabBarSize {
         return nil
     }
 }
+
+/// The orange "new" dot on the Home tiles (Dylan, 2026-11-19): something in
+/// Reports, Playbooks or Diet he hasn't seen since he last opened it. What
+/// he's seen is kept on the device; with nothing kept yet (a first launch)
+/// there's never a dot, and the current state becomes the seen one.
+public enum SeenTracker {
+    /// New when any current id wasn't there when he last looked; never on a
+    /// first launch (`seen` nil).
+    public static func hasNew(current: [String], seen: [String]?) -> Bool {
+        guard let seen else { return false }
+        return !Set(current).isSubset(of: Set(seen))
+    }
+
+    /// Diet's mark: the day and what was eaten ("2026-11-19:1052"); nil
+    /// when there's nothing logged today.
+    public static func dietMark(_ food: Nutrition?, now: Date = Date()) -> String? {
+        guard let food, food.isToday(now: now), food.eaten > 0 else { return nil }
+        return "\(food.date):\(Int(food.eaten.rounded()))"
+    }
+
+    /// New in Diet when something's been logged today since he last opened it.
+    public static func dietHasNew(current: String?, seen: String??) -> Bool {
+        guard let seen else { return false }        // never stored: first launch
+        guard let current else { return false }      // nothing logged today
+        return current != seen
+    }
+}

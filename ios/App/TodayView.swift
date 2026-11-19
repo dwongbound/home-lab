@@ -62,8 +62,13 @@ struct TodayView: View {
     @State private var greetingOpen = false
     /// Which shortcut's screen is up (Reports, Diet or Playbooks).
     @State private var shortcut: Shortcut?
-    /// The Playbooks tile's live line ("3 on"), fetched when Home shows.
-    @State private var playbooksLine: String?
+    /// The playbook ids, fetched lightly when Home shows (at most once a minute).
+    @State private var playbookIds: [String]?
+    @State private var playbooksFetched: Date?
+    /// Bumped when something is marked seen, so the dots redraw.
+    @State private var seenTick = 0
+    /// The tile whose screen was opened last.
+    @State private var lastOpened: Shortcut?
 
     /// The three screens the pinned row opens.
     enum Shortcut: String, Identifiable {
@@ -98,14 +103,30 @@ struct TodayView: View {
                 .reportsScrollToTabBar()
             }
         }
-        .sheet(item: $shortcut) { which in
+        .sheet(item: $shortcut, onDismiss: { if let which = lastOpened { markSeen(which, refetch: true) } }) { which in
             switch which {
             case .reports: ReportsListView().environmentObject(app)
             case .diet: DietView().environmentObject(app)
             case .playbooks: PlaybooksView().environmentObject(app)
             }
         }
-        .task { await loadPlaybooksLine() }
+        .task {
+            await loadPlaybooksLine()
+            #if DEBUG
+            // `-pretendNew` makes every tile look new (simulator checks).
+            if ProcessInfo.processInfo.arguments.contains("-pretendNew") {
+                SeenStore.seeReports(["x"]); SeenStore.seePlaybooks(["x"]); SeenStore.seeDiet(nil)
+            }
+            #endif
+            SeenStore.baseline(reports: reportIds, diet: .some(SeenTracker.dietMark(today.snapshot?.nutrition)), playbooks: playbookIds)
+            seenTick += 1
+        }
+        .onChange(of: shortcut) { _, opened in
+            if let opened {
+                lastOpened = opened
+                markSeen(opened, refetch: false)
+            }
+        }
         #if DEBUG
         .onAppear {
             let args = ProcessInfo.processInfo.arguments
@@ -467,9 +488,10 @@ struct TodayView: View {
     /// Three large tiles, each with its icon, name and one live line.
     private var shortcutRow: some View {
         HStack(spacing: 10) {
-            tile(.reports, "Reports", "doc.richtext", reportsLine)
-            tile(.diet, "Diet", "fork.knife", dietLine)
-            tile(.playbooks, "Playbooks", "list.bullet.rectangle", playbooksLine ?? " ")
+            let _ = seenTick
+            tile(.reports, "Reports", "doc.richtext", isNew: reportIds.map { SeenTracker.hasNew(current: $0, seen: SeenStore.reports) } ?? false)
+            tile(.diet, "Diet", "fork.knife", isNew: SeenTracker.dietHasNew(current: SeenTracker.dietMark(today.snapshot?.nutrition), seen: SeenStore.diet))
+            tile(.playbooks, "Playbooks", "list.bullet.rectangle", isNew: playbookIds.map { SeenTracker.hasNew(current: $0, seen: SeenStore.playbooks) } ?? false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -477,8 +499,10 @@ struct TodayView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// One tile: a tap opens its screen.
-    private func tile(_ which: Shortcut, _ name: String, _ icon: String, _ line: String) -> some View {
+    /// One tile: its icon and name, and an orange dot when there's
+    /// something new in it (no other words: Dylan, 2026-11-19). A tap opens
+    /// its screen.
+    private func tile(_ which: Shortcut, _ name: String, _ icon: String, isNew: Bool) -> some View {
         Button {
             shortcut = which
         } label: {
@@ -486,19 +510,23 @@ struct TodayView: View {
                 Image(systemName: icon)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Theme.glacier)
-                Text(name)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.frost)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text(line)
-                    .font(.caption)
-                    .foregroundStyle(Theme.frostDim)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                HStack(spacing: 6) {
+                    Text(name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.frost)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    // Always laid out, only shown when new, so nothing shifts.
+                    Circle()
+                        .fill(OrbView.noticeOrange(onLight: false))
+                        .frame(width: 7, height: 7)
+                        .opacity(isNew ? 1 : 0)
+                        .accessibilityHidden(!isNew)
+                        .accessibilityLabel("New")
+                }
             }
             .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
             .glassPanel()
             .contentShape(Rectangle())
         }
@@ -507,26 +535,36 @@ struct TodayView: View {
         .accessibilityHint("Opens \(name)")
     }
 
-    /// "2 reports", "1 report", "No reports" (or nothing yet).
-    private var reportsLine: String {
-        guard let shelf = app.reportShelf else { return " " }
-        switch shelf.reports.count {
-        case 0: return "No reports"
-        case 1: return "1 report"
-        case let n: return "\(n) reports"
+    /// The report ids Home knows about.
+    private var reportIds: [String]? {
+        app.reportShelf.map { $0.reports.map(\.id) }
+    }
+
+    /// Marks a tile seen as it stands, when its screen opens and again
+    /// when it closes (so a playbook he just made doesn't light the dot).
+    private func markSeen(_ which: Shortcut, refetch: Bool) {
+        switch which {
+        case .reports: if let ids = reportIds { SeenStore.seeReports(ids) }
+        case .diet: SeenStore.seeDiet(SeenTracker.dietMark(today.snapshot?.nutrition))
+        case .playbooks:
+            if let ids = playbookIds { SeenStore.seePlaybooks(ids) }
+            if refetch {
+                Task {
+                    playbooksFetched = nil
+                    await loadPlaybooksLine()
+                    if let ids = playbookIds { SeenStore.seePlaybooks(ids) }
+                    seenTick += 1
+                }
+            }
         }
+        seenTick += 1
     }
 
-    /// "640 kcal left" or "120 kcal over" today.
-    private var dietLine: String {
-        guard let food = today.snapshot?.nutrition, food.isToday() else { return "Today's food" }
-        let left = Int(food.left.rounded())
-        return left >= 0 ? "\(left) kcal left" : "\(-left) kcal over"
-    }
-
-    /// Fetches the playbooks for the tile's "3 on".
+    /// Fetches the playbook ids, lightly: at most once a minute, quietly.
     private func loadPlaybooksLine() async {
-        if let list = try? await app.client.playbooks() { playbooksLine = Playbooks.tileLine(list) }
+        if let last = playbooksFetched, Date().timeIntervalSince(last) < 60 { return }
+        playbooksFetched = Date()
+        if let list = try? await app.client.playbooks() { playbookIds = list.map(\.id) }
     }
 
     private func card<Body: View>(_ title: String, icon: String, trailing: String? = nil, @ViewBuilder body: () -> Body) -> some View {
