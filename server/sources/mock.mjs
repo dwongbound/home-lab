@@ -674,8 +674,11 @@ export function createMockSource({ now = () => new Date() } = {}) {
         return { ok: true, message: 'Deleted' }
       }
       report.kept = change.keep === true
-      if (report.kept) return { ok: true, message: 'Kept until you switch it off' }
-      return { ok: true, message: 'Back to 30 days' }
+      report.keepDays = change.days ?? REPORT_KEEP_DAYS
+      if (report.kept) return { ok: true, message: 'Keeping it until you change that' }
+      if (report.keepDays === 30) return { ok: true, message: 'Keeping it 1 month' }
+      if (report.keepDays === 90) return { ok: true, message: 'Keeping it 3 months' }
+      return { ok: true, message: 'Keeping it 2 weeks' }
     },
 
     /** Saves, deletes or pretends to run one playbook, in memory. */
@@ -787,7 +790,7 @@ function sampleFacts(t) {
   ]
 }
 
-const REPORT_KEEP_DAYS = 30
+const REPORT_KEEP_DAYS = 14
 const DAY_MS = 86_400_000
 
 /** Made-up reports for the sample Reports panel (this repo is public). */
@@ -796,7 +799,7 @@ function sampleReports(t) {
   return [
     { id: 'rep-speakers', title: 'Bookshelf speakers under $400', summary: 'Five pairs compared on sound, size and price, with a pick for a small room.', created: daysAgo(0.1), kept: false, bytes: 184_000 },
     { id: 'rep-week', title: 'Week in review', summary: 'What got done, what slipped, and what is coming up next week.', created: daysAgo(6), kept: true, bytes: 96_500 },
-    { id: 'rep-trip', title: 'Weekend trip options', summary: 'Three places within a four-hour drive, with rough costs and what to do there.', created: daysAgo(27), kept: false, bytes: 412_000 },
+    { id: 'rep-trip', title: 'Weekend trip options', summary: 'Three places within a four-hour drive, with rough costs and what to do there.', created: daysAgo(9), kept: false, bytes: 412_000 },
   ]
 }
 
@@ -805,9 +808,14 @@ function mockReports(reports) {
   const list = [...reports]
     .sort((a, b) => b.created.localeCompare(a.created))
     .map((r) => {
+      // Kept for its own number of days when one was picked, else the usual two weeks; for good has no end.
       let expires = null
-      if (!r.kept) expires = new Date(Date.parse(r.created) + REPORT_KEEP_DAYS * DAY_MS).toISOString()
-      return { ...r, expires }
+      let keepDays = null
+      if (!r.kept) {
+        keepDays = r.keepDays ?? REPORT_KEEP_DAYS
+        expires = new Date(Date.parse(r.created) + keepDays * DAY_MS).toISOString()
+      }
+      return { ...r, keepDays, expires }
     })
   let totalBytes = 0
   for (const r of reports) totalBytes += r.bytes

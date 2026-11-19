@@ -378,6 +378,14 @@ export function createLiveSource(config, deps = {}) {
     }
   }
 
+  /** What to say after a report's keep time changed: "Keeping it 1 month". */
+  function keepMessage(change) {
+    if (change.days === 30) return 'Keeping it 1 month'
+    if (change.days === 90) return 'Keeping it 3 months'
+    if (change.keep === true) return 'Keeping it until you change that'
+    return 'Keeping it 2 weeks'
+  }
+
   const haHeaders = {}
   if (config.haToken) haHeaders.Authorization = `Bearer ${config.haToken}`
 
@@ -918,6 +926,7 @@ export function createLiveSource(config, deps = {}) {
       if (change.op === 'keep') {
         path = `/reports/${id}/keep`
         body = { keep: change.keep }
+        if (change.days !== undefined) body = { days: change.days }
       }
       try {
         const res = await fetchFn(`${config.jarvisApiUrl}${path}`, {
@@ -931,8 +940,7 @@ export function createLiveSource(config, deps = {}) {
         if (!res.ok) return { ok: false, message: answer?.error ?? `Jarvis answered ${res.status}` }
         if (change.op === 'delete') return { ok: true, message: 'Deleted' }
         const report = parseReport(answer?.report)
-        let message = 'Kept until you switch it off'
-        if (!change.keep) message = 'Back to 30 days'
+        const message = keepMessage(change)
         if (report === null) return { ok: true, message }
         return { ok: true, message, report }
       } catch {

@@ -1,7 +1,8 @@
 // Reports (Dylan, 2026-11-18): when a long task ends in more than a chat
 // reply can hold, Jarvis writes one self-contained HTML page and keeps it
-// on the PC (GET /reports, GET /reports/{id}). He deletes a report 30 days
-// after it was made unless Keep is on, and keeps them all under a size cap.
+// on the PC (GET /reports, GET /reports/{id}). He keeps a report 2 weeks
+// unless Dylan picks longer for it (1 month, 3 months, or for good;
+// 2026-11-19), and keeps them all under a size cap.
 // This file cleans his list for the page, and wraps a report's HTML in
 // headers that stop it running scripts or loading anything from outside.
 
@@ -24,6 +25,20 @@ export const REPORT_CSP = [
   "form-action 'none'",
   'sandbox allow-popups allow-popups-to-escape-sandbox',
 ].join('; ')
+
+/** How long one report can be kept, in days, besides "for good". */
+export const KEEP_DAYS = [14, 30, 90]
+const DEFAULT_KEEP_DAYS = 14
+
+/**
+ * What a keep request asks for, from its body: {days: 14 | 30 | 90}, or
+ * {keep: true} (for good) or {keep: false} (back to 2 weeks). Null when it's none of those.
+ */
+export function parseKeepChoice(body) {
+  if (KEEP_DAYS.includes(body?.days)) return { days: body.days }
+  if (typeof body?.keep === 'boolean') return { keep: body.keep }
+  return null
+}
 
 /** True when an id is safe to put in a path to Jarvis. */
 export function isReportId(id) {
@@ -48,8 +63,11 @@ function bytes(value) {
   return Math.round(value)
 }
 
-/** One report from Jarvis in the page's shape; null when it isn't one. */
-export function parseReport(raw) {
+/**
+ * One report from Jarvis in the page's shape; null when it isn't one.
+ * `usualDays` is how long a report is kept when Jarvis doesn't say for this one.
+ */
+export function parseReport(raw, usualDays = DEFAULT_KEEP_DAYS) {
   if (!isReportId(raw?.id)) return null
   const title = text(raw.title, 200)
   const created = time(raw.created)
@@ -58,7 +76,11 @@ export function parseReport(raw) {
   let expires = null
   // A kept report has no end date, whatever Jarvis sent with it.
   if (!kept) expires = time(raw.expires)
-  return { id: raw.id, title, summary: text(raw.summary, 500), created, expires, kept, bytes: bytes(raw.bytes) }
+  // How many days it's kept for; null when it's kept for good.
+  let keepDays = null
+  if (!kept) keepDays = usualDays
+  if (!kept && typeof raw.keep_days === 'number' && raw.keep_days > 0) keepDays = Math.round(raw.keep_days)
+  return { id: raw.id, title, summary: text(raw.summary, 500), created, expires, kept, keepDays, bytes: bytes(raw.bytes) }
 }
 
 /**
@@ -68,9 +90,9 @@ export function parseReport(raw) {
  */
 export function parseReports(body) {
   if (!Array.isArray(body?.reports)) return null
-  const reports = body.reports.map(parseReport).filter((r) => r !== null).slice(0, MAX_REPORTS)
-  let keepDays = 30
+  let keepDays = DEFAULT_KEEP_DAYS
   if (typeof body.keep_days === 'number' && body.keep_days > 0) keepDays = Math.round(body.keep_days)
+  const reports = body.reports.map((raw) => parseReport(raw, keepDays)).filter((r) => r !== null).slice(0, MAX_REPORTS)
   return { reports, totalBytes: bytes(body.total_bytes), keepDays, maxBytes: bytes(body.max_bytes) }
 }
 
@@ -90,7 +112,7 @@ export function missingReportPage(message) {
 </head>
 <body>
 <p>${message}</p>
-<p class="dim">Reports are deleted 30 days after they are made unless Keep is on.</p>
+<p class="dim">Reports are kept 2 weeks unless you pick longer for one.</p>
 </body>
 </html>
 `

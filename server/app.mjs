@@ -39,7 +39,7 @@ import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
-import { REPORT_CSP, isReportId, missingReportPage } from './sources/reports.mjs'
+import { REPORT_CSP, isReportId, parseKeepChoice, missingReportPage } from './sources/reports.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
@@ -300,20 +300,21 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
-  /** Keeps a report past its 30 days (or lets it go again), or deletes it. */
+  /** Sets how long a report is kept (2 weeks, 1 month, 3 months, or for good), or deletes it. */
   async function handleReportChange(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
       return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
     }
     const body = await readJson(req)
-    const keep = body?.op === 'keep' && typeof body.keep === 'boolean'
-    const known = keep || body?.op === 'delete'
+    let choice = null
+    if (body?.op === 'keep') choice = parseKeepChoice(body)
+    const known = choice !== null || body?.op === 'delete'
     if (!known || !isReportId(body.id)) {
-      return sendJson(res, 400, { ok: false, message: 'Send {"op": "keep", "id": "...", "keep": true | false} or {"op": "delete", "id": "..."}' })
+      return sendJson(res, 400, { ok: false, message: 'Send {"op": "keep", "id": "...", "days": 14 | 30 | 90} or "keep": true | false, or {"op": "delete", "id": "..."}' })
     }
     const login = req.headers['tailscale-user-login'] ?? ''
     let change = { op: 'delete', id: body.id }
-    if (keep) change = { op: 'keep', id: body.id, keep: body.keep }
+    if (choice !== null) change = { op: 'keep', id: body.id, ...choice }
     const result = await source.changeReport(change, { login })
     return sendJson(res, result.ok ? 200 : 502, result)
   }
