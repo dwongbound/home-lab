@@ -97,3 +97,66 @@ final class TalkTests: XCTestCase {
         XCTAssertEqual(TalkEvent.parse(#"{"type":"woke"}"#), .state(.listening))
     }
 }
+
+final class PlaybackTrackerTests: XCTestCase {
+    let t0 = Date(timeIntervalSince1970: 1_000)
+
+    /// The normal order: audio plays out, then "done", then idle once.
+    func testIdleOnceAfterPlayedAndDone() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 1.2, now: t0)
+        XCTAssertFalse(p.takeIdle(now: t0))
+        p.played()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(1.2)))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(1.3)), "only once")
+    }
+
+    /// A one-sentence reply that finished before "done" came.
+    func testShortReplyDoneAfterPlayback() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 0.4, now: t0)
+        p.played()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(0.5)))
+    }
+
+    /// The 10:44 case: the Bluetooth route reconfigures as the short reply
+    /// starts, the played callback never comes, and the clock backstop
+    /// sends idle shortly after the audio should have ended.
+    func testLostCallbackFallsBackToTheClock() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 0.6, now: t0)
+        p.done()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(0.6)), "not before the grace")
+        XCTAssertEqual(p.nextCheck(now: t0), t0.addingTimeInterval(0.6 + PlaybackTracker.grace))
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(0.6 + PlaybackTracker.grace)))
+    }
+
+    /// An engine restart forgets the buffers in flight; idle goes once done.
+    func testEngineRestartStopsWaitingOnCallbacks() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 2, now: t0)
+        p.scheduled(seconds: 2, now: t0)
+        p.engineRestarted()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(0.1)))
+    }
+
+    /// Sentences queue one after another, so the expected end adds up.
+    func testExpectedEndAddsUp() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 1, now: t0)
+        p.scheduled(seconds: 2, now: t0.addingTimeInterval(0.5))
+        XCTAssertEqual(p.expectedEnd, t0.addingTimeInterval(3))
+    }
+
+    /// Talking over him clears everything; nothing is owed.
+    func testResetOwesNothing() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 1, now: t0)
+        p.done()
+        p.reset()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(10)))
+    }
+}

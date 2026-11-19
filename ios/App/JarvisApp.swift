@@ -82,8 +82,10 @@ struct RootView: View {
     /// A page scrolled: down tucks the bar away at once, up opens it.
     private func barScrolled(_ delta: Double) {
         guard let down = TabBarSize.isScrollDown(delta) else { return }
+        // Called on every frame of a scroll: only touches state when
+        // something actually changes.
         if down {
-            scrollingDown = true
+            if !scrollingDown { scrollingDown = true }
             settleBar()
         } else if scrollingDown || !barExpanded {
             touchBar()
@@ -104,6 +106,9 @@ struct RootView: View {
     /// Each page draws its own status line instead of a big title
     /// (Dylan, 2026-11-16: no "Chat"/"Talk" headings).
     var body: some View {
+        #if DEBUG
+        let _ = PerfCount.bump("root")
+        #endif
         // The page swiper runs to the screen's very top and bottom (Dylan,
         // 2026-11-19: on the iPhone 17 Pro the app "stops early … like a
         // horizontal line"): a paging TabView clips its pages to the safe

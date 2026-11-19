@@ -89,6 +89,15 @@ final class ChatModel: ObservableObject {
 
     /// Loads the chat so far and anything still waiting on an OK.
     func load(app: AppModel) async {
+        #if DEBUG
+        // `-demoChat` fills Chat with a long mixed history and reaches no
+        // Jarvis (the scroll-lag test, UITests/ChatScrollTests.swift).
+        if ProcessInfo.processInfo.arguments.contains("-demoChat") {
+            items = DemoChat.items()
+            loaded = true
+            return
+        }
+        #endif
         let client = app.client
         do {
             let turns = try await client.history()
@@ -374,3 +383,40 @@ enum PhotoDiskCache {
     }
 }
 
+
+#if DEBUG
+/// A long, mixed chat for scroll checks: short and long replies with
+/// markdown, lists and code, model chips, kept ones, photo chips.
+enum DemoChat {
+    static func items() -> [ChatItem] {
+        var out: [ChatItem] = []
+        let long = """
+        Here's the **plan** for tomorrow, with the bits that matter:
+
+        - Leave by `9:40` for the *10:30* at Varda
+        - Rain until noon, so take the jacket
+        - Dinner with Aditya has **no time set** yet
+
+        | Item | Calories | Protein |
+        |---|---|---|
+        | Burrito bowl | 675 | 54 g |
+        | Smoothie | 140 | 1 g |
+
+        ```
+        swift test --filter Chat
+        ```
+        I'll check again at 8 and tell you if anything moves.
+        """
+        for i in 0..<120 {
+            var me = ChatItem.user(i % 5 == 0 ? "Can you look at tomorrow and tell me what I need to bring?" : "ok \(i)", photoCount: i % 9 == 0 ? 2 : 0)
+            me.turnId = i
+            out.append(me)
+            var reply = ChatItem.jarvis(i % 3 == 0 ? long : "Done. **Logged** it: \(i * 7) calories, `\(i)P`. Anything else?", model: ["claude", "ornith", "qwen"][i % 3], finished: true, question: "q")
+            reply.turnId = 1000 + i
+            reply.kept = i % 11 == 0
+            out.append(reply)
+        }
+        return out
+    }
+}
+#endif

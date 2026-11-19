@@ -71,11 +71,11 @@ final class TalkLine: @unchecked Sendable {
     private var voiceRate: Double = 22050
     private var voiceFormat: AVAudioFormat?
     private var state: TalkState = .listening
-    /// Sentences scheduled and not yet heard.
-    private var queued = 0
+    /// Sentences scheduled and not yet heard, and when "idle" is due
+    /// (JarvisKit PlaybackTracker: callbacks, with the clock as backstop).
+    private var playback = PlaybackTracker()
     /// Bumped on every "stop", so sentences dropped then don't count down later.
     private var generation = 0
-    private var replyDone = false
     private var muted = false
     private var closed = false
     private(set) var canDoze = false
@@ -305,32 +305,43 @@ final class TalkLine: @unchecked Sendable {
         floats.withUnsafeBufferPointer { source in
             buffer.floatChannelData?[0].update(from: source.baseAddress!, count: floats.count)
         }
-        queued += 1
+        playback.scheduled(seconds: Double(floats.count) / format.sampleRate, now: Date())
         let mine = generation
         voice.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             guard let self else { return }
             self.queue.async {
                 guard mine == self.generation else { return }
-                self.queued -= 1
+                self.playback.played()
                 self.maybeIdle()
             }
         }
         if !voice.isPlaying { voice.play() }
     }
 
-    /// Tells Jarvis the speaker's quiet, once his whole reply has played.
+    /// Tells Jarvis the speaker's quiet, once his whole reply has played:
+    /// exactly once, whichever comes last of "done" and the audio ending.
+    /// If a played callback never comes (the route reconfigured mid-reply),
+    /// a timer set for the audio's expected end sends it anyway.
     private func maybeIdle() {
-        guard replyDone, queued <= 0 else { return }
-        replyDone = false
-        queued = 0
-        send(text: TalkMessage.idle)
+        let now = Date()
+        if playback.takeIdle(now: now) {
+            talkLog("idle")
+            send(text: TalkMessage.idle)
+            return
+        }
+        if let check = playback.nextCheck(now: now) {
+            let mine = generation
+            queue.asyncAfter(deadline: .now() + check.timeIntervalSince(now) + 0.01) { [weak self] in
+                guard let self, !self.closed, mine == self.generation else { return }
+                self.maybeIdle()
+            }
+        }
     }
 
     /// Drops whatever of his voice is still queued (Dylan talked over him).
     private func silence() {
         generation += 1
-        queued = 0
-        replyDone = false
+        playback.reset()
         voice.stop()
         voice.play()
     }
@@ -417,7 +428,7 @@ final class TalkLine: @unchecked Sendable {
             if TalkAudio.heardYouOut(before: state, after: next) { playGotIt() }
             state = next
         case .done:
-            replyDone = true
+            playback.done()
             maybeIdle()
         case .stop:
             silence()
@@ -501,6 +512,8 @@ final class TalkLine: @unchecked Sendable {
     private func rewire() {
         guard !closed else { return }
         talkLog("audio route changed, rewiring")
+        // Buffers in flight won't report played after this; go by the clock.
+        playback.engineRestarted()
         engine.stop()
         connectNodes()
         do {
@@ -510,6 +523,8 @@ final class TalkLine: @unchecked Sendable {
         } catch {
             talkLog("rewire failed: \(error)")
         }
+        // A reply already done is owed its idle now, not after a timer.
+        maybeIdle()
     }
 
     // MARK: The microphone watchdog
@@ -557,6 +572,7 @@ final class TalkLine: @unchecked Sendable {
         talkLog("restarting mic: \(reason)\(rebuild ? " (new engine)" : "")")
         engine.inputNode.removeTap(onBus: 0)
         voice.removeTap(onBus: 0)
+        playback.engineRestarted()
         engine.stop()
         if rebuild {
             engine = AVAudioEngine()
@@ -566,7 +582,7 @@ final class TalkLine: @unchecked Sendable {
             engine.attach(chime)
             // Whatever of his voice was queued went with the old engine.
             generation += 1
-            queued = 0
+            playback.engineRestarted()
         }
         let session = AVAudioSession.sharedInstance()
         do {
@@ -585,6 +601,7 @@ final class TalkLine: @unchecked Sendable {
         } catch {
             talkLog("engine wouldn't start: \(error)")
         }
+        maybeIdle()
     }
 
     /// "Mic paused. Tap to resume.": a fresh engine and a fresh count.

@@ -294,3 +294,66 @@ public enum HeardWords {
         same && !shown.trimmingCharacters(in: .whitespaces).isEmpty ? shown : final
     }
 }
+
+/// When a reply has finished playing, so the app tells Jarvis "idle" once
+/// and promptly (Dylan, 2026-11-19, 10:44: after a short reply on his
+/// Bluetooth headset no idle went out, so Jarvis sat in "speaking" for 40 s
+/// and didn't hear him). Each sentence's buffer is counted, and its played
+/// callback counts it back, but the callback isn't to be trusted: when the
+/// audio route reconfigures (Bluetooth HFP does this as playback starts)
+/// the engine restarts and buffers in flight never report. So the
+/// tracker also knows when the audio should have ended, and once that time
+/// plus a short grace has passed, the reply counts as played.
+public struct PlaybackTracker: Equatable, Sendable {
+    /// Grace after the expected end before the backstop calls it played.
+    public static let grace: TimeInterval = 0.8
+
+    /// Buffers scheduled and not yet reported played.
+    public private(set) var queued = 0
+    /// Jarvis said the reply is complete ("done").
+    public private(set) var replyDone = false
+    /// When the last scheduled audio should finish playing.
+    public private(set) var expectedEnd: Date?
+
+    public init() {}
+
+    /// A buffer of `seconds` of audio was scheduled at `now`; it plays after
+    /// whatever is still queued.
+    public mutating func scheduled(seconds: TimeInterval, now: Date) {
+        queued += 1
+        let start = max(now, expectedEnd ?? now)
+        expectedEnd = start.addingTimeInterval(seconds)
+    }
+
+    /// One buffer reported played.
+    public mutating func played() { queued = max(0, queued - 1) }
+
+    /// Jarvis's "done": no more audio for this reply.
+    public mutating func done() { replyDone = true }
+
+    /// The engine restarted (route or configuration change): buffers in
+    /// flight won't report, so stop waiting on their callbacks and go by
+    /// the clock alone.
+    public mutating func engineRestarted() { queued = 0 }
+
+    /// Dylan talked over him, or the line reset: nothing is owed.
+    public mutating func reset() { self = PlaybackTracker() }
+
+    /// Whether to send "idle" now. True once per reply: the reply is done,
+    /// and either every buffer reported played or the clock says it ended.
+    /// Calling it with a true answer clears the reply, so it can't fire twice.
+    public mutating func takeIdle(now: Date) -> Bool {
+        guard replyDone else { return false }
+        let clockSaysEnded = expectedEnd.map { now >= $0.addingTimeInterval(Self.grace) } ?? true
+        guard queued <= 0 || clockSaysEnded else { return false }
+        self = PlaybackTracker()
+        return true
+    }
+
+    /// When to look again if idle isn't due yet (the backstop's timer).
+    public func nextCheck(now: Date) -> Date? {
+        guard replyDone, let expectedEnd else { return nil }
+        let due = expectedEnd.addingTimeInterval(Self.grace)
+        return due > now ? due : nil
+    }
+}

@@ -563,8 +563,7 @@ struct JarvisBubble: View {
 
     /// Bold, italics, code and links render; anything else stays plain text.
     private func markdown(_ text: String) -> AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        MarkdownCache.shared.attributed(text)
     }
 }
 
@@ -631,14 +630,33 @@ private struct ReadingUpWatch: ViewModifier {
                     // How far the newest line is below the visible area.
                     g.contentSize.height + g.contentInsets.bottom - (g.contentOffset.y + g.containerSize.height)
                 } action: { _, gap in
-                    #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("-logGap") { print("GAP", gap) }
-                    #endif
                     if gap < 60 { if !atBottom { atBottom = true } }
                     else if gap > 100 { if atBottom { atBottom = false } }
                     if gap < 40 { if readingUp { readingUp = false } }
                     else if gap > 120, byHand, !readingUp { readingUp = true }
                 }
         }
+    }
+}
+
+/// Parsed reply text, kept so scrolling past a bubble again doesn't parse
+/// its markdown again (Dylan, 2026-11-19: Chat felt laggy as he scrolled).
+/// A reply still streaming in has new text each time, so it's parsed fresh.
+final class MarkdownCache: @unchecked Sendable {
+    static let shared = MarkdownCache()
+    private let cache = NSCache<NSString, Box>()
+    private final class Box { let value: AttributedString; init(_ v: AttributedString) { value = v } }
+
+    init() { cache.countLimit = 400 }
+
+    func attributed(_ text: String) -> AttributedString {
+        if let hit = cache.object(forKey: text as NSString) { return hit.value }
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        #if DEBUG
+        PerfCount.bump("markdown")
+        #endif
+        let value = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        cache.setObject(Box(value), forKey: text as NSString)
+        return value
     }
 }
