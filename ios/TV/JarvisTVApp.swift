@@ -839,6 +839,26 @@ struct AlwaysOnView: View {
                     .staggered(index)
                 }
             }
+        case .reports:
+            // Read-only: no reader on the TV, so it points to the iPhone.
+            card(which) {
+                ForEach(Array((snapshot.reports?.reports ?? []).prefix(3).enumerated()), id: \.element.id) { index, report in
+                    HStack(alignment: .firstTextBaseline, spacing: 18) {
+                        Image(systemName: "doc.text.fill").foregroundStyle(accent).frame(width: 36)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(report.title).lineLimit(1)
+                            if !report.summary.isEmpty {
+                                Text(report.summary).font(.callout).foregroundStyle(inkDim).lineLimit(1)
+                            }
+                        }
+                    }
+                    .staggered(index)
+                }
+                Label(Reports.elsewhere, systemImage: "iphone")
+                    .font(.callout)
+                    .foregroundStyle(inkDim)
+                    .staggered(3)
+            }
         }
     }
 

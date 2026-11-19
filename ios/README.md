@@ -22,6 +22,17 @@ Review) or straight from Xcode. It never goes to the App Store.
   the tab the first time starts the call. Keeps going with the screen
   locked (background audio); Apple's voice processing cancels his voice out
   of the mic. Pause dozes when Jarvis supports "Hey Jarvis", else hangs up.
+- **Reports:** Jarvis's HTML reports, read in the app's own reader
+  (`App/ReportView.swift`), never Safari: the page is fetched through
+  JarvisClient and shown in a WKWebView with JavaScript off; a link to
+  another `/reports/{id}` opens in the same reader, anything else does
+  nothing. Opened from a "Report ready" notice or push, a chat link to
+  `/reports/{id}` on the home page, or the Reports card on Home (snapshot
+  `reports`: size, "Deletes Dec 18" / "Kept until you switch Keep off",
+  the rule and the room used, a Keep switch and Delete, asked first). Ids
+  must be 16 lowercase hex (`JarvisKit/Reports.swift`, wording in step with
+  `src/lib/reports.ts`). The TV shows a read-only Reports card and the
+  Watch a line, both "Open on your iPhone to read the report".
 - **Settings:** the server address and a connection check.
 - The orb (design D: a glass core in a 3D constellation) and the app icon.
 

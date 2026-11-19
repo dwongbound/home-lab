@@ -140,6 +140,29 @@ public struct JarvisClient: Sendable {
         return ApprovalReply.read(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
     }
 
+    /// One report's page (GET /reports/{id}). Only a good id is ever fetched.
+    public func report(id: String) async -> ReportFetch {
+        guard Reports.isId(id) else { return .gone }
+        var request = request("reports/\(id)")
+        request.timeoutInterval = 30
+        do {
+            let (data, response) = try await session.data(for: request)
+            return ReportFetch.read(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
+        } catch {
+            return .failed(JarvisError.unreachable.localizedDescription)
+        }
+    }
+
+    /// Keep a report past its days, or let it go again.
+    public func keepReport(id: String, keep: Bool) async throws {
+        try await post("api/jarvis/reports", ["op": "keep", "id": id, "keep": keep])
+    }
+
+    /// Delete a report now.
+    public func deleteReport(id: String) async throws {
+        try await post("api/jarvis/reports", ["op": "delete", "id": id])
+    }
+
     /// "That was wrong" on a reply: what was asked, what he said, what Dylan wanted.
     public func flagWrong(question: String, answer: String, note: String) async throws {
         try await post("api/jarvis/feedback", ["question": question, "answer": answer, "note": note])

@@ -208,6 +208,8 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Jarvis's message (the greeting's full text), first in the rotation.
     case message
     case today, tasks, home, playing, forecast, jarvis, lookout, health, suggestions
+    /// Jarvis's reports, read-only: titles and summaries (read on the iPhone).
+    case reports
 
     /// The card's title.
     public var title: String {
@@ -222,6 +224,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .lookout: return "Lookout"
         case .health: return "You"
         case .suggestions: return "Suggestions"
+        case .reports: return "Reports"
         }
     }
 
@@ -238,6 +241,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .lookout: return "binoculars.fill"
         case .health: return "heart.fill"
         case .suggestions: return "lightbulb.fill"
+        case .reports: return "doc.richtext"
         }
     }
 
@@ -245,7 +249,8 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Jarvis's suggestions, which can quote personal things).
     /// Lookout says what Jarvis is watching for Dylan and how often he's
     /// messaged him: private too.
-    public var isPrivate: Bool { self == .health || self == .suggestions || self == .lookout }
+    /// Reports can be about anything of his: private as well.
+    public var isPrivate: Bool { self == .health || self == .suggestions || self == .lookout || self == .reports }
 }
 
 public enum TVBoard {
@@ -273,6 +278,7 @@ public enum TVBoard {
         }
         if snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.suggestions) }
+        if !(snapshot.reports?.reports.isEmpty ?? true) { out.append(.reports) }
         return guest ? out.filter { !$0.isPrivate } : out
     }
 

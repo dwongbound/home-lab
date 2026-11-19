@@ -305,6 +305,10 @@ struct NoticesList: View {
                         if !notice.body.isEmpty {
                             Text(notice.body).font(.caption2).foregroundStyle(Theme.frostDim).lineLimit(3)
                         }
+                        // No browser on the Watch: the report is read on the iPhone.
+                        if notice.isReport {
+                            Text(Reports.elsewhere).font(.caption2).foregroundStyle(Theme.frostDim)
+                        }
                         if notice.approvalId != nil {
                             HStack {
                                 Button("Deny") { Task { await model.answer(notice, ok: false) } }

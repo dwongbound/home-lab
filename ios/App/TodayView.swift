@@ -60,6 +60,10 @@ struct TodayView: View {
     @ObservedObject var today: TodayModel
     /// True once the greeting's body has been tapped open.
     @State private var greetingOpen = false
+    /// The report waiting on "Delete this report?".
+    @State private var deleting: Report?
+    /// True once "Show all" has been tapped on the Reports card.
+    @State private var allReports = false
 
     /// Status line over a scrolling column of cards. Refreshes every 15 s
     /// while showing, like the page.
@@ -79,6 +83,22 @@ struct TodayView: View {
                 }
                 .refreshable { await today.load(app: app) }
             }
+            // A Keep or Delete waiting on the PC: labelled and blocking.
+            if let busy = app.reportBusy, app.report == nil {
+                Color.black.opacity(0.35).ignoresSafeArea()
+                VStack(spacing: 14) {
+                    ProgressView().controlSize(.large).tint(Theme.frost)
+                    Text(busy).font(.headline).foregroundStyle(Theme.frost)
+                }
+                .padding(28)
+                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
+            }
+        }
+        .confirmationDialog("Delete this report?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { report in
+            Button("Delete", role: .destructive) { Task { await app.deleteReport(report.id) } }
+            Button("Close", role: .cancel) {}
+        } message: { report in
+            Text("“\(report.title)” goes for good, here and on the PC.")
         }
         .fontDesign(.rounded)
         #if DEBUG
@@ -118,6 +138,9 @@ struct TodayView: View {
             }
             if let health = snapshot.health, health.sleep?.asleepMin != nil || health.yesterday?.steps != nil {
                 healthCard(health)
+            }
+            if let shelf = app.reportShelf {
+                reportsCard(shelf)
             }
             if let running = snapshot.jobs?.running, !running.isEmpty {
                 card("Jarvis is working on", icon: "sparkles") {
@@ -421,6 +444,74 @@ struct TodayView: View {
     }
 
     /// A glass card with a small header (symbol, title, optional note).
+    // MARK: Reports
+
+    /// Jarvis's reports: how long they're kept and the room they take, then
+    /// one row each (newest first, five until "Show all"). A row opens the
+    /// report in the app's reader; its "…" has Keep and Delete.
+    private func reportsCard(_ shelf: ReportShelf) -> some View {
+        card("Reports", icon: "doc.richtext", trailing: shelf.reports.isEmpty ? nil : "\(shelf.reports.count)") {
+            Text(Reports.rulesText(shelf))
+                .font(.caption)
+                .foregroundStyle(Theme.frostDim)
+            if shelf.reports.isEmpty {
+                Text("None yet. Jarvis writes one when a long task ends.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.frostDim)
+            }
+            ForEach(allReports ? shelf.reports : Array(shelf.reports.prefix(5))) { report in
+                reportRow(report, days: shelf.keepDays)
+            }
+            if shelf.reports.count > 5 {
+                Button(allReports ? "Show fewer" : "Show all \(shelf.reports.count)") {
+                    withAnimation(.smooth) { allReports.toggle() }
+                }
+                .font(.footnote.weight(.semibold))
+                .frame(minHeight: 44)
+            }
+        }
+    }
+
+    /// One report: title, a line of summary, size and when it's deleted.
+    private func reportRow(_ report: Report, days: Int) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                Task { await app.openReport(id: report.id, title: report.title) }
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(report.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.frost)
+                        .lineLimit(2)
+                    if !report.summary.isEmpty {
+                        Text(report.summary)
+                            .font(.caption)
+                            .foregroundStyle(Theme.frostDim)
+                            .lineLimit(2)
+                    }
+                    Text("\(Reports.sizeText(report.bytes)) · \(Reports.endText(report))")
+                        .font(.caption2)
+                        .foregroundStyle(report.kept ? Theme.glacier : Theme.frostDim)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .multilineTextAlignment(.leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Menu {
+                Toggle("Keep", isOn: Binding(get: { report.kept }, set: { keep in Task { await app.keepReport(report.id, keep: keep) } }))
+                Button("Delete…", role: .destructive) { deleting = report }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Theme.frostDim)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Keep or delete \(report.title)")
+        }
+    }
+
     private func card<Body: View>(_ title: String, icon: String, trailing: String? = nil, @ViewBuilder body: () -> Body) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {

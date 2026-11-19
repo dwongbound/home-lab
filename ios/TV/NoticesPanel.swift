@@ -59,6 +59,12 @@ struct NoticesPanel: View {
                     if !notice.body.isEmpty {
                         Text(notice.body).font(.caption).foregroundStyle(palette.inkDim.color).lineLimit(2)
                     }
+                    // No browser on the TV: the report is read on the iPhone.
+                    if notice.reportId != nil {
+                        Label(Reports.elsewhere, systemImage: "iphone")
+                            .font(.caption2)
+                            .foregroundStyle(palette.inkDim.color)
+                    }
                 }
                 Spacer(minLength: 20)
                 Text(Notices.when(notice.created)).font(.caption).foregroundStyle(palette.inkDim.color)

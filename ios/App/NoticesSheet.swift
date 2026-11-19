@@ -60,6 +60,11 @@ struct NoticesSheet: View {
             Button {
                 // Opening it reads it (cleared everywhere), unless it needs
                 // an answer, and opens Chat at the full message.
+                if let reportId = notice.reportId {
+                    // "Report ready": the report itself, in the app's reader.
+                    Task { await app.openReport(id: reportId, clearing: notice) }
+                    return
+                }
                 if notice.turnId != nil {
                     Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) ? notice : nil) }
                 } else {

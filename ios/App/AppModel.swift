@@ -141,6 +141,69 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// The report showing in the app's reader, if any.
+    @Published var report: ReportPage?
+    /// What a Keep or Delete is waiting on ("Deleting the report…"), shown
+    /// as a labelled, blocking wait.
+    @Published private(set) var reportBusy: String?
+    /// Keep switched here, shown at once until the snapshot catches up.
+    @Published private var keptHere: [String: Bool] = [:]
+    /// Reports deleted here, hidden at once.
+    @Published private var deletedHere: Set<String> = []
+
+    /// Jarvis's reports from the snapshot, with this device's own changes
+    /// laid over it; nil from an older Jarvis.
+    var reportShelf: ReportShelf? {
+        guard var shelf = today.snapshot?.reports else { return nil }
+        shelf.reports = shelf.reports
+            .filter { !deletedHere.contains($0.id) }
+            .map { report in keptHere[report.id].map { report.keeping($0, days: shelf.keepDays) } ?? report }
+        return shelf
+    }
+
+    /// Opens a report in the app's own reader (never Safari). The notice it
+    /// came from is read, so it clears everywhere like any other. A bad id
+    /// opens nothing.
+    func openReport(id: String, title: String? = nil, clearing notice: Notice? = nil) async {
+        guard Reports.isId(id) else { return }
+        if showNotices {
+            // Let the notices sheet finish going before the report comes up.
+            showNotices = false
+            try? await Task.sleep(for: .milliseconds(450))
+        }
+        report = ReportPage(id: id, title: title ?? reportShelf?.reports.first { $0.id == id }?.title)
+        if let notice { await clearNotices([notice.id]) }
+    }
+
+    /// Keep a report past its days, or let it go again.
+    func keepReport(_ id: String, keep: Bool) async {
+        reportBusy = keep ? "Keeping the report…" : "Letting the report go…"
+        defer { reportBusy = nil }
+        do {
+            try await client.keepReport(id: id, keep: keep)
+            keptHere[id] = keep
+            await today.load(app: self)
+        } catch {
+            noteReach(error)
+        }
+    }
+
+    /// Deletes a report now. True when it went.
+    @discardableResult
+    func deleteReport(_ id: String) async -> Bool {
+        reportBusy = "Deleting the report…"
+        defer { reportBusy = nil }
+        do {
+            try await client.deleteReport(id: id)
+            deletedHere.insert(id)
+            await today.load(app: self)
+            return true
+        } catch {
+            noteReach(error)
+            return false
+        }
+    }
+
     /// Opens Chat at the message a notice previews (acting on it, so the
     /// notice clears everywhere). Without a turn, Chat opens at the bottom.
     func openTurn(_ turnId: Int?, clearing notice: Notice? = nil) async {

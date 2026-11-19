@@ -178,9 +178,9 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
         switch tap.destination {
         case .app:
             break
-        case .report:
-            // Reports open in the app's own reader (the reports work).
-            app.showNotices = true
+        case .report(let reportId):
+            // "Report ready": the report itself, in the app's reader.
+            Task { await app.openReport(id: reportId) }
         case .turn(let turnId):
             Task { await app.openTurn(turnId) }
         case .notices:

@@ -113,6 +113,26 @@ struct RootView: View {
         .task {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-demoIsland") { app.talk.demoIsland(); return }
+            // `-openReport <id>` starts on Home with that report open.
+            let args = ProcessInfo.processInfo.arguments
+            if let at = args.firstIndex(of: "-openReport"), at + 1 < args.count {
+                app.tab = .today
+                await app.today.load(app: app)
+                await app.openReport(id: args[at + 1])
+                return
+            }
+            if args.contains("-onHome") { app.tab = .today; return }
+            // `-focusTurn long|short` opens Chat on a long or short message
+            // the way a tapped notice does, to check its glow.
+            if let at = args.firstIndex(of: "-focusTurn"), at + 1 < args.count {
+                app.tab = .chat
+                await app.chat.load(app: app)
+                let jarvis = app.chat.items.filter { $0.kind == .jarvis && $0.turnId != nil && !$0.text.isEmpty }
+                let pick = args[at + 1] == "long" ? jarvis.max { $0.text.count < $1.text.count } : jarvis.filter { $0.text.count < 80 }.last
+                try? await Task.sleep(for: .seconds(1))
+                app.focusTurn = pick?.turnId
+                return
+            }
             // `-openChat` starts on Chat (simulator checks; no mic there).
             if ProcessInfo.processInfo.arguments.contains("-openChat") {
                 app.tab = .chat
@@ -339,6 +359,19 @@ struct PadKioskAndNotices: ViewModifier {
                     NoticesSheet().environmentObject(app)
                 }
             }
+            // A report from Jarvis, in the app's own reader.
+            .background {
+                Color.clear.sheet(item: $app.report) { page in
+                    ReportReader(page: page).environmentObject(app)
+                }
+            }
+            // A link to one of Jarvis's reports (chat's "Open the report")
+            // opens in the reader; every other link opens as it always has.
+            .environment(\.openURL, OpenURLAction { url in
+                guard let id = Reports.id(in: url, base: app.client.base) else { return .systemAction }
+                Task { await app.openReport(id: id) }
+                return .handled
+            })
             .simultaneousGesture(TapGesture().onEnded { app.noteActivity() })
             .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { _ in app.noteActivity() })
             .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in app.noteActivity() }

@@ -108,13 +108,16 @@ public struct ChatTurn: Codable, Equatable, Sendable {
     public let images: Int?
     /// Jarvis's id for the turn, so a notice can point at it.
     public let id: Int?
+    /// For a message he sent unasked ("notice:…"): the model that wrote its
+    /// words, when one did (absent on reminders, alerts and older turns).
+    public let writer: String?
 
     /// True for Dylan's own lines.
     public var isUser: Bool { role == "user" }
 
     /// Builds a turn (sample data and tests; the server's are decoded).
-    public init(role: String, text: String, at: String, model: String?, images: Int? = nil, id: Int? = nil) {
-        self.role = role; self.text = text; self.at = at; self.model = model; self.images = images; self.id = id
+    public init(role: String, text: String, at: String, model: String?, images: Int? = nil, id: Int? = nil, writer: String? = nil) {
+        self.role = role; self.text = text; self.at = at; self.model = model; self.images = images; self.id = id; self.writer = writer
     }
 
     /// The position of the turn with Jarvis's id `turnId`, or nil.

@@ -15,6 +15,7 @@ struct ChatView: View {
     @State private var showCamera = false
     /// The turn just opened from a notice, glowing for a moment.
     @State private var highlighted: Int?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var flagging: ChatItem?
     @FocusState private var typing: Bool
     /// Whether the newest line is on screen; when it isn't, "Scroll to
@@ -169,10 +170,19 @@ struct ChatView: View {
                 Task {
                     if !chat.items.contains(where: { $0.turnId == target }) { await chat.load(app: app) }
                     if let item = chat.items.first(where: { $0.turnId == target }) {
-                        highlighted = target
                         withAnimation(.easeOut(duration: 0.4)) { scroller.scrollTo(item.id, anchor: .center) }
-                        try? await Task.sleep(for: .seconds(2.5))
-                        withAnimation(.smooth) { highlighted = nil }
+                        // A soft tint on the bubble that fades in, rests and
+                        // fades out over about two seconds (Dylan, 2026-11-18:
+                        // the old outline "is quite ugly"). Reduce Motion: a
+                        // plain brief tint, no fading.
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) { highlighted = target }
+                        var rest = reduceMotion ? 1.5 : 1.2
+                        #if DEBUG
+                        // `-holdGlow` keeps it up long enough for a screenshot.
+                        if ProcessInfo.processInfo.arguments.contains("-holdGlow") { rest = 60 }
+                        #endif
+                        try? await Task.sleep(for: .seconds(rest))
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.9)) { highlighted = nil }
                     } else {
                         withAnimation(.easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
                     }
@@ -251,15 +261,8 @@ struct ChatView: View {
         case .jarvis:
             if !item.text.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    JarvisBubble(item: item) { flagging = item }
-                        .overlay {
-                            if item.turnId != nil && item.turnId == highlighted {
-                                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                    .strokeBorder(OrbView.noticeOrange(onLight: false), lineWidth: 2)
-                                    .shadow(color: OrbView.noticeOrange(onLight: false).opacity(0.6), radius: 10)
-                                    .transition(.opacity)
-                            }
-                        }
+                    // A notice opened here: the bubble itself glows softly.
+                    JarvisBubble(item: item, glowing: item.turnId != nil && item.turnId == highlighted) { flagging = item }
                     // "Is this the meal I already logged?"
                     if item.mealKey != nil && item.mealAnswer == nil && item.finished {
                         HStack(spacing: 8) {
@@ -378,27 +381,21 @@ struct ChatView: View {
 /// ("That was wrong") once it's finished.
 struct JarvisBubble: View {
     let item: ChatItem
+    /// True while a notice that opened this message is pointing at it: the
+    /// bubble takes a soft orange tint in its own shape.
+    var glowing = false
     let onWrong: () -> Void
+
+    /// The bubble's own shape, shared by its fill, edge and glow.
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6, bottomTrailingRadius: 20, topTrailingRadius: 20)
+    }
 
     /// Chip over a glass bubble.
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let model = item.model, ModelWording.isNotice(model) {
-                // A message he sent unasked: a plain word in a quiet chip.
-                Text(ModelWording.label(model))
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .foregroundStyle(Theme.frostDim)
-                    .background(Capsule().fill(Color.white.opacity(0.08)))
-            } else if let model = item.model, !ModelWording.label(model).isEmpty {
-                let tone = ModelWording.isClaude(model) ? Theme.ember : Theme.glacier
-                Text(ModelWording.label(model))
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .foregroundStyle(tone)
-                    .background(Capsule().fill(tone.opacity(0.14)))
+            if let model = item.model {
+                chip(ModelWording.chip(model: model, writer: item.writer))
             }
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(markdown(item.text))
@@ -414,8 +411,32 @@ struct JarvisBubble: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6, bottomTrailingRadius: 20, topTrailingRadius: 20).fill(Theme.glass))
-            .overlay(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6, bottomTrailingRadius: 20, topTrailingRadius: 20).strokeBorder(Theme.glassEdge))
+            .background(shape.fill(Theme.glass))
+            .background(shape.fill(OrbView.noticeOrange(onLight: false).opacity(glowing ? 0.18 : 0)))
+            .overlay(shape.strokeBorder(glowing ? OrbView.noticeOrange(onLight: false).opacity(0.45) : Theme.glassEdge, lineWidth: 1))
+            .shadow(color: OrbView.noticeOrange(onLight: false).opacity(glowing ? 0.28 : 0), radius: 12)
+        }
+    }
+
+    /// Who wrote it: "Jarvis (CO)" in its colour, and for a message he sent
+    /// unasked the source word in quiet grey after it ("Lookout").
+    @ViewBuilder
+    private func chip(_ chip: ModelWording.Chip) -> some View {
+        if !chip.label.isEmpty {
+            HStack(spacing: 6) {
+                let tone: Color = chip.tone == .claude ? Theme.ember : chip.tone == .local ? Theme.glacier : Theme.frostDim
+                Text(chip.label)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .foregroundStyle(tone)
+                    .background(Capsule().fill(chip.tone == .notice ? Color.white.opacity(0.08) : tone.opacity(0.14)))
+                if !chip.source.isEmpty {
+                    Text(chip.source)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Theme.frostDim)
+                }
+            }
         }
     }
 

@@ -21,8 +21,10 @@ public struct Snapshot: Decodable, Sendable {
     public var notices: [Notice] = []
     /// Today's food numbers; nil from an older Jarvis.
     public var nutrition: Nutrition?
+    /// Jarvis's reports and how long they're kept; nil from an older Jarvis.
+    public var reports: ReportShelf?
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices, nutrition }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices, nutrition, reports }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -62,6 +64,7 @@ public struct Snapshot: Decodable, Sendable {
         nutrition = try? c.decodeIfPresent(Nutrition.self, forKey: .nutrition)
         notices = ((try? c.decodeIfPresent([MaybeNotice].self, forKey: .notices)) ?? nil)?.compactMap(\.notice) ?? []
         health = cloud?.health
+        reports = try? c.decodeIfPresent(ReportShelf.self, forKey: .reports)
     }
 
     /// Services that are down or struggling: the app's alert banner.

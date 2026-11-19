@@ -13,10 +13,14 @@ public struct WatchNotice: Equatable, Identifiable, Sendable {
     public let body: String
     public let source: String
     public let approvalId: String?
+    /// A "Report ready" notice: the Watch can't show the page, so it says
+    /// to open it on the iPhone (Reports.elsewhere).
+    public let isReport: Bool
 
     public init(_ notice: Notice) {
         id = notice.id; kind = notice.kind; title = notice.title; body = notice.body
         source = notice.source; approvalId = notice.approvalId
+        isReport = notice.reportId != nil
     }
 
     init?(row: [String: String]) {
@@ -27,11 +31,13 @@ public struct WatchNotice: Equatable, Identifiable, Sendable {
         body = row["body"] ?? ""
         source = row["source"] ?? "message"
         approvalId = row["approvalId"].flatMap { $0.isEmpty ? nil : $0 }
+        isReport = row["report"] == "1"
     }
 
     var row: [String: String] {
         var out = ["id": id, "kind": kind.rawValue, "title": title, "body": body, "source": source]
         if let approvalId { out["approvalId"] = approvalId }
+        if isReport { out["report"] = "1" }
         return out
     }
 }
