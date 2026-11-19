@@ -20,7 +20,11 @@ function isClaudeModel(name: string): boolean {
 
 // Messages Jarvis sends unasked (a reminder, a Lookout ping, the start of
 // day) sit in the chat as turns whose model is "notice:" + where they came
-// from (Dylan going Telegram-free, 2026-11-18). They get a plain word, no letter.
+// from (Dylan going Telegram-free, 2026-11-18). Their chip names who wrote
+// them like any reply, then says where they came from in grey: "Jarvis (CO)
+// Lookout" (Dylan, 2026-11-18: "this should also say jarvis or ornith").
+// Jarvis names the writer in the turn's `writer`; with none (a plain
+// reminder no model wrote) the chip is "Jarvis" and the word.
 const NOTICE_PREFIX = 'notice:'
 const NOTICE_LABELS: Record<string, string> = {
   reminder: 'Reminder',
@@ -31,13 +35,13 @@ const NOTICE_LABELS: Record<string, string> = {
 }
 
 /** True when the turn is a message Jarvis sent unasked, not a reply. */
-export function isNoticeModel(model: string): boolean {
+function isNoticeModel(model: string): boolean {
   return model.trim().toLowerCase().startsWith(NOTICE_PREFIX)
 }
 
-/** "Reminder", "Lookout"...; anything he hasn't named a word for is just "Jarvis". */
-function noticeLabel(name: string): string {
-  return NOTICE_LABELS[name.slice(NOTICE_PREFIX.length)] ?? 'Jarvis'
+/** "Reminder", "Lookout"...; '' for a source he hasn't named a word for. */
+function noticeWord(model: string): string {
+  return NOTICE_LABELS[model.trim().toLowerCase().slice(NOTICE_PREFIX.length)] ?? ''
 }
 
 /**
@@ -49,7 +53,6 @@ function noticeLabel(name: string): string {
 export function modelLabel(model: string): string {
   const name = model.trim().toLowerCase()
   if (!name) return ''
-  if (isNoticeModel(name)) return noticeLabel(name)
   if (isClaudeModel(name)) {
     const found = CLAUDE_LETTERS.find(([word]) => name.includes(word))
     if (found) return `Jarvis (C${found[1]})`
@@ -58,8 +61,22 @@ export function modelLabel(model: string): string {
   return `Jarvis (${name[0].toUpperCase()})`
 }
 
-/** The chip's colour family: Claude (any of its models) is orange, every local model is blue, an unasked message is plain. */
-export function modelTone(model: string): 'claude' | 'local' | 'notice' {
-  if (isNoticeModel(model)) return 'notice'
+/** The chip's colour family: Claude (any of its models) is orange, every local model is blue. */
+export function modelTone(model: string): 'claude' | 'local' {
   return isClaudeModel(model.trim().toLowerCase()) ? 'claude' : 'local'
+}
+
+/** What a chip shows: who wrote it, its colour, and for an unasked message where it came from. */
+export interface Chip { label: string; tone: 'claude' | 'local' | 'notice'; source: string }
+
+/**
+ * The chip for one turn. A reply: its model's label and colour. An unasked
+ * message: the writer's label and colour (plain "Jarvis" when no model
+ * wrote it) plus the source word, "Lookout", "Reminder", "Finished".
+ */
+export function chipFor(model: string, writer = ''): Chip {
+  if (!isNoticeModel(model)) return { label: modelLabel(model), tone: modelTone(model), source: '' }
+  const source = noticeWord(model)
+  if (!writer.trim()) return { label: 'Jarvis', tone: 'notice', source }
+  return { label: modelLabel(writer), tone: modelTone(writer), source }
 }

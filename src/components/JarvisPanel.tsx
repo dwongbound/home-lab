@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'rea
 import { answerApproval, loadApprovals, loadChatHistory, sendFeedback, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
 import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
 import { canJoin, joinHeard } from '../lib/heard'
-import { modelLabel, modelTone } from '../lib/model'
+import { chipFor } from '../lib/model'
 import { Markdown } from './Markdown'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, RunningTask } from '../types'
 import { OfferCards } from './OfferCards'
@@ -22,8 +22,9 @@ import { Spinner } from './Spinner'
 // over him and he stops). The conversation outlives closing the sheet and
 // changing pages, for this visit.
 
+/** writer: for a message he sent unasked (model "notice:lookout"), the model that wrote it, when Jarvis says. */
 /** model: who wrote the answer (a Claude model id like "claude-opus-5-5", plain "claude" from an older Jarvis, or "ornith" when he fell back to the local model), once Jarvis has said. */
-interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[]; flagged?: boolean; model?: string }
+interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[]; flagged?: boolean; model?: string; writer?: string }
 /** An approval as the chat shows it: waiting, being sent, or settled (and how). */
 interface ApprovalView extends Approval {
   outcome?: ApprovalOutcome
@@ -110,6 +111,7 @@ function toTurns(lines: ChatTurn[]): Turn[] {
     } else if (turns.length > 0 && turns[turns.length - 1].answer === '') {
       turns[turns.length - 1].answer = line.text
       if (line.model) turns[turns.length - 1].model = line.model
+      if (line.writer) turns[turns.length - 1].writer = line.writer
     }
   }
   return turns
@@ -131,9 +133,19 @@ function showTyping(turn: Turn, latest: boolean, state: OrbState, stalled: boole
   return stalled
 }
 
-/** The small chip over a reply naming who wrote it: Claude, or the local model. */
-function ModelChip({ model }: { model: string }) {
-  return <span className="chat__model" data-model={modelTone(model)}>{modelLabel(model)}</span>
+/**
+ * The small chip over a reply naming who wrote it: Claude, or the local
+ * model. Over a message he sent unasked it also says, in grey, where the
+ * message came from ("Jarvis (CO) Lookout").
+ */
+function ModelChip({ model, writer }: { model: string; writer?: string }) {
+  const chip = chipFor(model, writer)
+  return (
+    <span className="chat__model" data-model={chip.tone}>
+      {chip.label}
+      {chip.source ? <span className="chat__source"> {chip.source}</span> : null}
+    </span>
+  )
 }
 
 /** Three dots in a reply bubble, like someone typing; label says what he's looking up, if anything. */
@@ -832,7 +844,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
               <ApprovalCard key={a.id} approval={a} talking={talking} onAnswer={onAnswer} />
             ))}
             {/* Who's answering (Dylan, 2026-11-16): orange Claude, blue Ornith when Claude's plan is out of room. */}
-            {t.model && (t.answer || typing) ? <ModelChip model={t.model} /> : null}
+            {t.model && (t.answer || typing) ? <ModelChip model={t.model} writer={t.writer} /> : null}
             {t.answer ? (
               <div className={t.ok ? 'chat__a' : 'chat__a chat__a--error'}>
                 {/* Rich text (headings, lists, tables, dividers) since 2026-11-16; plain replies read as before. */}
