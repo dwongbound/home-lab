@@ -260,12 +260,27 @@ struct StatusLine: View {
     /// "Connecting…" before the first answer.
     var body: some View {
         HStack(spacing: 12) {
-            HStack(spacing: 6) {
-                Circle().fill(dotColor).frame(width: 8, height: 8)
-                Text(words)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.frostDim)
+            // Tailscale and Jarvis, a dot and a word or two each (JarvisKit
+            // ConnectionStatus); the words change when something's wrong.
+            // Narrow screens drop words, never wrap: Tailscale's word goes
+            // first (its dot stays), then both words but the one that's wrong.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    light(status.tailnet, status.tailnetWords)
+                    light(status.jarvis, status.jarvisWords)
+                }
+                HStack(spacing: 8) {
+                    light(status.tailnet, status.tailnet == .good ? nil : status.tailnetWords)
+                    light(status.jarvis, status.tailnet == .good ? status.jarvisWords : nil)
+                }
+                HStack(spacing: 8) {
+                    light(status.tailnet, status.tailnet == .good ? nil : status.tailnetWords)
+                    light(status.jarvis, status.jarvis == .waiting ? "Restarting" : nil)
+                }
             }
+            .lineLimit(1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(status.spoken)
             Spacer()
             // The notices: one dot and a count, when any.
             if let status = Notices.statusButton(unread: app.notices, running: running.count) {
@@ -285,6 +300,8 @@ struct StatusLine: View {
                         Text(status.words)
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Theme.frost)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .padding(.horizontal, 12)
                     .frame(minHeight: 44)
@@ -327,20 +344,40 @@ struct StatusLine: View {
     }
 
     /// The dot's colour for the connection state.
-    private var dotColor: Color {
-        switch app.reachable {
-        case .some(true): return Theme.moss
-        case .some(false): return Theme.rose
-        case .none: return Theme.frostFaint
+    private var status: ConnectionStatus {
+        #if DEBUG
+        // `-statusState ok|restarting|offline`: those top lines in the simulator.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-statusState"), i + 1 < args.count {
+            switch args[i + 1] {
+            case "offline": return .of(reachable: false, jarvisRestarting: false)
+            case "restarting": return .of(reachable: true, jarvisRestarting: true)
+            default: return .of(reachable: true, jarvisRestarting: false)
+            }
+        }
+        #endif
+        return .of(reachable: app.reachable, jarvisRestarting: app.jarvisRestarting)
+    }
+
+    /// One state: its dot and its words.
+    private func light(_ light: ConnectionStatus.Light, _ words: String?) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color(light)).frame(width: 7, height: 7)
+            if let words {
+                Text(words)
+                    .font(.footnote)
+                    .foregroundStyle(light == .bad ? Theme.rose : light == .waiting ? Theme.ember : Theme.frostDim)
+                    .fixedSize()
+            }
         }
     }
 
-    /// The status words for the connection state.
-    private var words: String {
-        switch app.reachable {
-        case .some(true): return "On Tailscale · jarvis"
-        case .some(false): return "Can’t reach Jarvis. Is Tailscale on?"
-        case .none: return "Connecting…"
+    private func color(_ light: ConnectionStatus.Light) -> Color {
+        switch light {
+        case .good: return Theme.moss
+        case .waiting: return Theme.ember
+        case .bad: return Theme.rose
+        case .unknown: return Theme.frostFaint
         }
     }
 }

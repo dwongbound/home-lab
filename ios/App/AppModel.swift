@@ -36,6 +36,9 @@ final class AppModel: ObservableObject {
     @Published var showSettings = false
     /// nil until the first request; then whether the PC answered.
     @Published var reachable: Bool?
+    /// The PC answers but Jarvis is restarting or down (502, 503, 504,
+    /// after the quiet retries); the top line says so.
+    @Published var jarvisRestarting = false
     /// True while the iPad's full-screen kiosk is up (from the Home tab's
     /// Kiosk button, or by itself when idle on charge).
     @Published var padKiosk = false {
@@ -424,6 +427,8 @@ final class AppModel: ObservableObject {
         } else {
             reachable = true
         }
+        let restarting = error.map(ConnectionStatus.isJustNotAnswering) ?? false
+        if restarting != jarvisRestarting { jarvisRestarting = restarting }
     }
 
     /// Start on an offer card: switch to Chat and send its text there.

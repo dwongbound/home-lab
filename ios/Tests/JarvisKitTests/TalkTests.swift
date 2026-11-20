@@ -284,3 +284,20 @@ final class ChatTurnEventTests: XCTestCase {
         XCTAssertNil(ChatEvent.parse(line: #"{"type":"turn"}"#))
     }
 }
+
+final class ConnectionStatusTests: XCTestCase {
+    func testEachStateInWords() {
+        let ok = ConnectionStatus.of(reachable: true, jarvisRestarting: false)
+        XCTAssertEqual([ok.tailnetWords, ok.jarvisWords], ["Tailscale", "Jarvis"])
+        XCTAssertEqual(ok.spoken, "On Tailscale. Jarvis is answering.")
+        let restarting = ConnectionStatus.of(reachable: true, jarvisRestarting: true)
+        XCTAssertEqual(restarting.jarvisWords, "Jarvis restarting")
+        XCTAssertEqual(restarting.jarvis, .waiting)
+        let off = ConnectionStatus.of(reachable: false, jarvisRestarting: false)
+        XCTAssertEqual(off.tailnetWords, "Tailscale off")
+        XCTAssertEqual(off.spoken, "Not on Tailscale. Jarvis can't be reached.")
+        for s in [ok, restarting, off] { XCTAssertLessThanOrEqual(s.jarvisWords.split(separator: " ").count, 2) }
+        XCTAssertTrue(ConnectionStatus.isJustNotAnswering(JarvisError.server(status: 502, message: "")))
+        XCTAssertFalse(ConnectionStatus.isJustNotAnswering(JarvisError.server(status: 400, message: "no")))
+    }
+}

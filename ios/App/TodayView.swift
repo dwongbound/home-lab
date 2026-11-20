@@ -29,7 +29,7 @@ final class TodayModel: ObservableObject {
             problem = nil
             app.noteReach(nil)
         } catch {
-            problem = error.localizedDescription
+            problem = ConnectionStatus.isJustNotAnswering(error) || (error as? JarvisError) == .unreachable ? nil : error.localizedDescription
             app.noteReach(error)
             #if DEBUG
             if snapshot == nil, let demo = DemoSnapshot.snapshot { snapshot = demo }
@@ -154,6 +154,8 @@ struct TodayView: View {
     /// The cards, or a labelled spinner on the very first load.
     @ViewBuilder
     private var content: some View {
+        // "Jarvis isn't answering" is said in the top line now; only other
+        // problems show here.
         if let problem = today.problem {
             Text(problem).font(.footnote).foregroundStyle(Theme.rose)
         }

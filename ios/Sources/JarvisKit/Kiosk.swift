@@ -303,3 +303,56 @@ public enum ChatWindow {
     /// Whether there's more above what's shown.
     public static func hasMore(shown: Int, total: Int) -> Bool { shown < total }
 }
+
+/// The top line's two states (Dylan, 2026-11-19: Jarvis's status belongs at
+/// the top beside Tailscale's, not as a red line under the tiles): the
+/// tailnet, and Jarvis himself. One or two words each, a dot each, and the
+/// words change when something's wrong, so colour isn't the only signal.
+public struct ConnectionStatus: Equatable, Sendable {
+    public enum Light: Equatable, Sendable { case good, waiting, bad, unknown }
+    public let tailnet: Light
+    public let jarvis: Light
+    public let tailnetWords: String
+    public let jarvisWords: String
+
+    /// `reachable`: the PC answered at all (nil before the first try).
+    /// `jarvisRestarting`: it answered, but Jarvis is restarting or down
+    /// (502, 503, 504) after the quiet retries.
+    public static func of(reachable: Bool?, jarvisRestarting: Bool) -> ConnectionStatus {
+        switch reachable {
+        case nil:
+            return ConnectionStatus(tailnet: .unknown, jarvis: .unknown, tailnetWords: "Tailscale", jarvisWords: "Connecting")
+        case false:
+            return ConnectionStatus(tailnet: .bad, jarvis: .unknown, tailnetWords: "Tailscale off", jarvisWords: "Jarvis")
+        case true:
+            return jarvisRestarting
+                ? ConnectionStatus(tailnet: .good, jarvis: .waiting, tailnetWords: "Tailscale", jarvisWords: "Jarvis restarting")
+                : ConnectionStatus(tailnet: .good, jarvis: .good, tailnetWords: "Tailscale", jarvisWords: "Jarvis")
+        }
+    }
+
+    /// Both states in words for VoiceOver.
+    public var spoken: String {
+        let net: String
+        switch tailnet {
+        case .good: net = "On Tailscale"
+        case .bad: net = "Not on Tailscale"
+        default: net = "Checking Tailscale"
+        }
+        let him: String
+        switch jarvis {
+        case .good: him = "Jarvis is answering"
+        case .waiting: him = "Jarvis is restarting"
+        case .bad: him = "Jarvis is down"
+        case .unknown: him = tailnet == .bad ? "Jarvis can't be reached" : "Connecting to Jarvis"
+        }
+        return "\(net). \(him)."
+    }
+
+    /// Whether an error is only "Jarvis isn't answering", which the top line
+    /// already says; such an error isn't shown again under the tiles.
+    public static func isJustNotAnswering(_ error: Error) -> Bool {
+        guard let error = error as? JarvisError else { return false }
+        return error.isPassing
+    }
+}
