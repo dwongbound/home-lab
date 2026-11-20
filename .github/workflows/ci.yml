@@ -29,24 +29,33 @@ jobs:
   # The iPhone/iPad app in ios/: JarvisKit's unit tests, then a simulator
   # build of the app (unsigned) so a change that breaks it never merges.
   # macOS runners are free on this public repo.
+  # Every step has a time limit with room to spare over a normal run, so a
+  # stuck step fails instead of holding the runner for hours.
   ios:
     runs-on: macos-15
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: ios
     steps:
       - uses: actions/checkout@v4
+        timeout-minutes: 5
       - run: swift test
+        timeout-minutes: 10
       - run: brew install xcodegen
+        timeout-minutes: 10
       - run: xcodegen
+        timeout-minutes: 5
       - run: >-
           xcodebuild build -project Jarvis.xcodeproj -scheme Jarvis
           -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO
+        timeout-minutes: 20
       - run: >-
           xcodebuild build -project Jarvis.xcodeproj -scheme JarvisTV
           -destination 'generic/platform=tvOS Simulator'
           CODE_SIGNING_ALLOWED=NO
+        timeout-minutes: 20
 
   # Merges a passing pull request into dev with a rebase, then deletes its
   # branch. Skipped for drafts (mark a PR as draft to hold it), for PRs into
