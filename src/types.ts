@@ -525,28 +525,61 @@ export type PlaybookTrigger =
   | { type: 'awake' }
   | { type: 'manual' }
 
-/**
- * Who does a thinking step: 'worker' is the local model (simple look-ups
- * and sends), 'claude' is for judgment and writing, 'auto' lets Jarvis pick
- * when the playbook is saved.
- */
-export type PlaybookThinker = 'auto' | 'worker' | 'claude'
+/** One value of a step: words, a number or yes/no. */
+export type StepValue = string | number | boolean
 
 /**
- * One step of a playbook. The first five are fixed and run as plain code,
- * as is `job` (one of Jarvis's own jobs, like the nightly pass);
- * `think` is a step in your own words that Jarvis works out; `confirm` on
- * an email = Jarvis asks you before sending it.
+ * One step of a playbook: its kind and that kind's values. Which kinds
+ * exist and what each needs comes from Jarvis (`PlaybookOptions.stepTypes`),
+ * so the page has no list of its own. A pick left to Jarvis reads 'auto'.
  */
-export type PlaybookStep =
-  | { type: 'device'; entity: string; command: string; value?: number | string }
-  | { type: 'scene'; entity: string }
-  | { type: 'app'; entity: string; app: string }
-  | { type: 'notify'; text: string }
-  | { type: 'wait'; seconds: number }
-  | { type: 'job'; job: string }
-  | { type: 'think'; text: string; model: PlaybookThinker }
-  | { type: 'email'; to: string; subject: string; body: string; confirm: boolean }
+export interface PlaybookStep { type: string; [key: string]: StepValue | undefined }
+
+/** How one box of a step is filled in. `by_command` = its shape depends on another field's pick. */
+export type StepFieldKind = 'text' | 'longtext' | 'number' | 'bool' | 'choice' | 'emails' | 'by_command'
+
+/** What a field is, apart from which value of the step it fills. */
+export interface StepFieldRule {
+  label: string
+  kind: StepFieldKind
+  required: boolean
+  min?: number
+  max?: number
+  step?: number
+  maxItems?: number
+  placeholder?: string
+  default?: StepValue
+  /** Fixed choices, as plain words. */
+  choices?: string[]
+  /** Or the choices are one of the options lists: devices, scenes, apps, jobs, thinkers. */
+  choicesFrom?: string
+  /** The field this one hangs off: its pick names the row whose `choicesKey` list is offered. */
+  dependsOn?: string
+  choicesKey?: string
+  /** Only for these kinds of device (a brightness is only for a light). */
+  onlyDomains?: string[]
+}
+
+/** One field of a step type. */
+export interface StepField extends StepFieldRule {
+  key: string
+  /** For `by_command`: the rule for each pick of `dependsOn` that takes a value. */
+  byCommand?: Record<string, StepFieldRule>
+}
+
+/** One kind of step, as Jarvis describes it. */
+export interface StepType {
+  type: string
+  /** Heads the step in the editor. */
+  label: string
+  /** Its button in "Add a step". */
+  short: string
+  /** Plain code, or a step Jarvis thinks through. */
+  runs: 'code' | 'thinking'
+  /** The row's one line: "{entity.name}: {command} {value}". */
+  summary: string
+  fields: StepField[]
+}
 
 /** One item of a run's done checklist: whether it held, and why not. */
 export interface PlaybookCheck { item: string; ok: boolean; why: string }
@@ -587,13 +620,15 @@ export interface Playbook {
 /** A playbook being written: a new one has no id yet. */
 export type PlaybookDraft = Omit<Playbook, 'id' | 'lastRun' | 'madeBy'> & { id?: string }
 
-/** What a step can use: devices and their commands, scenes, screens with apps, places, Jarvis's own jobs. */
+/** The kinds of step and what they can use: devices and their commands, scenes, screens with apps, places, Jarvis's own jobs, who can think. */
 export interface PlaybookOptions {
   devices: { entity: string; name: string; kind: string; commands: string[] }[]
   scenes: { entity: string; name: string }[]
   apps: { entity: string; name: string; apps: string[] }[]
   zones: string[]
   jobs: { id: string; name: string }[]
+  thinkers: { id: string; name: string }[]
+  stepTypes: StepType[]
 }
 
 /** Everything the Playbooks page shows. */
@@ -686,6 +721,8 @@ export interface DataSource {
   changeMemory(change: MemoryChange, caller?: { login?: string }): Promise<ActionResult>
   /** Jarvis's playbooks and what their steps can use, or null when he can't be asked. */
   playbooks(caller?: { login?: string }): Promise<PlaybookBook | null>
+  /** The kinds of step Jarvis last described, for checking a save. */
+  stepTypes(): Promise<StepType[]>
   /** Saves, deletes or runs one playbook. */
   changePlaybook(change: PlaybookChange, caller?: { login?: string }): Promise<PlaybookResult>
   /** Has Jarvis write a playbook from a description. Nothing is saved. */

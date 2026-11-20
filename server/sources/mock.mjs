@@ -7,6 +7,7 @@
 
 import { createPickStore } from '../money-picks.mjs'
 import { HISTORY_DEFAULT, pageOfTurns } from './history.mjs'
+import { DEFAULT_STEP_TYPES, DEFAULT_THINKERS } from './step-types.mjs'
 import { SAMPLE_VOICES, sampleWav } from '../voice.mjs'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -689,6 +690,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
           apps: [{ entity: 'media_player.apple_tv', name: 'Apple TV', apps: ['Jarvis', 'Netflix', 'YouTube', 'Music'] }],
           zones: ['home'],
           jobs: [{ id: 'nightly', name: 'The nightly self-improvement pass' }],
+          thinkers: DEFAULT_THINKERS,
+          stepTypes: DEFAULT_STEP_TYPES,
         },
       }
     },
@@ -714,6 +717,11 @@ export function createMockSource({ now = () => new Date() } = {}) {
       if (report.keepDays === 30) return { ok: true, message: 'Keeping it 1 month' }
       if (report.keepDays === 90) return { ok: true, message: 'Keeping it 3 months' }
       return { ok: true, message: 'Keeping it 2 weeks' }
+    },
+
+    /** The kinds of step the pretend Jarvis knows: the built-in list. */
+    async stepTypes() {
+      return DEFAULT_STEP_TYPES
     },
 
     /** A pretend draft of a playbook from a few words. */

@@ -1196,8 +1196,10 @@ select.field__box option { color: #111; }
 .playbook__kind { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; }
 .playbook__mini { width: 44px; padding: 0; flex: none; }
 .playbook__fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
-.playbook__fields--inline { grid-template-columns: 110px auto; align-items: center; justify-content: start; }
 .playbook__confirm { margin-top: 0; }
+/* Words, addresses and switches take the whole row; dropdowns and numbers sit side by side. */
+.playbook__wide { grid-column: 1 / -1; }
+.playbook__number { display: grid; grid-template-columns: 110px auto; align-items: center; gap: 8px; }
 .playbook__delete { margin-right: auto; color: #ffc2c8; }
 @media (max-width: 640px) {
   .playbooks__row { grid-template-columns: minmax(0, 1fr); }

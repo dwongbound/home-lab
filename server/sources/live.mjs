@@ -19,6 +19,7 @@ import { parseOffers } from './offers.mjs'
 import { parseNotice, parseNotices } from './notices.mjs'
 import { parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek, photoType } from './nutrition.mjs'
 import { fromJarvisDraft, parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
+import { DEFAULT_STEP_TYPES } from './step-types.mjs'
 import { parseReport, parseReports } from './reports.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
@@ -142,6 +143,8 @@ export function createLiveSource(config, deps = {}) {
   // samples in memory; one sample is taken per snapshot request.
   const history = { ram: [], gpu: [], cpu: [], disk: [] }
   let previousCpuTimes = os.cpus().map((cpu) => cpu.times)
+  // The kinds of playbook step, as Jarvis last described them.
+  let knownStepTypes = DEFAULT_STEP_TYPES
 
   /** Adds a sample to a sparkline's history, dropping the oldest. */
   function remember(key, value) {
@@ -1018,6 +1021,11 @@ export function createLiveSource(config, deps = {}) {
       }
     },
 
+    /** The kinds of step Jarvis last described, or the built-in list before he has. */
+    async stepTypes() {
+      return knownStepTypes
+    },
+
     /**
      * Jarvis's playbooks and what their steps can use (GET /playbooks). Null
      * when there's no login, he doesn't answer, or he's too old to have them.
@@ -1030,7 +1038,10 @@ export function createLiveSource(config, deps = {}) {
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
         if (!res.ok) return null
-        return parsePlaybookBook(await res.json())
+        const book = parsePlaybookBook(await res.json())
+        // Remembered so a save can be checked and worded the way Jarvis last described steps.
+        knownStepTypes = book.options.stepTypes
+        return book
       } catch {
         return null
       }
@@ -1048,7 +1059,7 @@ export function createLiveSource(config, deps = {}) {
       let body = {}
       let done = 'Saved'
       let wait = PROBE_TIMEOUT_MS * 2
-      if (change.op === 'save') body = { playbook: toJarvisPlaybook(change.playbook) }
+      if (change.op === 'save') body = { playbook: toJarvisPlaybook(change.playbook, knownStepTypes) }
       if (change.op === 'delete') {
         path = `/playbooks/${encodeURIComponent(change.id)}/delete`
         done = 'Deleted'
@@ -1093,7 +1104,7 @@ export function createLiveSource(config, deps = {}) {
         })
         const answer = await res.json().catch(() => ({}))
         if (res.status === 404) return { ok: false, message: 'Jarvis can’t draft playbooks yet. Fill it in below.' }
-        const playbook = fromJarvisDraft(answer?.playbook)
+        const playbook = fromJarvisDraft(answer?.playbook, knownStepTypes)
         if (res.ok && answer?.ok !== false && playbook !== null) return { ok: true, playbook }
         const said = answer?.message ?? answer?.detail ?? answer?.error
         return { ok: false, message: typeof said === 'string' && said ? said : 'Jarvis couldn’t write that one. Fill it in below.' }
