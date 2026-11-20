@@ -310,7 +310,7 @@ export function createApi(source) {
     const body = await readJson(req)
     const login = req.headers['tailscale-user-login'] ?? ''
     if (body?.op === 'save') {
-      const checked = cleanPlaybook(body.playbook)
+      const checked = cleanPlaybook(body.playbook, await source.stepTypes())
       if (checked.problem) return sendJson(res, 400, { ok: false, message: checked.problem })
       const result = await source.changePlaybook({ op: 'save', playbook: checked.playbook }, { login })
       return sendJson(res, result.ok ? 200 : 502, result)
