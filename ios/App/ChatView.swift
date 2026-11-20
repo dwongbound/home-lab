@@ -131,7 +131,7 @@ struct ChatView: View {
     private var messages: some View {
         ScrollViewReader { scroller in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                RowsStack {
                     if chat.items.isEmpty && chat.loaded {
                         emptyState
                     }
@@ -145,8 +145,11 @@ struct ChatView: View {
                             // Loads when he has scrolled up to it himself, and
                             // again after each page while it's still in view;
                             // never on its own at the bottom of the chat.
-                            .task(id: "\(shown)-\(chat.items.count)-\(readingUp)") {
-                                guard readingUp else { return }
+                            // In view: only a lazy list builds this row when
+                            // it's reached; a full one knows by watching it.
+                            .modifier(OlderRowWatch(inView: $olderInView))
+                            .task(id: "\(shown)-\(chat.items.count)-\(readingUp)-\(olderInView)") {
+                                guard readingUp, olderInView else { return }
                                 try? await Task.sleep(for: .milliseconds(150))
                                 guard !Task.isCancelled else { return }
                                 loadOlder(scroller)
@@ -658,6 +661,10 @@ struct ChatView: View {
             }
         }
     }
+
+    /// The "earlier messages" row is on screen (always true for the lazy
+    /// list of iOS 17, which only builds it once it's reached).
+    @State private var olderInView = !RowsStackKind.full
 
     /// How much of the list's end the floating box covers, measured while
     /// it shows; never changed while he's scrolled up, so nothing jumps.
@@ -1185,6 +1192,48 @@ private struct BottomAnchorOnResize: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content.defaultScrollAnchor(.bottom, for: .sizeChanges)
+        } else {
+            content
+        }
+    }
+}
+
+/// Chat's rows. On iOS 18 and later, a plain stack: every loaded row is laid
+/// out when it changes, never while scrolling (Dylan, 2026-11-20). The lazy
+/// list it replaces only built rows when its own scroll moved, so messages
+/// that arrived while Chat sat off to the side could stay undrawn, an empty
+/// Chat, and it built rows mid-scroll, the iPad's scroll hitches. Chat only
+/// holds its loaded window (ChatWindow), so this stays affordable. iOS 17
+/// keeps the lazy list.
+enum RowsStackKind {
+    /// A full stack (iOS 18 and up) rather than a lazy one.
+    static var full: Bool {
+        if #available(iOS 18.0, *) { return true }
+        return false
+    }
+}
+
+struct RowsStack<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        if #available(iOS 18.0, *) {
+            VStack(alignment: .leading, spacing: 14, content: content)
+        } else {
+            LazyVStack(alignment: .leading, spacing: 14, content: content)
+        }
+    }
+}
+
+/// Whether the "earlier messages" row is scrolled into view (iOS 18 and up).
+private struct OlderRowWatch: ViewModifier {
+    @Binding var inView: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollVisibilityChange(threshold: 0.05) { visible in
+                if inView != visible { inView = visible }
+            }
         } else {
             content
         }

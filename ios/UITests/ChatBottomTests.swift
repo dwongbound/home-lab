@@ -60,7 +60,11 @@ final class ChatBottomTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-demoChat", "-mockTalkTurns", "-push.enabled", "NO", "-resetDraft"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["Done, from Talk (1)."].waitForExistence(timeout: 20))
+        let found = app.staticTexts["Done, from Talk (1)."].waitForExistence(timeout: 20)
+        if !found, let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pinned-fail.png"))
+        }
+        XCTAssertTrue(found)
         sleep(2)
         XCTAssertTrue(box(app).isHittable, "the box stays at the bottom after new turns")
         XCTAssertFalse(arrow(app).isHittable, "no arrow at the bottom after new turns")

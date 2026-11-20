@@ -38,16 +38,57 @@ enum Theme {
     )
 }
 
+/// How much the app spends drawing glass, decided once at launch (Dylan,
+/// 2026-11-20: his 2018 iPad Pro hitched where the iPhone didn't, and the
+/// trace blamed GPU work, 20-40 offscreen passes a frame). Liquid Glass
+/// samples and bends what's behind it, several passes per element, every
+/// frame something moves under it. The iPad draws cards as flat tinted
+/// panels and floating controls as one plain frosted pass; the iPhone keeps
+/// the full look. `-lightGlass` / `-fullGlass` force either (debug builds).
+enum RenderQuality {
+    static let light: Bool = {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-lightGlass") { return true }
+        if args.contains("-fullGlass") { return false }
+        #endif
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        return false
+        #endif
+    }()
+}
+
 /// A frosted panel like the home page's `.glass`. On iOS 26 and later it's
 /// Apple's Liquid Glass (it bends the sky behind it); before that, a
 /// translucent material with a hairline edge.
 struct GlassPanel: ViewModifier {
     var tint: Color? = nil
     var radius: CGFloat = 22
+    /// Floats over moving content (the tab bar): on the light path it stays
+    /// frosted, so what scrolls under it doesn't show through.
+    var floating = false
 
     /// Rounded glass; tinted for approvals and offers.
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        if RenderQuality.light {
+            if floating {
+                frosted(content, shape: shape)
+            } else {
+                // A card: the same tint, corner and hairline edge, no blur.
+                content
+                    .background(shape.fill(tint.map { $0.opacity(0.17) } ?? Color.white.opacity(0.085)))
+                    .overlay(shape.strokeBorder(tint.map { $0.opacity(0.4) } ?? Theme.glassEdge.opacity(0.8), lineWidth: 0.5))
+            }
+        } else {
+            glass(content, shape: shape)
+        }
+    }
+
+    @ViewBuilder
+    private func glass(_ content: Content, shape: RoundedRectangle) -> some View {
         // Liquid Glass only exists in the iOS 26 SDK (Swift 6.2 and later),
         // so older Xcodes, like CI's, must not even see the call.
         #if compiler(>=6.2)
@@ -74,7 +115,9 @@ struct GlassPanel: ViewModifier {
 
 extension View {
     /// Wraps the view in a glass panel.
-    func glassPanel(tint: Color? = nil, radius: CGFloat = 22) -> some View { modifier(GlassPanel(tint: tint, radius: radius)) }
+    func glassPanel(tint: Color? = nil, radius: CGFloat = 22, floating: Bool = false) -> some View {
+        modifier(GlassPanel(tint: tint, radius: radius, floating: floating))
+    }
 }
 
 /// A small floating glass control (the notices pill, the gear, the status
@@ -85,7 +128,10 @@ struct GlassChip<S: Shape>: ViewModifier {
 
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
-        if #available(iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+        if RenderQuality.light {
+            // One plain frosted pass instead of Liquid Glass's several.
+            content.background(.ultraThinMaterial, in: shape).overlay(shape.stroke(Theme.glassEdge, lineWidth: 0.5))
+        } else if #available(iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
             content.glassEffect(.regular, in: shape)
         } else {
             content.background(.ultraThinMaterial, in: shape).overlay(shape.stroke(Theme.glassEdge, lineWidth: 0.5))
@@ -132,7 +178,7 @@ struct GlassGroup<Content: View>: View {
 
     var body: some View {
         #if compiler(>=6.2)
-        if #available(iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+        if !RenderQuality.light, #available(iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
             GlassEffectContainer { content() }
         } else {
             content()

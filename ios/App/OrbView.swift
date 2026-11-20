@@ -64,10 +64,12 @@ struct OrbView: View {
     /// second nobody sees. Cleared of the 2026-11-19 freeze by the swipe
     /// test (UITests/SwipeFreezeTests.swift).
     @Environment(\.orbOffScreen) private var offScreen
+    /// The pages are sliding: the orb holds still until they land.
+    @ObservedObject private var slide = PageSlide.shared
 
     /// Redraws every frame (or once, with Reduce Motion on, or off screen).
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion || offScreen)) { context in
+        TimelineView(.animation(paused: reduceMotion || offScreen || slide.moving)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             ZStack {
                 // The canvas reaches past the orb's own box on every side,
@@ -849,4 +851,12 @@ extension EnvironmentValues {
         get { self[OrbOffScreenKey.self] }
         set { self[OrbOffScreenKey.self] = newValue }
     }
+}
+
+/// Whether the phone's pages are sliding right now (set by the pager in
+/// JarvisApp; never on the TV or Watch). Only the orb watches it, so a slide
+/// starting or ending redraws nothing else.
+final class PageSlide: ObservableObject {
+    static let shared = PageSlide()
+    @Published var moving = false
 }

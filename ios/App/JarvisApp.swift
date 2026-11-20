@@ -160,6 +160,9 @@ struct RootView: View {
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .scrollPosition(id: Binding(get: { Optional(app.tab) }, set: { if let tab = $0, tab != app.tab { app.tab = tab } }))
+            // While the pages move, the orb rests (it redrew at 120 Hz
+            // beside the page sliding in, Dylan's iPad's worst moment).
+            .modifier(PageSlideWatch())
             .ignoresSafeArea(.container, edges: .vertical)
         }
         // Pays the first-draw costs before the first swipe (Dylan,
@@ -512,7 +515,7 @@ struct TabBar: View {
             item(.chat, "Chat", "bubble.left.fill", badge: chatBadge)
         }
         .padding(expanded ? 5 : 3)
-        .glassPanel(radius: 32)
+        .glassPanel(radius: 32, floating: true)
         // A compact pill on iPad too; narrower and lower while resting.
         .frame(maxWidth: expanded ? 420 : 200)
         .padding(.horizontal, 40)
@@ -778,4 +781,20 @@ private struct WarmUp: View {
         item.id = "warm-up"
         return item
     }()
+}
+
+/// Reports the pager's own movement to PageSlide (iOS 18 and up).
+private struct PageSlideWatch: ViewModifier {
+    func body(content: Content) -> some View {
+        // The lighter drawing path only (the iPad); the iPhone's orb keeps
+        // moving through a slide as before.
+        if RenderQuality.light, #available(iOS 18.0, *) {
+            content.onScrollPhaseChange { _, phase in
+                let moving = phase != .idle
+                if PageSlide.shared.moving != moving { PageSlide.shared.moving = moving }
+            }
+        } else {
+            content
+        }
+    }
 }
