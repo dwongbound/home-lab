@@ -275,6 +275,9 @@ struct RootView: View {
 /// and the gear for Settings.
 struct StatusLine: View {
     @EnvironmentObject private var app: AppModel
+    /// Tailscale and Jarvis's status: on Home only; Chat and Talk show just
+    /// the buttons (Dylan, 2026-11-20).
+    var showsStatus = true
 
     /// "On Tailscale · jarvis" in green, "Can't reach Jarvis" in rose, or
     /// "Connecting…" before the first answer.
@@ -284,6 +287,7 @@ struct StatusLine: View {
             // ConnectionStatus); the words change when something's wrong.
             // Narrow screens drop words, never wrap: Tailscale's word goes
             // first (its dot stays), then both words but the one that's wrong.
+            if showsStatus {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
                     light(status.tailnet, status.tailnetWords)
@@ -299,8 +303,12 @@ struct StatusLine: View {
                 }
             }
             .lineLimit(1)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 32)
+            .glassChip(Capsule())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(status.spoken)
+            }
             Spacer()
             // The notices: one dot and a count, when any.
             if let status = Notices.statusButton(unread: app.notices, running: running.count) {
@@ -325,8 +333,7 @@ struct StatusLine: View {
                     }
                     .padding(.horizontal, 12)
                     .frame(minHeight: 44)
-                    .background(Capsule().fill(Theme.glass))
-                    .overlay(Capsule().strokeBorder(Theme.glassEdge))
+                    .glassChip(Capsule())
                 }
                 .accessibilityLabel("\(app.notices.count) unread notices, \(running.count) running")
                 .transition(.scale.combined(with: .opacity))
@@ -337,8 +344,7 @@ struct StatusLine: View {
                 Image(systemName: "gearshape")
                     .font(.system(size: 18, weight: .medium))
                     .frame(width: 44, height: 44)
-                    .background(Circle().fill(Theme.glass))
-                    .overlay(Circle().strokeBorder(Theme.glassEdge))
+                    .glassChip(Circle())
             }
             .foregroundStyle(Theme.frost)
             .accessibilityLabel("Settings")
@@ -634,3 +640,11 @@ struct PadKioskAndNotices: ViewModifier {
     }
 }
 
+
+extension View {
+    /// The floating status and buttons over a page (Dylan, 2026-11-20: no
+    /// bar across the top; glass buttons over the content instead).
+    func floatingStatus(showsStatus: Bool) -> some View {
+        overlay(alignment: .top) { StatusLine(showsStatus: showsStatus) }
+    }
+}

@@ -69,9 +69,12 @@ final class ChatModel: ObservableObject {
     @Published private(set) var loaded = false
     /// Older turns exist on the server than the ones held (a paging server
     /// says so; today's never does).
-    @Published private(set) var olderOnServer = false
-    /// An older page is on its way.
-    @Published private(set) var loadingOlder = false
+    /// Paging older turns from the server (JarvisKit OlderPaging).
+    @Published private(set) var older = OlderPaging(hasMore: false)
+    var olderOnServer: Bool { older.state != .done }
+    var loadingOlder: Bool { older.state == .loading }
+    /// After a failed older page, try again (his tap).
+    func retryOlder() { older.retry() }
     /// An older window is showing (opened round a notice's turn); newer
     /// turns exist past it.
     @Published private(set) var newerOnServer = false
@@ -113,7 +116,7 @@ final class ChatModel: ObservableObject {
             // The newest page, or a window round a turn a notice opened.
             let page = try await client.history(turnId.map { .around($0, limit: HistoryQuery.pageSize) } ?? .newest(limit: HistoryQuery.pageSize))
             let turns = page.turns
-            olderOnServer = page.hasMore
+            older.reset(hasMore: page.hasMore)
             newerOnServer = page.hasNewer
             lastPending = page.pending
             let pending = try await client.pendingApprovals()
@@ -158,16 +161,15 @@ final class ChatModel: ObservableObject {
     /// The next older page from the server, put above what's held. Only
     /// asked for when the server says there is one.
     func loadOlder(app: AppModel) async {
-        guard olderOnServer, !loadingOlder, let first = items.compactMap(\.turnId).first else { return }
-        loadingOlder = true
-        defer { loadingOlder = false }
+        guard let first = items.compactMap(\.turnId).first, older.begin() else { return }
         do {
             let page = try await app.client.history(.before(first, limit: HistoryQuery.pageSize))
             let known = Set(items.compactMap(\.turnId))
-            let older = Self.items(from: page.turns.filter { $0.id.map { !known.contains($0) } ?? true })
-            items.insert(contentsOf: older, at: 0)
-            olderOnServer = page.hasMore && !older.isEmpty
+            let fresh = Self.items(from: page.turns.filter { $0.id.map { !known.contains($0) } ?? false })
+            items.insert(contentsOf: fresh, at: 0)
+            older.finish(added: fresh.count, hasMore: page.hasMore)
         } catch {
+            older.fail()
             app.noteReach(error)
         }
     }
@@ -304,6 +306,8 @@ final class ChatModel: ObservableObject {
         }
         uploading = false
         finish(reply.id)
+        // The new turns' ids come with history; Keep needs them.
+        if problem == nil { Task { try? await Task.sleep(for: .seconds(1)); if !self.isSending { await self.load(app: app) } } }
     }
 
     /// A send that broke. Nothing back yet: it didn't go, so say so and

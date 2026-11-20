@@ -72,6 +72,10 @@ struct NoticeDetail: View {
         if canDismiss || open || report != nil {
             HStack(spacing: 10) {
                 if canDismiss {
+                    button("Keep", main: false) {
+                        dismiss()
+                        Task { await app.keep(notice) }
+                    }
                     button(notice.clearLabel, main: !open && report == nil) {
                         dismiss()
                         Task { await app.clearNotices([notice.id]) }

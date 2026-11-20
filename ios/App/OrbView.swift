@@ -47,6 +47,8 @@ struct OrbView: View {
     var onOpen: ((Notice) -> Void)? = nil
     /// "Let go" on a kept (yellow) dot's label (nil: no button).
     var onLetGo: ((Notice) -> Void)? = nil
+    /// Keep a notice as a yellow dot for good (it stays until Unkeep).
+    var onKeepNotice: ((Notice) -> Void)? = nil
     /// The dot whose label is open, if any.
     @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -115,7 +117,12 @@ struct OrbView: View {
                         if let notice = item.notice { letGo(notice) }
                         opened = nil
                     }
-                } : nil) { close() }
+                } : nil, onKeepForGood: onKeepNotice.map { keep in
+                    {
+                        if let notice = item.notice { keep(notice) }
+                        opened = nil
+                    }
+                }) { close() }
                     .position(x: size / 2, y: min(size - 20, spot.y + 52))
                     .frame(width: size, height: size)
                     .background {
@@ -700,6 +707,8 @@ struct OrbitCallout: View {
     var onKeep: (() -> Void)? = nil
     /// A kept (yellow) item's "Unkeep"; nil hides the button.
     var onLetGo: (() -> Void)? = nil
+    /// "Keep": the dot stays, yellow, until Unkeep.
+    var onKeepForGood: (() -> Void)? = nil
     let onClose: () -> Void
 
     /// The screen's width less the usual margins, capped for reading on an
@@ -796,6 +805,7 @@ struct OrbitCallout: View {
         case .deny: onAnswer?(false)
         case .open, .seeInChat: onOpen?()
         case .unkeep: onLetGo?()
+        case .keep: onKeepForGood?()
         case .dismiss, .done: onClose()
         }
     }

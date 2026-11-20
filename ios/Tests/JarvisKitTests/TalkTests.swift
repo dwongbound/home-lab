@@ -315,3 +315,60 @@ final class NoticeFocusTests: XCTestCase {
         XCTAssertFalse(NoticeFocus.isLong("Short one"))
     }
 }
+
+final class OlderPagingTests: XCTestCase {
+    func testLoadsUntilTheStartAndNeverLoops() {
+        var p = OlderPaging(hasMore: true)
+        XCTAssertTrue(p.begin())
+        XCTAssertFalse(p.begin(), "one load at a time")
+        p.finish(added: 50, hasMore: true)
+        XCTAssertEqual(p.state, .idle)
+        XCTAssertTrue(p.begin())
+        p.finish(added: 12, hasMore: false)
+        XCTAssertEqual(p.state, .done, "start of the chat")
+        XCTAssertFalse(p.begin())
+    }
+
+    func testEmptyOrDuplicatePageEndsPagingEvenIfServerSaysMore() {
+        var empty = OlderPaging(hasMore: true)
+        _ = empty.begin(); empty.finish(added: 0, hasMore: true)
+        XCTAssertEqual(empty.state, .done)
+    }
+
+    func testFailureStopsUntilRetry() {
+        var p = OlderPaging(hasMore: true)
+        _ = p.begin(); p.fail()
+        XCTAssertFalse(p.begin(), "no looping after a failure")
+        p.retry()
+        XCTAssertTrue(p.begin())
+    }
+
+    func testMissingHasMoreMeansNoPaging() throws {
+        let page = try JSONDecoder().decode(HistoryPage.self, from: Data(#"{"turns":[]}"#.utf8))
+        XCTAssertEqual(OlderPaging(hasMore: page.hasMore).state, .done)
+    }
+
+    func testABadTurnIsSkippedNotTheWholePage() throws {
+        let json = #"{"turns":[{"role":"user","text":"a","at":"","id":1},{"role":5},{"role":"assistant","text":"b","at":"","id":2}],"hasMore":true}"#
+        let page = try JSONDecoder().decode(HistoryPage.self, from: Data(json.utf8))
+        XCTAssertEqual(page.turns.compactMap(\.id), [1, 2])
+    }
+}
+
+final class StopJobTests: XCTestCase {
+    func testStopAnswers() {
+        XCTAssertEqual(StopReply.read(status: 200, data: Data(#"{"ok":true,"message":"Stopped \"X\" and put things back."}"#.utf8)), .stopped("Stopped \"X\" and put things back."))
+        XCTAssertEqual(StopReply.read(status: 409, data: Data(#"{"ok":false,"message":"It's going live right now."}"#.utf8)), .failed("It's going live right now."))
+        XCTAssertEqual(StopReply.read(status: 410, data: Data(#"{"ok":false,"gone":true}"#.utf8)), .gone)
+        XCTAssertEqual(StopReply.read(status: 502, data: Data()), .failed(ErrorWording.restarting))
+        guard case .failed(let words) = StopReply.read(status: 500, data: Data(#"{"message":"Jarvis answered 500"}"#.utf8)) else { return XCTFail() }
+        XCTAssertFalse(words.contains("500"))
+    }
+
+    func testStopOnlyOfferedWhenTheServerSaysSo() throws {
+        let old = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"j","label":"x","state":"running"}"#.utf8))
+        XCTAssertFalse(old.canStop)
+        let new = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"j","label":"x","state":"running","stoppable":true}"#.utf8))
+        XCTAssertTrue(new.canStop)
+    }
+}

@@ -46,16 +46,16 @@ struct NoticesSheet: View {
             .background(Theme.sky.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // The pages as dots (Dylan, 2026-11-20): orange for notices,
+                // blue for what's running, the orb's own colours. No Close:
+                // swipe the drawer down or tap outside it.
                 ToolbarItem(placement: .principal) {
-                    Picker("Show", selection: $page) {
-                        Text("Notices").tag(0)
-                        Text(running.isEmpty ? "Running" : "Running (\(running.count))").tag(1)
+                    HStack(spacing: 4) {
+                        pageDot(0, color: OrbView.noticeOrange(onLight: false), count: app.notices.count, name: "Notices")
+                        pageDot(1, color: OrbView.taskBlue(onLight: false), count: running.count, name: "Running")
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 260)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    .padding(3)
+                    .glassChip(Capsule())
                 }
             }
         }
@@ -67,7 +67,9 @@ struct NoticesSheet: View {
         .sheet(item: $reading) { notice in
             NoticeDetail(notice: notice).environmentObject(app)
         }
-        .presentationDetents([.medium, .large])
+        // Opens a little taller than half (about five cards on a 17 Pro).
+        .presentationDetents([.fraction(0.66), .large])
+        .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
         .fontDesign(.rounded)
@@ -75,8 +77,12 @@ struct NoticesSheet: View {
 
     /// What Jarvis is working on.
     private var running: [RunningTask] {
-        app.today.snapshot?.jobs?.running ?? []
+        (app.today.snapshot?.jobs?.running ?? []).filter { !app.stoppedJobs.contains($0.id) }
     }
+    /// Jobs with a stop on its way ("Stopping").
+    @State private var stopping: Set<String> = []
+    /// A stop that didn't go through.
+    @State private var stopNote: String?
 
     /// What finished today (or, from an older Jarvis, in the last day).
     private var finished: [(id: String, name: String, word: String, at: Date?, model: String?, detail: String?)] {
@@ -93,6 +99,7 @@ struct NoticesSheet: View {
                     .listRowBackground(Color.white.opacity(0.06))
             }
             ForEach(running.reversed()) { task in
+              Section {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     HStack(spacing: 12) {
                         if task.isQueued {
@@ -110,7 +117,12 @@ struct NoticesSheet: View {
                             Text(task.stepLine(now: context.date)).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(1).truncationMode(.tail)
                         }
                         Spacer()
-                        if task.isQueued {
+                        if stopping.contains(task.id) {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Stopping").font(.caption).foregroundStyle(Theme.frostDim)
+                            }
+                        } else if task.isQueued {
                             Text("Queued").font(.caption).foregroundStyle(Theme.frostDim)
                         } else if let timer = Orbit.elapsed(since: task.startedAt, now: context.date) {
                             Text(timer).font(.caption.monospacedDigit()).foregroundStyle(OrbView.taskBlue(onLight: false))
@@ -120,6 +132,25 @@ struct NoticesSheet: View {
                     .accessibilityElement(children: .combine)
                 }
                 .listRowBackground(Color.white.opacity(0.06))
+                // All the way across stops it (Dylan, 2026-11-20); part way
+                // shows Stop. Only where Jarvis says it can be stopped.
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    if task.canStop && !stopping.contains(task.id) {
+                        Button("Stop", systemImage: "stop.fill", role: .destructive) {
+                            haptic()
+                            stopping.insert(task.id)
+                            Task {
+                                stopNote = await app.stopJob(task)
+                                stopping.remove(task.id)
+                            }
+                        }
+                    }
+                }
+              }
+            }
+            if let stopNote {
+                Text(stopNote).font(.footnote).foregroundStyle(Theme.frostDim)
+                    .listRowBackground(Color.clear)
             }
             if !finished.isEmpty {
                 Section("Recently finished") {
@@ -157,7 +188,10 @@ struct NoticesSheet: View {
                         .gesture(pageSwipe(to: 1, when: { $0 < -60 }))
                 } else {
                     List {
+                        // Each notice its own card (Dylan, 2026-11-20): a
+                        // section per row, so swipes clip to its corners.
                         ForEach(app.notices) { notice in
+                          Section {
                             row(notice)
                                 .listRowBackground(Color.white.opacity(0.06))
                                 // The usual Apple swipe: all the way dismisses;
@@ -186,6 +220,7 @@ struct NoticesSheet: View {
                                         .tint(Theme.glacier)
                                     }
                                 }
+                          }
                         }
                         Section {
                             Button("Clear all") { Task { await app.clearAllNotices() } }
@@ -244,6 +279,32 @@ struct NoticesSheet: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
+    }
+
+    /// One page's dot in the switch: lit and in the capsule when chosen.
+    private func pageDot(_ which: Int, color: Color, count: Int, name: String) -> some View {
+        let on = page == which
+        return Button {
+            page = which
+        } label: {
+            HStack(spacing: 6) {
+                Circle().fill(color).frame(width: 10, height: 10)
+                    .shadow(color: on ? color.opacity(0.8) : .clear, radius: on ? 4 : 0)
+                if count > 0 {
+                    Text("\(count)").font(.footnote.weight(.semibold).monospacedDigit())
+                }
+            }
+            .opacity(on ? 1 : 0.45)
+            .padding(.horizontal, 14)
+            .frame(minWidth: 56, minHeight: 38)
+            .background(Capsule().fill(on ? Color.white.opacity(0.14) : .clear))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.frost)
+        .frame(minHeight: 44)
+        .accessibilityLabel("\(name), \(count)")
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     /// A sideways swipe that changes page, for the places a row doesn't own.

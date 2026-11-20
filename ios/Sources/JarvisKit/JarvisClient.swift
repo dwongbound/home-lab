@@ -327,6 +327,24 @@ public struct JarvisClient: Sendable {
         return PlaybookDraftAnswer.read(data)
     }
 
+    /// Stops a running job (Dylan, 2026-11-20: "swiping a running process
+    /// all the way through would stop it"). The shape is proposed, not yet
+    /// live: POST /api/jarvis/jobs/stop {id} → {ok, message}, 410 {gone}, 409
+    /// when it had already finished. Kept in this one place so the names
+    /// are easy to change; the app only offers it on jobs marked stoppable.
+    public func stopJob(id: String) async throws -> StopReply {
+        let (data, response): (Data, URLResponse)
+        do {
+            // Jarvis may take up to 30 s to stop and clean up; never retried.
+            var stop = request("api/jarvis/jobs/stop", method: "POST", json: ["id": id])
+            stop.timeoutInterval = 45
+            (data, response) = try await session.data(for: stop)
+        } catch {
+            throw JarvisError.unreachable
+        }
+        return StopReply.read(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
+    }
+
     /// One POST to /api/jarvis/playbooks; a refusal comes back as a result,
     /// not an error, so its words can go on screen.
     private func playbookChange(_ body: [String: Any]) async throws -> PlaybookResult {

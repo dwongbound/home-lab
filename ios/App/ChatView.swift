@@ -47,10 +47,9 @@ struct ChatView: View {
         #if DEBUG
         let _ = PerfCount.bump("chat")
         #endif
-        ZStack {
+        ZStack(alignment: .top) {
             Theme.sky.ignoresSafeArea()
             VStack(spacing: 0) {
-                StatusLine()
                 messages
                 if let problem = chat.problem {
                     HStack {
@@ -99,6 +98,9 @@ struct ChatView: View {
                 .transition(.opacity)
             }
         }
+        // No bar: the notices pill and gear float as glass over the chat.
+        .overlay(alignment: .top) { TopFade() }
+        .floatingStatus(showsStatus: false)
         .animation(.smooth, value: chat.uploading)
         .animation(.smooth, value: chat.busy)
         .animation(.smooth, value: picked.count)
@@ -171,13 +173,17 @@ struct ChatView: View {
                     // tab swipes and typing were rebuilding all of them).
                     // Older messages wait until he scrolls up to them.
                     if ChatWindow.hasMore(shown: shown, total: chat.items.count) || chat.olderOnServer {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("Loading earlier messages").font(.footnote).foregroundStyle(Theme.frostDim)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .id("older")
-                        .onAppear { loadOlder(scroller) }
+                        olderRow(scroller)
+                            .id("older")
+                            // Loads when he has scrolled up to it himself, and
+                            // again after each page while it's still in view;
+                            // never on its own at the bottom of the chat.
+                            .task(id: "\(shown)-\(chat.items.count)-\(readingUp)") {
+                                guard readingUp else { return }
+                                try? await Task.sleep(for: .milliseconds(150))
+                                guard !Task.isCancelled else { return }
+                                loadOlder(scroller)
+                            }
                     }
                     ChatRowsList(items: Array(chat.items.suffix(shown)), highlighted: highlighted, keptTurns: keptTurns,
                                  mealBusy: chat.busy != nil, actions: rowActions)
@@ -199,6 +205,8 @@ struct ChatView: View {
             }
             // Opens on the newest message, like Messages.
             .defaultScrollAnchor(.bottom)
+            // Messages run up under the floating buttons (no bar).
+            .contentMargins(.top, FloatingStatus.room, for: .scrollContent)
             .scrollDismissesKeyboard(.interactively)
             .reportsScrollToTabBar()
             .modifier(ReadingUpWatch(readingUp: $readingUp, atBottom: $atBottom))
@@ -285,7 +293,7 @@ struct ChatView: View {
                             .overlay(Capsule().strokeBorder(Theme.glassEdge))
                     }
                     .foregroundStyle(Theme.frost)
-                    .padding(.top, 8)
+                    .padding(.top, FloatingStatus.room + 4)
                     .accessibilityLabel("Go to the latest messages")
                 }
             }
@@ -367,6 +375,32 @@ struct ChatView: View {
             }
             app.focusTurn = nil
         }
+    }
+
+    /// The top row: a spinner only while a page is really on its way; after a
+    /// failure a plain line and Retry; otherwise a button to load more.
+    @ViewBuilder
+    private func olderRow(_ scroller: ScrollViewProxy) -> some View {
+        Group {
+            if chat.loadingOlder {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading earlier messages").font(.footnote).foregroundStyle(Theme.frostDim)
+                }
+            } else if chat.older.state == .failed {
+                HStack(spacing: 10) {
+                    Text("Couldn’t load earlier messages.").font(.footnote).foregroundStyle(Theme.frostDim)
+                    Button("Retry") { chat.retryOlder(); loadOlder(scroller) }
+                        .font(.footnote.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+            } else {
+                Button("Earlier messages") { loadOlder(scroller) }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.glacier)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
     }
 
     /// Adds the next page of older messages above, keeping his place: the
@@ -576,7 +610,9 @@ struct JarvisBubble: View {
             .background(shape.fill(Theme.glass))
             .background(shape.fill(OrbView.noticeOrange(onLight: false).opacity(glowing ? 0.18 : 0)))
             .overlay(shape.strokeBorder(glowing ? OrbView.noticeOrange(onLight: false).opacity(0.45) : Theme.glassEdge, lineWidth: 1))
-            .shadow(color: OrbView.noticeOrange(onLight: false).opacity(glowing ? 0.28 : 0), radius: 12)
+            // The glow's shadow only while glowing: a shadow on every bubble,
+            // even a clear one, was an offscreen render pass per message.
+            .modifier(GlowShadow(on: glowing))
         }
     }
 
@@ -820,10 +856,28 @@ private struct ChatRowsList: View, Equatable {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))
+                        // A kept message carries a small yellow dot.
+                        .overlay(alignment: .topLeading) {
+                            if keptTurns.contains(item.turnId ?? -1) {
+                                Circle().fill(OrbView.keptYellow(onLight: false)).frame(width: 9, height: 9).offset(x: -3, y: -3)
+                                    .accessibilityLabel("Kept")
+                            }
+                        }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.leading, 60)
+            // His own messages can be kept as a dot too (Dylan, 2026-11-20).
+            .contextMenu {
+                if let turnId = item.turnId {
+                    if keptTurns.contains(turnId) {
+                        Button("Unkeep", systemImage: "bookmark.slash") { actions.letGo(turnId) }
+                    } else {
+                        Button("Keep", systemImage: "bookmark") { actions.keep(turnId) }
+                    }
+                }
+                Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.text }
+            }
         case .jarvis:
             if !item.text.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -834,7 +888,7 @@ private struct ChatRowsList: View, Equatable {
                         .contextMenu {
                             if let turnId = item.turnId, item.finished {
                                 if keptTurns.contains(turnId) {
-                                    Button("Let go", systemImage: "bookmark.slash") { actions.letGo(turnId) }
+                                    Button("Unkeep", systemImage: "bookmark.slash") { actions.letGo(turnId) }
                                 } else {
                                     Button("Keep", systemImage: "bookmark") { actions.keep(turnId) }
                                 }
@@ -876,4 +930,16 @@ private struct ChatRowsList: View, Equatable {
 extension Notification.Name {
     /// The measuring run's "scroll Chat now" (-perfCycle only).
     static let perfScroll = Notification.Name("jarvis.perfScroll")
+}
+
+/// A soft orange shadow, only when on (no shadow layer at all otherwise).
+private struct GlowShadow: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on {
+            content.shadow(color: OrbView.noticeOrange(onLight: false).opacity(0.28), radius: 12)
+        } else {
+            content
+        }
+    }
 }

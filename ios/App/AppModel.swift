@@ -151,6 +151,25 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Keeps a notice as a yellow dot (from its card on the orb or its full
+    /// view); viewing never clears it, only Unkeep does.
+    func keep(_ notice: Notice) async {
+        if let turnId = notice.turnId { keptTurnsHere.insert(turnId) }
+        do {
+            let result = try await client.keep(noticeId: notice.id)
+            if result.ok {
+                if let kept = result.notice { keptNoticesHere.append(kept) }
+                await today.load(app: self)
+            } else {
+                if let turnId = notice.turnId { keptTurnsHere.remove(turnId) }
+                noticeProblem = result.message.isEmpty ? "Jarvis couldn't keep that." : result.message
+            }
+        } catch {
+            if let turnId = notice.turnId { keptTurnsHere.remove(turnId) }
+            noteReach(error)
+        }
+    }
+
     /// Lets a kept item go (from its yellow dot, or the message in chat).
     func letGo(_ notice: Notice) async {
         letGoHere.insert(notice.id)
@@ -356,6 +375,31 @@ final class AppModel: ObservableObject {
             focusTurn = turnId
         }
         if let notice { await clearNotices([notice.id]) }
+    }
+
+    /// Jobs stopped here, hidden until the next snapshot drops them.
+    @Published private(set) var stoppedJobs: Set<String> = []
+
+    /// Stops a running job on Jarvis; it leaves the list only once Jarvis
+    /// says it stopped (or had already finished). Words when it didn't.
+    func stopJob(_ task: RunningTask) async -> String? {
+        do {
+            switch try await client.stopJob(id: task.id) {
+            case .stopped(let words):
+                stoppedJobs.insert(task.id)
+                await today.load(app: self)
+                return words
+            case .gone:
+                stoppedJobs.insert(task.id)
+                await today.load(app: self)
+                return nil
+            case .failed(let words):
+                return words
+            }
+        } catch {
+            noteReach(error)
+            return (error as? JarvisError)?.errorDescription ?? ErrorWording.unreachable
+        }
     }
 
     /// A notice read in full (its whole text, source and time).

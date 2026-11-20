@@ -87,27 +87,31 @@ struct TodayView: View {
         ZStack {
             Theme.sky.ignoresSafeArea()
             VStack(spacing: 0) {
-                StatusLine()
-                // Reports, Diet and Playbooks, pinned above everything that
-                // scrolls (Dylan, 2026-11-19: "clear and isolated but not its
-                // own tab").
-                shortcutRow
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        content
+                    GlassGroup {
+                        VStack(alignment: .leading, spacing: 14) {
+                            // Reports, Diet and Playbooks scroll with the page
+                            // (Dylan, 2026-11-20: they were pinned).
+                            shortcutRow
+                            content
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .frame(maxWidth: 720)
                     .frame(maxWidth: .infinity)
                 }
+                // Starts below the floating status; scrolls up under it.
+                .contentMargins(.top, FloatingStatus.room, for: .scrollContent)
                 .refreshable {
                     await today.load(app: app)
                     await loadPlaybooksLine()
                 }
                 .reportsScrollToTabBar()
             }
+            VStack { TopFade(); Spacer() }
         }
+        .floatingStatus(showsStatus: true)
         .sheet(isPresented: $showDevices) {
             if let home = today.snapshot?.home { DevicesSheet(home: home) }
         }
@@ -509,10 +513,6 @@ struct TodayView: View {
             tile(.diet, "Diet", "fork.knife", isNew: SeenTracker.dietHasNew(current: SeenTracker.dietMark(today.snapshot?.nutrition), seen: SeenStore.diet))
             tile(.playbooks, "Playbooks", "list.bullet.rectangle", isNew: playbookIds.map { SeenTracker.hasNew(current: $0, seen: SeenStore.playbooks) } ?? false)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 720)
-        .frame(maxWidth: .infinity)
     }
 
     /// One tile: its icon and name, and an orange dot when there's

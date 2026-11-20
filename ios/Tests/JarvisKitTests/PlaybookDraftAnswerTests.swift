@@ -110,9 +110,9 @@ final class NoticeActionTests: XCTestCase {
 
     func testEachKindGetsItsButtons() {
         XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice(approval: "a1"), canOpen: true, canDismiss: true), [.deny, .approve])
-        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice("reminder"), canOpen: true, canDismiss: true), [.open, .done])
-        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice(), canOpen: true, canDismiss: true), [.dismiss, .open])
-        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice(turn: nil), canOpen: false, canDismiss: true), [.dismiss])
+        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice("reminder"), canOpen: true, canDismiss: true), [.keep, .open, .done])
+        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice(), canOpen: true, canDismiss: true), [.dismiss, .keep, .open])
+        XCTAssertEqual(NoticeAction.card(kind: .notice, notice: notice(turn: nil), canOpen: false, canDismiss: true), [.dismiss, .keep])
         XCTAssertEqual(NoticeAction.card(kind: .kept, notice: notice(), canOpen: true, canDismiss: false), [.unkeep, .open])
         XCTAssertEqual(NoticeAction.card(kind: .task, notice: nil, canOpen: true, canDismiss: false), [.open])
     }

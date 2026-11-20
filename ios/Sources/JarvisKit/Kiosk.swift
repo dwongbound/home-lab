@@ -357,3 +357,23 @@ public struct ConnectionStatus: Equatable, Sendable {
         return error.isPassing
     }
 }
+
+
+/// What stopping a job answered (POST /api/jarvis/jobs/stop {id}).
+public enum StopReply: Equatable, Sendable {
+    /// Stopped (or taken off the queue): Jarvis's one line, shown briefly.
+    case stopped(String)
+    /// It had already finished: drop the row, say nothing.
+    case gone
+    /// Not stopped (409 while it's going live, or a failure): his words.
+    case failed(String)
+
+    public static func read(status: Int, data: Data) -> StopReply {
+        let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let message = ((body["message"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if status == 410 || body["gone"] as? Bool == true { return .gone }
+        if (200..<300).contains(status), body["ok"] as? Bool != false { return .stopped(message.isEmpty ? "Stopped." : message) }
+        if [502, 503, 504].contains(status) { return .failed(ErrorWording.restarting) }
+        return .failed(message.isEmpty || message.hasPrefix("Jarvis answered") ? "Jarvis couldn’t stop it." : message)
+    }
+}

@@ -26,6 +26,14 @@ final class DietModel: ObservableObject {
     @Published private(set) var weeks: [String: NutritionWeek] = [:]
     /// The day at the top of the timeline.
     @Published var dayInView: String = Diet.dayString(Date())
+    /// Fresh numbers on their way, with the last ones still showing.
+    @Published private(set) var refreshing = false
+    /// A refresh that didn't come through, in plain words.
+    @Published private(set) var note: String?
+
+    /// One model for the app's life, so opening Diet again shows the last
+    /// numbers at once while it fetches new ones.
+    static let shared = DietModel()
 
     /// The timeline's blocks (days, empty days, runs of empty days).
     var blocks: [DietTimeline.Block] { DietTimeline.blocks(days) }
@@ -48,8 +56,15 @@ final class DietModel: ObservableObject {
             return
         }
         #endif
-        state = .loading
-        guard let page = await fetchPage(end: Diet.dayString(Date()), client: client) else { return }
+        // What's already here stays on screen while the fresh numbers come
+        // (a small "Updating" in the header); only a first-ever open waits.
+        if days.isEmpty { state = .loading } else { refreshing = true }
+        defer { refreshing = false }
+        guard let page = await fetchPage(end: Diet.dayString(Date()), client: client) else {
+            if !days.isEmpty { note = "Couldn’t refresh just now. These are the last numbers." }
+            return
+        }
+        note = nil
         days = page.days
         earliest = page.earliest
         reachedEnd = !DietTimeline.shouldLoadOlder(loaded: days, earliest: earliest)
@@ -117,7 +132,8 @@ final class DietModel: ObservableObject {
 struct DietView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var model = DietModel()
+    @ObservedObject private var model = DietModel.shared
+    @Environment(\.scenePhase) private var scenePhase
     /// The block at the top of the timeline.
     @State private var topBlock: String?
     /// The entry whose full photo is open.
@@ -128,6 +144,9 @@ struct DietView: View {
             ZStack {
                 Theme.sky.ignoresSafeArea()
                 VStack(spacing: 10) {
+                    if let note = model.note {
+                        Text(note).font(.footnote).foregroundStyle(Theme.frostDim).frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     weekStrip
                     totals
                     timeline
@@ -138,6 +157,17 @@ struct DietView: View {
             }
             .navigationTitle(Diet.title(model.dayInView))
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    if model.refreshing {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Updating").font(.footnote).foregroundStyle(Theme.frostDim)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
@@ -150,6 +180,9 @@ struct DietView: View {
             MealPhotoViewer(item: item).environmentObject(app)
         }
         .task { await model.loadFirst(client: app.client) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await model.loadFirst(client: app.client) } }
+        }
         .onChange(of: model.dayInView) { _, date in
             Task { await model.loadWeek(for: date, client: app.client) }
         }
@@ -348,7 +381,8 @@ struct DietView: View {
             .onChange(of: topBlock) { _, id in
                 if let id { model.dayInView = id }
             }
-            .refreshable { await model.loadFirst(client: app.client) }
+            // No pull to refresh (Dylan, 2026-11-20): it loads each time Diet
+            // opens and when the app comes back to it.
         }
     }
 

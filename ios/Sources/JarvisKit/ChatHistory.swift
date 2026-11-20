@@ -51,11 +51,51 @@ public struct HistoryPage: Decodable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        turns = (try? c.decodeIfPresent([ChatTurn].self, forKey: .turns)) ?? []
+        // One turn that won't decode is skipped; the rest still show.
+        turns = ((try? c.decodeIfPresent([Lenient].self, forKey: .turns)) ?? [])?.compactMap(\.turn) ?? []
         hasMore = ((try? c.decodeIfPresent(Bool.self, forKey: .hasMore)) ?? nil) ?? false
         hasNewer = ((try? c.decodeIfPresent(Bool.self, forKey: .hasNewer)) ?? nil) ?? false
         pending = (try? c.decodeIfPresent(Bool.self, forKey: .pending)) ?? nil
     }
+}
+
+/// One turn that may or may not decode.
+private struct Lenient: Decodable {
+    let turn: ChatTurn?
+    init(from decoder: Decoder) throws { turn = try? ChatTurn(from: decoder) }
+}
+
+/// Loading older pages at the top of Chat (Dylan, 2026-11-20: "stuck
+/// loading earlier messages"). The spinner shows only while a request is
+/// really out; a page that brings nothing new (empty, or turns already
+/// held) ends paging even if the server says there's more, so it can't
+/// loop; a failure stops and offers Retry.
+public struct OlderPaging: Equatable, Sendable {
+    public enum State: Equatable, Sendable { case idle, loading, failed, done }
+    public private(set) var state: State
+
+    public init(hasMore: Bool) { state = hasMore ? .idle : .done }
+
+    /// Start a load; false when one is out, it failed (wait for Retry), or
+    /// there's nothing older.
+    public mutating func begin() -> Bool {
+        guard state == .idle else { return false }
+        state = .loading
+        return true
+    }
+
+    /// A page came back with `added` turns not already held.
+    public mutating func finish(added: Int, hasMore: Bool) {
+        state = (hasMore && added > 0) ? .idle : .done
+    }
+
+    public mutating func fail() { state = .failed }
+
+    /// Retry after a failure.
+    public mutating func retry() { if state == .failed { state = .idle } }
+
+    /// The newest page loaded again: older pages may exist again.
+    public mutating func reset(hasMore: Bool) { if state != .loading { state = hasMore ? .idle : .done } }
 }
 
 public enum ChatHistory {

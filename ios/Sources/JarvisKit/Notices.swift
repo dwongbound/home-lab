@@ -236,7 +236,7 @@ public struct KeepResult: Equatable, Sendable {
 /// What can be done to a notice, in one or two words each, so every button
 /// and swipe that shows one reads the same.
 public enum NoticeAction: Equatable, Sendable, CaseIterable {
-    case open, dismiss, done, approve, deny, unkeep, seeInChat
+    case open, dismiss, done, approve, deny, unkeep, keep, seeInChat
 
     public var label: String {
         switch self {
@@ -246,6 +246,7 @@ public enum NoticeAction: Equatable, Sendable, CaseIterable {
         case .approve: return "Approve"
         case .deny: return "Deny"
         case .unkeep: return "Unkeep"
+        case .keep: return "Keep"
         case .seeInChat: return "See in chat"
         }
     }
@@ -262,11 +263,13 @@ public enum NoticeAction: Equatable, Sendable, CaseIterable {
             return [.unkeep] + (canOpen ? [.open] : [])
         case .notice:
             let clear: NoticeAction = notice?.source == "reminder" ? .done : .dismiss
+            // Keep turns it into a yellow dot that stays (Dylan, 2026-11-20:
+            // "a way to keep a glowing orb after seeing it").
             if notice?.source == "reminder" {
                 // A reminder's main act is "Done" (stop the nag).
-                return (canOpen ? [.open] : []) + (canDismiss ? [clear] : [])
+                return (canDismiss ? [.keep] : []) + (canOpen ? [.open] : []) + (canDismiss ? [clear] : [])
             }
-            return (canDismiss ? [clear] : []) + (canOpen ? [.open] : [])
+            return (canDismiss ? [clear, .keep] : []) + (canOpen ? [.open] : [])
         }
     }
 }

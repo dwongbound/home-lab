@@ -434,6 +434,7 @@ public struct FinishedJob: Decodable, Identifiable, Sendable {
         case "live": return "Live"
         case "failed": return "Failed"
         case "nothing": return "No change needed"
+        case "stopped": return "Stopped"
         default: return state.prefix(1).uppercased() + state.dropFirst()
         }
     }
@@ -467,6 +468,12 @@ public struct RunningTask: Decodable, Identifiable, Sendable {
     public let model: String?
     /// Where it's at, one plain line ("Running tests"); nil when unsaid.
     public let step: String?
+    /// Whether Jarvis can stop it (POST /api/jarvis/jobs/stop). Absent on a
+    /// server without stopping: then no Stop is offered at all.
+    public var stoppable: Bool? = nil
+
+    /// A swipe-to-stop is offered only when the server says it can.
+    public var canStop: Bool { stoppable == true }
 
     public init(id: String, label: String, state: String, startedAt: String? = nil, model: String? = nil, step: String? = nil) {
         self.id = id
