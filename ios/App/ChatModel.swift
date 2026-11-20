@@ -303,10 +303,13 @@ final class ChatModel: ObservableObject {
     }
 
     /// A send that broke. Nothing back yet: it didn't go, so say so and
-    /// offer Try again (never sent again on its own). Words had started
-    /// coming: Jarvis has it and carries on, so fetch the rest instead.
+    /// offer Try again (never sent again on its own). Jarvis had it (its
+    /// turn id came back, or words had started): he carries on and saves it
+    /// once, so fetch the rest instead of offering to send it twice.
     private func sendDropped(_ error: Error, text: String, photos: [PickedPhoto], mine: String, reply: String, app: AppModel) {
-        let started = !(items.first { $0.id == reply }?.text.isEmpty ?? true)
+        // Jarvis has it once he's said its id ("turn") or begun answering.
+        let received = items.first { $0.id == mine }?.turnId != nil
+        let started = received || !(items.first { $0.id == reply }?.text.isEmpty ?? true)
         if started {
             problem = nil
             Task { await self.catchUp(app: app) }
@@ -372,6 +375,10 @@ final class ChatModel: ObservableObject {
             app?.settleApproval(id, line: ApprovalWording.settledLine(ok: ok, later: later, by: by, summary: summary))
         case .error(let message):
             problem = message
+        case .turn(let id):
+            // His message's id in history, so catching up later matches it
+            // instead of showing it twice.
+            if let mine = items.lastIndex(where: { $0.kind == .user && $0.turnId == nil }) { items[mine].turnId = id }
         case .mealQuestion(let key, let choices):
             update(replyId) { $0.mealKey = key; $0.mealChoices = choices }
         case .done:

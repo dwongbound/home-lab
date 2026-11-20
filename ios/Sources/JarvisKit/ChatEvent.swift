@@ -41,6 +41,9 @@ public enum ChatEvent: Equatable, Sendable {
     /// A meal photo that looks like one already logged: Dylan picks same,
     /// leftovers or new (the buttons under the reply).
     case mealQuestion(key: String, choices: [String])
+    /// The first event of a send: the id Jarvis saved Dylan's message
+    /// under, the same id history gives it.
+    case turn(Int)
 
     /// Reads one line of the stream. Blank lines, bad JSON and event types
     /// this build doesn't know yet come back nil, so a newer Jarvis never
@@ -75,6 +78,9 @@ public enum ChatEvent: Equatable, Sendable {
         case "model":
             guard let model = object["model"] as? String else { return nil }
             return .model(model)
+        case "turn":
+            guard let id = (object["id"] as? NSNumber)?.intValue else { return nil }
+            return .turn(id)
         case "meal_question":
             guard let key = object["key"] as? String, !key.isEmpty else { return nil }
             let choices = (object["choices"] as? [String] ?? MealChoice.all).filter { MealChoice.all.contains($0) }

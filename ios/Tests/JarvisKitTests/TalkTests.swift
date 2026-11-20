@@ -277,3 +277,10 @@ final class DeviceGroupsTests: XCTestCase {
         XCTAssertEqual(groups.flatMap(\.devices).count, devices.count)
     }
 }
+
+final class ChatTurnEventTests: XCTestCase {
+    func testTheFirstEventCarriesHisMessagesId() {
+        XCTAssertEqual(ChatEvent.parse(line: #"{"type":"turn","id":812}"#), .turn(812))
+        XCTAssertNil(ChatEvent.parse(line: #"{"type":"turn"}"#))
+    }
+}
