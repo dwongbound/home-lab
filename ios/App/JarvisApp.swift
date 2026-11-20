@@ -22,6 +22,7 @@ struct JarvisApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(app)
+                .environmentObject(app.tabs)
                 .preferredColorScheme(.dark)
                 .tint(Theme.glacier)
         }
@@ -45,6 +46,9 @@ struct JarvisApp: App {
 /// The bar is drawn here, on glass, since a paging TabView has none.
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
+    /// The tab showing: the pager, the tab bar and each page's "off screen"
+    /// follow it (AppModel.tabs).
+    @EnvironmentObject private var tabs: TabState
     /// The iPhone's bedside kiosk: up while sideways and charging.
     @StateObject private var bedside = PhoneKioskMonitor()
     /// Whether the keyboard is up.
@@ -713,7 +717,6 @@ struct PadKioskAndNotices: ViewModifier {
             .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { _ in app.noteActivity() })
             .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in app.noteActivity() }
             .onReceive(NotificationCenter.default.publisher(for: UITextView.textDidChangeNotification)) { _ in app.noteActivity() }
-            .onChange(of: app.tab) { _, _ in app.noteActivity() }
             // The sensible moment to ask about notifications: the first time
             // a notice actually turns up.
             .onChange(of: app.notices.isEmpty) { _, empty in

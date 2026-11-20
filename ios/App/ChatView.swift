@@ -41,6 +41,9 @@ struct ChatView: View {
     /// Whether the keyboard is up (RootView's KeyboardWatch).
     @EnvironmentObject private var keyboard: KeyboardWatch
     @Environment(\.scenePhase) private var scenePhase
+    /// Chat is off to the side (set by the pager); flips only when Chat is
+    /// the page leaving or arriving, so other tab changes don't touch it.
+    @Environment(\.orbOffScreen) private var pageOffScreen
 
     /// Status line, the scrolling chat, then the composer.
     var body: some View {
@@ -121,8 +124,8 @@ struct ChatView: View {
         // message never lands mid-animation (the iPad's one 300 ms launch
         // freeze, 2026-11-20).
         .task { if app.tab == .chat { await chat.ensureLoaded(app: app) } }
-        .onChange(of: app.tab == .chat) { _, here in
-            if here { Task { await chat.ensureLoaded(app: app) } }
+        .onChange(of: pageOffScreen) { _, away in
+            if !away { Task { await chat.ensureLoaded(app: app) } }
         }
         // Back in the app: a reply that finished while it was away.
         .onChange(of: scenePhase) { _, phase in
@@ -281,8 +284,8 @@ struct ChatView: View {
             // arrived while Chat was off to the side were never drawn, an
             // empty Chat (Dylan, 2026-11-20). Coming on screen, it settles
             // on its newest line, unanimated, unless he's reading further up.
-            .onChange(of: app.tab == .chat) { _, here in
-                guard here, !readingUp, app.focusTurn == nil, highlighted == nil else { return }
+            .onChange(of: pageOffScreen) { _, away in
+                guard !away, !readingUp, app.focusTurn == nil, highlighted == nil else { return }
                 settleAtNewest(scroller)
             }
             .onChange(of: chat.items.count) { old, _ in

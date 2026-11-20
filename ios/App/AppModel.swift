@@ -31,8 +31,20 @@ final class AppModel: ObservableObject {
     @Published var server: String {
         didSet { UserDefaults.standard.set(server, forKey: Self.serverKey) }
     }
+    /// The tab showing, kept in its own small object (Dylan, 2026-11-20:
+    /// tab slides on the iPad). Every page watches this model, so a tab
+    /// published here redrew all three pages on each change; now only the
+    /// pager, the tab bar and the two pages whose "off screen" flips react.
+    let tabs = TabState()
     /// Home first: the app opens on Home every launch (Dylan, 2026-11-18).
-    @Published var tab: AppTab = .today
+    var tab: AppTab {
+        get { tabs.tab }
+        set {
+            guard newValue != tabs.tab else { return }
+            tabs.tab = newValue
+            noteActivity()
+        }
+    }
     @Published var showSettings = false
     /// nil until the first request; then whether the PC answered.
     @Published var reachable: Bool?
@@ -527,4 +539,9 @@ final class AppModel: ObservableObject {
     func lockMoney() {
         moneyUnlocked = false
     }
+}
+
+/// Which tab is showing (AppModel.tabs).
+final class TabState: ObservableObject {
+    @Published var tab: AppTab = .today
 }
