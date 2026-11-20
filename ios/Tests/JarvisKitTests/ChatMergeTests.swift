@@ -155,3 +155,27 @@ final class ChatScrollTests: XCTestCase {
         XCTAssertEqual(ChatScroll.next(gap: 80, byHand: true, atBottom: false, readingUp: true).readingUp, true)
     }
 }
+
+final class NewReplyDotTests: XCTestCase {
+    func testOlderMessagesArrivingAtTheTopDontLightIt() {
+        // The last line is the same, and no longer.
+        let changed = NewReplyDot.endChanged(oldLastId: "turn-9", oldLastLength: 20, newLastId: "turn-9", newLastLength: 20)
+        XCTAssertFalse(changed)
+        XCTAssertFalse(NewReplyDot.lights(endChanged: changed, lastIsJarvis: true, atBottom: false, sending: false))
+    }
+
+    func testANewReplyWhileScrolledUpLightsIt() {
+        let changed = NewReplyDot.endChanged(oldLastId: "turn-9", oldLastLength: 20, newLastId: "turn-10", newLastLength: 5)
+        XCTAssertTrue(NewReplyDot.lights(endChanged: changed, lastIsJarvis: true, atBottom: false, sending: false))
+    }
+
+    func testAReplyStillStreamingCountsAsNew() {
+        XCTAssertTrue(NewReplyDot.endChanged(oldLastId: "r", oldLastLength: 10, newLastId: "r", newLastLength: 40))
+    }
+
+    func testAtTheBottomOrWaitingOnHisOwnMessageItStaysOff() {
+        XCTAssertFalse(NewReplyDot.lights(endChanged: true, lastIsJarvis: true, atBottom: true, sending: false))
+        XCTAssertFalse(NewReplyDot.lights(endChanged: true, lastIsJarvis: true, atBottom: false, sending: true))
+        XCTAssertFalse(NewReplyDot.lights(endChanged: true, lastIsJarvis: false, atBottom: false, sending: false))
+    }
+}

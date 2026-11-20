@@ -223,15 +223,22 @@ struct ChatView: View {
                 guard up, app.focusTurn == nil, highlighted == nil else { return }
                 withAnimation(.easeOut(duration: 0.25)) { scroller.scrollTo("bottom", anchor: .bottom) }
             }
-            .onChange(of: chat.items) {
+            .onChange(of: chat.items) { old, new in
                 guard app.focusTurn == nil && highlighted == nil else { return }
-                // Reading further up: stay put, and dot the compose button instead.
-                guard ComposerSize.follows(atBottom: atBottom, lastIsMine: chat.items.last?.kind == .user, sending: chat.isSending) else {
-                    if chat.items.last?.kind == .jarvis { unseenReply = true }
+                // Only the END of the chat matters here: older pages arriving
+                // at the top, or a merge that changed nothing, leave both the
+                // place and the dot alone (Dylan, 2026-11-20).
+                guard NewReplyDot.endChanged(oldLastId: old.last?.id, oldLastLength: old.last?.text.count ?? 0,
+                                             newLastId: new.last?.id, newLastLength: new.last?.text.count ?? 0) else { return }
+                // Reading further up: stay put, and dot the arrow instead.
+                guard ComposerSize.follows(atBottom: atBottom, lastIsMine: new.last?.kind == .user, sending: chat.isSending) else {
+                    if NewReplyDot.lights(endChanged: true, lastIsJarvis: new.last?.kind == .jarvis, atBottom: atBottom, sending: chat.isSending) {
+                        unseenReply = true
+                    }
                     return
                 }
                 withAnimation(.easeOut(duration: 0.2)) {
-                    scroller.scrollTo(chat.items.last?.id, anchor: .bottom)
+                    scroller.scrollTo(new.last?.id, anchor: .bottom)
                 }
             }
             #if DEBUG
@@ -417,12 +424,10 @@ struct ChatView: View {
             let anchor = chat.items.first?.id
             Task {
                 await chat.loadOlder(app: app)
-                shown = ChatWindow.grow(shown, total: chat.items.count)
-                if let anchor {
-                    var quiet = Transaction()
-                    quiet.disablesAnimations = true
-                    withTransaction(quiet) { scroller.scrollTo(anchor, anchor: .top) }
-                }
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { shown = ChatWindow.grow(shown, total: chat.items.count) }
+                keepPlace(at: anchor, scroller)
             }
             return
         }
@@ -430,10 +435,22 @@ struct ChatView: View {
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { shown = ChatWindow.grow(shown, total: total) }
-        if let anchor {
-            Task { @MainActor in
-                withTransaction(quiet) { scroller.scrollTo(anchor, anchor: .top) }
-            }
+        keepPlace(at: anchor, scroller)
+    }
+
+    /// Older messages arrived above: the screen stays where he left off
+    /// (Dylan, 2026-11-20), and he scrolls on up to read them. On iOS 18
+    /// the list already holds its distance from the bottom as content is
+    /// added above (BottomAnchorOnResize), so nothing is moved, even mid-
+    /// flick; scrolling the old top line back to the top, as this used to,
+    /// is what made it jump. iOS 17 has no such anchor and still needs it.
+    private func keepPlace(at anchor: String?, _ scroller: ScrollViewProxy) {
+        if #available(iOS 18.0, *) { return }
+        guard let anchor else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        Task { @MainActor in
+            withTransaction(quiet) { scroller.scrollTo(anchor, anchor: .top) }
         }
     }
 

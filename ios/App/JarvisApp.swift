@@ -268,6 +268,15 @@ struct RootView: View {
                     }
                 }
             }
+            // `-mockLateReply`: one more demo reply 14 s in, arriving the way
+            // a real one does (a history load), for the new-reply dot tests.
+            if args.contains("-mockLateReply") {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(14))
+                    DemoChat.talkTurns += 1
+                    await app.chat.load(app: app)
+                }
+            }
             // `-mockTalkTurns` replays what a Talk session does to Chat
             // without one: opens on Talk, adds two spoken exchanges the way
             // Talk's "done" does (a history load), then swipes to Chat.

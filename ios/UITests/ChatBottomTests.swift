@@ -104,4 +104,60 @@ final class ChatBottomTests: XCTestCase {
         XCTAssertTrue(box(app).isHittable, "back at the newest message, the box is back")
         XCTAssertFalse(arrow(app).isHittable, "and the arrow has gone")
     }
+
+    private var newReplyArrow: (XCUIApplication) -> XCUIElement { { $0.buttons["Newest message, a new reply"] } }
+
+    /// Older messages load above while he's scrolled up: the line he was
+    /// reading stays put, and no new-reply dot.
+    func testOlderMessagesLoadWithoutMovingTheScreen() {
+        let app = launch(["-demoChatBig"])
+        XCTAssertTrue(box(app).waitForExistence(timeout: 20))
+        sleep(2)
+        let list = app.scrollViews["chatList"]
+        for _ in 0..<5 { list.swipeDown(velocity: .fast) }
+        sleep(2)
+        // A line on screen now, and where it is.
+        guard let reading = app.staticTexts.allElementsBoundByIndex.first(where: { $0.label.hasPrefix("ok ") && $0.isHittable }) else {
+            return XCTFail("no line on screen to watch")
+        }
+        let label = reading.label
+        let before = reading.frame.minY
+        // Up to the top of what's drawn, so the next page loads above.
+        list.swipeDown(velocity: .slow)
+        sleep(3)
+        let after = app.staticTexts[label]
+        if after.exists && after.isHittable {
+            // It moved only by his own last (slow) swipe, never jumped away.
+            XCTAssertLessThan(abs(after.frame.minY - before), list.frame.height, "the screen jumped when older messages loaded")
+        }
+        XCTAssertFalse(newReplyArrow(app).exists, "older messages mustn't light the new-reply dot")
+    }
+
+    /// A new reply while scrolled up lights the dot; the arrow clears it.
+    func testANewReplyWhileScrolledUpLightsTheDot() {
+        let app = launch(["-mockLateReply"])
+        XCTAssertTrue(box(app).waitForExistence(timeout: 20))
+        sleep(2)
+        let list = app.scrollViews["chatList"]
+        list.swipeDown(velocity: .fast)
+        list.swipeDown(velocity: .fast)
+        XCTAssertFalse(newReplyArrow(app).exists, "no dot before anything new arrives")
+        // The demo reply arrives 14 s after launch.
+        XCTAssertTrue(newReplyArrow(app).waitForExistence(timeout: 20), "the dot should light for a new reply")
+        newReplyArrow(app).tap()
+        sleep(2)
+        XCTAssertFalse(newReplyArrow(app).exists, "the dot clears at the bottom")
+        XCTAssertTrue(app.staticTexts["Done, from Talk (0)."].isHittable, "and the new reply is in view")
+    }
+
+    /// A new reply while at the bottom: no dot, and still pinned.
+    func testANewReplyAtTheBottomStaysPinned() {
+        let app = launch(["-mockLateReply"])
+        XCTAssertTrue(box(app).waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Done, from Talk (0)."].waitForExistence(timeout: 25))
+        sleep(1)
+        XCTAssertTrue(app.staticTexts["Done, from Talk (0)."].isHittable, "pinned to the newest")
+        XCTAssertFalse(newReplyArrow(app).exists, "no dot at the bottom")
+        XCTAssertTrue(box(app).isHittable)
+    }
 }

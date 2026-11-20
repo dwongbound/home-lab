@@ -293,6 +293,25 @@ public enum ChatScroll {
     }
 }
 
+/// The orange dot on Chat's arrow (Dylan, 2026-11-20): it means one thing,
+/// a new message arrived at the bottom while he was scrolled away from it.
+/// Older pages arriving at the top, merges and refreshes that change
+/// nothing, and his own message never light it.
+public enum NewReplyDot {
+    /// Whether the end of the chat changed: a different last line (a new
+    /// one appended), or the same last line grown (a reply streaming in).
+    public static func endChanged(oldLastId: String?, oldLastLength: Int, newLastId: String?, newLastLength: Int) -> Bool {
+        guard let newLastId else { return false }
+        return newLastId != oldLastId || newLastLength > oldLastLength
+    }
+
+    /// Lights the dot: the end changed, with a line of Jarvis's, while he
+    /// was away from the bottom and not waiting on his own message.
+    public static func lights(endChanged: Bool, lastIsJarvis: Bool, atBottom: Bool, sending: Bool) -> Bool {
+        endChanged && lastIsJarvis && !atBottom && !sending
+    }
+}
+
 public enum ComposerSize {
     /// Tucked away only while scrolled up and idle: never while the field is
     /// focused, holds words or photos, or Jarvis is answering what he just
