@@ -133,7 +133,12 @@ struct RootView: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     // Home, Talk, Chat, left to right (AppTab's order).
-                    page(TodayView(today: app.today), screen).id(AppTab.today)
+                    // Each page knows when it's off to the side, so whatever
+                    // animates on it (the orb, spinners, typing dots) stops
+                    // there and starts again as it comes back.
+                    page(TodayView(today: app.today), screen)
+                        .environment(\.orbOffScreen, app.tab != .today)
+                        .id(AppTab.today)
                     page(TalkView(talk: app.talk), screen)
                         .environment(\.orbOffScreen, app.tab != .talk)
                         .id(AppTab.talk)
@@ -142,7 +147,9 @@ struct RootView: View {
                     // 2026-11-19: the bar shrinking moved Chat's content,
                     // which read as a scroll, which moved the bar, until the
                     // app froze.
-                    page(ChatView(chat: app.chat), screen).id(AppTab.chat)
+                    page(ChatView(chat: app.chat), screen)
+                        .environment(\.orbOffScreen, app.tab != .chat)
+                        .id(AppTab.chat)
                 }
                 .scrollTargetLayout()
             }
@@ -375,6 +382,21 @@ struct StatusLine: View {
                 }
                 .accessibilityLabel("\(app.notices.count) unread notices, \(running.count) running")
                 .transition(.scale.combined(with: .opacity))
+            }
+            // The iPad's always-on room display, from Home's top right
+            // beside the notices and settings (Dylan, 2026-11-20). Kiosk is
+            // iPad-only, so the iPhone doesn't get the button.
+            if showsStatus && UIDevice.current.userInterfaceIdiom == .pad {
+                Button {
+                    app.padKiosk = true
+                } label: {
+                    Image(systemName: "rectangle.expand.vertical")
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 44, height: 44)
+                        .glassChip(Circle())
+                }
+                .foregroundStyle(Theme.frost)
+                .accessibilityLabel("Kiosk")
             }
             Button {
                 app.showSettings = true

@@ -72,6 +72,9 @@ struct TodayView: View {
     @State private var shortcut: Shortcut?
     /// The Home drawer: every device, full names.
     @State private var showDevices = false
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// Home is off to the side (its spinners rest).
+    @Environment(\.orbOffScreen) private var pageOffScreen
     /// The playbook ids, fetched lightly when Home shows (at most once a minute).
     @State private var playbookIds: [String]?
     @State private var playbooksFetched: Date?
@@ -104,9 +107,11 @@ struct TodayView: View {
                             content
                         }
                     }
-                    .padding(.horizontal, 16)
+                    // The iPad's full width, with normal margins (no narrow
+                    // centred column); the phone's column as before.
+                    .padding(.horizontal, sizeClass == .regular ? 24 : 16)
                     .padding(.vertical, 12)
-                    .frame(maxWidth: 720)
+                    .frame(maxWidth: sizeClass == .regular ? .infinity : 720)
                     .frame(maxWidth: .infinity)
                 }
                 // Starts below the floating status; scrolls up under it.
@@ -177,6 +182,29 @@ struct TodayView: View {
             if ProcessInfo.processInfo.arguments.contains("-gpuFirst"), let share = snapshot.gpuShare { GpuCard(share: share) }
             #endif
             hero(snapshot)
+            // On an iPad's full width the cards sit side by side, each in
+            // the shortest column (Dylan, 2026-11-20: more on screen, no
+            // empty side margins); otherwise one column, as on the iPhone.
+            if sizeClass == .regular {
+                Masonry(minColumnWidth: 340, spacing: 14) { cards(snapshot) }
+            } else {
+                cards(snapshot)
+            }
+        } else if today.loading {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text("Jarvis is thinking…").foregroundStyle(Theme.frostDim)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 80)
+        }
+    }
+
+    /// Home's cards, in order: alerts, suggestions, devices, money, you,
+    /// the graphics card and what Jarvis is working on.
+    @ViewBuilder
+    private func cards(_ snapshot: Snapshot) -> some View {
+        Group {
             ForEach(snapshot.alerts) { service in
                 Label("\(service.name) is \(service.status)", systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline.weight(.medium))
@@ -208,19 +236,17 @@ struct TodayView: View {
                 card("Jarvis is working on", icon: "sparkles") {
                     ForEach(running) { task in
                         HStack(spacing: 10) {
-                            ProgressView().controlSize(.small).tint(Theme.ember)
+                            // Spins only while Home is on screen.
+                            if pageOffScreen {
+                                Image(systemName: "circle.dotted").font(.footnote).foregroundStyle(Theme.ember)
+                            } else {
+                                ProgressView().controlSize(.small).tint(Theme.ember)
+                            }
                             Text(task.label).font(.subheadline)
                         }
                     }
                 }
             }
-        } else if today.loading {
-            HStack(spacing: 10) {
-                ProgressView()
-                Text("Jarvis is thinking…").foregroundStyle(Theme.frostDim)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 80)
         }
     }
 
@@ -235,18 +261,6 @@ struct TodayView: View {
                     .tracking(1.2)
                     .foregroundStyle(Theme.glacier)
                 Spacer()
-                if UIDevice.current.userInterfaceIdiom == .pad {
-                    // The iPad's always-on room display.
-                    Button { app.padKiosk = true } label: {
-                        Label("Kiosk", systemImage: "rectangle.expand.vertical")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 44)
-                            .glassPanel(radius: 22)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open kiosk mode")
-                }
             }
             greetingBlock(snapshot.offers?.greeting ?? TodayWording.greeting(for: .now))
             if let weather = snapshot.home?.weather {
@@ -660,5 +674,47 @@ struct DeviceTile: View {
                 .fill(on ? Theme.ember.opacity(0.08) : Color.white.opacity(0.04))
         )
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Cards side by side in columns, each placed in the column that's
+/// shortest so far, so cards of different heights pack without gaps. As
+/// many columns of at least `minColumnWidth` as fit.
+struct Masonry: Layout {
+    var minColumnWidth: CGFloat
+    var spacing: CGFloat
+
+    private func columns(for width: CGFloat) -> Int {
+        max(1, Int((width + spacing) / (minColumnWidth + spacing)))
+    }
+
+    /// Each subview's column and top edge, and the total height.
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> (spots: [(column: Int, y: CGFloat)], columnWidth: CGFloat, height: CGFloat) {
+        let count = columns(for: width)
+        let columnWidth = (width - spacing * CGFloat(count - 1)) / CGFloat(count)
+        var heights = Array(repeating: CGFloat(0), count: count)
+        var spots: [(Int, CGFloat)] = []
+        for view in subviews {
+            let height = view.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil)).height
+            guard height > 0 else { spots.append((0, 0)); continue }
+            let column = heights.indices.min { heights[$0] < heights[$1] } ?? 0
+            let y = heights[column] == 0 ? 0 : heights[column] + spacing
+            spots.append((column, y))
+            heights[column] = y + height
+        }
+        return (spots, columnWidth, heights.max() ?? 0)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? minColumnWidth
+        return CGSize(width: width, height: arrange(subviews, width: width).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let laid = arrange(subviews, width: bounds.width)
+        for (view, spot) in zip(subviews, laid.spots) {
+            view.place(at: CGPoint(x: bounds.minX + CGFloat(spot.column) * (laid.columnWidth + spacing), y: bounds.minY + spot.y),
+                       proposal: ProposedViewSize(width: laid.columnWidth, height: nil))
+        }
     }
 }

@@ -169,6 +169,10 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                // A readable column on an iPad, centred, the background
+                // still running full width (Dylan, 2026-11-20).
+                .frame(maxWidth: ChatColumn.maxWidth)
+                .frame(maxWidth: .infinity)
             }
             // Opens on the newest message, like Messages.
             .defaultScrollAnchor(.bottom)
@@ -554,18 +558,22 @@ struct ChatView: View {
         .padding(.bottom, 2)
     }
 
-    /// Puts the list on its newest line without animation, then once more
-    /// a moment later: the first scroll draws the rows near the end, whose
-    /// real heights only then replace the list's estimates, so the first
-    /// one alone can land a few messages short.
+    /// Puts the list on its newest line without animation, then a few more
+    /// times over the next half second: the first scroll draws the rows near
+    /// the end, whose real heights only then replace the list's estimates,
+    /// so the first one alone can land a few messages short.
     private func settleAtNewest(_ scroller: ScrollViewProxy) {
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { scroller.scrollTo("bottom", anchor: .bottom) }
+        // Again as the rows near the end get measured (more of them on an
+        // iPad), stopping as soon as he scrolls up himself.
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(60))
-            guard !readingUp else { return }
-            withTransaction(quiet) { scroller.scrollTo("bottom", anchor: .bottom) }
+            for wait in [60, 150, 300, 500] {
+                try? await Task.sleep(for: .milliseconds(wait))
+                guard !readingUp else { return }
+                withTransaction(quiet) { scroller.scrollTo("bottom", anchor: .bottom) }
+            }
         }
     }
 
@@ -612,6 +620,7 @@ struct ChatView: View {
                 .accessibilityHidden(collapsed)
         }
         .padding(.bottom, 6)
+        .frame(maxWidth: ChatColumn.maxWidth)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
             // Only while the box shows (at the bottom, or typing).
             if !collapsed, abs(height - bottomRoom) > 1 { bottomRoom = height }
@@ -718,11 +727,13 @@ struct JarvisBubble: View {
 struct TypingDots: View {
     let label: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Chat is off to the side: the dots rest.
+    @Environment(\.orbOffScreen) private var offScreen
 
     /// The dots blink in turn unless Reduce Motion is on.
     var body: some View {
         HStack(spacing: 10) {
-            TimelineView(.animation(paused: reduceMotion)) { context in
+            TimelineView(.animation(paused: reduceMotion || offScreen)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 HStack(spacing: 5) {
                     ForEach(0..<3, id: \.self) { i in
@@ -1071,4 +1082,10 @@ private struct ChatSkeleton: View {
         .accessibilityElement()
         .accessibilityLabel("Loading chat")
     }
+}
+
+/// How wide Chat's messages and box get: a readable line on an iPad; an
+/// iPhone is narrower than this anyway.
+enum ChatColumn {
+    static let maxWidth: CGFloat = 760
 }
