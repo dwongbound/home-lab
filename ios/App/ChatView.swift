@@ -49,43 +49,9 @@ struct ChatView: View {
         #endif
         ZStack(alignment: .top) {
             Theme.sky.ignoresSafeArea()
-            VStack(spacing: 0) {
-                messages
-                if let problem = chat.problem {
-                    HStack {
-                        Text(problem)
-                            .font(.footnote)
-                            .foregroundStyle(Theme.rose)
-                        Spacer()
-                        if chat.failed != nil {
-                            Button("Try again") { Task { await chat.retry(app: app) } }
-                                .font(.footnote.weight(.semibold))
-                                .frame(minHeight: 44)
-                        } else if chat.failedMeal != nil {
-                            Button("Try again") { Task { await chat.retryMeal(app: app) } }
-                                .font(.footnote.weight(.semibold))
-                                .frame(minHeight: 44)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                }
-                pinnedApprovals
-                if !picked.isEmpty {
-                    PickedStrip(photos: $picked)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                // Always laid out, only faded (Dylan, 2026-11-20: the lag was
-                // worst as the box went and came back): removing it resized
-                // the list and re-laid out every message. Hidden, it can't be
-                // touched.
-                composer
-                    .opacity(collapsed ? 0 : 1)
-                    .offset(y: collapsed && !reduceMotion ? 6 : 0)
-                    .allowsHitTesting(!collapsed)
-                    .accessibilityHidden(collapsed)
-                    .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeOut(duration: 0.22), value: collapsed)
-            }
+            // The list fills the whole page; the box, the arrow and what
+            // rides with them float over it (messages())
+            messages
             // A blocking "Sending photos…" (or "Telling Jarvis…") while it goes.
             if chat.uploading || chat.busy != nil {
                 Color.black.opacity(0.35).ignoresSafeArea()
@@ -149,16 +115,12 @@ struct ChatView: View {
         // stutter" from Talk to Chat (Dylan, 2026-11-20). Later visits do
         // nothing; replies arrive through the stream, a push, or coming
         // back to the app (scenePhase below).
-        .task {
-            guard !chat.loaded else { return }
-            await app.client.warm()
-            await chat.load(app: app)
-            // Opened fresh after leaving mid-reply: fetch what finished.
-            await chat.catchUp(app: app)
-        }
+        .task { await chat.ensureLoaded(app: app) }
         // Back in the app: a reply that finished while it was away.
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await chat.catchUp(app: app) } }
+            if phase == .active {
+                Task { chat.loaded ? await chat.catchUp(app: app) : await chat.ensureLoaded(app: app) }
+            }
         }
         .sheet(item: $flagging) { item in
             WrongSheet(item: item)
@@ -217,14 +179,32 @@ struct ChatView: View {
             // the messages fade in over them once (Dylan, 2026-11-20). With
             // messages already here it never shows.
             .overlay {
-                if chat.items.isEmpty && !chat.loaded {
-                    ChatSkeleton()
-                        .transition(.opacity)
+                // Never an empty screen (Dylan, 2026-11-20): placeholders
+                // until messages arrive, or a plain line with Retry if
+                // Jarvis can't be reached (ChatScreen in JarvisKit).
+                switch ChatScreen.state(hasItems: !chat.items.isEmpty, loaded: chat.loaded, failed: chat.loadFailed) {
+                case .loading:
+                    ChatSkeleton().transition(.opacity)
+                case .failed:
+                    VStack(spacing: 14) {
+                        Text("Couldn't reach Jarvis.")
+                            .foregroundStyle(Theme.frostDim)
+                        Button("Retry") { Task { await chat.ensureLoaded(app: app) } }
+                            .buttonStyle(.bordered)
+                            .tint(Theme.glacier)
+                            .frame(minHeight: 44)
+                    }
+                    .transition(.opacity)
+                case .empty, .messages:
+                    EmptyView()
                 }
             }
+            .animation(.easeOut(duration: 0.3), value: chat.loadFailed)
             .animation(.easeOut(duration: 0.3), value: chat.loaded)
-            // Messages run up under the floating buttons (no bar).
+            // Messages run up under the floating buttons (no bar), and
+            // down under the box: the newest line clears it at the bottom.
             .contentMargins(.top, FloatingStatus.room, for: .scrollContent)
+            .contentMargins(.bottom, bottomRoom, for: .scrollContent)
             .scrollDismissesKeyboard(.interactively)
             .reportsScrollToTabBar()
             .modifier(ReadingUpWatch(readingUp: $readingUp, atBottom: $atBottom))
@@ -270,6 +250,20 @@ struct ChatView: View {
             // Chat may be built only now, with a turn already asked for (a
             // push tapped while the app was closed, or a first visit).
             .onAppear { focus(on: app.focusTurn, scroller) }
+            // The pages sit side by side in one scroller, and a lazy list
+            // only draws its rows when its own scroll moves: rows that
+            // arrived while Chat was off to the side were never drawn, an
+            // empty Chat (Dylan, 2026-11-20). Coming on screen, it settles
+            // on its newest line, unanimated, unless he's reading further up.
+            .onChange(of: app.tab == .chat) { _, here in
+                guard here, !readingUp, app.focusTurn == nil, highlighted == nil else { return }
+                settleAtNewest(scroller)
+            }
+            .onChange(of: chat.items.count) { old, _ in
+                // The first messages, landing while Chat is off to the side.
+                guard old == 0, !readingUp, app.focusTurn == nil else { return }
+                settleAtNewest(scroller)
+            }
             // The measuring run (-perfCycle): fling to the top or bottom.
             .onReceive(NotificationCenter.default.publisher(for: .perfScroll)) { note in
                 withAnimation(.easeInOut(duration: 1.2)) {
@@ -315,35 +309,27 @@ struct ChatView: View {
                     .accessibilityLabel("Go to the latest messages")
                 }
             }
-            .overlay(alignment: .bottomTrailing) {
-                if collapsed {
-                    compactComposer(scroller)
-                        .padding(.trailing, 12)
-                        .padding(.bottom, 8)
-                        .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
-                }
-            }
+            // The bottom of Chat floats over the list (Dylan, 2026-11-20:
+            // no band, no wasted height): messages scroll on under the box
+            // and the tab bar. Scrolled up with nothing typed, the box goes
+            // and the round arrow sits centred in its place; with something
+            // typed, the box stays and the arrow sits centred above it.
             .overlay(alignment: .bottom) {
-                // Typing while scrolled up: a plain way back down.
-                // Only after he scrolled up by hand, so it never flashes while the chat loads.
-                if readingUp && !collapsed {
-                    Button {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            scroller.scrollTo("bottom", anchor: .bottom)
-                        }
-                    } label: {
-                        Label("Scroll to bottom", systemImage: "arrow.down")
-                            .font(.footnote.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 44)
-                            .background(Capsule().fill(Theme.glass))
-                            .overlay(Capsule().strokeBorder(Theme.glassEdge))
-                            .background(.ultraThinMaterial, in: Capsule())
+                VStack(spacing: 10) {
+                    if readingUp && !collapsed {
+                        compactComposer(scroller)
+                            .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     }
-                    .foregroundStyle(Theme.frost)
-                    .padding(.bottom, 10)
-                    .transition(.opacity)
+                    bottomChrome
+                        .overlay {
+                            if collapsed {
+                                compactComposer(scroller)
+                                    .transition(reduceMotion ? .opacity : .scale(scale: 0.6).combined(with: .opacity))
+                            }
+                        }
                 }
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeOut(duration: 0.22), value: collapsed)
+                .animation(.easeOut(duration: 0.2), value: readingUp)
             }
             .animation(.easeOut(duration: 0.2), value: atBottom)
         }
@@ -559,11 +545,77 @@ struct ChatView: View {
                           hasPhotos: !picked.isEmpty, sending: chat.isSending) { text in send(text) }
         }
         .padding(.horizontal, 2)
+        // Frosted, so messages scrolling under it don't show through.
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Theme.glass))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.glassEdge))
         .padding(.horizontal, 12)
         .padding(.top, 4)
         .padding(.bottom, 2)
+    }
+
+    /// Puts the list on its newest line without animation, then once more
+    /// a moment later: the first scroll draws the rows near the end, whose
+    /// real heights only then replace the list's estimates, so the first
+    /// one alone can land a few messages short.
+    private func settleAtNewest(_ scroller: ScrollViewProxy) {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { scroller.scrollTo("bottom", anchor: .bottom) }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(60))
+            guard !readingUp else { return }
+            withTransaction(quiet) { scroller.scrollTo("bottom", anchor: .bottom) }
+        }
+    }
+
+    /// How much of the list's end the floating box covers, measured while
+    /// it shows; never changed while he's scrolled up, so nothing jumps.
+    @State private var bottomRoom: CGFloat = 64
+
+    /// What floats at the bottom: a problem line, waiting approvals, picked
+    /// photos and the Ask box. The box is always laid out and only faded
+    /// (re-creating the field was where the old lag was); hidden, it can't
+    /// be touched, and the list shows through where it was.
+    private var bottomChrome: some View {
+        VStack(spacing: 0) {
+            if let problem = chat.problem {
+                HStack {
+                    Text(problem)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.rose)
+                    Spacer()
+                    if chat.failed != nil {
+                        Button("Try again") { Task { await chat.retry(app: app) } }
+                            .font(.footnote.weight(.semibold))
+                            .frame(minHeight: 44)
+                    } else if chat.failedMeal != nil {
+                        Button("Try again") { Task { await chat.retryMeal(app: app) } }
+                            .font(.footnote.weight(.semibold))
+                            .frame(minHeight: 44)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.horizontal, 12)
+            }
+            pinnedApprovals
+            if !picked.isEmpty {
+                PickedStrip(photos: $picked)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            composer
+                .opacity(collapsed ? 0 : 1)
+                .offset(y: collapsed && !reduceMotion ? 6 : 0)
+                .allowsHitTesting(!collapsed)
+                .accessibilityHidden(collapsed)
+        }
+        .padding(.bottom, 6)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            // Only while the box shows (at the bottom, or typing).
+            if !collapsed, abs(height - bottomRoom) > 1 { bottomRoom = height }
+        }
     }
 
     /// Sends the words (the box has already cleared itself) and any photos.
@@ -940,13 +992,20 @@ private struct ChatRowsList: View, Equatable {
                             .foregroundStyle(Theme.frostDim)
                     }
                 }
+                // Every reply flush on the same left edge, however short
+                // (Dylan, 2026-11-20: short replies near the bottom sat
+                // indented): the row fills the width, pinned left, as his
+                // own are pinned right, instead of leaning on the list's
+                // alignment, which rows added later didn't get.
                 .padding(.trailing, 40)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         case .approval:
             // Waiting ones are pinned above the Ask box; settled ones are a
             // single line here, where they happened.
             if let line = item.outcome {
                 ApprovalLine(text: line)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
         }

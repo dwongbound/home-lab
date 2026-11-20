@@ -167,6 +167,11 @@ final class ChatModel: ObservableObject {
                 }
             }
             if problem != nil { problem = nil }
+            // Loaded means a load worked: a failed first try used to count,
+            // which left Chat empty with nothing retrying (Dylan,
+            // 2026-11-20, after a phone restart).
+            if !loaded { loaded = true }
+            if loadFailed { loadFailed = false }
             app.noteReach(nil)
         } catch {
             // A refresh in the background never puts an error in Chat
@@ -174,7 +179,33 @@ final class ChatModel: ObservableObject {
             // app); the status line shows whether Jarvis can be reached.
             app.noteReach(error)
         }
-        if !loaded { loaded = true }
+    }
+
+    /// True once the first load has failed every retry (Chat says so,
+    /// with Retry); cleared by the next load that works.
+    @Published private(set) var loadFailed = false
+    private var ensuring = false
+
+    /// Loads the chat if it never has: at launch, on visiting Chat, on
+    /// coming back to the app, and from Retry. Tries again after 1, 2, 4
+    /// and 8 seconds (the network can take a moment after a restart),
+    /// then says it couldn't, and the next visit or Retry starts over.
+    func ensureLoaded(app: AppModel) async {
+        guard !loaded, !ensuring else { return }
+        ensuring = true
+        defer { ensuring = false }
+        if loadFailed { loadFailed = false }
+        await app.client.warm()
+        for wait in ChatScreen.retryWaits {
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            await load(app: app)
+            if loaded {
+                // Opened fresh after leaving mid-reply: fetch what finished.
+                await catchUp(app: app)
+                return
+            }
+        }
+        loadFailed = true
     }
 
     /// History lines laid over the turn lines Chat holds (ChatMerge): rows

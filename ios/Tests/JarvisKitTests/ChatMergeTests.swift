@@ -100,3 +100,28 @@ final class ChatMergeTests: XCTestCase {
         XCTAssertEqual(merged(shown, afterTalk), ids)
     }
 }
+
+final class ChatScreenTests: XCTestCase {
+    func testPlaceholdersFromTheFirstFrameUntilMessagesArrive() {
+        XCTAssertEqual(ChatScreen.state(hasItems: false, loaded: false, failed: false), .loading)
+    }
+
+    func testMessagesWinWhateverElseIsTrue() {
+        XCTAssertEqual(ChatScreen.state(hasItems: true, loaded: false, failed: true), .messages)
+        XCTAssertEqual(ChatScreen.state(hasItems: true, loaded: true, failed: false), .messages)
+    }
+
+    func testAFailedFirstLoadSaysSoInsteadOfShowingNothing() {
+        XCTAssertEqual(ChatScreen.state(hasItems: false, loaded: false, failed: true), .failed)
+    }
+
+    func testATrulyEmptyChatSaysSo() {
+        XCTAssertEqual(ChatScreen.state(hasItems: false, loaded: true, failed: false), .empty)
+    }
+
+    func testTheFirstLoadTriesSeveralTimesOverAboutFifteenSeconds() {
+        XCTAssertEqual(ChatScreen.retryWaits.first, 0)
+        XCTAssertGreaterThanOrEqual(ChatScreen.retryWaits.count, 4)
+        XCTAssertLessThanOrEqual(ChatScreen.retryWaits.reduce(0, +), 20)
+    }
+}

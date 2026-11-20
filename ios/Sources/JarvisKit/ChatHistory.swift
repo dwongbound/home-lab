@@ -223,3 +223,22 @@ public enum ChatMerge {
         return Plan(older: older, fresh: placed, tail: tail)
     }
 }
+
+// MARK: - What Chat shows before and around its messages
+
+/// Chat is never an empty screen (Dylan, 2026-11-20): it shows its
+/// messages, placeholders while the first load runs, a plain line with
+/// Retry when Jarvis couldn't be reached, or a welcome when there's
+/// truly nothing yet.
+public enum ChatScreen: Equatable, Sendable {
+    case messages, loading, failed, empty
+
+    public static func state(hasItems: Bool, loaded: Bool, failed: Bool) -> ChatScreen {
+        if hasItems { return .messages }
+        if loaded { return .empty }
+        return failed ? .failed : .loading
+    }
+
+    /// Seconds to wait before each try of the first load.
+    public static let retryWaits: [Double] = [0, 1, 2, 4, 8]
+}

@@ -723,14 +723,7 @@ private struct WarmUp: View {
             // Then the newest page of the chat, in the background, so Chat
             // already has its messages when he first swipes over (Dylan,
             // 2026-11-20: Chat slid in empty and then popped in).
-            let chat = app.chat
-            if !chat.loaded {
-                await app.client.warm()
-                if !chat.loaded {
-                    await chat.load(app: app)
-                    await chat.catchUp(app: app)
-                }
-            }
+            await app.chat.ensureLoaded(app: app)
         }
     }
 
