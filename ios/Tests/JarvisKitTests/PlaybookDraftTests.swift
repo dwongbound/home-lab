@@ -27,7 +27,7 @@ final class PlaybookDraftTests: XCTestCase {
         for raw in book.raw {
             let draft = PlaybookDraft(json: raw)
             XCTAssertEqual(draft.json as NSDictionary, pageDraft(raw), "save body for \(raw["id"] ?? "")")
-            XCTAssertNil(draft.problem)
+            XCTAssertNil(draft.problem(book.options))
         }
     }
 
@@ -42,25 +42,28 @@ final class PlaybookDraftTests: XCTestCase {
     func testOptionsAndLines() throws {
         let options = try XCTUnwrap(Playbooks.book(from: Data(fixture.utf8))).options
         XCTAssertEqual(options.apps.first?.apps, ["Jarvis", "Netflix"])
-        XCTAssertEqual(DraftStep.blank("app", options: options), .app(entity: "media_player.bedroom_dylans_rokm", app: "Jarvis"))
+        XCTAssertEqual(DraftStep.blank("app", options: options).json as NSDictionary,
+                       ["type": "app", "entity": "media_player.bedroom_dylans_rokm", "app": "Jarvis"] as NSDictionary)
     }
 
-    func testWhatsMissing() {
+    func testWhatsMissing() throws {
+        let options = try XCTUnwrap(Playbooks.book(from: Data(fixture.utf8))).options
+        func step(_ json: [String: Any]) -> DraftStep { DraftStep(json: json)! }
         var draft = PlaybookDraft()
-        XCTAssertEqual(draft.problem, "Give the playbook a name")
+        XCTAssertEqual(draft.problem(options), "Give the playbook a name")
         draft.name = "Movie night"
-        XCTAssertEqual(draft.problem, "Add at least one step")
+        XCTAssertEqual(draft.problem(options), "Add at least one step")
         draft.trigger = DraftTrigger(type: "time", at: "25:00")
-        XCTAssertEqual(draft.problem, "Pick a time")
+        XCTAssertEqual(draft.problem(options), "Pick a time")
         draft.trigger = DraftTrigger.blank("time")
-        draft.steps = [.device(entity: "climate.bedroom", command: "set_temperature", value: "")]
-        XCTAssertEqual(draft.problem, "Step 1: give it a value")
-        draft.steps = [.email(to: "nope", subject: "s", body: "b", confirm: false)]
-        XCTAssertEqual(draft.problem, "Step 1: check the email address")
-        draft.steps = [.wait(seconds: 900)]
-        XCTAssertEqual(draft.problem, "Step 1: wait between 1 and 600 seconds")
-        draft.steps = [.notify(text: "Popcorn time")]
-        XCTAssertNil(draft.problem)
+        draft.steps = [step(["type": "device", "entity": "climate.bedroom", "command": "set_temperature"])]
+        XCTAssertEqual(draft.problem(options), "Step 1: Temperature (°F) is missing")
+        draft.steps = [step(["type": "email", "to": "nope", "subject": "s", "body": "b", "confirm": false])]
+        XCTAssertEqual(draft.problem(options), "Step 1: check the email address")
+        draft.steps = [step(["type": "wait", "seconds": 900])]
+        XCTAssertEqual(draft.problem(options), "Step 1: Seconds must be between 1 and 600")
+        draft.steps = [step(["type": "notify", "text": "Popcorn time"])]
+        XCTAssertNil(draft.problem(options))
         XCTAssertNil(draft.json["id"], "a new playbook has no id")
     }
 }

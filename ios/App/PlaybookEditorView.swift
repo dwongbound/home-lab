@@ -87,7 +87,7 @@ struct PlaybookEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await save() } }
                         .fontWeight(.semibold)
-                        .disabled(current.problem != nil || busy != nil)
+                        .disabled(current.problem(options) != nil || busy != nil)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -161,7 +161,7 @@ struct PlaybookEditorView: View {
                 }
                 .fullWidthSeparators()
             }
-            if let problem = current.problem {
+            if let problem = current.problem(options) {
                 Section {
                     Group {
                         Label(problem, systemImage: "exclamationmark.circle").foregroundStyle(Theme.ember)
@@ -183,6 +183,12 @@ struct PlaybookEditorView: View {
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .jarvisRows()
+        #if DEBUG
+        // `-openFirstStep`: the first step unfolded (layout checks).
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("-openFirstStep") { openStep = steps.first?.id }
+        }
+        #endif
         .background(Theme.sky.ignoresSafeArea())
         .environment(\.editMode, .constant(reordering ? .active : .inactive))
         .onChange(of: scrollTarget) { _, target in
@@ -389,7 +395,8 @@ struct PlaybookEditorView: View {
     /// The "Add a step" row: one tap adds that kind at the end, opened.
     private var addStepButtons: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
-            ForEach(PlaybookWording.stepButtons, id: \.type) { choice in
+            // The kinds Jarvis describes (the built-in eight on an older Jarvis).
+            ForEach(options.stepChoices) { choice in
                 Button {
                     let added = EditableStep(step: DraftStep.blank(choice.type, options: options))
                     animate {
@@ -397,7 +404,7 @@ struct PlaybookEditorView: View {
                         openStep = added.id
                     }
                 } label: {
-                    Label(choice.short, systemImage: choice.icon)
+                    Label(choice.short, systemImage: PlaybookWording.stepIcon(choice.type))
                         .font(.subheadline)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -556,7 +563,7 @@ private struct StepRow: View {
                         .frame(width: 22)
                         .foregroundStyle(Theme.frostDim)
                     Text(item.step.sentence(options))
-                        .foregroundStyle(item.step.problem == nil ? Theme.frost : Theme.ember)
+                        .foregroundStyle(item.step.problem(options) == nil ? Theme.frost : Theme.ember)
                         .lineLimit(open ? 3 : 2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "chevron.right")
@@ -585,90 +592,77 @@ private struct StepEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(PlaybookWording.steps.first { $0.type == step.type }?.label ?? step.type)
+            Text(options.stepLabel(step))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.frostDim)
             fields
-            if let problem = step.problem {
+            if let problem = step.problem(options) {
                 Text(problem.prefix(1).uppercased() + problem.dropFirst()).font(.caption).foregroundStyle(Theme.ember)
             }
         }
-
     }
 
+    /// One box per field of the step's kind, as Jarvis describes it (Dylan,
+    /// 2026-11-20: new kinds need no code). A kind he didn't describe is kept
+    /// and saved back as it came, never edited here.
     @ViewBuilder
     private var fields: some View {
-        switch step {
-        case .device(let entity, let command, let value):
-            let device = options.devices.first { $0.entity == entity }
-            Picker("Device", selection: Binding(get: { entity }, set: { new in
-                let commands = options.devices.first { $0.entity == new }?.commands ?? []
-                step = .device(entity: new, command: commands.contains(command) ? command : (commands.first ?? command), value: value)
-            })) {
-                if device == nil { Text(entity.isEmpty ? "Pick a device" : entity).tag(entity) }
-                ForEach(options.devices) { Text($0.name).tag($0.entity) }
-            }
-            Picker("Do", selection: Binding(get: { command }, set: { step = .device(entity: entity, command: $0, value: value) })) {
-                let commands = device?.commands ?? [command]
-                ForEach(commands.contains(command) ? commands : [command] + commands, id: \.self) { Text(PlaybookWording.commandLabel($0)).tag($0) }
-            }
-            if PlaybookWording.commandTakesValue(command) {
-                TextField(PlaybookWording.commandTakesWords(command) ? "Value" : "Number", text: Binding(get: { value }, set: { step = .device(entity: entity, command: command, value: $0) }))
-                    .keyboardType(PlaybookWording.commandTakesWords(command) ? .default : .decimalPad)
-            }
-        case .scene(let entity):
-            Picker("Scene", selection: Binding(get: { entity }, set: { step = .scene(entity: $0) })) {
-                if !options.scenes.contains(where: { $0.entity == entity }) { Text(entity.isEmpty ? "Pick a scene" : entity).tag(entity) }
-                ForEach(options.scenes) { Text($0.name).tag($0.entity) }
-            }
-        case .app(let entity, let app):
-            let screen = options.apps.first { $0.entity == entity }
-            Picker("TV", selection: Binding(get: { entity }, set: { new in
-                let apps = options.apps.first { $0.entity == new }?.apps ?? []
-                step = .app(entity: new, app: apps.contains(app) ? app : (apps.first ?? ""))
-            })) {
-                if screen == nil { Text(entity.isEmpty ? "Pick a TV" : entity).tag(entity) }
-                ForEach(options.apps) { Text($0.name).tag($0.entity) }
-            }
-            Picker("App", selection: Binding(get: { app }, set: { step = .app(entity: entity, app: $0) })) {
-                let apps = screen?.apps ?? []
-                if !apps.contains(app) { Text(app.isEmpty ? "Pick an app" : app).tag(app) }
-                ForEach(apps, id: \.self) { Text($0).tag($0) }
-            }
-        case .notify(let text):
-            TextField("What it should say", text: Binding(get: { text }, set: { step = .notify(text: $0) }), axis: .vertical)
-        case .think(let text, let model):
-            TextField("What Jarvis should do", text: Binding(get: { text }, set: { step = .think(text: $0, model: model) }), axis: .vertical)
-            Picker("Who", selection: Binding(get: { model }, set: { step = .think(text: text, model: $0) })) {
-                ForEach(PlaybookWording.thinkers, id: \.model) { Text($0.label).tag($0.model) }
-            }
-        case .email(let to, let subject, let body, let confirm):
-            TextField("To (commas between addresses)", text: Binding(get: { to }, set: { step = .email(to: $0, subject: subject, body: body, confirm: confirm) }))
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-            TextField("Subject", text: Binding(get: { subject }, set: { step = .email(to: to, subject: $0, body: body, confirm: confirm) }))
-            TextField("Message", text: Binding(get: { body }, set: { step = .email(to: to, subject: subject, body: $0, confirm: confirm) }), axis: .vertical)
-            Toggle("Ask me before sending", isOn: Binding(get: { confirm }, set: { step = .email(to: to, subject: subject, body: body, confirm: $0) }))
-                .tint(Theme.glacier)
-        case .wait(let seconds):
-            Stepper(seconds % 60 == 0 ? "Wait \(seconds / 60) min" : "Wait \(seconds) s", value: Binding(get: { seconds }, set: { step = .wait(seconds: $0) }), in: 5...600, step: 5)
-        case .job(let job, let raw):
-            // One of Jarvis's own jobs: only which job can change, and only
-            // when Jarvis lists them; otherwise it's simply shown.
-            if options.jobs.isEmpty {
-                LabeledContent("Runs", value: options.jobName(job))
-            } else {
-                Picker("Job", selection: Binding(get: { job }, set: { step = .job(job: $0, raw: raw) })) {
-                    if !options.jobs.contains(where: { $0.entity == job }) { Text(job.isEmpty ? "Pick a job" : job).tag(job) }
-                    ForEach(options.jobs) { Text($0.name).tag($0.entity) }
+        if let described = options.stepType(of: step) {
+            ForEach(described.fields, id: \.key) { field in
+                if let rule = options.activeRule(field, step) {
+                    StepFieldBox(key: field.key, rule: rule, step: $step, options: options)
                 }
             }
-        case .other:
-            // A kind of step this app doesn't know: kept and saved back as it
-            // came, never edited here.
+        } else {
             Text("This kind of step can only be changed on the home page.")
                 .font(.footnote)
                 .foregroundStyle(Theme.frostDim)
+        }
+    }
+}
+
+/// One field of a step, drawn by its kind: words, long words, a number, a
+/// switch, a pick (with "Jarvis picks" when it isn't required) or emails.
+private struct StepFieldBox: View {
+    let key: String
+    let rule: StepFieldRule
+    @Binding var step: DraftStep
+    let options: PlaybookOptions
+
+    private func set(_ value: StepValue?) { step = step.with(key, value, options: options) }
+
+    var body: some View {
+        switch rule.kind {
+        case "bool":
+            Toggle(rule.label, isOn: Binding(get: { step[key]?.bool ?? false }, set: { set(.bool($0)) }))
+                .tint(Theme.glacier)
+        case "number":
+            HStack {
+                Text(rule.label)
+                Spacer(minLength: 12)
+                TextField(rule.placeholder ?? "Number", value: Binding(get: { step[key]?.number }, set: { set($0.map(StepValue.number)) }), format: .number)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 120)
+            }
+        case "choice":
+            let choices = options.choices(for: rule, step)
+            let current = step[key]?.text ?? ""
+            Picker(rule.label, selection: Binding(get: { current }, set: { set(.text($0)) })) {
+                if !rule.required { Text("Jarvis picks").tag(StepTypes.auto) }
+                if !choices.contains(where: { $0.id == current }) && !(current == StepTypes.auto && !rule.required) {
+                    Text(current.isEmpty ? "Pick one" : StepTypes.plainWords(current)).tag(current)
+                }
+                ForEach(choices) { Text($0.name).tag($0.id) }
+            }
+        case "emails":
+            TextField(rule.placeholder ?? "\(rule.label) (commas between addresses)", text: Binding(get: { step[key]?.text ?? "" }, set: { set(.text($0)) }))
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+        case "longtext":
+            TextField(rule.placeholder ?? rule.label, text: Binding(get: { step[key]?.text ?? "" }, set: { set(.text($0)) }), axis: .vertical)
+        default:
+            TextField(rule.placeholder ?? rule.label, text: Binding(get: { step[key]?.text ?? "" }, set: { set(.text($0)) }))
         }
     }
 }

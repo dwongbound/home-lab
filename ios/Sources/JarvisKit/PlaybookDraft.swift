@@ -35,6 +35,13 @@ public struct PlaybookOptions: Equatable, Sendable {
     /// Jarvis's own jobs a "job" step can run ({id, name}); empty on a
     /// server from before job steps (2026-11-20).
     public var jobs: [Named] = []
+    /// Who can do a thinking step; Jarvis's two when he doesn't say.
+    public var thinkers: [Named] = StepTypes.defaultThinkers.map { Named(entity: $0.id, name: $0.name) }
+    /// The kinds of step and their fields, as Jarvis describes them; the
+    /// built-in eight when he doesn't (an older Jarvis).
+    public var stepTypes: [StepTypeInfo] = StepTypes.defaults
+    /// The options as they came, for a choice list the app doesn't name.
+    var raw = RawJSON([:])
 
     public init() {}
 
@@ -56,16 +63,19 @@ public struct PlaybookOptions: Equatable, Sendable {
             return Screen(entity: entity, name: (r["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? entity, apps: r["apps"] as? [String] ?? [])
         }
         zones = object["zones"] as? [String] ?? []
-        jobs = (object["jobs"] as? [[String: Any]] ?? []).compactMap { r in
-            guard let id = r["id"] as? String, !id.isEmpty else { return nil }
-            return Named(entity: id, name: (r["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id)
+        func named(_ key: String) -> [Named] {
+            (object[key] as? [[String: Any]] ?? []).compactMap { r in
+                guard let id = r["id"] as? String, !id.isEmpty else { return nil }
+                return Named(entity: id, name: (r["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id)
+            }
         }
+        jobs = named("jobs")
+        let sentThinkers = named("thinkers")
+        if !sentThinkers.isEmpty { thinkers = sentThinkers }
+        stepTypes = StepTypes.parse(object["stepTypes"] ?? object["step_types"]) ?? StepTypes.defaults
+        raw = RawJSON(object)
     }
 
-    /// A job's name; its id when the server didn't name it.
-    public func jobName(_ id: String) -> String {
-        jobs.first { $0.entity == id }?.name ?? id
-    }
 
     /// The name a device, scene or screen goes by; its id when unknown.
     public func name(of entity: String) -> String {
@@ -128,167 +138,266 @@ public struct RawJSON: Equatable, Sendable {
     }
 }
 
-/// One step, as the editor holds it.
-public enum DraftStep: Equatable, Sendable {
-    case device(entity: String, command: String, value: String)
-    case scene(entity: String)
-    case app(entity: String, app: String)
-    case notify(text: String)
-    case think(text: String, model: String)
-    case email(to: String, subject: String, body: String, confirm: Bool)
-    case wait(seconds: Int)
-    /// One of Jarvis's own jobs run as plain code (Jarvis build 83, the
-    /// nightly self-improvement playbook). Only which job can change; every
-    /// other field it came with goes back as it was.
-    case job(job: String, raw: RawJSON)
-    /// A kind of step this app doesn't know yet: shown, never edited, and
-    /// saved back exactly as it came, in its place. Dropping it would gut
-    /// the playbook on the next save.
-    case other(raw: RawJSON)
+/// One step, as the editor holds it: the JSON it came with, plus only what
+/// was changed here. A step opened and saved untouched goes back exactly as
+/// it came (numbers stay numbers, no key dropped or added), whatever its
+/// kind, known to the app or not (Dylan, 2026-11-20).
+public struct DraftStep: Equatable, Sendable {
+    public private(set) var type: String
+    /// The step as it came.
+    let raw: RawJSON
+    /// Its scalar values as they came, for reading.
+    let base: [String: StepValue]
+    /// Values changed here; nil = taken out.
+    var edits: [String: StepValue?] = [:]
 
-    /// The step's type name, as the page has it.
-    public var type: String {
-        switch self {
-        case .device: return "device"
-        case .scene: return "scene"
-        case .app: return "app"
-        case .notify: return "notify"
-        case .think: return "think"
-        case .email: return "email"
-        case .wait: return "wait"
-        case .job: return "job"
-        case .other(let raw): return raw.object["type"] as? String ?? "unknown"
-        }
+    /// A new step of a kind, empty.
+    public init(type: String) {
+        self.type = type
+        raw = RawJSON(["type": type])
+        base = [:]
     }
 
-    /// Reads a step from the page's JSON. A kind the app doesn't know is
-    /// kept whole as `.other`, never dropped.
+    /// Reads a step from the page's JSON. Never nil: a kind the app doesn't
+    /// know is kept whole and saved back as it came.
     public init?(json r: [String: Any]) {
-        switch r["type"] as? String {
-        case "device":
-            let value: String
-            if let n = r["value"] as? NSNumber, !(r["value"] is String) { value = DraftStep.numberText(n.doubleValue) }
-            else { value = r["value"] as? String ?? "" }
-            self = .device(entity: r["entity"] as? String ?? "", command: r["command"] as? String ?? "turn_off", value: value)
-        case "scene": self = .scene(entity: r["entity"] as? String ?? "")
-        case "app": self = .app(entity: r["entity"] as? String ?? "", app: r["app"] as? String ?? "")
-        case "notify": self = .notify(text: r["text"] as? String ?? "")
-        case "think", "ask": self = .think(text: r["text"] as? String ?? "", model: r["model"] as? String ?? "auto")
-        case "email": self = .email(to: r["to"] as? String ?? "", subject: r["subject"] as? String ?? "", body: r["body"] as? String ?? "", confirm: r["confirm"] as? Bool ?? false)
-        case "wait": self = .wait(seconds: (r["seconds"] as? NSNumber)?.intValue ?? 60)
-        case "job": self = .job(job: r["job"] as? String ?? "", raw: RawJSON(r))
-        default: self = .other(raw: RawJSON(r))
+        type = r["type"] as? String ?? ""
+        raw = RawJSON(r)
+        var values: [String: StepValue] = [:]
+        for (key, value) in r where key != "type" {
+            if let v = StepValue(json: value) { values[key] = v }
         }
+        base = values
     }
 
-    /// "21" for 21.0, "0.4" for 0.4.
-    static func numberText(_ d: Double) -> String {
-        d == d.rounded() ? String(Int(d)) : String(d)
+    /// One value of the step, as it stands.
+    public subscript(key: String) -> StepValue? {
+        if let edited = edits[key] { return edited }
+        return base[key]
     }
 
-    /// The page's JSON for it. A device value is a number unless the
-    /// command takes words (a mode, an app), and is left out when empty.
+    /// The page's JSON for it: what came, with the changes made here.
     public var json: [String: Any] {
-        switch self {
-        case .device(let entity, let command, let value):
-            var out: [String: Any] = ["type": "device", "entity": entity, "command": command]
-            let trimmed = value.trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty {
-                if PlaybookWording.commandTakesWords(command) { out["value"] = trimmed }
-                else if let n = Double(trimmed) { out["value"] = n == n.rounded() ? NSNumber(value: Int(n)) : NSNumber(value: n) }
-                else { out["value"] = trimmed }
-            }
-            return out
-        case .scene(let entity): return ["type": "scene", "entity": entity]
-        case .app(let entity, let app): return ["type": "app", "entity": entity, "app": app]
-        case .notify(let text): return ["type": "notify", "text": text]
-        case .think(let text, let model): return ["type": "think", "text": text, "model": model]
-        case .email(let to, let subject, let body, let confirm): return ["type": "email", "to": to, "subject": subject, "body": body, "confirm": confirm]
-        case .wait(let seconds): return ["type": "wait", "seconds": seconds]
-        case .job(let job, let raw):
-            var out = raw.object
-            out["type"] = "job"
-            out["job"] = job
-            return out
-        case .other(let raw): return raw.object
+        var out = raw.object
+        out["type"] = type
+        for (key, value) in edits {
+            if let value { out[key] = value.json } else { out.removeValue(forKey: key) }
         }
+        return out
+    }
+
+    /// The step with one value set (or taken out) and nothing else changed.
+    func setting(_ key: String, _ value: StepValue?) -> DraftStep {
+        var next = self
+        next.edits[key] = .some(value)
+        return next
     }
 
     /// What a step of `type` starts as: the first device, scene or app
-    /// Jarvis lists (blankStep).
+    /// Jarvis lists, and his defaults (blankStep).
     public static func blank(_ type: String, options: PlaybookOptions) -> DraftStep {
-        switch type {
-        case "device":
-            let first = options.devices.first
-            return .device(entity: first?.entity ?? "", command: first?.commands.first ?? "turn_off", value: "")
-        case "scene": return .scene(entity: options.scenes.first?.entity ?? "")
-        case "app":
-            let first = options.apps.first
-            return .app(entity: first?.entity ?? "", app: first?.apps.first ?? "")
-        case "notify": return .notify(text: "")
-        case "think": return .think(text: "", model: "auto")
-        // A playbook you wrote doesn't ask before sending (Dylan, 2026-11-18).
-        case "email": return .email(to: "", subject: "", body: "", confirm: false)
-        default: return .wait(seconds: 60)
+        var step = DraftStep(type: type)
+        for field in options.stepType(of: step)?.fields ?? [] {
+            if let rule = options.activeRule(field, step) { step = step.setting(field.key, options.startValue(rule, step)) }
         }
+        return step
     }
 
-    /// What the step is still missing, or nil when it's complete (stepProblem).
-    public var problem: String? {
-        switch self {
-        case .device(let entity, let command, let value):
-            if entity.isEmpty { return "pick a device" }
-            if PlaybookWording.commandTakesValue(command) && value.trimmingCharacters(in: .whitespaces).isEmpty { return "give it a value" }
-            return nil
-        case .scene(let entity): return entity.isEmpty ? "pick a scene" : nil
-        case .app(let entity, let app): return entity.isEmpty || app.isEmpty ? "pick a TV and an app" : nil
-        case .notify(let text): return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "write what it should say" : nil
-        case .think(let text, _): return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "write what Jarvis should do" : nil
-        case .email(let to, let subject, let body, _):
-            let addresses = PlaybookWording.emailAddresses(to)
-            if addresses.isEmpty || addresses.count > 10 { return "give it one to ten email addresses" }
-            if !addresses.allSatisfy(PlaybookWording.looksLikeEmail) { return "check the email address" }
-            if subject.trimmingCharacters(in: .whitespaces).isEmpty || body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "write a subject and a message" }
-            return nil
-        case .wait(let seconds): return seconds < 1 || seconds > 600 ? "wait between 1 and 600 seconds" : nil
-        case .job(let job, _): return job.isEmpty ? "pick a job" : nil
-        // Jarvis knows what it is; the app only carries it.
-        case .other: return nil
+    /// What the step is still missing, or nil when it's complete
+    /// (stepProblem). A kind Jarvis didn't describe is his to judge.
+    public func problem(_ options: PlaybookOptions) -> String? {
+        for field in options.stepType(of: self)?.fields ?? [] {
+            guard let rule = options.activeRule(field, self) else { continue }
+            if let problem = StepCheck.problem(rule, self[field.key]) { return problem }
         }
+        return nil
     }
 
-    /// The step as a short sentence for its folded row in the editor:
-    /// "Turn off Desk lamp", "Run the Movie scene", "Wait 2 min". A field
-    /// not filled in yet reads as what to do ("Pick a device").
+    /// The step as one line, from its kind's summary pattern (stepLine).
     public func sentence(_ options: PlaybookOptions) -> String {
-        func or(_ text: String, _ blank: String) -> String {
-            let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return t.isEmpty ? blank : PlaybookWording.clip(t)
+        guard let described = options.stepType(of: self) else { return StepTypes.plainWords(type) }
+        let pattern = try! NSRegularExpression(pattern: #"\{([a-z0-9_]+)(\.name)?\}"#)
+        let summary = described.summary as NSString
+        var line = ""
+        var last = 0
+        for match in pattern.matches(in: described.summary, range: NSRange(location: 0, length: summary.length)) {
+            line += summary.substring(with: NSRange(location: last, length: match.range.location - last))
+            let key = summary.substring(with: match.range(at: 1))
+            line += options.valueWords(self, key: key, byName: match.range(at: 2).location != NSNotFound)
+            last = match.range.location + match.range.length
         }
-        switch self {
-        case .device(let entity, let command, let value):
-            guard !entity.isEmpty else { return "Pick a device" }
-            let name = options.name(of: entity)
-            let verb = PlaybookWording.commandLabel(command)
-            if PlaybookWording.commandTakesValue(command) {
-                return "\(name): \(verb.lowercased()) \(or(value, "…"))"
+        line += summary.substring(from: last)
+        return line.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// The step with one value changed (withField): fields that hang off it
+    /// start over, since another device has other commands and another
+    /// command takes another value.
+    public func with(_ key: String, _ value: StepValue?, options: PlaybookOptions) -> DraftStep {
+        var next = setting(key, value)
+        var changed = [key]
+        for field in options.stepType(of: self)?.fields ?? [] {
+            guard changed.contains(where: { StepCheck.hangsOff(field, $0) }) else { continue }
+            let rule = options.activeRule(field, next)
+            next = next.setting(field.key, rule.flatMap { options.startValue($0, next) })
+            changed.append(field.key)
+        }
+        return next
+    }
+}
+
+/// What one field still needs (fieldProblem), and which fields hang off
+/// which (hangsOff).
+enum StepCheck {
+    static func problem(_ rule: StepFieldRule, _ value: StepValue?) -> String? {
+        if rule.kind == "bool" { return nil }
+        if rule.kind == "emails" {
+            let addresses = PlaybookWording.emailAddresses(value?.text ?? "")
+            let most = rule.maxItems ?? 10
+            if addresses.isEmpty { return rule.required ? "give it one to \(most) email addresses" : nil }
+            if addresses.count > most { return "give it one to \(most) email addresses" }
+            if !addresses.allSatisfy(PlaybookWording.looksLikeEmail) { return "check the email address" }
+            return nil
+        }
+        let empty: Bool
+        switch value {
+        case nil: empty = true
+        case .text(let s)?: empty = s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        default: empty = false
+        }
+        if empty { return rule.required ? "\(rule.label) is missing" : nil }
+        if rule.kind == "number" {
+            let low = rule.min ?? -.infinity
+            let high = rule.max ?? .infinity
+            guard let n = value?.number, n >= low, n <= high else {
+                return "\(rule.label) must be between \(DraftStepNumber.words(low)) and \(DraftStepNumber.words(high))"
             }
-            return "\(verb) \(name)"
-        case .scene(let entity): return entity.isEmpty ? "Pick a scene" : "Run the \(options.name(of: entity)) scene"
-        case .app(let entity, let app):
-            if entity.isEmpty { return "Pick a TV" }
-            return app.isEmpty ? "Pick an app for \(options.name(of: entity))" : "Open \(app) on \(options.name(of: entity))"
-        case .notify(let text): return "Notify me: " + or(text, "write what it says")
-        case .think(let text, _): return "Ask Jarvis: " + or(text, "write what to work out")
-        case .email(let to, let subject, _, _):
-            let who = to.trimmingCharacters(in: .whitespaces)
-            return who.isEmpty ? "Email: pick who it goes to" : "Email \(PlaybookWording.clip(who, max: 28)): " + or(subject, "no subject yet")
-        case .wait(let seconds): return seconds % 60 == 0 ? "Wait \(seconds / 60) min" : "Wait \(seconds) s"
-        case .job(let job, _): return job.isEmpty ? "Pick a job" : "Run: " + options.jobName(job)
-        case .other: return "A \(type) step (change it on the home page)"
+        }
+        return nil
+    }
+
+    static func hangsOff(_ field: StepField, _ key: String) -> Bool {
+        field.rule.dependsOn == key || field.byCommand.values.contains { $0.dependsOn == key }
+    }
+}
+
+/// "21" for 21.0, "0.4" for 0.4.
+enum DraftStepNumber {
+    static func words(_ d: Double) -> String {
+        guard d.isFinite else { return d > 0 ? "∞" : "-∞" }
+        return d == d.rounded() ? String(Int(d)) : String(d)
+    }
+}
+
+/// One thing a choice field can be set to: the value saved and its words.
+public struct StepChoice: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+}
+
+extension PlaybookOptions {
+    /// Jarvis's description of a step's kind; nil for one he didn't describe.
+    public func stepType(of step: DraftStep) -> StepTypeInfo? {
+        stepTypes.first { $0.type == step.type }
+    }
+
+    /// What heads a step in the editor (stepLabel).
+    public func stepLabel(_ step: DraftStep) -> String {
+        stepType(of: step)?.label ?? StepTypes.plainWords(step.type)
+    }
+
+    /// The kinds of step the editor can add: every one Jarvis describes, but
+    /// not one whose only pick has nothing to pick from (stepChoices).
+    public var stepChoices: [StepTypeInfo] {
+        stepTypes.filter { t in
+            !t.fields.contains { f in
+                f.rule.kind == "choice" && f.rule.required && f.rule.dependsOn == nil
+                    && choices(for: f.rule, DraftStep(type: t.type)).isEmpty
+            }
         }
     }
 
+    /// One options list by name (devices, scenes, apps, jobs, thinkers), as
+    /// rows with an id: devices, scenes and TVs go by `entity`, the rest by `id`.
+    func optionRows(_ name: String) -> [(id: String, name: String, row: [String: Any])] {
+        if name == "thinkers" {
+            return thinkers.map { ($0.entity, $0.name, ["id": $0.entity, "name": $0.name]) }
+        }
+        if name == "jobs" {
+            return jobs.map { ($0.entity, $0.name, ["id": $0.entity, "name": $0.name]) }
+        }
+        let list = raw.object[name] as? [[String: Any]] ?? []
+        return list.compactMap { row in
+            guard let id = (row["entity"] as? String) ?? (row["id"] as? String), !id.isEmpty else { return nil }
+            return (id, (row["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id, row)
+        }
+    }
+
+    /// What a choice field offers for this step: fixed words, a whole
+    /// options list, or the picked row's own list (choicesFor).
+    public func choices(for rule: StepFieldRule, _ step: DraftStep) -> [StepChoice] {
+        if let fixed = rule.choices { return fixed.map { StepChoice(id: $0, name: StepTypes.plainWords($0)) } }
+        guard let from = rule.choicesFrom else { return [] }
+        let rows = optionRows(from)
+        guard let dependsOn = rule.dependsOn, let key = rule.choicesKey else {
+            return rows.map { StepChoice(id: $0.id, name: $0.name) }
+        }
+        let picked = rows.first { $0.id == step[dependsOn]?.text }
+        let sub = picked?.row[key] as? [Any] ?? []
+        return sub.compactMap { ($0 as? String).map { StepChoice(id: $0, name: StepTypes.plainWords($0)) } }
+    }
+
+    /// The kind of device a step is about (light, climate).
+    func deviceKind(_ step: DraftStep) -> String {
+        devices.first { $0.entity == step["entity"]?.text }?.kind ?? ""
+    }
+
+    /// The field as it applies to this step right now (activeField): a
+    /// by_command field becomes the rule for the picked command, or nil
+    /// when that command takes no value (or only for another kind of device).
+    public func activeRule(_ field: StepField, _ step: DraftStep) -> StepFieldRule? {
+        guard field.rule.kind == "by_command" else { return field.rule }
+        guard let picked = step[field.rule.dependsOn ?? ""]?.text, let rule = field.byCommand[picked] else { return nil }
+        if let only = rule.onlyDomains, !only.contains(deviceKind(step)) { return nil }
+        return rule
+    }
+
+    /// What a field starts as, given the step so far; nil = left out (startValue).
+    func startValue(_ rule: StepFieldRule, _ step: DraftStep) -> StepValue? {
+        switch rule.kind {
+        case "choice":
+            // A pick that isn't required is left to Jarvis.
+            if !rule.required { return .text(StepTypes.auto) }
+            return .text(choices(for: rule, step).first?.id ?? "")
+        case "bool": return .bool(rule.defaultValue?.bool == true)
+        case "number": return rule.defaultValue?.number.map(StepValue.number)
+        default: return .text("")
+        }
+    }
+
+    /// A step's value as it reads in the row: a pick's name, or the typed
+    /// words cut short (valueWords).
+    func valueWords(_ step: DraftStep, key: String, byName: Bool) -> String {
+        guard let value = step[key] else { return "" }
+        if case .text(let s) = value, s.isEmpty || s == StepTypes.auto { return "" }
+        let field = stepType(of: step)?.fields.first { $0.key == key }
+        let rule = field.flatMap { activeRule($0, step) }
+        if rule?.kind == "choice", case .text(let id) = value, let rule {
+            let name = choices(for: rule, step).first { $0.id == id }?.name
+            // "{entity.name}" asks for the name; a bare "{command}" reads mid-sentence.
+            return byName ? (name ?? id) : id.replacingOccurrences(of: "_", with: " ")
+        }
+        switch value {
+        case .text(let s): return PlaybookWording.clip(s)
+        case .number(let d): return DraftStepNumber.words(d)
+        case .bool(let b): return b ? "true" : "false"
+        }
+    }
+
+    /// A job's name; its id when the server didn't name it.
+    public func jobName(_ id: String) -> String {
+        jobs.first { $0.entity == id }?.name ?? id
+    }
 }
 
 /// A playbook being written: a new one has no id yet.
@@ -392,13 +501,13 @@ public struct PlaybookDraft: Equatable, Sendable {
     }
 
     /// Why it can't be saved yet, in plain words; nil when it can (playbookProblem).
-    public var problem: String? {
+    public func problem(_ options: PlaybookOptions = PlaybookOptions()) -> String? {
         if name.trimmingCharacters(in: .whitespaces).isEmpty { return "Give the playbook a name" }
         if trigger.type == "time", !PlaybookWording.isClock(trigger.at) { return "Pick a time" }
         if steps.isEmpty { return "Add at least one step" }
         if steps.count > Self.maxSteps { return "A playbook can have up to \(Self.maxSteps) steps" }
         for (i, step) in steps.enumerated() {
-            if let problem = step.problem { return "Step \(i + 1): \(problem)" }
+            if let problem = step.problem(options) { return "Step \(i + 1): \(problem)" }
         }
         return nil
     }
@@ -426,7 +535,8 @@ public enum PlaybookWording {
     /// The icon for a step's kind.
     public static func stepIcon(_ type: String) -> String {
         if type == "job" { return "gearshape.2" }
-        return stepButtons.first { $0.type == type }?.icon ?? "questionmark.square"
+        // A kind the app has no icon for (one Jarvis added): a plain mark.
+        return stepButtons.first { $0.type == type }?.icon ?? "circle.dashed"
     }
     /// The trigger choices as short tiles, with an icon each.
     public static let triggerTiles: [(type: String, short: String, icon: String)] = [

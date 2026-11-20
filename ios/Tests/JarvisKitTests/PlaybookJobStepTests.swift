@@ -36,14 +36,14 @@ final class PlaybookJobStepTests: XCTestCase {
         XCTAssertEqual(draft.steps[1].type, "job")
         let (_, options) = try parsed()
         XCTAssertEqual(draft.steps[1].sentence(options), "Run: Nightly self-improvement")
-        XCTAssertNil(draft.steps[1].problem)
+        XCTAssertNil(draft.steps[1].problem(options))
     }
 
     func testAnUnknownStepKindDecodesAndShowsAsARow() throws {
         let draft = try XCTUnwrap(Playbooks.list(from: Data(book.utf8)))[0].draft
         XCTAssertEqual(draft.steps[2].type, "teleport")
-        XCTAssertNil(draft.steps[2].problem, "an unknown step never blocks a save")
-        XCTAssertEqual(draft.steps[2].sentence(PlaybookOptions()), "A teleport step (change it on the home page)")
+        XCTAssertNil(draft.steps[2].problem(PlaybookOptions()), "an unknown step never blocks a save")
+        XCTAssertEqual(draft.steps[2].sentence(PlaybookOptions()), "Teleport")
     }
 
     func testOptionsWithoutJobsFallBackToTheId() {
@@ -74,8 +74,7 @@ final class PlaybookJobStepTests: XCTestCase {
 
     func testChoosingAnotherJobKeepsTheStepsOtherFields() throws {
         let step = try XCTUnwrap(DraftStep(json: ["type": "job", "job": "nightly", "note": "keep me"]))
-        guard case .job(_, let raw) = step else { return XCTFail("not a job step") }
-        let changed = DraftStep.job(job: "weekly", raw: raw).json
+        let changed = step.with("job", .text("weekly"), options: PlaybookOptions()).json
         XCTAssertEqual(changed as NSDictionary, ["type": "job", "job": "weekly", "note": "keep me"] as NSDictionary)
     }
 

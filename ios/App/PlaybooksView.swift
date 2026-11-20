@@ -57,8 +57,27 @@ final class PlaybooksModel: ObservableObject {
       {"id": "arrive-home", "name": "Arrive home", "enabled": true, "madeBy": "dylan", "purpose": "",
        "trigger": {"type": "arrive", "zone": "home", "minAway": 15},
        "steps": [{"type": "app", "entity": "media_player.tv", "app": "Jarvis"}]}
-    ], "options": {"devices": [], "scenes": [], "apps": [], "zones": ["home"],
-                   "jobs": [{"id": "nightly", "name": "Nightly self-improvement"}]}}}
+      ,{"id": "dinner", "name": "Dinner call", "enabled": true, "madeBy": "dylan", "purpose": "",
+       "trigger": {"type": "manual"},
+       "steps": [{"type": "speak", "speaker": "media_player.tv", "words": "Dinner is ready", "loud": true, "repeat": 2},
+                 {"type": "think", "text": "Pick a playlist", "model": "auto", "confirm": false}]}
+    ], "options": {"devices": [], "scenes": [], "apps": [{"entity": "media_player.tv", "name": "Living room TV", "apps": ["Jarvis"]}], "zones": ["home"],
+                   "jobs": [{"id": "nightly", "name": "Nightly self-improvement"}],
+                   "stepTypes": [
+                     {"type": "speak", "label": "Say something out loud", "short": "Speak", "runs": "code", "summary": "Say “{words}” on {speaker.name}",
+                      "fields": [{"key": "speaker", "label": "Speaker", "kind": "choice", "required": true, "choicesFrom": "apps"},
+                                 {"key": "words", "label": "Words", "kind": "text", "required": true},
+                                 {"key": "loud", "label": "Loud", "kind": "bool", "required": false, "default": true},
+                                 {"key": "repeat", "label": "Times", "kind": "number", "required": true, "min": 1, "max": 3}]},
+                     {"type": "think", "label": "Have Jarvis work something out", "short": "Ask Jarvis", "runs": "thinking", "summary": "Jarvis: {text}",
+                      "fields": [{"key": "text", "label": "What Jarvis should do", "kind": "longtext", "required": true},
+                                 {"key": "model", "label": "Who does it", "kind": "choice", "required": false, "choicesFrom": "thinkers"},
+                                 {"key": "confirm", "label": "Ask me first", "kind": "bool", "required": false, "default": false}]},
+                     {"type": "job", "label": "Run one of Jarvis’s jobs", "short": "Jarvis job", "summary": "Run: {job.name}",
+                      "fields": [{"key": "job", "label": "Job", "kind": "choice", "required": true, "choicesFrom": "jobs"}]},
+                     {"type": "notify", "label": "Send me a notification", "short": "Notify me", "summary": "Notify me: {text}",
+                      "fields": [{"key": "text", "label": "Message", "kind": "longtext", "required": true}]}
+                   ]}}}
     """#
     #endif
 
@@ -190,6 +209,9 @@ struct PlaybooksView: View {
             let args = ProcessInfo.processInfo.arguments
             try? await Task.sleep(for: .seconds(1.5))
             if args.contains("-editFirstPlaybook"), let first = model.playbooks.first { editing = EditTarget(draft: first.draft) }
+            if let at = args.firstIndex(of: "-editPlaybook"), at + 1 < args.count, let one = model.playbooks.first(where: { $0.id == args[at + 1] }) {
+                editing = EditTarget(draft: one.draft)
+            }
             if args.contains("-newPlaybook") { editing = EditTarget(draft: PlaybookDraft()) }
             #endif
         }

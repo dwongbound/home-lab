@@ -20,10 +20,13 @@ final class PlaybookDraftAnswerTests: XCTestCase {
         XCTAssertEqual(draft.trigger.type, "time")
         XCTAssertEqual(draft.trigger.at, "23:00")
         XCTAssertEqual(draft.trigger.days.count, 5)
-        XCTAssertEqual(draft.steps, [.device(entity: "light.desk", command: "turn_off", value: ""), .notify(text: "Lights are off")])
+        XCTAssertEqual(draft.steps.map { $0.json as NSDictionary },
+                       [["type": "device", "entity": "light.desk", "command": "turn_off"], ["type": "notify", "text": "Lights are off"]] as [NSDictionary])
         XCTAssertEqual(draft.done, ["Every light is off"])
         XCTAssertEqual(assumed, ["You meant the desk lamp"])
-        XCTAssertNil(draft.problem)
+        var options = PlaybookOptions()
+        options.devices = [.init(entity: "light.desk", name: "Desk lamp", kind: "light", commands: ["turn_on", "turn_off"])]
+        XCTAssertNil(draft.problem(options))
     }
 
     func testADraftIsAlwaysNew() {
@@ -44,14 +47,15 @@ final class PlaybookDraftAnswerTests: XCTestCase {
         guard case .refused = PlaybookDraftAnswer.read(Data(#"{"ok": true}"#.utf8)) else { return XCTFail() }
     }
 
+    /// Rows read from each kind's summary pattern, as on the page (stepLine).
     func testStepRowsReadAsSentences() {
-        var options = PlaybookOptions()
-        options.devices = [.init(entity: "light.desk", name: "Desk lamp", kind: "light", commands: ["turn_on", "turn_off"])]
-        XCTAssertEqual(DraftStep.device(entity: "light.desk", command: "turn_off", value: "").sentence(options), "Turn off Desk lamp")
-        XCTAssertEqual(DraftStep.device(entity: "", command: "turn_off", value: "").sentence(options), "Pick a device")
-        XCTAssertEqual(DraftStep.wait(seconds: 120).sentence(options), "Wait 2 min")
-        XCTAssertEqual(DraftStep.notify(text: "").sentence(options), "Notify me: write what it says")
-        XCTAssertEqual(DraftStep.scene(entity: "").sentence(options), "Pick a scene")
+        let options = PlaybookOptions(json: ["devices": [["entity": "light.desk", "name": "Desk lamp", "kind": "light", "commands": ["turn_on", "turn_off"]]]])
+        func line(_ json: [String: Any]) -> String { DraftStep(json: json)!.sentence(options) }
+        XCTAssertEqual(line(["type": "device", "entity": "light.desk", "command": "turn_off"]), "Desk lamp: turn off")
+        XCTAssertEqual(line(["type": "device", "entity": "light.desk", "command": "turn_on", "value": 40]), "Desk lamp: turn on 40")
+        XCTAssertEqual(line(["type": "wait", "seconds": 120]), "Wait 120 s")
+        XCTAssertEqual(line(["type": "notify", "text": "Popcorn"]), "Notify me: Popcorn")
+        XCTAssertEqual(line(["type": "think", "text": "Plan it", "model": "auto"]), "Jarvis: Plan it")
     }
 }
 
