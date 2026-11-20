@@ -257,3 +257,23 @@ actor Counter {
     var count = 0
     func bump() -> Int { count += 1; return count }
 }
+
+final class DeviceGroupsTests: XCTestCase {
+    func testGroupsInOrderNamesAtoZUnreachableLast() throws {
+        let json = #"""
+        [{"id":"1","name":"WiZ RGBW Tunable 7C1A2B","kind":"light","state":"on"},
+         {"id":"2","name":"Desk","kind":"light","state":"off"},
+         {"id":"3","name":"Thermostat","kind":"climate","state":"off"},
+         {"id":"4","name":"TV","kind":"media","state":"paused"},
+         {"id":"5","name":"Dylan asleep","kind":"input_boolean","state":"off"},
+         {"id":"6","name":"Porch","kind":"light","state":"unavailable"}]
+        """#
+        let devices = try JSONDecoder().decode([Device].self, from: Data(json.utf8))
+        let groups = DeviceGroups.groups(devices)
+        XCTAssertEqual(groups.map(\.title), ["Lights", "Climate", "TV and speakers", "Other", "Not responding"])
+        XCTAssertEqual(groups[0].devices.map(\.name), ["Desk", "WiZ RGBW Tunable 7C1A2B"])
+        XCTAssertEqual(groups.last?.devices.map(\.name), ["Porch"])
+        // Every device is in the drawer, once.
+        XCTAssertEqual(groups.flatMap(\.devices).count, devices.count)
+    }
+}

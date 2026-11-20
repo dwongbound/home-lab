@@ -62,7 +62,7 @@ public enum DemoSnapshot {
                   {"id":"c3","at":"\(iso(180))","title":"CG x SOW rehearsal"}],
          "offers":{"greeting":"\(greeting)","offers":[{"id":"o1","title":"Draft the rehearsal set list","body":"","startText":""}]},
          "home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"heat","detail":"heating","current":68,"target":70,"humidity":44},
-            {"id":"a","name":"Entrance","kind":"light","state":"on"},{"id":"b","name":"Hall","kind":"light","state":"off"},
+            {"id":"a","name":"Entrance","kind":"light","state":"on"},{"id":"b","name":"WiZ RGBW Tunable 7C1A2B","kind":"light","state":"off"},
             {"id":"e","name":"Desk","kind":"light","state":"on","brightness":0.6},
             {"id":"g","name":"Bed lamp","kind":"light","state":"on"},
             {"id":"c","name":"Dylans Apple TV","kind":"media","state":"playing","detail":"Severance · Apple TV+"},

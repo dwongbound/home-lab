@@ -62,6 +62,8 @@ struct TodayView: View {
     @State private var greetingOpen = false
     /// Which shortcut's screen is up (Reports, Diet or Playbooks).
     @State private var shortcut: Shortcut?
+    /// The Home drawer: every device, full names.
+    @State private var showDevices = false
     /// The playbook ids, fetched lightly when Home shows (at most once a minute).
     @State private var playbookIds: [String]?
     @State private var playbooksFetched: Date?
@@ -106,6 +108,9 @@ struct TodayView: View {
                 .reportsScrollToTabBar()
             }
         }
+        .sheet(isPresented: $showDevices) {
+            if let home = today.snapshot?.home { DevicesSheet(home: home) }
+        }
         .sheet(item: $shortcut, onDismiss: { if let which = lastOpened { markSeen(which, refetch: true) } }) { which in
             switch which {
             case .reports: ReportsListView().environmentObject(app)
@@ -134,6 +139,7 @@ struct TodayView: View {
         .onAppear {
             let args = ProcessInfo.processInfo.arguments
             if args.contains("-openDiet") { shortcut = .diet }
+            if args.contains("-openDevices") { showDevices = true }
             if args.contains("-openReports") { shortcut = .reports }
             if args.contains("-openPlaybooks") { shortcut = .playbooks }
         }
@@ -329,13 +335,18 @@ struct TodayView: View {
     private func homeCard(_ devices: [Device]) -> some View {
         let lights = devices.filter { $0.kind == "light" }
         let lit = lights.filter(\.isOn).count
-        return card("Home", icon: "house.fill", trailing: lights.isEmpty ? nil : "\(lit) of \(lights.count) lights on") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
+        return card("Home", icon: "house.fill", trailing: (lights.isEmpty ? "All devices" : "\(lit) of \(lights.count) lights on") + "  ›") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10)], spacing: 10) {
                 ForEach(devices) { device in
                     DeviceTile(device: device)
                 }
             }
         }
+        // Tapping the card opens every device in a drawer.
+        .contentShape(Rectangle())
+        .onTapGesture { showDevices = true }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Shows every device")
     }
 
     // MARK: Money
@@ -611,9 +622,13 @@ struct DeviceTile: View {
                 .frame(width: large ? 40 : 30, height: large ? 40 : 30)
                 .background(Circle().fill(on ? Theme.ember.opacity(0.18) : Color.white.opacity(0.06)))
             VStack(alignment: .leading, spacing: 1) {
+                // Two lines before any "…", a touch smaller if need be
+                // (Dylan, 2026-11-19: "i cant see the full name").
                 Text(device.name)
                     .font(large ? .body.weight(.semibold) : .footnote.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(TodayWording.deviceState(device))
                     .font(large ? .subheadline : .caption)
                     .foregroundStyle(Theme.frostDim)
@@ -622,6 +637,9 @@ struct DeviceTile: View {
             Spacer(minLength: 0)
         }
         .padding(large ? 14 : 10)
+        // Equal heights whether a name takes one line or two.
+        .frame(maxHeight: .infinity)
+        .frame(minHeight: large ? 76 : 62)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(on ? Theme.ember.opacity(0.08) : Color.white.opacity(0.04))

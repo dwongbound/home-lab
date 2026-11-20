@@ -18,7 +18,7 @@ settings:
   base:
     MARKETING_VERSION: "1.0.0"
     # CI sets this to the run number so every TestFlight upload is newer.
-    CURRENT_PROJECT_VERSION: "25"
+    CURRENT_PROJECT_VERSION: "26"
     # Your team id goes here (or in Xcode's Signing tab) to sign for a device.
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
