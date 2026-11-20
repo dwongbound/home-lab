@@ -45,6 +45,17 @@ enum Theme {
 /// frame something moves under it. The iPad draws cards as flat tinted
 /// panels and floating controls as one plain frosted pass; the iPhone keeps
 /// the full look. `-lightGlass` / `-fullGlass` force either (debug builds).
+/// What sits behind a floating control (the tab bar, the status chips, the
+/// Ask box, the arrow): a live blur normally; on the lighter path a nearly
+/// opaque fill in the same tone, which over this dark sky reads the same and
+/// costs no offscreen pass while things move underneath.
+enum Backing {
+    static let solid = Color(red: 0.17, green: 0.20, blue: 0.26).opacity(0.94)
+    static var style: AnyShapeStyle {
+        RenderQuality.light ? AnyShapeStyle(solid) : AnyShapeStyle(.ultraThinMaterial)
+    }
+}
+
 enum RenderQuality {
     static let light: Bool = {
         #if DEBUG
@@ -75,7 +86,10 @@ struct GlassPanel: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if RenderQuality.light {
             if floating {
-                frosted(content, shape: shape)
+                // Over moving content: a solid backing, no blur.
+                content
+                    .background(shape.fill(Backing.solid))
+                    .overlay(shape.strokeBorder(Theme.glassEdge.opacity(0.8), lineWidth: 0.5))
             } else {
                 // A card: the same tint, corner and hairline edge, no blur.
                 content
@@ -129,8 +143,8 @@ struct GlassChip<S: Shape>: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if RenderQuality.light {
-            // One plain frosted pass instead of Liquid Glass's several.
-            content.background(.ultraThinMaterial, in: shape).overlay(shape.stroke(Theme.glassEdge, lineWidth: 0.5))
+            // A solid backing: no blur, no offscreen pass.
+            content.background(Backing.solid, in: shape).overlay(shape.stroke(Theme.glassEdge, lineWidth: 0.5))
         } else if #available(iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
             content.glassEffect(.regular, in: shape)
         } else {

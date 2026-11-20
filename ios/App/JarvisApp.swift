@@ -783,7 +783,13 @@ private struct WarmUp: View {
             drawing = false
             // Then the newest page of the chat, in the background, so Chat
             // already has its messages when he first swipes over (Dylan,
-            // 2026-11-20: Chat slid in empty and then popped in).
+            // 2026-11-20: Chat slid in empty and then popped in). It waits
+            // for Home's data and fade-in (or 6 s), so laying out every
+            // message happens while nothing on screen is moving.
+            for _ in 0..<60 where app.today.snapshot == nil {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            try? await Task.sleep(for: .seconds(1))
             await app.chat.ensureLoaded(app: app)
         }
     }

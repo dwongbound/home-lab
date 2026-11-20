@@ -60,7 +60,7 @@ struct ChatView: View {
                     Text(chat.busy ?? "Sending photos…").font(.headline).foregroundStyle(Theme.frost)
                 }
                 .padding(28)
-                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
+                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Backing.style))
                 .transition(.opacity)
             }
         }
@@ -115,7 +115,15 @@ struct ChatView: View {
         // stutter" from Talk to Chat (Dylan, 2026-11-20). Later visits do
         // nothing; replies arrive through the stream, a push, or coming
         // back to the app (scenePhase below).
-        .task { await chat.ensureLoaded(app: app) }
+        // Chat is built at launch beside the other pages; it loads now only
+        // if it's the page showing, else when he swipes to it, or from the
+        // warm-up once Home has settled, so its first layout of every
+        // message never lands mid-animation (the iPad's one 300 ms launch
+        // freeze, 2026-11-20).
+        .task { if app.tab == .chat { await chat.ensureLoaded(app: app) } }
+        .onChange(of: app.tab == .chat) { _, here in
+            if here { Task { await chat.ensureLoaded(app: app) } }
+        }
         // Back in the app: a reply that finished while it was away.
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -300,7 +308,7 @@ struct ChatView: View {
                     }
                     .padding(.horizontal, 18)
                     .frame(minHeight: 44)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(Backing.style, in: Capsule())
                     .foregroundStyle(Theme.frost)
                 }
             }
@@ -319,7 +327,7 @@ struct ChatView: View {
                             .font(.footnote.weight(.semibold))
                             .padding(.horizontal, 14)
                             .frame(minHeight: 44)
-                            .background(.ultraThinMaterial, in: Capsule())
+                            .background(Backing.style, in: Capsule())
                             .overlay(Capsule().strokeBorder(Theme.glassEdge))
                     }
                     .foregroundStyle(Theme.frost)
@@ -531,7 +539,7 @@ struct ChatView: View {
             Image(systemName: "arrow.down")
                 .font(.system(size: 17, weight: .semibold))
                 .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
+                .background(Backing.style, in: Circle())
                 .background(Circle().fill(Theme.glass))
                 .overlay(Circle().strokeBorder(Theme.glassEdge))
                 .overlay(alignment: .topTrailing) {
@@ -582,7 +590,7 @@ struct ChatView: View {
             .accessibilityHidden(collapsed)
             .background {
                 // Frosted, so messages scrolling under it don't show through.
-                shape.fill(.ultraThinMaterial)
+                shape.fill(Backing.style)
                     .background(shape.fill(Theme.glass))
                     .overlay(shape.strokeBorder(Theme.glassEdge))
                     .frame(width: collapsed ? 44 : nil, height: collapsed ? 44 : nil)
@@ -694,7 +702,7 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
-                .background(.ultraThinMaterial, in: Capsule())
+                .background(Backing.style, in: Capsule())
                 .padding(.horizontal, 12)
             }
             pinnedApprovals

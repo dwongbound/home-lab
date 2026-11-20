@@ -69,7 +69,10 @@ struct OrbView: View {
 
     /// Redraws every frame (or once, with Reduce Motion on, or off screen).
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion || offScreen || slide.moving)) { context in
+        // On the lighter path (the iPad) the orb redraws at most 60 times a
+        // second, off the main thread: it breathes slowly, so it looks the
+        // same, and a 120 Hz screen's frames no longer wait on it.
+        TimelineView(.animation(minimumInterval: RenderQuality.light ? 1.0 / 60 : nil, paused: reduceMotion || offScreen || slide.moving)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             ZStack {
                 // The canvas reaches past the orb's own box on every side,
@@ -78,7 +81,7 @@ struct OrbView: View {
                 // drawn in the orb's own coordinates, so its size, layout and
                 // tap spots don't move.
                 let bleed = size * Self.bleed
-                Canvas { canvas, _ in
+                Canvas(rendersAsynchronously: RenderQuality.light) { canvas, _ in
                     animator.held = opened != nil
                     animator.step(to: OrbLook.of(state), speaking: state == .speaking, level: reduceMotion ? 0 : level, dotsRiseMs: dotsRiseMs, coreRiseMs: coreRiseMs, at: t)
                     animator.advanceOrbit(orbit, at: t, still: reduceMotion || opened != nil)
