@@ -380,8 +380,8 @@ export interface JarvisJobs {
 export interface FinishedTask {
   id: string
   label: string
-  /** live = in use now, failed = didn't make it, nothing = nothing needed changing. */
-  state: 'live' | 'failed' | 'nothing'
+  /** live = in use now, failed = didn't make it, nothing = nothing needed changing, stopped = Dylan stopped it part way. */
+  state: 'live' | 'failed' | 'nothing' | 'stopped'
   finishedAt: string | null
   /** The model that did it, as on chat turns; null when none did. */
   model: string | null
@@ -398,6 +398,8 @@ export interface RunningTask {
   model: string | null
   /** Where it's at right now, in one line ("Writing the change", "Running tests"); null when Jarvis doesn't say. */
   step: string | null
+  /** Whether it can be stopped safely right now (the apps' full swipe); false on an older Jarvis. */
+  stoppable: boolean
 }
 
 /** One holder of graphics card memory: a local model, one of Jarvis's speech models, or the unnamed rest. */
@@ -649,6 +651,8 @@ export interface DataSource {
   approvals(caller?: { login?: string }): Promise<Approval[]>
   /** "That was wrong" on one of his replies, with what he should have said (may be empty). */
   sendFeedback(flag: JarvisFeedback, caller?: { login?: string }): Promise<ActionResult>
+  /** Stops one piece of background work and cleans up after it; gone when it had already finished. */
+  stopJob(id: string, caller?: { login?: string }): Promise<ActionResult & { gone?: boolean }>
   /** Hides one offer for good (Hide on its card). */
   hideOffer(id: string, caller?: { login?: string }): Promise<ActionResult>
   /** Answers a "logged this already?" meal question: same, leftovers or new. The message is Jarvis's reply. */

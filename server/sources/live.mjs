@@ -70,6 +70,14 @@ function toApprovalBy(by) {
 }
 // A report can be up to 1 MB, so it gets longer than a probe.
 const REPORT_TIMEOUT_MS = 10_000
+// Stopping a job waits for its processes to end and its leftovers to be cleared.
+const STOP_TIMEOUT_MS = 30_000
+
+/** A short line Jarvis said, or null when he said nothing usable. */
+function saidText(value) {
+  if (typeof value !== 'string' || value.trim() === '') return null
+  return value.trim().slice(0, 200)
+}
 const HISTORY_POINTS = 24
 const GB = 1024 ** 3
 
@@ -649,6 +657,29 @@ export function createLiveSource(config, deps = {}) {
         if (res.status === 404) return goneApproval(await res.json().catch(() => null))
         if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
         return { ok: true, message: ok ? 'Approved' : 'Denied' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
+     * Stops one piece of background work (POST /jobs/{id}/stop). Jarvis
+     * cancels it and cleans up; 404 or 410 means it had already finished.
+     */
+    async stopJob(id, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to stop a job' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/jobs/${encodeURIComponent(id)}/stop`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(STOP_TIMEOUT_MS),
+        })
+        const said = await res.json().catch(() => null)
+        if (res.status === 404 || res.status === 410) {
+          return { ok: false, gone: true, message: saidText(said?.message) ?? 'That one already finished' }
+        }
+        if (!res.ok) return { ok: false, message: saidText(said?.message) ?? jarvisSaid(res.status) }
+        return { ok: true, message: saidText(said?.detail) ?? 'Stopped' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }

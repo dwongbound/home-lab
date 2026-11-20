@@ -34,6 +34,12 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       if (jobs === undefined) return new Response('not found', { status: 404 })
       return Response.json(jobs)
     }
+    if (url.startsWith(`${config.jarvisApiUrl}/jobs/`)) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      if (url.endsWith('/jobs/done/stop')) return Response.json({ ok: false, gone: true, message: 'That job already finished.' }, { status: 410 })
+      if (url.endsWith('/jobs/live/stop')) return Response.json({ ok: false, message: 'It\'s going live right now.' }, { status: 409 })
+      return Response.json({ ok: true, detail: 'Stopped "Shorter greeting" and put things back as they were.' }, { status: jarvisStatusCode })
+    }
     if (url === `${config.jarvisApiUrl}/schedule/today`) {
       if (schedule === undefined) return new Response('not found', { status: 404 })
       return Response.json(schedule)
@@ -581,5 +587,21 @@ describe('live chat with Jarvis', () => {
     await source.chat('lunch', { login: 'dylan@example.com', images: [{ type: 'image/jpeg', data: 'aGVsbG8=' }] }, () => {})
     const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/chat/stream`)!
     expect(JSON.parse(init!.body as string)).toEqual({ text: 'lunch', images: [{ media_type: 'image/jpeg', data: 'aGVsbG8=' }] })
+  })
+
+  it('stops a background job, passing on what Jarvis said', async () => {
+    const who = { login: 'dylan@example.com' }
+    const { source, fetch } = liveWith({})
+    expect(await source.stopJob('r1', who)).toEqual({ ok: true, message: 'Stopped "Shorter greeting" and put things back as they were.' })
+    const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/jobs/r1/stop`)!
+    expect(init!.method).toBe('POST')
+    expect((init!.headers as Record<string, string>)['tailscale-user-login']).toBe('dylan@example.com')
+    expect(await source.stopJob('done', who)).toEqual({ ok: false, gone: true, message: 'That job already finished.' })
+    expect(await source.stopJob('live', who)).toEqual({ ok: false, message: 'It\'s going live right now.' })
+    expect((await source.stopJob('r1', {})).ok).toBe(false)
+    // An older Jarvis has no such path: the row is dropped all the same.
+    expect((await liveWith({ jarvisStatusCode: 404 }).source.stopJob('r1', who)).gone).toBe(true)
+    expect((await liveWith({ jarvisStatusCode: 503 }).source.stopJob('r1', who)).message).toBe('Jarvis is restarting. Try again in a moment.')
+    expect((await liveWith({ jarvisAnswers: false }).source.stopJob('r1', who)).message).toBe('Jarvis is not answering')
   })
 })
