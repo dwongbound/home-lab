@@ -14,6 +14,8 @@ struct NoticesSheet: View {
     /// Which page: the notices, or what's running (swipe across, or tap
     /// the switch at the top).
     @State private var page = 0
+    /// The notice open to read in full.
+    @State private var reading: Notice?
 
     var body: some View {
         NavigationStack {
@@ -61,6 +63,9 @@ struct NoticesSheet: View {
             Button("Close", role: .cancel) {}
         } message: {
             Text(app.noticeProblem ?? "")
+        }
+        .sheet(item: $reading) { notice in
+            NoticeDetail(notice: notice).environmentObject(app)
         }
         .presentationDetents([.medium, .large])
         .presentationBackground(.ultraThinMaterial)
@@ -175,7 +180,7 @@ struct NoticesSheet: View {
                                     }
                                     if notice.turnId != nil {
                                         Button(NoticeAction.seeInChat.label, systemImage: "bubble.left") {
-                                            Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) && !notice.kept ? notice : nil) }
+                                            Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) && !notice.kept ? notice : nil, about: notice) }
                                             dismiss()
                                         }
                                         .tint(Theme.glacier)
@@ -202,20 +207,10 @@ struct NoticesSheet: View {
     private func row(_ notice: Notice) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                // Opening it reads it (cleared everywhere), unless it needs
-                // an answer, and opens Chat at the full message.
-                if let reportId = notice.reportId {
-                    // "Report ready": the report itself, in the app's reader.
-                    Task { await app.openReport(id: reportId, clearing: notice) }
-                    return
-                }
-                if notice.turnId != nil {
-                    Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) ? notice : nil) }
-                } else {
-                    Task { await app.readNotice(notice) }
-                    app.tab = .chat
-                }
-                dismiss()
+                // Opens the whole notice to read; reading clears nothing
+                // (Dylan, 2026-11-20: long ones were cut off with no way to
+                // see the rest). Its message and Dismiss are in there.
+                reading = notice
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Circle().fill(notice.kept ? OrbView.keptYellow(onLight: false) : color(notice.kind)).frame(width: 10, height: 10)
@@ -223,7 +218,10 @@ struct NoticesSheet: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(notice.title).font(.body.weight(.semibold)).foregroundStyle(Theme.frost)
                         if !notice.body.isEmpty {
-                            Text(notice.body).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(2)
+                            Text(notice.body).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(3)
+                            if NoticeFocus.isLong(notice.body) {
+                                Text("More").font(.footnote.weight(.semibold)).foregroundStyle(Theme.glacier)
+                            }
                         }
                     }
                     Spacer(minLength: 8)

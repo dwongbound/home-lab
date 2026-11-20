@@ -322,11 +322,27 @@ struct AlwaysOnView: View {
         .onChange(of: scenePhase) { _, phase in
             UIApplication.shared.isIdleTimerDisabled = phase == .active
         }
+        // Dylan, 2026-11-20: launched by the arrive-home playbook, the TV
+        // still went to its screensaver before he got in. Setting the flag
+        // to what it already is doesn't restart tvOS's own idle clock, so
+        // every 30 s while in front it's switched off and on again, which
+        // does; and it's set whenever the app becomes active, however it
+        // was opened (a playbook, jarvis://, the remote).
         .task {
             while !Task.isCancelled {
-                if scenePhase == .active { UIApplication.shared.isIdleTimerDisabled = true }
-                try? await Task.sleep(for: .seconds(60))
+                if scenePhase == .active {
+                    UIApplication.shared.isIdleTimerDisabled = false
+                    UIApplication.shared.isIdleTimerDisabled = true
+                }
+                try? await Task.sleep(for: .seconds(30))
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
+        // jarvis:// brings the app to its usual screen; nothing more to do.
+        .onOpenURL { _ in
+            UIApplication.shared.isIdleTimerDisabled = true
         }
     }
 

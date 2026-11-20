@@ -301,3 +301,17 @@ final class ConnectionStatusTests: XCTestCase {
         XCTAssertFalse(ConnectionStatus.isJustNotAnswering(JarvisError.server(status: 400, message: "no")))
     }
 }
+
+final class NoticeFocusTests: XCTestCase {
+    func testLandsOnTheTurnOrTheNoticeItself() {
+        XCTAssertEqual(NoticeFocus.outcome(turnId: 7, loaded: [5, 6, 7, 8]), .scroll(to: 7))
+        // The server answered the newest window instead (an unknown or gone turn).
+        XCTAssertEqual(NoticeFocus.outcome(turnId: 7, loaded: [90, 91]), .read)
+        // No turn at all (a report-ready notice, say).
+        XCTAssertEqual(NoticeFocus.outcome(turnId: nil, loaded: [1, 2]), .read)
+        // The load failed after its quiet retries: nothing new is held.
+        XCTAssertEqual(NoticeFocus.outcome(turnId: 7, loaded: []), .read)
+        XCTAssertTrue(NoticeFocus.isLong(String(repeating: "a", count: 200)))
+        XCTAssertFalse(NoticeFocus.isLong("Short one"))
+    }
+}

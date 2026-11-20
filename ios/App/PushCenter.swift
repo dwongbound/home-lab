@@ -191,7 +191,9 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
             // "Report ready": the report itself, in the app's reader.
             Task { await app.openReport(id: reportId) }
         case .turn(let turnId):
-            Task { await app.openTurn(turnId) }
+            let about = app.notice(id: tap.noticeId, turnId: turnId)
+                ?? Notice(id: tap.noticeId ?? "push-\(turnId)", kind: .fyi, title: "Jarvis", body: tap.body, source: "push", created: "", turnId: turnId)
+            Task { await app.openTurn(turnId, about: about) }
         case .notices:
             app.showNotices = true
         }

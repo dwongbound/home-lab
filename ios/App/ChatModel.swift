@@ -72,6 +72,9 @@ final class ChatModel: ObservableObject {
     @Published private(set) var olderOnServer = false
     /// An older page is on its way.
     @Published private(set) var loadingOlder = false
+    /// An older window is showing (opened round a notice's turn); newer
+    /// turns exist past it.
+    @Published private(set) var newerOnServer = false
     /// Checking for a reply that finished while the app was away.
     @Published private(set) var catchingUp = false
     /// True while photos are uploading (before the reply starts).
@@ -111,6 +114,7 @@ final class ChatModel: ObservableObject {
             let page = try await client.history(turnId.map { .around($0, limit: HistoryQuery.pageSize) } ?? .newest(limit: HistoryQuery.pageSize))
             let turns = page.turns
             olderOnServer = page.hasMore
+            newerOnServer = page.hasNewer
             lastPending = page.pending
             let pending = try await client.pendingApprovals()
             // Settled approvals aren't in the PC's history, so they're kept

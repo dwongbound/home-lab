@@ -277,3 +277,23 @@ public struct PendingClears: Equatable, Sendable {
     public mutating func restore(_ some: [String]) { ids.subtract(some) }
     public func visible(_ notices: [Notice]) -> [Notice] { notices.filter { !ids.contains($0.id) } }
 }
+
+/// Where a tap on a notice (or its push) lands (Dylan, 2026-11-20: "when i
+/// click a notification and its no longer in the chat history, it just
+/// glitches"): the message in Chat when that turn is really there after
+/// loading round it, otherwise the notice's own full text. Never the bottom
+/// of Chat as if something had been found.
+public enum NoticeFocus: Equatable, Sendable {
+    case scroll(to: Int)
+    case read
+
+    /// `loaded`: the turn ids held after asking history for a window round
+    /// the turn (a failed or unknown-id answer simply won't contain it).
+    public static func outcome(turnId: Int?, loaded: [Int]) -> NoticeFocus {
+        guard let turnId, loaded.contains(turnId) else { return .read }
+        return .scroll(to: turnId)
+    }
+
+    /// A long body: worth a "More" on the row.
+    public static func isLong(_ body: String) -> Bool { body.count > 120 || body.contains("\n") }
+}

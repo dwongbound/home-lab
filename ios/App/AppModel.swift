@@ -326,12 +326,29 @@ final class AppModel: ObservableObject {
     }
 
     /// Opens Chat at the message a notice previews (acting on it, so the
-    /// notice clears everywhere). Without a turn, Chat opens at the bottom.
-    func openTurn(_ turnId: Int?, clearing notice: Notice? = nil) async {
+    /// notice clears everywhere). `about` is the notice itself: when its
+    /// message isn't in the chat any more (or it has none), its own full
+    /// text opens instead (JarvisKit NoticeFocus).
+    func openTurn(_ turnId: Int?, clearing notice: Notice? = nil, about: Notice? = nil) async {
         showNotices = false
-        tab = .chat
-        focusTurn = turnId
+        if turnId == nil, let about {
+            readingNotice = about
+        } else {
+            focusFallback = about ?? notice
+            tab = .chat
+            focusTurn = turnId
+        }
         if let notice { await clearNotices([notice.id]) }
+    }
+
+    /// A notice read in full (its whole text, source and time).
+    @Published var readingNotice: Notice?
+    /// The notice to show if its message can't be found in Chat.
+    var focusFallback: Notice?
+
+    /// The notice a push was about, if this device knows it.
+    func notice(id: String?, turnId: Int?) -> Notice? {
+        allNotices.first { ($0.id == id && id != nil) || ($0.turnId == turnId && turnId != nil) }
     }
 
     /// A notice was seen on the orb or in the list: read, so cleared

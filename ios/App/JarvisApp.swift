@@ -166,6 +166,11 @@ struct RootView: View {
         .onAppear { bedside.start() }
         // The Settings switch can turn it on or off at any time.
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in bedside.update() }
+        // A notice read in full: one whose message isn't in Chat any more,
+        // or one with no message at all.
+        .sheet(item: $app.readingNotice) { notice in
+            NoticeDetail(notice: notice).environmentObject(app)
+        }
         .sheet(isPresented: $app.showSettings) {
             SettingsView()
         }
@@ -189,6 +194,15 @@ struct RootView: View {
                 app.tab = .today
                 await app.today.load(app: app)
                 await app.openReport(id: args[at + 1])
+                return
+            }
+            // `-focusMissingNotice` taps the first notice whose turn isn't
+            // in the chat (the "no longer in history" check).
+            if args.contains("-focusMissingNotice") {
+                try? await Task.sleep(for: .seconds(3))
+                if let notice = app.notices.first(where: { $0.turnId != nil }) {
+                    await app.openTurn(99_999, about: notice)
+                }
                 return
             }
             // `-onTalkQuiet` opens on Talk without calling Jarvis (layout checks).

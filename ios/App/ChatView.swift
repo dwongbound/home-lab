@@ -12,6 +12,8 @@ struct ChatView: View {
     /// (Dylan, 2026-11-19: typing felt laggy; every key used to rebuild
     /// all 240 rows). This flips only when the box goes empty or not.
     @State private var hasText = false
+    /// Loading a window round a notice's message.
+    @State private var finding = false
     /// How many of the newest messages are drawn (JarvisKit ChatWindow);
     /// older ones are added a page at a time as he reaches the top.
     @State private var shown = ChatWindow.page
@@ -233,33 +235,44 @@ struct ChatView: View {
             // A notice or notification opened a turn: find it (loading the
             // history if it isn't here yet), scroll to it and let it glow.
             .onChange(of: app.focusTurn) { _, target in
-                guard let target else { return }
-                Task {
-                    // Not held: ask for a window round it (a paging server
-                    // answers one; today's sends its newest turns).
-                    if !chat.items.contains(where: { $0.turnId == target }) { await chat.load(app: app, around: target) }
-                    if let index = chat.items.firstIndex(where: { $0.turnId == target }) {
-                        // An old turn beyond the drawn window: widen it first.
-                        shown = ChatWindow.including(index: index, shown: shown, total: chat.items.count)
-                        try? await Task.sleep(for: .milliseconds(50))
-                        let item = chat.items[index]
-                        withAnimation(.easeOut(duration: 0.4)) { scroller.scrollTo(item.id, anchor: .center) }
-                        // A soft tint on the bubble that fades in, rests and
-                        // fades out over about two seconds (Dylan, 2026-11-18:
-                        // the old outline "is quite ugly"). Reduce Motion: a
-                        // plain brief tint, no fading.
-                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) { highlighted = target }
-                        var rest = reduceMotion ? 1.5 : 1.2
-                        #if DEBUG
-                        // `-holdGlow` keeps it up long enough for a screenshot.
-                        if ProcessInfo.processInfo.arguments.contains("-holdGlow") { rest = 60 }
-                        #endif
-                        try? await Task.sleep(for: .seconds(rest))
-                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.9)) { highlighted = nil }
-                    } else {
-                        withAnimation(.easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+                focus(on: target, scroller)
+            }
+            // Chat may be built only now, with a turn already asked for (a
+            // push tapped while the app was closed, or a first visit).
+            .onAppear { focus(on: app.focusTurn, scroller) }
+            .overlay {
+                if finding {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Finding that message…").font(.subheadline)
                     }
-                    app.focusTurn = nil
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 44)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .foregroundStyle(Theme.frost)
+                }
+            }
+            .overlay(alignment: .top) {
+                // Opened at an older part of the chat: the way back.
+                if chat.newerOnServer && !finding {
+                    Button {
+                        Task {
+                            await chat.load(app: app)
+                            shown = ChatWindow.first(total: chat.items.count)
+                            try? await Task.sleep(for: .milliseconds(50))
+                            scroller.scrollTo("bottom", anchor: .bottom)
+                        }
+                    } label: {
+                        Label("Latest", systemImage: "arrow.down.to.line")
+                            .font(.footnote.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 44)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay(Capsule().strokeBorder(Theme.glassEdge))
+                    }
+                    .foregroundStyle(Theme.frost)
+                    .padding(.top, 8)
+                    .accessibilityLabel("Go to the latest messages")
                 }
             }
             .overlay(alignment: .bottomTrailing) {
@@ -298,6 +311,50 @@ struct ChatView: View {
 
     /// Typing dots while he thinks, looks something up, or hasn't started
     /// writing yet (the web page also shows them after 1.5 s of quiet).
+    /// Goes to a notice's message: loads round it if need be, scrolls to it
+    /// and lets it glow; if it isn't in the chat any more (or the notice has
+    /// no message), the notice's own full text opens instead.
+    private func focus(on target: Int?, _ scroller: ScrollViewProxy) {
+        guard let target else { return }
+        Task {
+            // Not held: ask for a window round it (a paging server
+            // answers one; today's sends its newest turns), with a
+            // labelled wait rather than a list jumping about.
+            if !chat.items.contains(where: { $0.turnId == target }) {
+                finding = true
+                await chat.load(app: app, around: target)
+                finding = false
+            }
+            let fallback = app.focusFallback
+            app.focusFallback = nil
+            if case .scroll = NoticeFocus.outcome(turnId: target, loaded: chat.items.compactMap(\.turnId)),
+               let index = chat.items.firstIndex(where: { $0.turnId == target }) {
+                // An old turn beyond the drawn window: widen it first.
+                shown = ChatWindow.including(index: index, shown: shown, total: chat.items.count)
+                try? await Task.sleep(for: .milliseconds(50))
+                let item = chat.items[index]
+                withAnimation(.easeOut(duration: 0.4)) { scroller.scrollTo(item.id, anchor: .center) }
+                // A soft tint on the bubble that fades in, rests and
+                // fades out over about two seconds (Dylan, 2026-11-18:
+                // the old outline "is quite ugly"). Reduce Motion: a
+                // plain brief tint, no fading.
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) { highlighted = target }
+                var rest = reduceMotion ? 1.5 : 1.2
+                #if DEBUG
+                // `-holdGlow` keeps it up long enough for a screenshot.
+                if ProcessInfo.processInfo.arguments.contains("-holdGlow") { rest = 60 }
+                #endif
+                try? await Task.sleep(for: .seconds(rest))
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.9)) { highlighted = nil }
+            } else if let fallback {
+                // The message isn't in the chat any more: the notice's
+                // own full text, not the bottom of Chat.
+                app.readingNotice = fallback
+            }
+            app.focusTurn = nil
+        }
+    }
+
     /// Adds the next page of older messages above, keeping his place: the
     /// message that was at the top stays where it was.
     private func loadOlder(_ scroller: ScrollViewProxy) {
