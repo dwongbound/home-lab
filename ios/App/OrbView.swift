@@ -276,14 +276,16 @@ struct OrbView: View {
     /// The orbiting dots on the far side (drawn before the orb, smaller,
     /// dimmer, and faint where the core covers them) or the near side.
     private func drawOrbit(back: Bool, in canvas: inout GraphicsContext, center: CGPoint, radius: Double, coreRadius: Double, side: Double, t: Double) {
+        let crowd = Orbit.dotScale(count: animator.orbitDots.count)
         for dot in animator.orbitDots where (dot.z < 0) == back {
             let near = (dot.z + 1) / 2
-            var alpha = dot.alpha * (back ? 0.5 : 1)
+            // Every dot stays lit, even round the back of the orb.
+            var alpha = dot.alpha * (back ? 0.8 : 1)
             let dx = dot.point.x - center.x, dy = dot.point.y - center.y
-            if back && (dx * dx + dy * dy).squareRoot() < coreRadius { alpha *= 0.35 }
+            if back && (dx * dx + dy * dy).squareRoot() < coreRadius { alpha *= 0.6 }
             let isOpen = dot.item.id == opened
             let color = Self.dotColor(dot.item.kind, onLight: onLight)
-            let core = side * 0.03 * (0.7 + near * 0.4) * (0.8 + dot.item.emphasis * 0.3) * (isOpen ? 1.45 : 1)
+            let core = side * 0.03 * crowd * (0.7 + near * 0.4) * (0.8 + dot.item.emphasis * 0.3) * (isOpen ? 1.45 : 1)
             let pulse = reduceMotion || opened != nil ? 0.5 : 0.5 + 0.5 * sin(t * 2.4 + dot.z * 3)
             let halo = core * (2.6 + pulse)
             canvas.fill(Path(ellipseIn: CGRect(x: dot.point.x - halo / 2, y: dot.point.y - halo / 2, width: halo, height: halo)), with: .radialGradient(

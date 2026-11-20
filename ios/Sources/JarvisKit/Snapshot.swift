@@ -490,10 +490,7 @@ public struct RunningTask: Decodable, Identifiable, Sendable {
     /// "Queued", "Just started", "Running for 4 min", "Running for 1 h 5 min".
     public func runningWords(now: Date = Date()) -> String {
         if state == "queued" { return "Queued" }
-        let plain = ISO8601DateFormatter()
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let startedAt, let start = fractional.date(from: startedAt) ?? plain.date(from: startedAt) else { return "Running" }
+        guard let startedAt, let start = ISODate.parse(startedAt) else { return "Running" }
         let minutes = Int(now.timeIntervalSince(start) / 60)
         if minutes < 1 { return "Just started" }
         if minutes < 60 { return "Running for \(minutes) min" }
@@ -515,13 +512,7 @@ public enum AgendaTime {
     }
 
     /// Reads an ISO 8601 time with or without fractional seconds.
-    static func parse(_ text: String) -> Date? {
-        let plain = ISO8601DateFormatter()
-        if let date = plain.date(from: text) { return date }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: text)
-    }
+    static func parse(_ text: String) -> Date? { ISODate.parse(text) }
 }
 
 /// Sleep and activity from the digest (Apple Health by way of the PC).

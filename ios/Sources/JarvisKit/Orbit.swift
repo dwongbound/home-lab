@@ -50,8 +50,13 @@ public struct OrbitPath: Equatable, Sendable {
 }
 
 public enum Orbit {
-    /// The most dots round one orb.
-    public static let maxDots = 8
+    /// No cap (Dylan, 2026-11-20: "there isnt a lit orbitting dot for every
+    /// alert / parallel job- there looks like theres a cap"): one dot for
+    /// every unread notice, running job and kept item. Many dots get a
+    /// little smaller (dotScale) so they stay apart.
+    public static func dotScale(count: Int) -> Double {
+        count <= 8 ? 1 : max(0.55, (8.0 / Double(count)).squareRoot())
+    }
     /// How long a tapped dot holds everything still before it all moves on.
     public static let holdSeconds: Double = 6
 
@@ -68,7 +73,7 @@ public enum Orbit {
             .map { OrbitItem(id: "notice-" + $0.id, kind: .notice, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
         let blue = night ? [] : running.map { OrbitItem(id: "task-" + $0.id, kind: .task, title: $0.label, detail: $0.state == "queued" ? "Queued" : ($0.step ?? ""), startedAt: $0.startedAt, notice: nil, model: $0.model) }
         let yellow = night ? [] : notices.filter(\.kept).map { OrbitItem(id: "kept-" + $0.id, kind: .kept, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
-        return Array((orange + blue + yellow).prefix(maxDots))
+        return orange + blue + yellow
     }
 
     /// Each dot's own orbit, the same on every device and every launch (a

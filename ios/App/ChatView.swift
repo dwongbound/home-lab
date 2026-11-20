@@ -76,13 +76,17 @@ struct ChatView: View {
                     PickedStrip(photos: $picked)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                if !collapsed {
-                    composer
-                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                }
+                // Always laid out, only faded (Dylan, 2026-11-20: the lag was
+                // worst as the box went and came back): removing it resized
+                // the list and re-laid out every message. Hidden, it can't be
+                // touched.
+                composer
+                    .opacity(collapsed ? 0 : 1)
+                    .offset(y: collapsed && !reduceMotion ? 6 : 0)
+                    .allowsHitTesting(!collapsed)
+                    .accessibilityHidden(collapsed)
+                    .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeOut(duration: 0.22), value: collapsed)
             }
-            // The same spring as the tab bar's shrink, so the two move as one.
-            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.85), value: collapsed)
             // A blocking "Sending photos…" (or "Telling Jarvis…") while it goes.
             if chat.uploading || chat.busy != nil {
                 Color.black.opacity(0.35).ignoresSafeArea()
@@ -240,6 +244,16 @@ struct ChatView: View {
             // Chat may be built only now, with a turn already asked for (a
             // push tapped while the app was closed, or a first visit).
             .onAppear { focus(on: app.focusTurn, scroller) }
+            // The measuring run (-perfCycle): fling to the top or bottom.
+            .onReceive(NotificationCenter.default.publisher(for: .perfScroll)) { note in
+                withAnimation(.easeInOut(duration: 1.2)) {
+                    if note.object as? String == "top", let first = chat.items.suffix(shown).first?.id {
+                        scroller.scrollTo(first, anchor: .top)
+                    } else {
+                        scroller.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+            }
             .overlay {
                 if finding {
                     HStack(spacing: 10) {
@@ -386,10 +400,7 @@ struct ChatView: View {
 
     /// The turns showing as kept (yellow), for the rows.
     private var keptTurns: Set<Int> {
-        Set(chat.items.compactMap { item in
-            guard let turn = item.turnId, app.isKept(turnId: turn, historyKept: item.kept) else { return nil }
-            return turn
-        })
+        app.keptTurns(in: chat.items)
     }
 
     /// What a row can do, without the rows watching the whole app.
@@ -453,36 +464,25 @@ struct ChatView: View {
     /// Scrolled up reading: compose (opens the bar, focused, at the newest
     /// line) and jump to newest, with an orange dot for a reply not seen yet.
     private func compactComposer(_ scroller: ScrollViewProxy) -> some View {
-        HStack(spacing: 0) {
-            Button {
-                opened = true
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
-                Task { try? await Task.sleep(for: .milliseconds(120)); typing = true }
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("Write a message")
-            Button {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
-            } label: {
-                Image(systemName: "arrow.down")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .overlay(alignment: .topTrailing) {
-                        if unseenReply {
-                            Circle().fill(OrbView.noticeOrange(onLight: false)).frame(width: 9, height: 9).offset(x: -8, y: 9)
-                        }
+        // One round arrow (Dylan, 2026-11-20): back to the newest message,
+        // where the Ask box fades back in. Orange dot: a reply he hasn't seen.
+        Button {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+        } label: {
+            Image(systemName: "arrow.down")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+                .background(Circle().fill(Theme.glass))
+                .overlay(Circle().strokeBorder(Theme.glassEdge))
+                .overlay(alignment: .topTrailing) {
+                    if unseenReply {
+                        Circle().fill(OrbView.noticeOrange(onLight: false)).frame(width: 10, height: 10).offset(x: -2, y: 2)
                     }
-            }
-            .accessibilityLabel(unseenReply ? "Newest message, a new reply" : "Newest message")
+                }
         }
         .foregroundStyle(Theme.frost)
-        .padding(.horizontal, 2)
-        .background(.ultraThinMaterial, in: Capsule())
-        .background(Capsule().fill(Theme.glass))
-        .overlay(Capsule().strokeBorder(Theme.glassEdge))
+        .accessibilityLabel(unseenReply ? "Newest message, a new reply" : "Newest message")
     }
 
     /// The Ask box: one slim pill with the photo and send buttons inside,
@@ -871,4 +871,9 @@ private struct ChatRowsList: View, Equatable {
             }
         }
     }
+}
+
+extension Notification.Name {
+    /// The measuring run's "scroll Chat now" (-perfCycle only).
+    static let perfScroll = Notification.Name("jarvis.perfScroll")
 }

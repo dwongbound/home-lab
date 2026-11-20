@@ -195,17 +195,18 @@ public enum PageSwipe {
     }
 }
 
-/// When landing on the Talk page starts a call (Dylan, 2026-11-19: with the
-/// pages Home, Talk, Chat, swiping from Home to Chat passes Talk and must
-/// not call Jarvis). The page has to stay selected for a moment first.
-public enum TalkSettle {
-    /// How long Talk must stay the page before the call starts.
-    public static let seconds: Double = 0.7
+/// What starts a Talk call (Dylan, 2026-11-20: "we shouldn't call jarvis
+/// by default. A button should be clicked"): only his tap on Talk (or the
+/// kiosk orb), or an entry he chose himself (the Ask Jarvis shortcut, a
+/// Watch tap). Never the page being shown, the app opening or coming back.
+public enum TalkStart {
+    public enum Cause: Sendable { case talkTapped, orbTapped, shortcut, pageShown, appOpened, appReturned }
 
-    /// Whether to start the call now: Talk is still the page, it has been
-    /// for long enough, and no call has started yet.
-    public static func shouldStart(onTalk: Bool, landedAt: Date, now: Date = Date(), started: Bool) -> Bool {
-        onTalk && !started && now.timeIntervalSince(landedAt) >= seconds
+    public static func starts(_ cause: Cause) -> Bool {
+        switch cause {
+        case .talkTapped, .orbTapped, .shortcut: return true
+        case .pageShown, .appOpened, .appReturned: return false
+        }
     }
 }
 

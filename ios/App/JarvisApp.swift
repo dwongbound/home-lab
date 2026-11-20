@@ -100,8 +100,6 @@ struct RootView: View {
         withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.85)) { barExpanded = open }
     }
 
-    /// A Talk call waiting for the page to settle; cancelled if he moves on.
-    @State private var pendingTalk: Task<Void, Never>?
 
     /// Each page draws its own status line instead of a big title
     /// (Dylan, 2026-11-16: no "Chat"/"Talk" headings).
@@ -183,6 +181,25 @@ struct RootView: View {
                 try? await Task.sleep(for: .seconds(Orbit.refreshSeconds(orangeShowing: !app.notices.isEmpty)))
             }
         }
+        // `-perfCycle`: a measuring run for Instruments, launched only by a
+        // developer (nothing a user can reach): switches tabs and scrolls
+        // Chat for a while, never calling Talk.
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-perfCycle") else { return }
+            app.talk.started = true
+            try? await Task.sleep(for: .seconds(4))
+            let order: [AppTab] = [.talk, .chat, .talk, .today]
+            for round in 0..<6 {
+                for tab in order {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { app.tab = tab }
+                    try? await Task.sleep(for: .seconds(0.9))
+                    if tab == .chat {
+                        NotificationCenter.default.post(name: .perfScroll, object: round % 2 == 0 ? "top" : "bottom")
+                        try? await Task.sleep(for: .seconds(1.5))
+                    }
+                }
+            }
+        }
         // If the app ever opens on Talk the call starts with it; onChange
         // below only sees later switches. (It opens on Home now.)
         .task {
@@ -240,27 +257,16 @@ struct RootView: View {
                 return
             }
             #endif
-            if app.tab == .talk && !app.talk.started {
-                await app.talk.start(app: app)
-            }
         }
-        // Opening Talk the first time starts the call, like the page's /talk.
-        .onChange(of: app.tab) { _, tab in
+        // Talk never calls Jarvis by itself (Dylan, 2026-11-20: "we
+        // shouldn't call jarvis by default. A button should be clicked"):
+        // arriving on the page only shows the orb and the Talk button
+        // (JarvisKit TalkStart). Landing there used to set up the call,
+        // audio and microphone right on the page swipe.
+        .onChange(of: app.tab) { _, _ in
             touchBar()
             // Swiping or tapping to another page puts the keyboard away.
             KeyboardWatch.dismiss()
-            // Only a settled landing on Talk calls Jarvis: swiping from
-            // Home to Chat passes Talk and mustn't (JarvisKit TalkSettle).
-            pendingTalk?.cancel()
-            pendingTalk = nil
-            if tab == .talk && !app.talk.started {
-                let landed = Date()
-                pendingTalk = Task {
-                    try? await Task.sleep(for: .seconds(TalkSettle.seconds))
-                    guard !Task.isCancelled, TalkSettle.shouldStart(onTalk: app.tab == .talk, landedAt: landed, started: app.talk.started) else { return }
-                    await app.talk.start(app: app)
-                }
-            }
         }
     }
 }

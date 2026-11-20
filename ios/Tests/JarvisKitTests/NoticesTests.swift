@@ -22,7 +22,7 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(Notices.pips(n), [.need, .heads, .fyi])
         XCTAssertEqual(Notices.pips(n, night: true), [.need])
         let many = (0..<12).map { Notice(id: "\($0)", kind: .fyi, title: "", source: "job", created: "") }
-        XCTAssertEqual(Notices.pips(many).count, Notices.maxPips)
+        XCTAssertEqual(Notices.pips(many).count, many.count)
         XCTAssertEqual(Notices.countLabel(many), "12 new")
         XCTAssertNil(Notices.countLabel([]))
     }

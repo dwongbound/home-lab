@@ -224,13 +224,7 @@ public enum Diet {
     }
 
     /// An ISO time, with or without fractions of a second.
-    public static func date(_ iso: String) -> Date? {
-        let plain = ISO8601DateFormatter()
-        if let d = plain.date(from: iso) { return d }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: iso)
-    }
+    public static func date(_ iso: String) -> Date? { ISODate.parse(iso) }
 
     /// The Pacific hour (0...23) an item was logged in; nil when unreadable.
     public static func hour(of item: FoodItem) -> Int? {

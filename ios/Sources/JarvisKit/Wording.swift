@@ -74,10 +74,7 @@ public enum ApprovalWording {
     /// True once an approval's `expires` time has passed. An unreadable or
     /// missing time never expires here (the PC's own timeout still settles it).
     public static func hasExpired(_ expires: String, now: Date = Date()) -> Bool {
-        let plain = ISO8601DateFormatter()
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = fractional.date(from: expires) ?? plain.date(from: expires) else { return false }
+        guard let date = ISODate.parse(expires) else { return false }
         return now >= date
     }
 }

@@ -146,11 +146,7 @@ extension Reports {
     /// An ISO time, with or without fractions of a second.
     public static func date(_ iso: String?) -> Date? {
         guard let iso else { return nil }
-        let plain = ISO8601DateFormatter()
-        if let d = plain.date(from: iso) { return d }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: iso)
+        return ISODate.parse(iso)
     }
 
     /// A size in plain units: "850 bytes", "184 KB", "1.2 MB" (sizeText).

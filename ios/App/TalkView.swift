@@ -364,6 +364,7 @@ final class TalkModel: ObservableObject {
 struct TalkView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject var talk: TalkModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Whether the newest line is on screen; false once he scrolls up.
     @State private var following = true
 
@@ -380,11 +381,19 @@ struct TalkView: View {
                     VStack(spacing: 14) {
                         // The orb stays put; it shrinks a little once
                         // there's a conversation to make room for it.
-                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone), orbit: Orbit.items(running: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, notices: app.orbitNotices), dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } }, onRead: { notice in Task { await app.readNotice(notice) } }, onOpen: { notice in Task { await app.openTurn(notice.turnId, clearing: notice.kept ? nil : notice, about: notice) } }, onLetGo: { notice in Task { await app.letGo(notice) } })
+                        // One orb the whole time, drawn at one size and only
+                        // scaled: it shrinks a little and rises as the words
+                        // come, without being rebuilt or redrawn at a new
+                        // size (Dylan, 2026-11-20: it "does some flashing").
+                        let full = orbSize(in: area.size)
+                        let scale: CGFloat = hasWords ? Self.talkingScale : 1
+                        OrbView(state: mood, size: full, level: Double(talk.level), tone: Double(talk.tone), orbit: Orbit.items(running: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, notices: app.orbitNotices), dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } }, onRead: { notice in Task { await app.readNotice(notice) } }, onOpen: { notice in Task { await app.openTurn(notice.turnId, clearing: notice.kept ? nil : notice, about: notice) } }, onLetGo: { notice in Task { await app.letGo(notice) } })
+                            .scaleEffect(scale, anchor: .top)
+                            .frame(width: full, height: full * scale, alignment: .top)
                             // Above the words below it, so a work callout isn't covered.
                             .zIndex(1)
                             .padding(.top, hasWords ? 8 : 24)
-                            .animation(.smooth(duration: 0.5), value: hasWords)
+                            .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.9), value: hasWords)
                         Text(statusWords)
                             .font(.headline)
                             .foregroundStyle(statusColor)
@@ -412,9 +421,11 @@ struct TalkView: View {
     /// shorter side (420 pt, 280 while talking).
     private func orbSize(in area: CGSize) -> CGFloat {
         let roomy = min(area.width, area.height) > 600
-        let cap: CGFloat = roomy ? (hasWords ? 280 : 420) : (hasWords ? 200 : 300)
-        return min(area.width - 48, cap)
+        return min(area.width - 48, roomy ? 420 : 300)
     }
+
+    /// How small the orb gets once there are words: a little, not a jump.
+    static let talkingScale: CGFloat = 0.78
 
     /// Anything said yet on this call.
     private var hasWords: Bool {

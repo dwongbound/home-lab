@@ -86,13 +86,13 @@ public struct Notice: Decodable, Identifiable, Equatable, Sendable {
 
 public enum Notices {
     /// The most pips drawn round an orb; more still count.
-    public static let maxPips = 8
+    public static let maxPips = Int.max
 
     /// The pips to draw: one per notice, needs first. At night only the
     /// ones that need Dylan, so the bedroom stays dark.
     public static func pips(_ notices: [Notice], night: Bool = false) -> [NoticeKind] {
         let kinds = notices.map(\.kind).filter { !night || $0 == .need }
-        return Array(kinds.sorted().prefix(maxPips))
+        return kinds.sorted()
     }
 
     /// The one dot beside the count in the top bar (Dylan, 2026-11-19: "no
@@ -145,7 +145,10 @@ public enum Notices {
 
     /// Newest first (unparseable times last).
     public static func sorted(_ notices: [Notice]) -> [Notice] {
-        notices.sorted { (AgendaTime.parse($0.created) ?? .distantPast) > (AgendaTime.parse($1.created) ?? .distantPast) }
+        // Each time read once, not once per comparison.
+        notices.map { ($0, AgendaTime.parse($0.created) ?? .distantPast) }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
     }
 
     /// The text of notices shows only outside guest view; guests see pips

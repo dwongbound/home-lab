@@ -108,6 +108,23 @@ final class AppModel: ObservableObject {
     /// Chat turns kept here (by turn id), until the next history load says so.
     @Published private(set) var keptTurnsHere: Set<Int> = []
 
+    /// The turns among `items` that are kept, worked out with one pass over
+    /// the notices (not one per message, as isKept would be).
+    func keptTurns(in items: [ChatItem]) -> Set<Int> {
+        var byTurn: [Int: Notice] = [:]
+        for notice in Notices.kept(allNotices) { if let turn = notice.turnId { byTurn[turn] = notice } }
+        var out = Set<Int>()
+        for item in items {
+            guard let turn = item.turnId else { continue }
+            if let notice = byTurn[turn] {
+                if !letGoHere.contains(notice.id) { out.insert(turn) }
+            } else if keptTurnsHere.contains(turn) || item.kept {
+                out.insert(turn)
+            }
+        }
+        return out
+    }
+
     /// True when a chat turn is kept (by Jarvis's record or just now here).
     func isKept(turnId: Int?, historyKept: Bool) -> Bool {
         guard let turnId else { return false }

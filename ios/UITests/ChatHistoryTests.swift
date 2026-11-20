@@ -5,7 +5,7 @@ import XCTest
 final class ChatHistoryTests: XCTestCase {
     func testOpensFastAndLoadsEarlierOnScrollUp() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-demoChatBig", "-push.enabled", "NO"]
+        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-demoChatBig", "-push.enabled", "NO", "-chat.draft", ""]
         let start = Date()
         app.launch()
         let box = app.descendants(matching: .any)["composer"]
@@ -14,7 +14,7 @@ final class ChatHistoryTests: XCTestCase {
         let list = app.scrollViews.firstMatch
         for _ in 0..<6 { list.swipeDown(velocity: .fast) }
         XCTAssertTrue(list.exists)
-        // Scrolled up, the box has tucked into its compose button.
-        XCTAssertTrue(app.buttons["Write a message"].waitForExistence(timeout: 5))
+        // Scrolled up, the box has faded and the round arrow shows.
+        XCTAssertTrue(app.buttons["Newest message"].waitForExistence(timeout: 5))
     }
 }

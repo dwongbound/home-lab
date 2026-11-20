@@ -57,19 +57,14 @@ final class KindWordsTests: XCTestCase {
     }
 }
 
-final class TalkSettleTests: XCTestCase {
-    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
-
-    func testPassingThroughTalkDoesNotCall() {
-        // Swiped on to Chat 0.3 s later: no longer on Talk.
-        XCTAssertFalse(TalkSettle.shouldStart(onTalk: false, landedAt: t0, now: t0.addingTimeInterval(0.7), started: false))
-        // Still settling.
-        XCTAssertFalse(TalkSettle.shouldStart(onTalk: true, landedAt: t0, now: t0.addingTimeInterval(0.3), started: false))
-    }
-
-    func testStayingOnTalkCallsOnce() {
-        XCTAssertTrue(TalkSettle.shouldStart(onTalk: true, landedAt: t0, now: t0.addingTimeInterval(0.7), started: false))
-        XCTAssertFalse(TalkSettle.shouldStart(onTalk: true, landedAt: t0, now: t0.addingTimeInterval(5), started: true), "already called")
+final class TalkStartTests: XCTestCase {
+    /// Selecting the Talk page, opening the app or coming back never calls.
+    func testOnlyATapStartsTalk() {
+        XCTAssertFalse(TalkStart.starts(.pageShown))
+        XCTAssertFalse(TalkStart.starts(.appOpened))
+        XCTAssertFalse(TalkStart.starts(.appReturned))
+        XCTAssertTrue(TalkStart.starts(.talkTapped))
+        XCTAssertTrue(TalkStart.starts(.orbTapped))
     }
 }
 
