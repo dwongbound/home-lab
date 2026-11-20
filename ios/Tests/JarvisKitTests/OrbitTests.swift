@@ -22,9 +22,28 @@ final class OrbitTests: XCTestCase {
         XCTAssertEqual(items.map(\.id), ["notice-n"])
     }
 
-    func testAtMostEightDots() {
-        let many = (0..<12).map { Notice(id: "\($0)", kind: .fyi, title: "x", source: "job", created: "") }
-        XCTAssertEqual(Orbit.items(running: tasks, notices: many).count, Orbit.maxDots)
+    func testOneDotForEveryNoticeAndTask() {
+        let many = (0..<13).map { Notice(id: "\($0)", kind: .fyi, title: "x", source: "job", created: "") }
+        let items = Orbit.items(running: tasks, notices: many)
+        XCTAssertEqual(items.filter { $0.kind == .notice }.count, 13)
+        XCTAssertEqual(items.count, 14)
+    }
+
+    func testEveryDotStaysInsideTheOrbsFrame() {
+        let side = 300.0
+        // The working shell, swollen by a voice: 0.42 of the side, plus 11%.
+        let scale = Orbit.scale(shellRadius: side * 0.42 * 1.11, side: side)
+        for i in 0..<40 {
+            let path = Orbit.path(for: "notice-\(i)")
+            XCTAssertLessThanOrEqual(path.radius, Orbit.widest)
+            for t in stride(from: 0.0, to: 30, by: 0.7) {
+                let p = Orbit.position(path, t: t)
+                XCTAssertLessThanOrEqual(abs(p.x * scale), side * Orbit.reach + 0.0001)
+                XCTAssertLessThanOrEqual(abs(p.y * scale), side * Orbit.reach + 0.0001)
+            }
+        }
+        // A small shell is left as it is.
+        XCTAssertEqual(Orbit.scale(shellRadius: 90, side: side), 90)
     }
 
     func testPathsAreStableAndDiffer() {

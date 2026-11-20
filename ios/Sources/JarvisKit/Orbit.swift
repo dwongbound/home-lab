@@ -48,21 +48,32 @@ public struct OrbitPath: Equatable, Sendable {
 }
 
 public enum Orbit {
-    /// The most dots round one orb.
-    public static let maxDots = 8
+    /// The widest orbit, in shell radii (see `path`).
+    public static let widest = 1.28
+    /// How far from the centre a dot may sit, as a share of the orb's
+    /// side, so its glow stays inside the frame instead of being cut off.
+    public static let reach = 0.44
     /// How long a tapped dot holds everything still before it all moves on.
     public static let holdSeconds: Double = 6
 
     /// The dots: unread notices first (needs, then heads-ups, then FYIs),
-    /// then running tasks. At night only the notices that need Dylan, so the
-    /// bedroom stays dark.
+    /// then running tasks: one dot for every one, so the dots match the
+    /// notice count (Dylan, 2026-11-19). At night only the notices that
+    /// need Dylan, so the bedroom stays dark.
     public static func items(running: [RunningTask], notices: [Notice], night: Bool = false) -> [OrbitItem] {
         let orange = notices
             .filter { !night || $0.kind == .need }
             .sorted { $0.kind < $1.kind }
             .map { OrbitItem(id: "notice-" + $0.id, kind: .notice, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
         let blue = night ? [] : running.map { OrbitItem(id: "task-" + $0.id, kind: .task, title: $0.label, detail: $0.state == "queued" ? "Queued" : "", startedAt: $0.startedAt, notice: nil) }
-        return Array((orange + blue).prefix(maxDots))
+        return orange + blue
+    }
+
+    /// The radius (points) the orbits are measured in: the shell's, shrunk
+    /// when the widest orbit would carry a dot past `reach` of the orb's
+    /// side (the working shell is big enough to push dots off the edge).
+    public static func scale(shellRadius: Double, side: Double) -> Double {
+        min(shellRadius, side * reach / widest)
     }
 
     /// Each dot's own orbit, the same on every device and every launch (a
@@ -73,7 +84,7 @@ public enum Orbit {
         func unit(_ shift: UInt64) -> Double { Double((h >> shift) & 0xFFFF) / 65_535 }
         let direction: Double = (h & 1) == 0 ? 1 : -1
         return OrbitPath(
-            radius: 1.12 + 0.16 * unit(4),
+            radius: 1.12 + (widest - 1.12) * unit(4),
             tilt: 0.35 + 0.75 * unit(20),
             yaw: -0.9 + 1.8 * unit(36),
             speed: direction * (0.22 + 0.22 * unit(48)),
