@@ -32,6 +32,9 @@ public struct PlaybookOptions: Equatable, Sendable {
     public var scenes: [Named] = []
     public var apps: [Screen] = []
     public var zones: [String] = []
+    /// Jarvis's own jobs a "job" step can run ({id, name}); empty on a
+    /// server from before job steps (2026-11-20).
+    public var jobs: [Named] = []
 
     public init() {}
 
@@ -53,6 +56,15 @@ public struct PlaybookOptions: Equatable, Sendable {
             return Screen(entity: entity, name: (r["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? entity, apps: r["apps"] as? [String] ?? [])
         }
         zones = object["zones"] as? [String] ?? []
+        jobs = (object["jobs"] as? [[String: Any]] ?? []).compactMap { r in
+            guard let id = r["id"] as? String, !id.isEmpty else { return nil }
+            return Named(entity: id, name: (r["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id)
+        }
+    }
+
+    /// A job's name; its id when the server didn't name it.
+    public func jobName(_ id: String) -> String {
+        jobs.first { $0.entity == id }?.name ?? id
     }
 
     /// The name a device, scene or screen goes by; its id when unknown.
@@ -71,6 +83,8 @@ public struct DraftTrigger: Equatable, Sendable {
     public var days: [String] = []
     public var zone: String = "home"
     public var minAway: Int = 15
+    /// Fields of the trigger the editor doesn't model, sent back as they came.
+    var extra = RawJSON([:])
 
     public init(type: String, at: String = "08:00", days: [String] = [], zone: String = "home", minAway: Int = 15) {
         self.type = type; self.at = at; self.days = days; self.zone = zone; self.minAway = minAway
@@ -81,19 +95,36 @@ public struct DraftTrigger: Equatable, Sendable {
         DraftTrigger(type: type)
     }
 
-    /// The page's JSON for it.
+    /// The page's JSON for it, with any fields it came with that the
+    /// editor doesn't model.
     public var json: [String: Any] {
+        let held: [String: Any]
         switch type {
-        case "time": return ["type": type, "at": at, "days": days]
-        case "arrive": return ["type": type, "zone": zone, "minAway": minAway]
-        case "leave": return ["type": type, "zone": zone]
-        default: return ["type": type]
+        case "time": held = ["type": type, "at": at, "days": days]
+        case "arrive": held = ["type": type, "zone": zone, "minAway": minAway]
+        case "leave": held = ["type": type, "zone": zone]
+        default: held = ["type": type]
         }
+        return extra.object.merging(held) { _, mine in mine }
     }
 
     /// The same trigger in the read-only shape the list's wording uses.
     public var plain: PlaybookTrigger {
         PlaybookTrigger(type: type, at: at, days: days, minAway: minAway)
+    }
+}
+
+/// A piece of the page's JSON kept exactly as it came, so what the app
+/// doesn't model goes back unchanged on a save.
+public struct RawJSON: Equatable, Sendable {
+    let data: Data
+
+    public init(_ object: [String: Any]) {
+        data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
+    }
+
+    public var object: [String: Any] {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any]) ?? [:]
     }
 }
 
@@ -106,6 +137,14 @@ public enum DraftStep: Equatable, Sendable {
     case think(text: String, model: String)
     case email(to: String, subject: String, body: String, confirm: Bool)
     case wait(seconds: Int)
+    /// One of Jarvis's own jobs run as plain code (Jarvis build 83, the
+    /// nightly self-improvement playbook). Only which job can change; every
+    /// other field it came with goes back as it was.
+    case job(job: String, raw: RawJSON)
+    /// A kind of step this app doesn't know yet: shown, never edited, and
+    /// saved back exactly as it came, in its place. Dropping it would gut
+    /// the playbook on the next save.
+    case other(raw: RawJSON)
 
     /// The step's type name, as the page has it.
     public var type: String {
@@ -117,10 +156,13 @@ public enum DraftStep: Equatable, Sendable {
         case .think: return "think"
         case .email: return "email"
         case .wait: return "wait"
+        case .job: return "job"
+        case .other(let raw): return raw.object["type"] as? String ?? "unknown"
         }
     }
 
-    /// Reads a step from the page's JSON; nil for one the app doesn't know.
+    /// Reads a step from the page's JSON. A kind the app doesn't know is
+    /// kept whole as `.other`, never dropped.
     public init?(json r: [String: Any]) {
         switch r["type"] as? String {
         case "device":
@@ -134,7 +176,8 @@ public enum DraftStep: Equatable, Sendable {
         case "think", "ask": self = .think(text: r["text"] as? String ?? "", model: r["model"] as? String ?? "auto")
         case "email": self = .email(to: r["to"] as? String ?? "", subject: r["subject"] as? String ?? "", body: r["body"] as? String ?? "", confirm: r["confirm"] as? Bool ?? false)
         case "wait": self = .wait(seconds: (r["seconds"] as? NSNumber)?.intValue ?? 60)
-        default: return nil
+        case "job": self = .job(job: r["job"] as? String ?? "", raw: RawJSON(r))
+        default: self = .other(raw: RawJSON(r))
         }
     }
 
@@ -162,6 +205,12 @@ public enum DraftStep: Equatable, Sendable {
         case .think(let text, let model): return ["type": "think", "text": text, "model": model]
         case .email(let to, let subject, let body, let confirm): return ["type": "email", "to": to, "subject": subject, "body": body, "confirm": confirm]
         case .wait(let seconds): return ["type": "wait", "seconds": seconds]
+        case .job(let job, let raw):
+            var out = raw.object
+            out["type"] = "job"
+            out["job"] = job
+            return out
+        case .other(let raw): return raw.object
         }
     }
 
@@ -202,6 +251,9 @@ public enum DraftStep: Equatable, Sendable {
             if subject.trimmingCharacters(in: .whitespaces).isEmpty || body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "write a subject and a message" }
             return nil
         case .wait(let seconds): return seconds < 1 || seconds > 600 ? "wait between 1 and 600 seconds" : nil
+        case .job(let job, _): return job.isEmpty ? "pick a job" : nil
+        // Jarvis knows what it is; the app only carries it.
+        case .other: return nil
         }
     }
 
@@ -232,6 +284,8 @@ public enum DraftStep: Equatable, Sendable {
             let who = to.trimmingCharacters(in: .whitespaces)
             return who.isEmpty ? "Email: pick who it goes to" : "Email \(PlaybookWording.clip(who, max: 28)): " + or(subject, "no subject yet")
         case .wait(let seconds): return seconds % 60 == 0 ? "Wait \(seconds / 60) min" : "Wait \(seconds) s"
+        case .job(let job, _): return job.isEmpty ? "Pick a job" : "Run: " + options.jobName(job)
+        case .other: return "A \(type) step (change it on the home page)"
         }
     }
 
@@ -259,6 +313,9 @@ public struct PlaybookDraft: Equatable, Sendable {
     public var edgeCases: [String] = []
     public var standard = ""
     public var badVersion = ""
+    /// Everything else the playbook came with that the editor doesn't
+    /// model, sent back as it was.
+    var extra = RawJSON([:])
 
     /// The most steps a playbook can have.
     public static let maxSteps = 20
@@ -281,6 +338,9 @@ public struct PlaybookDraft: Equatable, Sendable {
             zone: t["zone"] as? String ?? "home",
             minAway: (t["minAway"] as? NSNumber)?.intValue ?? 15
         )
+        var triggerRest = t
+        for key in ["type", "at", "days", "zone", "minAway"] { triggerRest.removeValue(forKey: key) }
+        trigger.extra = RawJSON(triggerRest)
         func pairs(_ key: String, _ a: String, _ b: String) -> [Pair] {
             (o[key] as? [[String: Any]] ?? []).map { Pair($0[a] as? String ?? "", $0[b] as? String ?? "") }
         }
@@ -291,7 +351,14 @@ public struct PlaybookDraft: Equatable, Sendable {
         edgeCases = o["edgeCases"] as? [String] ?? []
         standard = o["standard"] as? String ?? ""
         badVersion = o["badVersion"] as? String ?? ""
+        var rest = o
+        for key in Self.modelled { rest.removeValue(forKey: key) }
+        extra = RawJSON(rest)
     }
+
+    /// The fields the editor holds itself, plus the two Jarvis keeps.
+    static let modelled: [String] = ["id", "name", "enabled", "purpose", "whenToUse", "trigger", "inputs", "steps",
+                                     "decisions", "done", "edgeCases", "standard", "badVersion", "lastRun", "madeBy"]
 
     /// The page's JSON to save: everything the editor holds, blank rows
     /// left out (the server drops them too).
@@ -304,7 +371,8 @@ public struct PlaybookDraft: Equatable, Sendable {
                 .filter { !$0.0.isEmpty && !$0.1.isEmpty }
                 .map { [a: $0.0, b: $0.1] }
         }
-        var out: [String: Any] = [
+        var out = extra.object
+        let held: [String: Any] = [
             "name": name.trimmingCharacters(in: .whitespaces),
             "enabled": enabled,
             "purpose": purpose,
@@ -318,6 +386,7 @@ public struct PlaybookDraft: Equatable, Sendable {
             "standard": standard,
             "badVersion": badVersion,
         ]
+        out.merge(held) { _, mine in mine }
         if let id { out["id"] = id }
         return out
     }
@@ -345,6 +414,8 @@ public enum PlaybookWording {
         ("device", "Control a device"), ("scene", "Run a scene"), ("app", "Open an app on a TV"),
         ("notify", "Send me a notification"), ("think", "Have Jarvis work something out"),
         ("email", "Send an email"), ("wait", "Wait"),
+        // Shown, never offered: job steps come from Jarvis (2026-11-20).
+        ("job", "Run one of Jarvis's jobs"),
     ]
     /// The "Add a step" row's buttons (the page's STEP_CHOICES `short`), with an icon each.
     public static let stepButtons: [(type: String, short: String, icon: String)] = [
@@ -354,7 +425,8 @@ public enum PlaybookWording {
     ]
     /// The icon for a step's kind.
     public static func stepIcon(_ type: String) -> String {
-        stepButtons.first { $0.type == type }?.icon ?? "circle"
+        if type == "job" { return "gearshape.2" }
+        return stepButtons.first { $0.type == type }?.icon ?? "questionmark.square"
     }
     /// The trigger choices as short tiles, with an icon each.
     public static let triggerTiles: [(type: String, short: String, icon: String)] = [

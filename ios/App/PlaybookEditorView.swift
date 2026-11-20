@@ -634,6 +634,23 @@ private struct StepEditor: View {
                 .tint(Theme.glacier)
         case .wait(let seconds):
             Stepper(seconds % 60 == 0 ? "Wait \(seconds / 60) min" : "Wait \(seconds) s", value: Binding(get: { seconds }, set: { step = .wait(seconds: $0) }), in: 5...600, step: 5)
+        case .job(let job, let raw):
+            // One of Jarvis's own jobs: only which job can change, and only
+            // when Jarvis lists them; otherwise it's simply shown.
+            if options.jobs.isEmpty {
+                LabeledContent("Runs", value: options.jobName(job))
+            } else {
+                Picker("Job", selection: Binding(get: { job }, set: { step = .job(job: $0, raw: raw) })) {
+                    if !options.jobs.contains(where: { $0.entity == job }) { Text(job.isEmpty ? "Pick a job" : job).tag(job) }
+                    ForEach(options.jobs) { Text($0.name).tag($0.entity) }
+                }
+            }
+        case .other:
+            // A kind of step this app doesn't know: kept and saved back as it
+            // came, never edited here.
+            Text("This kind of step can only be changed on the home page.")
+                .font(.footnote)
+                .foregroundStyle(Theme.frostDim)
         }
     }
 }
