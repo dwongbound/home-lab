@@ -506,7 +506,7 @@ struct ChatView: View {
         // One round arrow (Dylan, 2026-11-20): back to the newest message,
         // where the Ask box fades back in. Orange dot: a reply he hasn't seen.
         Button {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+            jumpToNewest(scroller)
         } label: {
             Image(systemName: "arrow.down")
                 .font(.system(size: 17, weight: .semibold))
@@ -569,7 +569,7 @@ struct ChatView: View {
             }
             .overlay {
                 Button {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+                    jumpToNewest(scroller)
                 } label: {
                     Image(systemName: "arrow.down")
                         .font(.system(size: 17, weight: .semibold))
@@ -592,6 +592,35 @@ struct ChatView: View {
             .padding(.top, 4)
             .padding(.bottom, 2)
             .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86), value: collapsed)
+    }
+
+    /// The arrow (Dylan, 2026-11-20: "hit the down button whenever … even
+    /// while the screen is scrolling … scroll rlly fast to the bottom"):
+    /// an unanimated jump to a few messages from the end stops any flick
+    /// and covers any distance at once, then the last stretch slides in
+    /// over 0.3 s, so it reads as one fast move. The box comes back and
+    /// the new-reply dot clears straight away.
+    private func jumpToNewest(_ scroller: ScrollViewProxy) {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        let rows = Array(chat.items.suffix(shown))
+        if rows.count > 8 {
+            withTransaction(quiet) { scroller.scrollTo(rows[rows.count - 6].id, anchor: .bottom) }
+        }
+        readingUp = false
+        unseenReply = false
+        if reduceMotion {
+            withTransaction(quiet) { scroller.scrollTo("bottom", anchor: .bottom) }
+        } else {
+            DispatchQueue.main.async {
+                withAnimation(.easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+            }
+        }
+        // And settle exactly once the last rows are measured.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            settleAtNewest(scroller)
+        }
     }
 
     /// Puts the list on its newest line without animation, then a few more

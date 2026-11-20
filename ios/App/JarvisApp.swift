@@ -58,7 +58,10 @@ struct RootView: View {
             // content clears the Dynamic Island and the home indicator,
             // backgrounds still reach the edges.
             .safeAreaPadding(.top, screen.safeAreaInsets.top)
-            .safeAreaPadding(.bottom, screen.safeAreaInsets.bottom)
+            // Not while the keyboard is up: the screen's bottom inset then
+            // IS the keyboard, which the page already rises above, so the
+            // box sat a whole keyboard too high (Dylan, 2026-11-20).
+            .safeAreaPadding(.bottom, keyboard.up ? 0 : screen.safeAreaInsets.bottom)
             // One full screen wide: the pager's step.
             .frame(width: screen.size.width)
     }

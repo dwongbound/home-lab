@@ -65,4 +65,43 @@ final class ChatBottomTests: XCTestCase {
         XCTAssertTrue(box(app).isHittable, "the box stays at the bottom after new turns")
         XCTAssertFalse(arrow(app).isHittable, "no arrow at the bottom after new turns")
     }
+
+    /// Typing: the box sits right on the keyboard, not a keyboard higher
+    /// (Dylan, 2026-11-20, build 38), and the newest message stays above it.
+    func testTheBoxSitsOnTheKeyboard() throws {
+        let app = launch()
+        let field = box(app)
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        sleep(2)
+        field.tap()
+        let keyboard = app.keyboards.firstMatch
+        guard keyboard.waitForExistence(timeout: 5) else { throw XCTSkip("no on-screen keyboard in this simulator") }
+        sleep(1)
+        let gap = keyboard.frame.minY - field.frame.maxY
+        if let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("keyboard-\(Int(app.frame.width)).png"))
+        }
+        XCTAssertGreaterThanOrEqual(gap, 0, "the box mustn't sit behind the keyboard")
+        // Measured from the text field to the keyboard's frame, which starts
+        // above its suggestions row; the bug lifted the box ~300 pt.
+        XCTAssertLessThan(gap, 100, "the box should sit just above the keyboard, not \(Int(gap)) pt above it")
+        XCTAssertFalse(arrow(app).isHittable, "at the bottom with the keyboard up: no arrow")
+    }
+
+    /// A hard flick up, then the arrow at once, while the list still
+    /// moves: it lands on the newest message fast, and the box is back.
+    func testTheArrowWorksMidFlick() {
+        let app = launch()
+        XCTAssertTrue(box(app).waitForExistence(timeout: 20))
+        sleep(2)
+        let list = app.scrollViews["chatList"]
+        list.swipeDown(velocity: .fast)
+        list.swipeDown(velocity: .fast)
+        list.swipeDown(velocity: .fast)
+        XCTAssertTrue(arrow(app).waitForExistence(timeout: 3))
+        arrow(app).tap()
+        sleep(2)
+        XCTAssertTrue(box(app).isHittable, "back at the newest message, the box is back")
+        XCTAssertFalse(arrow(app).isHittable, "and the arrow has gone")
+    }
 }
