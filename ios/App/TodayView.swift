@@ -357,7 +357,8 @@ struct TodayView: View {
             if today.offersOpen {
                 ForEach(today.offers) { offer in
                     offerRow(offer)
-                    if offer.id != today.offers.last?.id { Divider().overlay(Theme.glassEdge) }
+                    // Edge to edge across the card, past its padding (Apple's style).
+                    if offer.id != today.offers.last?.id { Divider().overlay(Theme.glassEdge).padding(.horizontal, -16) }
                 }
             }
         }

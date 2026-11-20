@@ -100,52 +100,54 @@ struct NoticesSheet: View {
             }
             ForEach(running.reversed()) { task in
               Section {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    HStack(spacing: 12) {
-                        if task.isQueued {
-                            // Waiting its turn: a hollow, dimmer blue dot.
-                            Circle().strokeBorder(OrbView.taskBlue(onLight: false).opacity(0.6), lineWidth: 2).frame(width: 14, height: 14)
-                        } else {
-                            ProgressView().tint(OrbView.taskBlue(onLight: false))
-                        }
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                JobChip(model: task.model)
-                                Text(task.label).font(.body.weight(.semibold)).foregroundStyle(Theme.frost)
+                  Group {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        HStack(spacing: 12) {
+                            if task.isQueued {
+                                // Waiting its turn: a hollow, dimmer blue dot.
+                                Circle().strokeBorder(OrbView.taskBlue(onLight: false).opacity(0.6), lineWidth: 2).frame(width: 14, height: 14)
+                            } else {
+                                ProgressView().tint(OrbView.taskBlue(onLight: false))
                             }
-                            // Where it's at ("Running tests"), else its status.
-                            Text(task.stepLine(now: context.date)).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(1).truncationMode(.tail)
-                        }
-                        Spacer()
-                        if stopping.contains(task.id) {
-                            HStack(spacing: 6) {
-                                ProgressView().controlSize(.small)
-                                Text("Stopping").font(.caption).foregroundStyle(Theme.frostDim)
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    JobChip(model: task.model)
+                                    Text(task.label).font(.body.weight(.semibold)).foregroundStyle(Theme.frost)
+                                }
+                                // Where it's at ("Running tests"), else its status.
+                                Text(task.stepLine(now: context.date)).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(1).truncationMode(.tail)
                             }
-                        } else if task.isQueued {
-                            Text("Queued").font(.caption).foregroundStyle(Theme.frostDim)
-                        } else if let timer = Orbit.elapsed(since: task.startedAt, now: context.date) {
-                            Text(timer).font(.caption.monospacedDigit()).foregroundStyle(OrbView.taskBlue(onLight: false))
+                            Spacer()
+                            if stopping.contains(task.id) {
+                                HStack(spacing: 6) {
+                                    ProgressView().controlSize(.small)
+                                    Text("Stopping").font(.caption).foregroundStyle(Theme.frostDim)
+                                }
+                            } else if task.isQueued {
+                                Text("Queued").font(.caption).foregroundStyle(Theme.frostDim)
+                            } else if let timer = Orbit.elapsed(since: task.startedAt, now: context.date) {
+                                Text(timer).font(.caption.monospacedDigit()).foregroundStyle(OrbView.taskBlue(onLight: false))
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                    .listRowBackground(Color.white.opacity(0.06))
+                    // All the way across stops it (Dylan, 2026-11-20); part way
+                    // shows Stop. Only where Jarvis says it can be stopped.
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        if task.canStop && !stopping.contains(task.id) {
+                            Button("Stop", systemImage: "stop.fill", role: .destructive) {
+                                haptic()
+                                stopping.insert(task.id)
+                                Task {
+                                    stopNote = await app.stopJob(task)
+                                    stopping.remove(task.id)
+                                }
+                            }
                         }
                     }
-                    .frame(minHeight: 44)
-                    .accessibilityElement(children: .combine)
-                }
-                .listRowBackground(Color.white.opacity(0.06))
-                // All the way across stops it (Dylan, 2026-11-20); part way
-                // shows Stop. Only where Jarvis says it can be stopped.
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    if task.canStop && !stopping.contains(task.id) {
-                        Button("Stop", systemImage: "stop.fill", role: .destructive) {
-                            haptic()
-                            stopping.insert(task.id)
-                            Task {
-                                stopNote = await app.stopJob(task)
-                                stopping.remove(task.id)
-                            }
-                        }
-                    }
-                }
+                  }
+                  .fullWidthSeparators()
               }
             }
             if let stopNote {
@@ -154,27 +156,30 @@ struct NoticesSheet: View {
             }
             if !finished.isEmpty {
                 Section("Recently finished") {
-                    ForEach(finished, id: \.id) { entry in
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack {
-                                Text(entry.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost).lineLimit(2)
-                                JobChip(model: entry.model)
-                                Spacer()
-                                Text([entry.word, entry.at?.formatted(date: .omitted, time: .shortened)].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption)
-                                    .foregroundStyle(entry.word == "Failed" ? Theme.ember : Theme.frostDim)
+                    Group {
+                        ForEach(finished, id: \.id) { entry in
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text(entry.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost).lineLimit(2)
+                                    JobChip(model: entry.model)
+                                    Spacer()
+                                    Text([entry.word, entry.at?.formatted(date: .omitted, time: .shortened)].compactMap { $0 }.joined(separator: " · "))
+                                        .font(.caption)
+                                        .foregroundStyle(entry.word == "Failed" ? Theme.ember : Theme.frostDim)
+                                }
+                                if let detail = entry.detail, !detail.isEmpty {
+                                    Text(detail).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(2)
+                                }
                             }
-                            if let detail = entry.detail, !detail.isEmpty {
-                                Text(detail).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(2)
-                            }
+                            .accessibilityElement(children: .combine)
+                            .listRowBackground(Color.white.opacity(0.04))
                         }
-                        .frame(minHeight: 44)
-                        .accessibilityElement(children: .combine)
-                        .listRowBackground(Color.white.opacity(0.04))
                     }
+                    .fullWidthSeparators()
                 }
             }
         }
+        .jarvisRows()
         .scrollContentBackground(.hidden)
     }
 
@@ -192,43 +197,50 @@ struct NoticesSheet: View {
                         // section per row, so swipes clip to its corners.
                         ForEach(app.notices) { notice in
                           Section {
-                            row(notice)
-                                .listRowBackground(Color.white.opacity(0.06))
-                                // The usual Apple swipe: all the way dismisses;
-                                // part way shows Dismiss and See in chat.
-                                // A kept one offers Unkeep, never on a full
-                                // swipe; an approval waiting on him offers
-                                // nothing that could look like an answer.
-                                .swipeActions(edge: .trailing, allowsFullSwipe: !notice.kept && !notice.isApproval) {
-                                    if notice.kept {
-                                        Button(NoticeAction.unkeep.label, systemImage: "bookmark.slash") {
-                                            haptic()
-                                            Task { await app.letGo(notice) }
+                              Group {
+                                row(notice)
+                                    .listRowBackground(Color.white.opacity(0.06))
+                                    // The usual Apple swipe: all the way dismisses;
+                                    // part way shows Dismiss and See in chat.
+                                    // A kept one offers Unkeep, never on a full
+                                    // swipe; an approval waiting on him offers
+                                    // nothing that could look like an answer.
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: !notice.kept && !notice.isApproval) {
+                                        if notice.kept {
+                                            Button(NoticeAction.unkeep.label, systemImage: "bookmark.slash") {
+                                                haptic()
+                                                Task { await app.letGo(notice) }
+                                            }
+                                            .tint(OrbView.keptYellow(onLight: false))
+                                        } else if !notice.isApproval {
+                                            Button(notice.clearLabel, systemImage: "xmark", role: .destructive) {
+                                                haptic()
+                                                Task { await app.clearNotices([notice.id]) }
+                                            }
                                         }
-                                        .tint(OrbView.keptYellow(onLight: false))
-                                    } else if !notice.isApproval {
-                                        Button(notice.clearLabel, systemImage: "xmark", role: .destructive) {
-                                            haptic()
-                                            Task { await app.clearNotices([notice.id]) }
+                                        if notice.turnId != nil {
+                                            Button(NoticeAction.seeInChat.label, systemImage: "bubble.left") {
+                                                Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) && !notice.kept ? notice : nil, about: notice) }
+                                                dismiss()
+                                            }
+                                            .tint(Theme.glacier)
                                         }
                                     }
-                                    if notice.turnId != nil {
-                                        Button(NoticeAction.seeInChat.label, systemImage: "bubble.left") {
-                                            Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) && !notice.kept ? notice : nil, about: notice) }
-                                            dismiss()
-                                        }
-                                        .tint(Theme.glacier)
-                                    }
-                                }
+                              }
+                              .fullWidthSeparators()
                           }
                         }
                         Section {
-                            Button("Clear all") { Task { await app.clearAllNotices() } }
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .foregroundStyle(Theme.glacier)
+                            Group {
+                                Button("Clear all") { Task { await app.clearAllNotices() } }
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .foregroundStyle(Theme.glacier)
+                            }
+                            .fullWidthSeparators()
                         }
                         .listRowBackground(Color.clear)
                     }
+                    .jarvisRows()
                     .scrollContentBackground(.hidden)
                     .animation(.smooth, value: app.notices.map(\.id))
                 }
@@ -277,7 +289,6 @@ struct NoticesSheet: View {
                 .padding(.leading, 46)
             }
         }
-        .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
     }
 

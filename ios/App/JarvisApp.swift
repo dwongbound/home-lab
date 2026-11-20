@@ -297,6 +297,11 @@ struct RootView: View {
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { app.tab = .chat }
                 return
             }
+            // `-openSettings` opens Settings (layout checks).
+            if args.contains("-openSettings") {
+                try? await Task.sleep(for: .seconds(1))
+                app.showSettings = true
+            }
             // `-onTalkQuiet` opens on Talk without calling Jarvis (layout checks).
             if args.contains("-onTalkQuiet") {
                 app.talk.started = true

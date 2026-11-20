@@ -25,24 +25,27 @@ struct ReportsListView: View {
                 List {
                     if let shelf = app.reportShelf {
                         Section {
-                            if shelf.reports.isEmpty {
-                                Text("None yet. Jarvis writes one when a long task ends.")
-                                    .foregroundStyle(Theme.frostDim)
-                                    .listRowBackground(Color.clear)
+                            Group {
+                                if shelf.reports.isEmpty {
+                                    Text("None yet. Jarvis writes one when a long task ends.")
+                                        .foregroundStyle(Theme.frostDim)
+                                        .listRowBackground(Color.clear)
+                                }
+                                ForEach(Self.withFixture(shelf.reports)) { report in
+                                    row(report)
+                                        .listRowBackground(Color.white.opacity(0.07))
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                            Button(role: .destructive) { deleting = report } label: { Label("Delete", systemImage: "trash") }
+                                            Button { share(report) } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                                                .tint(Theme.glacier)
+                                        }
+                                        .contextMenu {
+                                            Button { share(report) } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                                            Button(role: .destructive) { deleting = report } label: { Label("Delete", systemImage: "trash") }
+                                        }
+                                }
                             }
-                            ForEach(Self.withFixture(shelf.reports)) { report in
-                                row(report)
-                                    .listRowBackground(Color.white.opacity(0.07))
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button(role: .destructive) { deleting = report } label: { Label("Delete", systemImage: "trash") }
-                                        Button { share(report) } label: { Label("Share", systemImage: "square.and.arrow.up") }
-                                            .tint(Theme.glacier)
-                                    }
-                                    .contextMenu {
-                                        Button { share(report) } label: { Label("Share", systemImage: "square.and.arrow.up") }
-                                        Button(role: .destructive) { deleting = report } label: { Label("Delete", systemImage: "trash") }
-                                    }
-                            }
+                            .fullWidthSeparators()
                         } header: {
                             Text(Reports.shortRulesText(shelf))
                                 .lineLimit(1)
@@ -55,6 +58,7 @@ struct ReportsListView: View {
                             .listRowBackground(Color.clear)
                     }
                 }
+                .jarvisRows()
                 .scrollContentBackground(.hidden)
                 .refreshable { await app.today.load(app: app) }
                 // A Keep or Delete waiting on the PC: labelled and blocking.
@@ -119,7 +123,6 @@ struct ReportsListView: View {
             .buttonStyle(.borderless)
             .accessibilityLabel("More for \(report.title)")
         }
-        .padding(.vertical, 2)
     }
 
     /// Fetches the report as a file and opens the share sheet.

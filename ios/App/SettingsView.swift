@@ -18,20 +18,22 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("https://jarvis.snakebird-ph.ts.net", text: $app.server)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    HStack {
-                        Text(statusWords).foregroundStyle(statusColor)
-                        Spacer()
-                        if checking {
-                            ProgressView().accessibilityLabel("Checking")
-                        } else {
-                            Button("Check") { check() }
+                    Group {
+                        TextField("https://jarvis.snakebird-ph.ts.net", text: $app.server)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        HStack {
+                            Text(statusWords).foregroundStyle(statusColor)
+                            Spacer()
+                            if checking {
+                                ProgressView().accessibilityLabel("Checking")
+                            } else {
+                                Button("Check") { check() }
+                            }
                         }
                     }
-                    .frame(minHeight: 44)
+                    .fullWidthSeparators()
                 } header: {
                     Text("Jarvis")
                 } footer: {
@@ -39,45 +41,55 @@ struct SettingsView: View {
                 }
                 if UIDevice.current.userInterfaceIdiom == .phone {
                     Section {
-                        Toggle("Bedside display", isOn: $bedside)
-                            .frame(minHeight: 44)
+                        Group {
+                            Toggle("Bedside display", isOn: $bedside)
+                        }
+                        .fullWidthSeparators()
                     } footer: {
                         Text("Turn the phone on its side while it's charging and Jarvis shows a big clock, the orb and what's next. Tap it for Close. Never shows money.")
                     }
                 }
                 Section {
-                    Toggle("Notifications", isOn: $pushOn)
-                        .frame(minHeight: 44)
-                        .onChange(of: pushOn) { _, on in PushCenter.shared.setEnabled(on) }
-                    // Whether push is actually working, in words.
-                    Text(push.status.words)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    Group {
+                        Toggle("Notifications", isOn: $pushOn)
+                            .onChange(of: pushOn) { _, on in PushCenter.shared.setEnabled(on) }
+                        // Whether push is actually working, in words.
+                        Text(push.status.words)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .fullWidthSeparators()
                 } footer: {
                     Text("Jarvis's messages, approvals and alerts as banners, even when the app is closed. Approve from the lock screen needs the phone unlocked. At night a Focus such as Sleep can hold them in Notification Center; allow Jarvis in that Focus to see them.")
                 }
                 .task { await push.refreshStatus() }
                 if UIDevice.current.userInterfaceIdiom == .pad {
                     Section {
-                        Toggle("Kiosk when idle on charge", isOn: $idleKiosk)
-                            .frame(minHeight: 44)
+                        Group {
+                            Toggle("Kiosk when idle on charge", isOn: $idleKiosk)
+                        }
+                        .fullWidthSeparators()
                     } footer: {
                         Text("After five quiet minutes on Talk or Chat while the iPad is charging, it switches to the kiosk by itself.")
                     }
                 }
                 Section {
-                    tuning("Dots (your voice)", value: $dotsRiseMs)
-                    tuning("Inner orb (Jarvis)", value: $coreRiseMs)
-                    Button("Reset to defaults") {
-                        dotsRiseMs = OrbTuning.dotsDefault
-                        coreRiseMs = OrbTuning.coreDefault
+                    Group {
+                        tuning("Dots (your voice)", value: $dotsRiseMs)
+                        tuning("Inner orb (Jarvis)", value: $coreRiseMs)
+                        Button("Reset to defaults") {
+                            dotsRiseMs = OrbTuning.dotsDefault
+                            coreRiseMs = OrbTuning.coreDefault
+                        }
                     }
+                    .fullWidthSeparators()
                 } header: {
                     Text("Orb feel")
                 } footer: {
                     Text("How fast the orb follows a voice. Lower is snappier and moves more with each syllable; higher is calmer and smoother. Changes show on the Talk orb straight away.")
                 }
             }
+            .jarvisRows()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -138,6 +150,5 @@ struct SettingsView: View {
                 Text("Calm").font(.caption2)
             }
         }
-        .padding(.vertical, 4)
     }
 }

@@ -188,3 +188,37 @@ struct GlassGroup<Content: View>: View {
         #endif
     }
 }
+
+/// One row style for every list and form in the app (Dylan, 2026-11-20:
+/// "standardize throughout the app how thick these rows are" and "those
+/// divider lines should go all the way across"). Apple's grouped-list
+/// conventions: rows at least 44 pt (the system's own insets supply the
+/// padding, so a row adds no height of its own and still grows with
+/// Dynamic Type), and each separator running the card's full width.
+enum Rows {
+    static let minHeight: CGFloat = 44
+    /// How far a grouped row's content sits in from its card's edges.
+    static let inset: CGFloat = 20
+}
+
+extension View {
+    /// On a List or Form: 44 pt minimum rows.
+    func jarvisRows() -> some View {
+        environment(\.defaultMinListRowHeight, Rows.minHeight)
+    }
+
+    /// On a Section (or a row): its separators run the card's full width.
+    /// (iOS only; the Watch and TV keep their own list styles.)
+    @ViewBuilder
+    func fullWidthSeparators() -> some View {
+        #if os(iOS)
+        self
+            // A grouped row's content sits Rows.inset in from each side of
+            // its card; the line reaches back out to both edges.
+            .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] - Rows.inset }
+            .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] + Rows.inset }
+        #else
+        self
+        #endif
+    }
+}

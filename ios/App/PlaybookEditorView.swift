@@ -122,56 +122,67 @@ struct PlaybookEditorView: View {
         Form {
             if isNew { describeSection }
             Section {
-                TextField("Name, like Bedtime", text: $draft.name)
-                    .font(.headline)
-                    .frame(minHeight: 44)
-                Toggle("On", isOn: $draft.enabled).tint(Theme.glacier).frame(minHeight: 44)
-                TextField("What it's for (optional)", text: $draft.purpose, axis: .vertical)
-                    .frame(minHeight: 44)
+                Group {
+                    TextField("Name, like Bedtime", text: $draft.name)
+                        .font(.headline)
+                    Toggle("On", isOn: $draft.enabled).tint(Theme.glacier)
+                    TextField("What it's for (optional)", text: $draft.purpose, axis: .vertical)
+                }
+                .fullWidthSeparators()
             }
             if !isNew {
                 Section {
-                    DisclosureGroup("Rewrite it from a description", isExpanded: $describeOpen) {
-                        describeFields
+                    Group {
+                        DisclosureGroup("Rewrite it from a description", isExpanded: $describeOpen) {
+                            describeFields
+                        }
                     }
-                    .frame(minHeight: 44)
+                    .fullWidthSeparators()
                 }
             }
             triggerSection
             stepsSection.id("steps")
             checksSection.id("checks")
             Section {
-                DisclosureGroup(isExpanded: $moreOpen) {
-                    TextField("When he should use it without being told", text: $draft.whenToUse, axis: .vertical)
-                    pairRows("What it needs, and where it lives", first: "What", second: "Where it lives", rows: $draft.inputs)
-                    pairRows("Rules for decisions", first: "If", second: "Then", rows: $draft.decisions)
-                    stringRows("What's gone wrong before", rows: $draft.edgeCases)
-                    TextField("The standard it has to hit", text: $draft.standard, axis: .vertical)
-                    TextField("What a bad version looks like", text: $draft.badVersion, axis: .vertical)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("More for Jarvis")
-                        Text("Optional, for jobs that need judgment").font(.caption).foregroundStyle(Theme.frostDim)
+                Group {
+                    DisclosureGroup(isExpanded: $moreOpen) {
+                        TextField("When he should use it without being told", text: $draft.whenToUse, axis: .vertical)
+                        pairRows("What it needs, and where it lives", first: "What", second: "Where it lives", rows: $draft.inputs)
+                        pairRows("Rules for decisions", first: "If", second: "Then", rows: $draft.decisions)
+                        stringRows("What's gone wrong before", rows: $draft.edgeCases)
+                        TextField("The standard it has to hit", text: $draft.standard, axis: .vertical)
+                        TextField("What a bad version looks like", text: $draft.badVersion, axis: .vertical)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("More for Jarvis")
+                            Text("Optional, for jobs that need judgment").font(.caption).foregroundStyle(Theme.frostDim)
+                        }
                     }
-                    .frame(minHeight: 44)
                 }
+                .fullWidthSeparators()
             }
             if let problem = current.problem {
                 Section {
-                    Label(problem, systemImage: "exclamationmark.circle").foregroundStyle(Theme.ember)
+                    Group {
+                        Label(problem, systemImage: "exclamationmark.circle").foregroundStyle(Theme.ember)
+                    }
+                    .fullWidthSeparators()
                 } footer: {
                     Text("Save works once this is sorted.")
                 }
             }
             if !isNew {
                 Section {
-                    Button("Delete playbook", role: .destructive) { confirmingDelete = true }
-                        .frame(minHeight: 44)
+                    Group {
+                        Button("Delete playbook", role: .destructive) { confirmingDelete = true }
+                    }
+                    .fullWidthSeparators()
                 }
             }
         }
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
+        .jarvisRows()
         .background(Theme.sky.ignoresSafeArea())
         .environment(\.editMode, .constant(reordering ? .active : .inactive))
         .onChange(of: scrollTarget) { _, target in
@@ -185,7 +196,10 @@ struct PlaybookEditorView: View {
     /// A new playbook's first box: a sentence or two, and Jarvis fills the form in.
     private var describeSection: some View {
         Section {
-            describeFields
+            Group {
+                describeFields
+            }
+            .fullWidthSeparators()
         } header: {
             Text("Describe it, and Jarvis fills in the rest")
         }
@@ -225,7 +239,7 @@ struct PlaybookEditorView: View {
                     Label(line, systemImage: "lightbulb").font(.subheadline)
                 }
             }
-            .padding(.vertical, 4)
+
             .accessibilityElement(children: .combine)
         }
     }
@@ -268,51 +282,52 @@ struct PlaybookEditorView: View {
 
     private var triggerSection: some View {
         Section {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
-                ForEach(PlaybookWording.triggerTiles, id: \.type) { tile in
-                    let on = draft.trigger.type == tile.type
-                    Button {
-                        animate { if !on { draft.trigger = DraftTrigger.blank(tile.type) } }
-                    } label: {
-                        Label(tile.short, systemImage: tile.icon)
-                            .font(.subheadline.weight(on ? .semibold : .regular))
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .padding(.horizontal, 10)
-                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(on ? Theme.glacier.opacity(0.32) : Color.white.opacity(0.06)))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? Theme.glacier : .clear, lineWidth: 1))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                }
-            }
-            .padding(.vertical, 4)
-            if draft.trigger.type == "time" {
-                DatePicker("Time", selection: timeBinding, displayedComponents: .hourAndMinute)
-                    .frame(minHeight: 44)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        ForEach(PlaybookWording.days, id: \.id) { day in
-                            let on = draft.trigger.days.contains(day.id)
-                            Button(day.label) {
-                                if on { draft.trigger.days.removeAll { $0 == day.id } } else { draft.trigger.days.append(day.id) }
-                            }
-                            .font(.caption.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(on ? Theme.glacier.opacity(0.3) : Color.white.opacity(0.06)))
-                            .buttonStyle(.plain)
-                            .accessibilityAddTraits(on ? .isSelected : [])
+            Group {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+                    ForEach(PlaybookWording.triggerTiles, id: \.type) { tile in
+                        let on = draft.trigger.type == tile.type
+                        Button {
+                            animate { if !on { draft.trigger = DraftTrigger.blank(tile.type) } }
+                        } label: {
+                            Label(tile.short, systemImage: tile.icon)
+                                .font(.subheadline.weight(on ? .semibold : .regular))
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(on ? Theme.glacier.opacity(0.32) : Color.white.opacity(0.06)))
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? Theme.glacier : .clear, lineWidth: 1))
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? .isSelected : [])
                     }
-                    Text(draft.trigger.days.isEmpty ? "Every day. Tap days to pick only some." : Playbooks.daysLabel(draft.trigger.days).capitalized)
-                        .font(.caption).foregroundStyle(Theme.frostDim)
                 }
-                .padding(.vertical, 4)
+    
+                if draft.trigger.type == "time" {
+                    DatePicker("Time", selection: timeBinding, displayedComponents: .hourAndMinute)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            ForEach(PlaybookWording.days, id: \.id) { day in
+                                let on = draft.trigger.days.contains(day.id)
+                                Button(day.label) {
+                                    if on { draft.trigger.days.removeAll { $0 == day.id } } else { draft.trigger.days.append(day.id) }
+                                }
+                                .font(.caption.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(on ? Theme.glacier.opacity(0.3) : Color.white.opacity(0.06)))
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(on ? .isSelected : [])
+                            }
+                        }
+                        Text(draft.trigger.days.isEmpty ? "Every day. Tap days to pick only some." : Playbooks.daysLabel(draft.trigger.days).capitalized)
+                            .font(.caption).foregroundStyle(Theme.frostDim)
+                    }
+        
+                }
+                if draft.trigger.type == "arrive" {
+                    Stepper(draft.trigger.minAway == 0 ? "Every time I get home" : "Only after \(draft.trigger.minAway) min away", value: $draft.trigger.minAway, in: 0...1440, step: 5)
+                }
             }
-            if draft.trigger.type == "arrive" {
-                Stepper(draft.trigger.minAway == 0 ? "Every time I get home" : "Only after \(draft.trigger.minAway) min away", value: $draft.trigger.minAway, in: 0...1440, step: 5)
-                    .frame(minHeight: 44)
-            }
+            .fullWidthSeparators()
         } header: {
             Text("1. When does it run?")
         } footer: {
@@ -335,21 +350,24 @@ struct PlaybookEditorView: View {
 
     private var stepsSection: some View {
         Section {
-            if steps.isEmpty {
-                Text("Nothing yet. Tap a button below to add the first step; they run top to bottom.")
-                    .font(.subheadline).foregroundStyle(Theme.frostDim)
-            }
-            ForEach($steps) { $item in
-                StepRow(item: $item, number: (steps.firstIndex { $0.id == item.id } ?? 0) + 1, options: options,
-                        open: openStep == item.id && !reordering) {
-                    animate { openStep = openStep == item.id ? nil : item.id }
+            Group {
+                if steps.isEmpty {
+                    Text("Nothing yet. Tap a button below to add the first step; they run top to bottom.")
+                        .font(.subheadline).foregroundStyle(Theme.frostDim)
+                }
+                ForEach($steps) { $item in
+                    StepRow(item: $item, number: (steps.firstIndex { $0.id == item.id } ?? 0) + 1, options: options,
+                            open: openStep == item.id && !reordering) {
+                        animate { openStep = openStep == item.id ? nil : item.id }
+                    }
+                }
+                .onDelete { offsets in animate { steps.remove(atOffsets: offsets) } }
+                .onMove { from, to in animate { steps.move(fromOffsets: from, toOffset: to) } }
+                if !reordering {
+                    addStepButtons
                 }
             }
-            .onDelete { offsets in animate { steps.remove(atOffsets: offsets) } }
-            .onMove { from, to in animate { steps.move(fromOffsets: from, toOffset: to) } }
-            if !reordering {
-                addStepButtons
-            }
+            .fullWidthSeparators()
         } header: {
             HStack {
                 Text("2. What happens?")
@@ -393,7 +411,7 @@ struct PlaybookEditorView: View {
         }
         .disabled(steps.count >= PlaybookDraft.maxSteps)
         .opacity(steps.count >= PlaybookDraft.maxSteps ? 0.4 : 1)
-        .padding(.vertical, 4)
+
         .moveDisabled(true)
         .deleteDisabled(true)
     }
@@ -402,7 +420,10 @@ struct PlaybookEditorView: View {
 
     private var checksSection: some View {
         Section {
-            stringRows(nil, rows: $draft.done, placeholder: "Every light is off", add: "Add a check")
+            Group {
+                stringRows(nil, rows: $draft.done, placeholder: "Every light is off", add: "Add a check")
+            }
+            .fullWidthSeparators()
         } header: {
             Text("3. How does Jarvis know it worked? (Optional)")
         } footer: {
@@ -426,7 +447,6 @@ struct PlaybookEditorView: View {
         }
         if rows.wrappedValue.count < 10 {
             Button { animate { rows.wrappedValue.append("") } } label: { Label(add, systemImage: "plus") }
-                .frame(minHeight: 44)
         }
     }
 
@@ -449,7 +469,6 @@ struct PlaybookEditorView: View {
         }
         if rows.wrappedValue.count < 10 {
             Button { animate { rows.wrappedValue.append(.init("", "")) } } label: { Label("Add", systemImage: "plus") }
-                .frame(minHeight: 44)
         }
     }
 
@@ -545,7 +564,6 @@ private struct StepRow: View {
                         .foregroundStyle(Theme.frostDim)
                         .rotationEffect(.degrees(open ? 90 : 0))
                 }
-                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -575,7 +593,7 @@ private struct StepEditor: View {
                 Text(problem.prefix(1).uppercased() + problem.dropFirst()).font(.caption).foregroundStyle(Theme.ember)
             }
         }
-        .padding(.vertical, 4)
+
     }
 
     @ViewBuilder

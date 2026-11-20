@@ -46,7 +46,32 @@ final class PlaybooksModel: ObservableObject {
     }
 
     /// Fetches the playbooks.
+    #if DEBUG
+    static let demoBook = #"""
+    {"book": {"playbooks": [
+      {"id": "nightly", "name": "Nightly self-improvement", "enabled": true, "madeBy": "dylan",
+       "purpose": "Jarvis looks back over the day and tidies what it learned.",
+       "trigger": {"type": "time", "at": "03:30", "days": []},
+       "steps": [{"type": "job", "job": "nightly"}, {"type": "notify", "text": "Nightly pass done"}],
+       "done": ["Memory tidied"], "lastRun": {"at": "2026-11-20T03:30:00Z", "ok": true, "detail": "done"}},
+      {"id": "arrive-home", "name": "Arrive home", "enabled": true, "madeBy": "dylan", "purpose": "",
+       "trigger": {"type": "arrive", "zone": "home", "minAway": 15},
+       "steps": [{"type": "app", "entity": "media_player.tv", "app": "Jarvis"}]}
+    ], "options": {"devices": [], "scenes": [], "apps": [], "zones": ["home"],
+                   "jobs": [{"id": "nightly", "name": "Nightly self-improvement"}]}}}
+    """#
+    #endif
+
     func load(client: JarvisClient) async {
+        #if DEBUG
+        // `-demoPlaybooks`: a fixture book, no Jarvis (layout checks).
+        if ProcessInfo.processInfo.arguments.contains("-demoPlaybooks"),
+           let list = Playbooks.list(from: Data(Self.demoBook.utf8)), let book = Playbooks.book(from: Data(Self.demoBook.utf8)) {
+            state = .ready(list)
+            options = book.options
+            return
+        }
+        #endif
         do {
             if let book = try await client.playbookBook() {
                 state = .ready(book.playbooks)

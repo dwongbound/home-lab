@@ -107,13 +107,20 @@ struct WrongSheet: View {
         NavigationStack {
             Form {
                 Section("He said") {
-                    Text(item.text).foregroundStyle(Theme.frostDim).lineLimit(6)
+                    Group {
+                        Text(item.text).foregroundStyle(Theme.frostDim).lineLimit(6)
+                    }
+                    .fullWidthSeparators()
                 }
                 Section("What should he have said?") {
-                    TextField("A few words is plenty", text: $note, axis: .vertical)
-                        .lineLimit(3...8)
+                    Group {
+                        TextField("A few words is plenty", text: $note, axis: .vertical)
+                            .lineLimit(3...8)
+                    }
+                    .fullWidthSeparators()
                 }
             }
+            .jarvisRows()
             .navigationTitle("That was wrong")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
