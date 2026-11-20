@@ -399,12 +399,20 @@ struct TabBar: View {
                                 .offset(x: 10, y: -6)
                         }
                     }
-                if expanded {
-                    Text(title).font(.caption2.weight(.semibold)).transition(.opacity)
-                }
+                // Always laid out and faded in place, so on a shrink the word
+                // fades inside the bar instead of sliding off to a corner
+                // (Dylan, 2026-11-19).
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .opacity(expanded ? 1 : 0)
+                    .frame(height: expanded ? 14 : 0, alignment: .top)
+                    .clipped()
             }
             .foregroundStyle(on ? Theme.glacier : Theme.frostDim)
             .frame(maxWidth: .infinity, minHeight: expanded ? 50 : 44)
+            .clipShape(Capsule())
             .background {
                 if on {
                     Capsule().fill(Color.white.opacity(0.10))
