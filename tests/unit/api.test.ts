@@ -394,3 +394,24 @@ describe('POST /api/money/picks', () => {
     expect((await callApi(api, 'POST', '/api/money/picks', ACTION_HEADER, '{"op":"pick"}')).statusCode).toBe(400)
   })
 })
+
+describe('POST /api/jarvis/jobs/stop', () => {
+  it('stops a running job once, and says gone the second time', async () => {
+    const api = createApi(createMockSource())
+    const stop = (headers: Record<string, string>, body: unknown) => callApi(api, 'POST', '/api/jarvis/jobs/stop', headers, JSON.stringify(body))
+    expect((await stop({}, { id: 'r1' })).statusCode).toBe(403)
+    expect((await stop(ACTION_HEADER, { id: '../approve' })).statusCode).toBe(400)
+    expect((await stop(ACTION_HEADER, {})).statusCode).toBe(400)
+    const done = await stop(ACTION_HEADER, { id: 'r1' })
+    expect(done.statusCode).toBe(200)
+    expect(done.json()).toEqual({ ok: true, message: 'Stopped' })
+    // It leaves the running list and shows under what finished today.
+    const jobs = (await callApi(api, 'GET', '/api/snapshot')).json().jobs
+    expect(jobs.running.map((task: { id: string }) => task.id)).toEqual(['r2'])
+    expect(jobs.finished[0]).toMatchObject({ id: 'r1', state: 'stopped' })
+    const again = await stop(ACTION_HEADER, { id: 'r1' })
+    expect(again.statusCode).toBe(410)
+    expect(again.json()).toEqual({ ok: false, gone: true, message: 'That one already finished' })
+    expect((await stop(ACTION_HEADER, { id: 'nope' })).statusCode).toBe(410)
+  })
+})

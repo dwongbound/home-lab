@@ -20,6 +20,7 @@
 //   (chat messages may add "images": up to 4 photos as {"media_type", "data": base64})
 //   POST /api/jarvis/chat/meal     {"key", "choice"} -> same | leftovers | new, for a meal photo he may have logged already
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
+//   POST /api/jarvis/jobs/stop     {"id"} -> stop one piece of background work and clean up after it
 //   POST /api/jarvis/notices/clear {"ids"} or {"all": true} -> clears notifications on every device
 //   POST /api/jarvis/notices/keep {"turnId"} or {"id"} -> keeps a chat message or a notice until he lets it go
 //   POST /api/jarvis/notices/unkeep {"id"} -> lets a kept one go
@@ -39,6 +40,7 @@ import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
 import { parseHistoryPage } from './sources/history.mjs'
+import { isJobId } from './sources/jobs.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
 
 // The most a "describe it" box may send Jarvis to turn into a playbook.
@@ -427,6 +429,22 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
+  /** Stops one piece of background work Jarvis is running or has queued. */
+  async function handleStopJob(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    if (!isJobId(body?.id)) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"id": "r1"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.stopJob(body.id, { login })
+    // 410 = it already finished (or was stopped elsewhere): drop its row.
+    if (result.gone) return sendJson(res, 410, result)
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
   /** Hide on an offer card: Jarvis drops it and won't offer it again soon. */
   async function handleHideOffer(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -652,6 +670,9 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/approve') {
         return await handleApprove(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/jobs/stop') {
+        return await handleStopJob(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/offers/hide') {
         return await handleHideOffer(req, res)

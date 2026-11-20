@@ -88,13 +88,25 @@ function mockJobs(t, minutesAgo) {
     },
     messenger: { sentToday: 2, cap: 5, quiet: null },
     running: [
-      { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: minutesAgo(2), model: 'claude-opus-5-5', step: 'Running tests' },
-      { id: 'r2', label: 'Saying traffic first', state: 'queued', startedAt: null, model: null, step: null },
+      { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: minutesAgo(2), model: 'claude-opus-5-5', step: 'Running tests', stoppable: true },
+      { id: 'r2', label: 'Saying traffic first', state: 'queued', startedAt: null, model: null, step: null, stoppable: true },
     ],
     finished: [
       { id: 'f1', label: 'Shorter morning greeting', state: 'live', finishedAt: minutesAgo(50), model: 'claude-opus-5-5' },
     ],
   }
+}
+
+/** The sample jobs with the ones he stopped moved from running to finished. */
+function withStopped(jobs, stopped) {
+  const running = []
+  const finished = []
+  for (const task of jobs.running) {
+    const at = stopped.get(task.id)
+    if (at === undefined) running.push(task)
+    else finished.push({ id: task.id, label: task.label, state: 'stopped', finishedAt: at, model: task.model })
+  }
+  return { ...jobs, running, finished: [...finished, ...jobs.finished] }
 }
 
 function mockDigest(t, minutesAgo) {
@@ -228,6 +240,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
     nextPlaybookId: 10,
     // Pretend reports (made up), until kept or deleted on the Services page.
     reports: sampleReports(now()),
+    // Background work he stopped: job id -> when.
+    stoppedJobs: new Map(),
     // Devices that asked for pushes.
     pushDevices: [],
     // "That was wrong" flags sent from the chat.
@@ -343,7 +357,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
           })),
           sun: { rising: atPacificTime(t, 6, 41), setting: atPacificTime(t, 16, 52) },
         },
-        jobs: mockJobs(t, minutesAgo),
+        jobs: withStopped(mockJobs(t, minutesAgo), state.stoppedJobs),
         moneyPicks: await picks.read(cloud.money.recent),
         offers: { greeting: 'Well, good evening, Dylan! Your 7 PM practice moved to court 2.', offers: state.offers.map((o) => ({ ...o })) },
         notices: currentNotices(t).map((n) => ({ ...n })),
@@ -417,6 +431,16 @@ export function createMockSource({ now = () => new Date() } = {}) {
       if (!waiting) return { ok: false, gone: true, message: 'That request was already answered or ran out of time' }
       waiting.answer(ok, 'page')
       return { ok: true, message: ok ? 'Approved' : 'Denied' }
+    },
+
+    /** Stops a piece of sample background work; one that isn't running is already gone. */
+    async stopJob(id) {
+      const running = mockJobs(now(), () => null).running
+      if (state.stoppedJobs.has(id) || !running.some((task) => task.id === id)) {
+        return { ok: false, gone: true, message: 'That one already finished' }
+      }
+      state.stoppedJobs.set(id, now().toISOString())
+      return { ok: true, message: 'Stopped' }
     },
 
     /** Hide on an offer card: gone for good. */

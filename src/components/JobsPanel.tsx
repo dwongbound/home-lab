@@ -55,6 +55,7 @@ const ENDINGS: Record<FinishedTask['state'], string> = {
   live: 'Live',
   failed: 'Didn’t make it',
   nothing: 'Nothing to change',
+  stopped: 'Stopped',
 }
 
 /** The chat chip for the model on a piece of work ("Jarvis (CO)"), or nothing when no model did it. */

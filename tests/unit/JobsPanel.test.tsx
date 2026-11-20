@@ -43,8 +43,11 @@ describe('JobsPanel', () => {
   it('lists background work with who is doing it and the step, and what finished today', () => {
     const busy = {
       ...jobs,
-      running: [{ id: 'r1', label: 'Shorter greeting', state: 'running' as const, startedAt: null, model: 'claude-fable-5-2', step: 'Running tests' }],
-      finished: [{ id: 'f1', label: 'Dive calendar', state: 'live' as const, finishedAt: null, model: null }],
+      running: [{ id: 'r1', label: 'Shorter greeting', state: 'running' as const, startedAt: null, model: 'claude-fable-5-2', step: 'Running tests', stoppable: true }],
+      finished: [
+        { id: 'f1', label: 'Dive calendar', state: 'live' as const, finishedAt: null, model: null },
+        { id: 'f2', label: 'Longer goodbye', state: 'stopped' as const, finishedAt: null, model: null },
+      ],
     }
     render(<JobsPanel jobs={busy} now={now} />)
     expect(screen.getByText('Working on now')).toBeInTheDocument()
@@ -52,6 +55,7 @@ describe('JobsPanel', () => {
     expect(screen.getByText('Running tests · Running')).toBeInTheDocument()
     expect(screen.getByText('Finished today')).toBeInTheDocument()
     expect(screen.getByText('Live')).toBeInTheDocument()
+    expect(screen.getByText('Stopped')).toBeInTheDocument()
   })
 
   it('says so when Jarvis doesn’t report its jobs', () => {
