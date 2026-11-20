@@ -533,7 +533,8 @@ export type PlaybookTrigger =
 export type PlaybookThinker = 'auto' | 'worker' | 'claude'
 
 /**
- * One step of a playbook. The first five are fixed and run as plain code;
+ * One step of a playbook. The first five are fixed and run as plain code,
+ * as is `job` (one of Jarvis's own jobs, like the nightly pass);
  * `think` is a step in your own words that Jarvis works out; `confirm` on
  * an email = Jarvis asks you before sending it.
  */
@@ -543,6 +544,7 @@ export type PlaybookStep =
   | { type: 'app'; entity: string; app: string }
   | { type: 'notify'; text: string }
   | { type: 'wait'; seconds: number }
+  | { type: 'job'; job: string }
   | { type: 'think'; text: string; model: PlaybookThinker }
   | { type: 'email'; to: string; subject: string; body: string; confirm: boolean }
 
@@ -585,12 +587,13 @@ export interface Playbook {
 /** A playbook being written: a new one has no id yet. */
 export type PlaybookDraft = Omit<Playbook, 'id' | 'lastRun' | 'madeBy'> & { id?: string }
 
-/** What a step can use: devices and their commands, scenes, screens with apps, places. */
+/** What a step can use: devices and their commands, scenes, screens with apps, places, Jarvis's own jobs. */
 export interface PlaybookOptions {
   devices: { entity: string; name: string; kind: string; commands: string[] }[]
   scenes: { entity: string; name: string }[]
   apps: { entity: string; name: string; apps: string[] }[]
   zones: string[]
+  jobs: { id: string; name: string }[]
 }
 
 /** Everything the Playbooks page shows. */

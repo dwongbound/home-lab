@@ -34,7 +34,18 @@ export const STEP_CHOICES: { type: PlaybookStep['type']; label: string; short: s
   { type: 'think', label: 'Have Jarvis work something out', short: 'Ask Jarvis' },
   { type: 'email', label: 'Send an email', short: 'Email' },
   { type: 'wait', label: 'Wait', short: 'Wait' },
+  { type: 'job', label: 'Run one of Jarvis’s own jobs', short: 'Jarvis job' },
 ]
+
+/** The step kinds the editor can add: a job step only when Jarvis lists jobs. */
+export function stepChoices(options: PlaybookOptions) {
+  return STEP_CHOICES.filter((c) => c.type !== 'job' || options.jobs.length > 0)
+}
+
+/** A job's name as Jarvis gave it, or its id when he doesn't list it. */
+export function jobName(id: string, options: PlaybookOptions): string {
+  return options.jobs.find((j) => j.id === id)?.name ?? id
+}
 
 // Who does a thinking step, as the editor offers it.
 export const THINKER_CHOICES: { model: PlaybookThinker; label: string }[] = [
@@ -137,6 +148,7 @@ export function stepLine(step: PlaybookStep, options: PlaybookOptions): string {
   if (step.type === 'notify') return `Notify me: ${clip(step.text)}`
   if (step.type === 'think') return `Jarvis: ${clip(step.text)}`
   if (step.type === 'email') return `Email ${step.to}: ${clip(step.subject)}`
+  if (step.type === 'job') return `Run: ${clip(jobName(step.job, options))}`
   if (step.seconds % 60 === 0) return `Wait ${step.seconds / 60} min`
   return `Wait ${step.seconds} s`
 }
@@ -182,6 +194,7 @@ export function blankStep(type: PlaybookStep['type'], options: PlaybookOptions):
   if (type === 'think') return { type, text: '', model: 'auto' }
   // A playbook you wrote doesn't ask before sending (Dylan, 2026-11-18).
   if (type === 'email') return { type, to: '', subject: '', body: '', confirm: false }
+  if (type === 'job') return { type, job: options.jobs[0]?.id ?? '' }
   return { type, seconds: 60 }
 }
 
@@ -196,6 +209,7 @@ function stepProblem(step: PlaybookStep): string | null {
   if (step.type === 'app') return step.entity && step.app ? null : 'pick a TV and an app'
   if (step.type === 'notify') return step.text.trim() ? null : 'write what it should say'
   if (step.type === 'think') return step.text.trim() ? null : 'write what Jarvis should do'
+  if (step.type === 'job') return step.job ? null : 'pick a job'
   if (step.type === 'email') {
     const addresses = emailAddresses(step.to)
     if (addresses.length === 0 || addresses.length > 10) return 'give it one to ten email addresses'

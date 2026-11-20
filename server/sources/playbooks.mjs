@@ -92,6 +92,11 @@ function cleanStep(raw) {
     // A playbook Dylan wrote doesn't ask before sending; only an explicit true turns asking on.
     return { type: 'email', to: to.join(', '), subject, body, confirm: raw.confirm === true }
   }
+  if (raw.type === 'job') {
+    // One of Jarvis's own jobs (the nightly pass); he refuses ids he doesn't know.
+    const job = text(raw.job, 40)
+    return /^[a-z][a-z0-9_-]*$/.test(job) ? { type: 'job', job } : null
+  }
   if (raw.type === 'wait') {
     const seconds = Number(raw.seconds)
     if (!Number.isFinite(seconds) || seconds < 1) return null
@@ -174,6 +179,10 @@ function fromJarvisStep(raw) {
   if (raw.type === 'think' || raw.type === 'ask') {
     const model = raw.model === 'worker' || raw.model === 'claude' ? raw.model : 'auto'
     return { type: 'think', text: text(raw.text, MAX_TEXT), model }
+  }
+  if (raw.type === 'job') {
+    const job = text(raw.job, 40)
+    return job ? { type: 'job', job } : null
   }
   // Fixed steps carry Jarvis's own "code" tag, which the page doesn't need.
   const { model: _model, ...step } = raw
@@ -258,6 +267,14 @@ function strings(value) {
   return Array.isArray(value) ? value.filter((v) => typeof v === 'string') : []
 }
 
+/** Jarvis's own jobs a step can run ({id, name}), keeping only the well-formed ones. */
+function jobChoices(rows) {
+  if (!Array.isArray(rows)) return []
+  return rows
+    .filter((r) => typeof r?.id === 'string' && r.id)
+    .map((r) => ({ id: r.id, name: typeof r.name === 'string' && r.name ? text(r.name, 200) : r.id }))
+}
+
 /** Everything the Playbooks page needs from Jarvis's GET /playbooks: the playbooks and what steps can use. */
 export function parsePlaybookBook(body) {
   const playbooks = Array.isArray(body?.playbooks) ? body.playbooks.map(fromJarvisPlaybook).filter((r) => r !== null) : []
@@ -269,6 +286,7 @@ export function parsePlaybookBook(body) {
       scenes: named(options.scenes, () => ({})),
       apps: named(options.apps, (r) => ({ apps: strings(r.apps) })),
       zones: strings(options.zones),
+      jobs: jobChoices(options.jobs),
     },
   }
 }
