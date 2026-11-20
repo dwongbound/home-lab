@@ -264,6 +264,35 @@ public enum SeenTracker {
 /// The Chat input bar (Dylan, 2026-11-19: it "takes a lot of vertical space
 /// by always being there"): a slim one-line pill at the bottom of the chat,
 /// tucked into a small compose button while he reads further up.
+/// Where Chat's scroll sits relative to its newest line (Dylan,
+/// 2026-11-20: at the very bottom the Ask box was gone and the arrow showed,
+/// because the old sum left out the top inset and added the bottom one,
+/// about 270 pt off once the floating buttons and box arrived).
+public enum ChatScroll {
+    /// How far the newest line is below what can be seen, in points: the
+    /// content's height less the offset, the visible height and the top
+    /// inset (the content offset counts from above the top inset). Zero or
+    /// less means the end of the list is in view.
+    public static func gap(contentHeight: Double, offsetY: Double, visibleHeight: Double, insetTop: Double) -> Double {
+        contentHeight - (offsetY + visibleHeight + insetTop)
+    }
+
+    /// Within this of the end counts as at the bottom (the box shows).
+    public static let bottomWithin: Double = 60
+    /// Past this, by his own scrolling, he's reading further up.
+    public static let readingPast: Double = 120
+
+    /// The two flags after a scroll, changing only when a threshold is
+    /// crossed (and a gap between the thresholds keeps what was).
+    public static func next(gap: Double, byHand: Bool, atBottom: Bool, readingUp: Bool) -> (atBottom: Bool, readingUp: Bool) {
+        var bottom = atBottom
+        var reading = readingUp
+        if gap < bottomWithin { bottom = true } else if gap > 100 { bottom = false }
+        if gap < 40 { reading = false } else if gap > readingPast, byHand { reading = true }
+        return (bottom, reading)
+    }
+}
+
 public enum ComposerSize {
     /// Tucked away only while scrolled up and idle: never while the field is
     /// focused, holds words or photos, or Jarvis is answering what he just

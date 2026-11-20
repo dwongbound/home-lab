@@ -174,8 +174,12 @@ struct ChatView: View {
                 .frame(maxWidth: ChatColumn.maxWidth)
                 .frame(maxWidth: .infinity)
             }
-            // Opens on the newest message, like Messages.
+            // Opens on the newest message, like Messages, and holds its
+            // distance from the bottom as rows are measured, replies grow
+            // or older pages arrive on top: pinned at the newest stays
+            // pinned, reading further up stays put.
             .defaultScrollAnchor(.bottom)
+            .modifier(BottomAnchorOnResize())
             // For the UI tests: the page scroller is a scroll view too now.
             .accessibilityIdentifier("chatList")
             // Nothing to show yet: message-shaped placeholders in the list's
@@ -235,7 +239,7 @@ struct ChatView: View {
             .task {
                 guard ProcessInfo.processInfo.arguments.contains("-scrollChatUp") else { return }
                 try? await Task.sleep(for: .seconds(4))
-                scroller.scrollTo(chat.items.first?.id, anchor: .top)
+                scroller.scrollTo(chat.items.suffix(shown).first?.id, anchor: .top)
                 readingUp = true
                 if ProcessInfo.processInfo.arguments.contains("-pretendNew") { unseenReply = true }
             }
@@ -324,15 +328,8 @@ struct ChatView: View {
                         compactComposer(scroller)
                             .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     }
-                    bottomChrome
-                        .overlay {
-                            if collapsed {
-                                compactComposer(scroller)
-                                    .transition(reduceMotion ? .opacity : .scale(scale: 0.6).combined(with: .opacity))
-                            }
-                        }
+                    bottomChrome(scroller)
                 }
-                .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeOut(duration: 0.22), value: collapsed)
                 .animation(.easeOut(duration: 0.2), value: readingUp)
             }
             .animation(.easeOut(duration: 0.2), value: atBottom)
@@ -549,13 +546,52 @@ struct ChatView: View {
                           hasPhotos: !picked.isEmpty, sending: chat.isSending) { text in send(text) }
         }
         .padding(.horizontal, 2)
-        // Frosted, so messages scrolling under it don't show through.
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Theme.glass))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.glassEdge))
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
-        .padding(.bottom, 2)
+    }
+
+    /// The Ask box and the round arrow as one piece (Dylan, 2026-11-20):
+    /// scrolled up with nothing typed, the box's glass shrinks into the
+    /// round arrow in place, the words fading out as the arrow fades in;
+    /// back at the bottom, or on a tap, the arrow grows back into the box.
+    /// The field stays laid out underneath, only faded, so its text and
+    /// focus survive and the list never moves.
+    private func morphingBox(_ scroller: ScrollViewProxy) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        return composer
+            .opacity(collapsed ? 0 : 1)
+            .allowsHitTesting(!collapsed)
+            .accessibilityHidden(collapsed)
+            .background {
+                // Frosted, so messages scrolling under it don't show through.
+                shape.fill(.ultraThinMaterial)
+                    .background(shape.fill(Theme.glass))
+                    .overlay(shape.strokeBorder(Theme.glassEdge))
+                    .frame(width: collapsed ? 44 : nil, height: collapsed ? 44 : nil)
+            }
+            .overlay {
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { scroller.scrollTo("bottom", anchor: .bottom) }
+                } label: {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                        .overlay(alignment: .topTrailing) {
+                            if unseenReply {
+                                Circle().fill(OrbView.noticeOrange(onLight: false)).frame(width: 10, height: 10).offset(x: -2, y: 2)
+                            }
+                        }
+                }
+                .foregroundStyle(Theme.frost)
+                .opacity(collapsed ? 1 : 0)
+                .scaleEffect(collapsed || reduceMotion ? 1 : 0.6)
+                .allowsHitTesting(collapsed)
+                .accessibilityHidden(!collapsed)
+                .accessibilityLabel(unseenReply ? "Newest message, a new reply" : "Newest message")
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 4)
+            .padding(.bottom, 2)
+            .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86), value: collapsed)
     }
 
     /// Puts the list on its newest line without animation, then a few more
@@ -585,7 +621,7 @@ struct ChatView: View {
     /// photos and the Ask box. The box is always laid out and only faded
     /// (re-creating the field was where the old lag was); hidden, it can't
     /// be touched, and the list shows through where it was.
-    private var bottomChrome: some View {
+    private func bottomChrome(_ scroller: ScrollViewProxy) -> some View {
         VStack(spacing: 0) {
             if let problem = chat.problem {
                 HStack {
@@ -613,11 +649,7 @@ struct ChatView: View {
                 PickedStrip(photos: $picked)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            composer
-                .opacity(collapsed ? 0 : 1)
-                .offset(y: collapsed && !reduceMotion ? 6 : 0)
-                .allowsHitTesting(!collapsed)
-                .accessibilityHidden(collapsed)
+            morphingBox(scroller)
         }
         .padding(.bottom, 6)
         .frame(maxWidth: ChatColumn.maxWidth)
@@ -785,13 +817,13 @@ private struct ReadingUpWatch: ViewModifier {
                     if phase == .idle { byHand = false }
                 }
                 .onScrollGeometryChange(for: Double.self) { g in
-                    // How far the newest line is below the visible area.
-                    g.contentSize.height + g.contentInsets.bottom - (g.contentOffset.y + g.containerSize.height)
+                    ChatScroll.gap(contentHeight: g.contentSize.height, offsetY: g.contentOffset.y,
+                                   visibleHeight: g.containerSize.height, insetTop: g.contentInsets.top)
                 } action: { _, gap in
-                    if gap < 60 { if !atBottom { atBottom = true } }
-                    else if gap > 100 { if atBottom { atBottom = false } }
-                    if gap < 40 { if readingUp { readingUp = false } }
-                    else if gap > 120, byHand, !readingUp { readingUp = true }
+                    // Only crossings write anything, so scrolling stays cheap.
+                    let next = ChatScroll.next(gap: gap, byHand: byHand, atBottom: atBottom, readingUp: readingUp)
+                    if next.atBottom != atBottom { atBottom = next.atBottom }
+                    if next.readingUp != readingUp { readingUp = next.readingUp }
                 }
         }
     }
@@ -1045,6 +1077,8 @@ private struct GlowShadow: ViewModifier {
 /// soft shimmer (still with Reduce Motion). Read out as "Loading chat".
 private struct ChatSkeleton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Chat is off to the side: the shimmer rests.
+    @Environment(\.orbOffScreen) private var offScreen
     @State private var lit = false
 
     /// (his, width as a share of the row, height)
@@ -1072,15 +1106,24 @@ private struct ChatSkeleton: View {
             .padding(.horizontal, 16)
             // Clear of the composer and the tab bar below.
             .padding(.bottom, 150)
-            .opacity(reduceMotion ? 0.8 : (lit ? 1 : 0.55))
+            .opacity(reduceMotion || offScreen ? 0.8 : (lit ? 1 : 0.55))
         }
         .allowsHitTesting(false)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { lit = true }
-        }
+        .onAppear { shimmer(!offScreen) }
+        .onChange(of: offScreen) { _, away in shimmer(!away) }
         .accessibilityElement()
         .accessibilityLabel("Loading chat")
+    }
+
+    /// Starts the soft pulse, or stops it dead (no animation left running).
+    private func shimmer(_ on: Bool) {
+        guard on, !reduceMotion else {
+            var still = Transaction()
+            still.disablesAnimations = true
+            withTransaction(still) { lit = false }
+            return
+        }
+        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { lit = true }
     }
 }
 
@@ -1088,4 +1131,16 @@ private struct ChatSkeleton: View {
 /// iPhone is narrower than this anyway.
 enum ChatColumn {
     static let maxWidth: CGFloat = 760
+}
+
+/// Keeps the chat's distance from its bottom when its content changes size
+/// (iOS 18 and up; 17 keeps the plain bottom anchor).
+private struct BottomAnchorOnResize: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.defaultScrollAnchor(.bottom, for: .sizeChanges)
+        } else {
+            content
+        }
+    }
 }

@@ -253,6 +253,18 @@ struct RootView: View {
                 }
                 return
             }
+            // `-landscape` turns the window sideways (iPad screenshots).
+            if args.contains("-landscape") {
+                Task { @MainActor in
+                    // Once the window is up, or the request is ignored.
+                    try? await Task.sleep(for: .seconds(1))
+                    if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                        scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { error in
+                            print("landscape request:", error.localizedDescription)
+                        }
+                    }
+                }
+            }
             // `-mockTalkTurns` replays what a Talk session does to Chat
             // without one: opens on Talk, adds two spoken exchanges the way
             // Talk's "done" does (a history load), then swipes to Chat.

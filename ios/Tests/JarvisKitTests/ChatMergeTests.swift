@@ -125,3 +125,33 @@ final class ChatScreenTests: XCTestCase {
         XCTAssertLessThanOrEqual(ChatScreen.retryWaits.reduce(0, +), 20)
     }
 }
+
+final class ChatScrollTests: XCTestCase {
+    /// The numbers measured at the very bottom of Chat in the simulator on
+    /// 2026-11-20 (content 4962, offset 4149, visible 682, insets 118 top
+    /// and 156 bottom): about 13 pt from the end. The old sum said 287.
+    func testTheVeryBottomCountsAsTheBottom() {
+        let gap = ChatScroll.gap(contentHeight: 4962, offsetY: 4149, visibleHeight: 682, insetTop: 118)
+        XCTAssertEqual(gap, 13, accuracy: 0.5)
+        let state = ChatScroll.next(gap: gap, byHand: true, atBottom: false, readingUp: true)
+        XCTAssertTrue(state.atBottom)
+        XCTAssertFalse(state.readingUp)
+    }
+
+    func testScrollingUpByHandIsReadingUp() {
+        let state = ChatScroll.next(gap: 400, byHand: true, atBottom: true, readingUp: false)
+        XCTAssertFalse(state.atBottom)
+        XCTAssertTrue(state.readingUp)
+    }
+
+    func testAScrollHeDidNotMakeIsNotReadingUp() {
+        // A reply growing, or the list settling: not him reading up.
+        let state = ChatScroll.next(gap: 400, byHand: false, atBottom: true, readingUp: false)
+        XCTAssertFalse(state.readingUp)
+    }
+
+    func testBetweenTheThresholdsNothingFlips() {
+        XCTAssertEqual(ChatScroll.next(gap: 80, byHand: true, atBottom: true, readingUp: true).atBottom, true)
+        XCTAssertEqual(ChatScroll.next(gap: 80, byHand: true, atBottom: false, readingUp: true).readingUp, true)
+    }
+}
