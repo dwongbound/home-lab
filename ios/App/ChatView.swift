@@ -143,11 +143,16 @@ struct ChatView: View {
                 try? await Task.sleep(for: .seconds(5))
             }
         }
+        // The first visit loads the chat. The paged tab view runs this again
+        // every time Chat slides in, and that used to refetch the history
+        // mid-slide and redraw the whole chat while it moved: the "tiny
+        // stutter" from Talk to Chat (Dylan, 2026-11-20). Later visits do
+        // nothing; replies arrive through the stream, a push, or coming
+        // back to the app (scenePhase below).
         .task {
-            if !chat.loaded {
-                await app.client.warm()
-                await chat.load(app: app)
-            }
+            guard !chat.loaded else { return }
+            await app.client.warm()
+            await chat.load(app: app)
             // Opened fresh after leaving mid-reply: fetch what finished.
             await chat.catchUp(app: app)
         }
@@ -205,6 +210,19 @@ struct ChatView: View {
             }
             // Opens on the newest message, like Messages.
             .defaultScrollAnchor(.bottom)
+            // For the UI tests: the page scroller is a scroll view too now.
+            .accessibilityIdentifier("chatList")
+            // Nothing to show yet: message-shaped placeholders in the list's
+            // place, so the page still slides in looking like Chat, then
+            // the messages fade in over them once (Dylan, 2026-11-20). With
+            // messages already here it never shows.
+            .overlay {
+                if chat.items.isEmpty && !chat.loaded {
+                    ChatSkeleton()
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.3), value: chat.loaded)
             // Messages run up under the floating buttons (no bar).
             .contentMargins(.top, FloatingStatus.room, for: .scrollContent)
             .scrollDismissesKeyboard(.interactively)
@@ -789,6 +807,14 @@ private struct ComposerField: View {
             }
         }
         .onAppear {
+            #if DEBUG
+            // `-resetDraft`: start with an empty box (UI tests; an empty
+            // `-chat.draft ""` argument doesn't reliably clear it).
+            if ProcessInfo.processInfo.arguments.contains("-resetDraft") {
+                UserDefaults.standard.removeObject(forKey: Self.draftKey)
+                return
+            }
+            #endif
             if text.isEmpty, let saved = UserDefaults.standard.string(forKey: Self.draftKey), !saved.isEmpty { text = saved }
         }
     }
@@ -941,5 +967,49 @@ private struct GlowShadow: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Placeholder bubbles while Chat has nothing at all yet: Jarvis's on the
+/// left, his on the right, varied widths, in the bubbles' own glass, with a
+/// soft shimmer (still with Reduce Motion). Read out as "Loading chat".
+private struct ChatSkeleton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lit = false
+
+    /// (his, width as a share of the row, height)
+    private static let rows: [(Bool, CGFloat, CGFloat)] = [
+        (false, 0.72, 74), (true, 0.38, 40), (false, 0.56, 52),
+        (true, 0.5, 40), (false, 0.8, 96), (true, 0.3, 40), (false, 0.62, 58),
+    ]
+
+    var body: some View {
+        GeometryReader { box in
+            VStack(spacing: 14) {
+                Spacer(minLength: 0)
+                ForEach(Self.rows.indices, id: \.self) { i in
+                    let (his, share, height) = Self.rows[i]
+                    HStack {
+                        if his { Spacer(minLength: 0) }
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.white.opacity(his ? 0.10 : 0.07))
+                            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.06)))
+                            .frame(width: (box.size.width - 32) * share, height: height)
+                        if !his { Spacer(minLength: 0) }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            // Clear of the composer and the tab bar below.
+            .padding(.bottom, 150)
+            .opacity(reduceMotion ? 0.8 : (lit ? 1 : 0.55))
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { lit = true }
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Loading chat")
     }
 }

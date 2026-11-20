@@ -245,7 +245,9 @@ final class TalkModel: ObservableObject {
         case .done:
             working = nil
             exchangeDone = true
-            // Spoken turns land in the web chat too, so the Chat tab catches up.
+            // Spoken turns land in the web chat too: they're laid into Chat
+            // now, while he's still on Talk, so Chat already shows them
+            // when he swipes over (ChatMerge keeps every row it had).
             Task { await app.chat.load(app: app) }
         case .stop:
             break
@@ -253,6 +255,8 @@ final class TalkModel: ObservableObject {
             // Goodbye: the call is over until Dylan taps Talk.
             line = nil
             phase = .off
+            // One quiet merge as the call ends, for the last exchange.
+            Task { await app.chat.load(app: app) }
             level = 0
             working = nil
             problem = nil

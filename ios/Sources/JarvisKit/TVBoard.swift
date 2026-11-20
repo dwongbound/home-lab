@@ -208,6 +208,9 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Jarvis's message (the greeting's full text), first in the rotation.
     case message
     case today, tasks, home, playing, forecast, jarvis, lookout, health, suggestions
+    /// Every home device, grouped, lit when on (Dylan, 2026-11-20: "make
+    /// sure theres a device slide on apple tv"). Display only.
+    case devices
     /// Jarvis's reports, read-only: titles and summaries (read on the iPhone).
     case reports
     /// Who's using the graphics card, as a pie.
@@ -220,6 +223,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .today: return "Today"
         case .tasks: return "Active tasks"
         case .home: return "Home"
+        case .devices: return "Devices"
         case .playing: return "Now playing"
         case .forecast: return "Next hours"
         case .jarvis: return "Jarvis"
@@ -238,6 +242,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .today: return "calendar"
         case .tasks: return "gearshape.2.fill"
         case .home: return "house.fill"
+        case .devices: return "lightbulb.2.fill"
         case .playing: return "play.circle.fill"
         case .forecast: return "cloud.sun.fill"
         case .jarvis: return "sparkles"
@@ -272,6 +277,7 @@ public enum TVBoard {
         if greeting(snapshot, guest: guest)?.body != nil { out.append(.message) }
         if !TodayTimeline.rows(snapshot.today, events: snapshot.events, now: Date(), guest: guest).isEmpty { out.append(.today) }
         if !HomeGlance.lines(snapshot.home).isEmpty { out.append(.home) }
+        if !(snapshot.home?.devices ?? []).isEmpty { out.append(.devices) }
         if !playing(snapshot.home).isEmpty { out.append(.playing) }
         if (snapshot.home?.forecast?.count ?? 0) >= 3 { out.append(.forecast) }
         // What Jarvis is chasing down, with live timers (Dylan, 2026-11-18).

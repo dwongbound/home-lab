@@ -215,4 +215,19 @@ final class CardSwipeTests: XCTestCase {
         XCTAssertFalse(CardSwipe.autoAdvanceAllowed(lastSwipe: now.addingTimeInterval(-30), now: now))
         XCTAssertTrue(CardSwipe.autoAdvanceAllowed(lastSwipe: now.addingTimeInterval(-61), now: now))
     }
+
+    /// The Devices card joins the rotation after Home whenever there are
+    /// devices, guests included (it's the house, not Dylan).
+    func testDevicesCardFollowsHomeWhenThereAreDevices() throws {
+        let json = #"{"generatedAt":"x","services":[],"today":[],"home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"heat","detail":"heating","current":68,"target":70},{"id":"l","name":"Bedroom Lamp","kind":"light","state":"on"}]}}"#
+        let s = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+        let cards = TVBoard.cards(s, guest: false)
+        XCTAssertTrue(cards.contains(.devices))
+        if let home = cards.firstIndex(of: .home), let devices = cards.firstIndex(of: .devices) {
+            XCTAssertEqual(devices, home + 1)
+        }
+        XCTAssertTrue(TVBoard.cards(s, guest: true).contains(.devices))
+        let none = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","services":[],"today":[]}"#.utf8))
+        XCTAssertFalse(TVBoard.cards(none, guest: false).contains(.devices))
+    }
 }

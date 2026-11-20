@@ -120,3 +120,106 @@ public enum ChatHistory {
     /// How often to look again meanwhile.
     public static let catchUpEvery: TimeInterval = 2
 }
+
+// MARK: - Merging a fresh history page into what Chat already shows
+
+/// One chat line as the merge sees it.
+public struct MergeLine: Equatable, Sendable {
+    /// The row's identity in the list (held lines); ignored for fresh ones.
+    public var id: String
+    /// Jarvis's id for the turn, once known.
+    public var turnId: Int?
+    public var isUser: Bool
+    public var text: String
+
+    public init(id: String = "", turnId: Int?, isUser: Bool, text: String) {
+        self.id = id
+        self.turnId = turnId
+        self.isUser = isUser
+        self.text = text
+    }
+}
+
+/// Lays a fresh page of history over the lines Chat already shows without
+/// redrawing what's there (Dylan, 2026-11-20: after talking to Jarvis,
+/// Chat went blank and then everything flashed back in). Every line the
+/// page shares with the list keeps its row identity, so SwiftUI keeps the
+/// row it already drew and only the new turns appear. Matched by turn id;
+/// a bubble sent from this phone whose turn id hasn't arrived yet is
+/// matched by who said it and its text.
+public enum ChatMerge {
+    public struct Plan: Equatable, Sendable {
+        /// Held lines (indices, in order) that stay above the page: the
+        /// older pages he'd already scrolled through.
+        public var older: [Int]
+        /// The page's lines to show, in order: index into the fresh page
+        /// (repeats dropped) and the row identity to give it.
+        public var fresh: [Placed]
+        /// Held lines (indices) that stay after the page: a message still
+        /// going out or a reply still arriving, not in history yet.
+        public var tail: [Int]
+    }
+
+    public struct Placed: Equatable, Sendable {
+        public var index: Int
+        public var id: String
+    }
+
+    /// - Parameters:
+    ///   - keepOlder: false for a window opened round one turn (a notice),
+    ///     which replaces the list instead of adding to it.
+    ///   - newId: an identity for a line the list hasn't shown before
+    ///     with no turn id (rare; history lines carry one).
+    public static func plan(held: [MergeLine], fresh: [MergeLine], keepOlder: Bool = true, newId: () -> String) -> Plan {
+        var heldByTurn: [Int: Int] = [:]
+        for (i, line) in held.enumerated() {
+            if let turn = line.turnId, heldByTurn[turn] == nil { heldByTurn[turn] = i }
+        }
+        var matched = Set<Int>()
+        var usedIds = Set<String>()
+        var seenTurns = Set<Int>()
+        var placed: [Placed] = []
+
+        for (index, line) in fresh.enumerated() {
+            // The same turn twice in one page: once is enough.
+            if let turn = line.turnId {
+                guard seenTurns.insert(turn).inserted else { continue }
+            }
+            var match: Int?
+            if let turn = line.turnId, let i = heldByTurn[turn], !matched.contains(i) {
+                match = i
+            } else {
+                // A line of this phone's with no turn id yet: same speaker,
+                // same words, not matched to anything else.
+                match = held.indices.first { i in
+                    !matched.contains(i) && held[i].turnId == nil
+                        && held[i].isUser == line.isUser && held[i].text == line.text
+                }
+            }
+            let id: String
+            if let i = match, !usedIds.contains(held[i].id) {
+                matched.insert(i)
+                id = held[i].id
+            } else if let turn = line.turnId, !usedIds.contains("turn-\(turn)") {
+                id = "turn-\(turn)"
+            } else {
+                id = newId()
+            }
+            usedIds.insert(id)
+            placed.append(Placed(index: index, id: id))
+        }
+
+        // Older pages stay only when the page continues them: its first
+        // turn is one the list already holds (no gap in between).
+        var older: [Int] = []
+        if keepOlder, let first = placed.first.flatMap({ fresh[$0.index].turnId }), let at = heldByTurn[first] {
+            older = (0..<at).filter { !matched.contains($0) }
+        }
+        // Lines after the last one history knows, never sent to history yet.
+        let last = matched.max() ?? -1
+        let tail = keepOlder
+            ? held.indices.filter { $0 > last && !matched.contains($0) && held[$0].turnId == nil }
+            : []
+        return Plan(older: older, fresh: placed, tail: tail)
+    }
+}

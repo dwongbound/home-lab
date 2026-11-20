@@ -6,10 +6,10 @@ import XCTest
 final class ChatScrollTests: XCTestCase {
     func testScrollingChatHitches() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-push.enabled", "NO"]
+        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-push.enabled", "NO", "-resetDraft"]
         app.launch()
         sleep(4)
-        let list = app.scrollViews.firstMatch
+        let list = app.scrollViews["chatList"]
         XCTAssertTrue(list.waitForExistence(timeout: 10))
         let options = XCTMeasureOptions()
         options.iterationCount = 5

@@ -752,6 +752,25 @@ struct AlwaysOnView: View {
                     .staggered(index)
                 }
             }
+        case .devices:
+            // Every device, grouped as on the phone, two to a row; what's on
+            // is lit warm and the thermostat's temperature reads big. The
+            // palette dims it at night like every card; display only.
+            card(which) {
+                ForEach(Array(DeviceGroups.groups(snapshot.home?.devices ?? []).enumerated()), id: \.element.title) { index, group in
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(group.title)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(inkDim)
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 22, alignment: .top), GridItem(.flexible(), spacing: 22, alignment: .top)], alignment: .leading, spacing: 18) {
+                            ForEach(group.devices) { device in
+                                tvDeviceTile(device)
+                            }
+                        }
+                    }
+                    .staggered(index)
+                }
+            }
         case .playing:
             card(which) {
                 ForEach(Array(TVBoard.playing(snapshot.home).prefix(3).enumerated()), id: \.element.id) { index, device in
@@ -1036,6 +1055,39 @@ struct AlwaysOnView: View {
         case .some(false): return "Can’t reach Jarvis. Is Tailscale on for this Apple TV?"
         case .none: return "Connecting…"
         }
+    }
+
+    /// One device on the Devices card: its symbol in a circle (warm when
+    /// on), the whole name, and its state; a thermostat's temperature big.
+    private func tvDeviceTile(_ device: Device) -> some View {
+        let on = device.isOn
+        return HStack(alignment: .center, spacing: 18) {
+            ZStack {
+                Circle().fill(on ? warm.opacity(0.2) : inkDim.opacity(0.12)).frame(width: 64, height: 64)
+                Image(systemName: TodayWording.deviceSymbol(device))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(on ? warm : inkDim)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(device.name)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                // The thermostat's temperature under its name, big enough
+                // to read from the bed.
+                if device.kind == "climate", let now = device.current {
+                    Text("\(Int(now.rounded()))°")
+                        .font(.system(size: 56, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                }
+                Text(device.isAvailable ? TodayWording.deviceState(device) : "Not responding")
+                    .font(.callout)
+                    .foregroundStyle(on ? warm : inkDim)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     /// A roomy titled card on a real surface, large type.

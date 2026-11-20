@@ -7,7 +7,7 @@ import XCTest
 final class ChatTypingTests: XCTestCase {
     func testTypingIntoChat() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-push.enabled", "NO"]
+        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-push.enabled", "NO", "-resetDraft"]
         app.launch()
         let field = app.descendants(matching: .any)["composer"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))

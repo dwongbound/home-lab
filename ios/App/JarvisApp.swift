@@ -53,6 +53,14 @@ struct RootView: View {
     private func page<Page: View>(_ content: Page, _ screen: GeometryProxy) -> some View {
         content
             .roomForTabBar()
+            // The pager runs edge to edge and its pages don't inherit the
+            // screen's top and bottom insets, so each page is handed them:
+            // content clears the Dynamic Island and the home indicator,
+            // backgrounds still reach the edges.
+            .safeAreaPadding(.top, screen.safeAreaInsets.top)
+            .safeAreaPadding(.bottom, screen.safeAreaInsets.bottom)
+            // One full screen wide: the pager's step.
+            .frame(width: screen.size.width)
     }
 
     /// The last touch on the bar, tab change or scroll up.
@@ -115,22 +123,38 @@ struct RootView: View {
         // see the real insets, so content clears the Dynamic Island and the
         // home indicator while backgrounds and scrolling reach the edges.
         // The keyboard rule is untouched.
+        // A paging scroll view rather than a paged TabView (Dylan,
+        // 2026-11-20: tapping a tab made the page "just appear"): a TabView
+        // doesn't animate a tab chosen in code, while a scroll position
+        // does, so a tap slides across exactly like a swipe. All three pages
+        // are built once and stay drawn beside each other, so a page never
+        // arrives empty or pays its first-draw cost mid-slide.
         GeometryReader { screen in
-            TabView(selection: $app.tab) {
-                // Home, Talk, Chat, left to right (AppTab's order).
-                page(TodayView(today: app.today), screen).tag(AppTab.today)
-                page(TalkView(talk: app.talk), screen)
-                    .environment(\.orbOffScreen, app.tab != .talk)
-                    .tag(AppTab.talk)
-                // Chat keeps the same fixed room as every page. Build 19 let
-                // it follow the bar's size, and that looped on 2026-11-19:
-                // the bar shrinking moved Chat's content, which read as a
-                // scroll, which moved the bar, until the app froze.
-                page(ChatView(chat: app.chat), screen).tag(AppTab.chat)
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    // Home, Talk, Chat, left to right (AppTab's order).
+                    page(TodayView(today: app.today), screen).id(AppTab.today)
+                    page(TalkView(talk: app.talk), screen)
+                        .environment(\.orbOffScreen, app.tab != .talk)
+                        .id(AppTab.talk)
+                    // Chat keeps the same fixed room as every page. Build 19
+                    // let it follow the bar's size, and that looped on
+                    // 2026-11-19: the bar shrinking moved Chat's content,
+                    // which read as a scroll, which moved the bar, until the
+                    // app froze.
+                    page(ChatView(chat: app.chat), screen).id(AppTab.chat)
+                }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .scrollPosition(id: Binding(get: { Optional(app.tab) }, set: { if let tab = $0, tab != app.tab { app.tab = tab } }))
             .ignoresSafeArea(.container, edges: .vertical)
         }
+        // Pays the first-draw costs before the first swipe (Dylan,
+        // 2026-11-20: a tiny glitch Home → Talk, only the first time).
+        .background { WarmUp() }
         // The keyboard goes as soon as a page swipe starts, not only once
         // the next page has landed.
         .simultaneousGesture(DragGesture(minimumDistance: PageSwipe.minDistance).onChanged { drag in
@@ -220,6 +244,20 @@ struct RootView: View {
                 if let notice = app.notices.first(where: { $0.turnId != nil }) {
                     await app.openTurn(99_999, about: notice)
                 }
+                return
+            }
+            // `-mockTalkTurns` replays what a Talk session does to Chat
+            // without one: opens on Talk, adds two spoken exchanges the way
+            // Talk's "done" does (a history load), then swipes to Chat.
+            if args.contains("-mockTalkTurns") {
+                app.talk.started = true
+                app.tab = .talk
+                await app.chat.load(app: app)
+                try? await Task.sleep(for: .seconds(3))
+                DemoChat.talkTurns += 2
+                await app.chat.load(app: app)
+                try? await Task.sleep(for: .seconds(2))
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { app.tab = .chat }
                 return
             }
             // `-onTalkQuiet` opens on Talk without calling Jarvis (layout checks).
@@ -647,4 +685,58 @@ extension View {
     func floatingStatus(showsStatus: Bool) -> some View {
         overlay(alignment: .top) { StatusLine(showsStatus: showsStatus) }
     }
+}
+
+/// Draws the costly pieces once, invisibly, a moment after launch: the orb's
+/// Canvas, a glass chip and a chat bubble with markdown. Their one-time
+/// setup (shaders, the glass material, fonts, the markdown parser) then
+/// happens while Home sits still, not as Talk or Chat first slides in.
+/// Nothing here opens a Talk line or the microphone; the one network call is
+/// the chat's newest page, which Chat would fetch anyway. Its own
+/// view with its own state, so switching it on and off redraws nothing else.
+private struct WarmUp: View {
+    @EnvironmentObject private var app: AppModel
+    @State private var drawing = false
+
+    var body: some View {
+        ZStack {
+            if drawing {
+                OrbView(state: .listening, size: 280, tappable: false)
+                JarvisBubble(item: Self.sample, onWrong: {})
+                    .frame(width: 300)
+                Text("4 new · 1 running")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .glassChip(Capsule())
+            }
+        }
+        // Not 0: a fully transparent view isn't drawn at all.
+        .opacity(0.02)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .task {
+            // After Home has settled, for a few frames, then gone.
+            try? await Task.sleep(for: .seconds(1.2))
+            drawing = true
+            try? await Task.sleep(for: .milliseconds(400))
+            drawing = false
+            // Then the newest page of the chat, in the background, so Chat
+            // already has its messages when he first swipes over (Dylan,
+            // 2026-11-20: Chat slid in empty and then popped in).
+            let chat = app.chat
+            if !chat.loaded {
+                await app.client.warm()
+                if !chat.loaded {
+                    await chat.load(app: app)
+                    await chat.catchUp(app: app)
+                }
+            }
+        }
+    }
+
+    private static let sample: ChatItem = {
+        var item = ChatItem.jarvis("Here's the **plan**: leave by `9:40`, *rain* until noon.", model: "claude", finished: true, question: "")
+        item.id = "warm-up"
+        return item
+    }()
 }

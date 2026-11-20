@@ -500,11 +500,10 @@ final class AppModel: ObservableObject {
 
     /// Notes whether the last call reached the PC, for the status line.
     func noteReach(_ error: Error?) {
-        if let error = error as? JarvisError, error == .unreachable {
-            reachable = false
-        } else {
-            reachable = true
-        }
+        // Written only on a change: this runs on every refresh, and each
+        // write redraws the whole app.
+        let reached = (error as? JarvisError) != .unreachable
+        if reachable != reached { reachable = reached }
         let restarting = error.map(ConnectionStatus.isJustNotAnswering) ?? false
         if restarting != jarvisRestarting { jarvisRestarting = restarting }
     }

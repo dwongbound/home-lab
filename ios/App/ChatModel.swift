@@ -12,7 +12,9 @@ struct ChatItem: Identifiable, Equatable {
         case approval(Approval)
     }
 
-    let id: String
+    /// The row's identity. Kept across reloads (ChatMerge), so a refresh
+    /// never makes SwiftUI rebuild rows it already drew.
+    var id: String
     var kind: Kind
     var text: String
     /// Jarvis's lines: which brain wrote it ("claude", "ornith").
@@ -49,6 +51,12 @@ struct ChatItem: Identifiable, Equatable {
     static func jarvis(_ text: String, model: String?, finished: Bool, question: String) -> ChatItem {
         ChatItem(id: UUID().uuidString, kind: .jarvis, text: text, model: model, finished: finished, question: question, outcome: nil)
     }
+
+    /// A line of Dylan's or Jarvis's (not an approval card).
+    var isTurn: Bool { if case .approval = kind { return false } else { return true } }
+
+    /// What the history merge compares (JarvisKit ChatMerge).
+    var mergeLine: MergeLine { MergeLine(id: id, turnId: turnId, isUser: kind == .user, text: text) }
 
     /// An approval card.
     static func approval(_ approval: Approval) -> ChatItem {
@@ -106,8 +114,11 @@ final class ChatModel: ObservableObject {
         // `-demoChat` fills Chat with a long mixed history and reaches no
         // Jarvis (the scroll-lag test, UITests/ChatScrollTests.swift).
         if ProcessInfo.processInfo.arguments.contains("-demoChat") {
-            items = DemoChat.items()
-            loaded = true
+            // Through the same merge as a real load, so the demo shows what
+            // a reload does to the rows (`-mockTalkTurns` adds turns).
+            let next = merged(DemoChat.items(), around: false)
+            if next != items { items = next }
+            if !loaded { loaded = true }
             return
         }
         #endif
@@ -116,20 +127,30 @@ final class ChatModel: ObservableObject {
             // The newest page, or a window round a turn a notice opened.
             let page = try await client.history(turnId.map { .around($0, limit: HistoryQuery.pageSize) } ?? .newest(limit: HistoryQuery.pageSize))
             let turns = page.turns
-            older.reset(hasMore: page.hasMore)
-            newerOnServer = page.hasNewer
-            lastPending = page.pending
             let pending = try await client.pendingApprovals()
             // Settled approvals aren't in the PC's history, so they're kept
             // from before, each after the line it followed.
             let settled = settledApprovals()
-            var fresh = Self.items(from: turns).map { item in
-                var item = item
-                if item.kind == .user, item.photoCount > 0 {
-                    item.photos = sentPhotos[item.text] ?? PhotoDiskCache.load(text: item.text, count: item.photoCount)
-                }
-                return item
+            // The page is laid over what Chat shows, never swapped in
+            // for it (Dylan, 2026-11-20: after Talk, Chat went blank and
+            // then everything flashed in, because every reload gave every
+            // row a new identity). Rows already shown keep theirs.
+            let window = turnId != nil
+            var fresh = merged(Self.items(from: turns), around: window)
+            // Older pages stayed above the page (he'd scrolled through them).
+            let keptOlder = !window && fresh.first?.turnId != turns.first?.id
+            // Each value is written only when it changed: every write
+            // redraws Chat, and a refresh that finds nothing new should
+            // draw nothing (the Talk → Chat stutter, same day).
+            // When older pages stayed, so does what's known about paging
+            // past them.
+            if !keptOlder {
+                var paging = older
+                paging.reset(hasMore: page.hasMore)
+                if paging != older { older = paging }
             }
+            if newerOnServer != page.hasNewer { newerOnServer = page.hasNewer }
+            lastPending = page.pending
             for (afterText, item) in settled {
                 let at = afterText.flatMap { text in fresh.lastIndex(where: { $0.text == text }) }.map { $0 + 1 } ?? fresh.endIndex
                 fresh.insert(item, at: at)
@@ -138,13 +159,14 @@ final class ChatModel: ObservableObject {
             // An approval that's over never comes back as a card, even while
             // the PC still lists it for a moment.
             let waiting = app.settled.waiting(pending)
-            items = fresh + waiting.map(ChatItem.approval).filter { !known.contains($0.id) }
+            let next = fresh + waiting.map(ChatItem.approval).filter { !known.contains($0.id) }
+            if next != items { items = next }
             for item in items {
                 if case .approval(let approval) = item.kind, item.outcome == nil, let line = app.settled.line(for: approval.id) {
                     showSettled(approval.id, line: line)
                 }
             }
-            problem = nil
+            if problem != nil { problem = nil }
             app.noteReach(nil)
         } catch {
             // A refresh in the background never puts an error in Chat
@@ -152,7 +174,29 @@ final class ChatModel: ObservableObject {
             // app); the status line shows whether Jarvis can be reached.
             app.noteReach(error)
         }
-        loaded = true
+        if !loaded { loaded = true }
+    }
+
+    /// History lines laid over the turn lines Chat holds (ChatMerge): rows
+    /// already shown keep their identity and photos, new turns are added,
+    /// older pages and lines still going out stay. Approvals are put back
+    /// by the caller.
+    private func merged(_ page: [ChatItem], around window: Bool) -> [ChatItem] {
+        let held = items.filter(\.isTurn)
+        let plan = ChatMerge.plan(held: held.map(\.mergeLine), fresh: page.map(\.mergeLine), keepOlder: !window) { UUID().uuidString }
+        let heldById = Dictionary(held.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let laid = plan.fresh.map { placed -> ChatItem in
+            var item = page[placed.index]
+            item.id = placed.id
+            if let before = heldById[placed.id], !before.photos.isEmpty {
+                // The same images, so the row doesn't count as changed.
+                item.photos = before.photos
+            } else if item.kind == .user, item.photoCount > 0 {
+                item.photos = sentPhotos[item.text] ?? PhotoDiskCache.load(text: item.text, count: item.photoCount)
+            }
+            return item
+        }
+        return plan.older.map { held[$0] } + laid + plan.tail.map { held[$0] }
     }
 
     /// What the server last said about a reply still being written.
@@ -181,7 +225,7 @@ final class ChatModel: ObservableObject {
     func catchUp(app: AppModel) async {
         guard !isSending, !catchingUp, loaded else { return }
         catchingUp = true
-        defer { catchingUp = false; working = nil }
+        defer { catchingUp = false; if working != nil { working = nil } }
         let started = Date()
         while Date().timeIntervalSince(started) < ChatHistory.catchUpSeconds {
             await load(app: app)
@@ -515,7 +559,20 @@ enum DemoChat {
             reply.kept = i % 11 == 0
             out.append(reply)
         }
+        // `-mockTalkTurns`: exchanges as if spoken on Talk, added by the
+        // debug run below and picked up by the next load.
+        for i in 0..<talkTurns {
+            var me = ChatItem.user("talk \(i)", photoCount: 0)
+            me.turnId = 5000 + i * 2
+            out.append(me)
+            var reply = ChatItem.jarvis("Done, from Talk (\(i)).", model: "claude", finished: true, question: "talk \(i)")
+            reply.turnId = 5001 + i * 2
+            out.append(reply)
+        }
         return out
     }
+
+    /// Spoken exchanges added by `-mockTalkTurns`.
+    nonisolated(unsafe) static var talkTurns = 0
 }
 #endif

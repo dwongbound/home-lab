@@ -26,6 +26,14 @@ final class TodayModel: ObservableObject {
             snapshot = try await app.client.snapshot()
             // The Watch's board and complications follow every snapshot.
             WatchBridge.shared.push(snapshot)
+            // A notice about a chat turn Chat doesn't have yet (a message
+            // Jarvis sent unasked): lay it into Chat now, quietly, so it's
+            // there before he swipes over or taps the notice.
+            let chat = app.chat
+            if chat.loaded, !chat.isSending, let newest = chat.items.compactMap(\.turnId).max(),
+               (snapshot?.notices ?? []).contains(where: { ($0.turnId ?? 0) > newest }) {
+                Task { await chat.load(app: app) }
+            }
             problem = nil
             app.noteReach(nil)
         } catch {
@@ -342,7 +350,8 @@ struct TodayView: View {
         let lights = devices.filter { $0.kind == "light" }
         let lit = lights.filter(\.isOn).count
         return card("Home", icon: "house.fill", trailing: (lights.isEmpty ? "All devices" : "\(lit) of \(lights.count) lights on") + "  ›") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10)], spacing: 10) {
+            // Two to a row on every iPhone (Dylan, 2026-11-20), more on iPad.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], spacing: 10) {
                 ForEach(devices) { device in
                     DeviceTile(device: device)
                 }
@@ -613,6 +622,9 @@ struct DeviceTile: View {
     let device: Device
     /// Bigger type for the kiosk across the room.
     var large = false
+    /// The devices drawer: every word of the name and state, wrapping as
+    /// far as it needs, never cut.
+    var full = false
 
     /// Symbol in a circle, then the name over the state.
     var body: some View {
@@ -627,14 +639,15 @@ struct DeviceTile: View {
                 // Two lines before any "…", a touch smaller if need be
                 // (Dylan, 2026-11-19: "i cant see the full name").
                 Text(device.name)
-                    .font(large ? .body.weight(.semibold) : .footnote.weight(.semibold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                    .font(large || full ? .body.weight(.semibold) : .footnote.weight(.semibold))
+                    .lineLimit(full ? nil : 2)
+                    .minimumScaleFactor(full ? 1 : 0.85)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(TodayWording.deviceState(device))
-                    .font(large ? .subheadline : .caption)
-                    .foregroundStyle(Theme.frostDim)
-                    .lineLimit(1)
+                Text(device.isAvailable ? TodayWording.deviceState(device) : "Not responding")
+                    .font(large || full ? .subheadline : .caption)
+                    .foregroundStyle(device.isOn ? Theme.ember : Theme.frostDim)
+                    .lineLimit(full ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: full)
             }
             Spacer(minLength: 0)
         }
