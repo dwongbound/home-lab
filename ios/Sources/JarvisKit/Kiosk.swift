@@ -425,3 +425,35 @@ public enum StopReply: Equatable, Sendable {
         return .failed(message.isEmpty || message.hasPrefix("Jarvis answered") ? "Jarvis couldn’t stop it." : message)
     }
 }
+
+/// Home's first load (Dylan, 2026-11-20: "a dynamic full page loader and
+/// then fade everything in once its fetched"): one loader until the first
+/// snapshot, then everything at once. Later refreshes never show it again.
+public enum HomeScreen: Equatable, Sendable {
+    case loading, failed, ready
+
+    /// A snapshot, however old, is the page; no snapshot yet is the loader,
+    /// or "couldn't reach Jarvis" once the first tries have all missed.
+    public static func state(hasSnapshot: Bool, firstLoadFailed: Bool) -> HomeScreen {
+        if hasSnapshot { return .ready }
+        return firstLoadFailed ? .failed : .loading
+    }
+
+    /// Seconds before the next try while there's no snapshot yet: quick at
+    /// first (a launch while the network wakes), then the usual pace.
+    public static func retryWait(misses: Int, usual: Double) -> Double {
+        let quick: [Double] = [1, 2, 4, 8]
+        return misses >= 1 && misses <= quick.count ? quick[misses - 1] : usual
+    }
+
+    /// Misses before the loader says it couldn't reach Jarvis.
+    public static let missesBeforeFailed = 4
+    /// Or this long since the first try with nothing to show (a try against
+    /// a dead address can itself take seconds, retries included).
+    public static let failAfterSeconds: Double = 10
+
+    /// Whether a failed try should turn the loader into "couldn't reach".
+    public static func gaveUp(misses: Int, sinceFirstTry: Double) -> Bool {
+        misses >= missesBeforeFailed || sinceFirstTry >= failAfterSeconds
+    }
+}

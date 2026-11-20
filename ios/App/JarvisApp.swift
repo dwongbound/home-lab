@@ -215,7 +215,10 @@ struct RootView: View {
         .task {
             while !Task.isCancelled {
                 await app.today.load(app: app)
-                try? await Task.sleep(for: .seconds(Orbit.refreshSeconds(orangeShowing: !app.notices.isEmpty)))
+                // Quick retries while Home has nothing to show yet.
+                let usual = Orbit.refreshSeconds(orangeShowing: !app.notices.isEmpty)
+                let wait = app.today.snapshot == nil ? HomeScreen.retryWait(misses: app.today.misses, usual: usual) : usual
+                try? await Task.sleep(for: .seconds(wait))
             }
         }
         // `-perfCycle`: a measuring run for Instruments, launched only by a
@@ -731,8 +734,12 @@ struct PadKioskAndNotices: ViewModifier {
 extension View {
     /// The floating status and buttons over a page (Dylan, 2026-11-20: no
     /// bar across the top; glass buttons over the content instead).
-    func floatingStatus(showsStatus: Bool) -> some View {
-        overlay(alignment: .top) { StatusLine(showsStatus: showsStatus) }
+    func floatingStatus(showsStatus: Bool, visible: Bool = true) -> some View {
+        overlay(alignment: .top) {
+            StatusLine(showsStatus: showsStatus)
+                .opacity(visible ? 1 : 0)
+                .allowsHitTesting(visible)
+        }
     }
 }
 

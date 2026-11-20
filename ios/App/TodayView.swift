@@ -9,6 +9,13 @@ import JarvisKit
 final class TodayModel: ObservableObject {
     @Published private(set) var snapshot: Snapshot?
     @Published private(set) var loading = false
+    /// The first tries all missed with no snapshot yet: Home says it
+    /// couldn't reach Jarvis (and keeps trying). Cleared by a snapshot.
+    @Published private(set) var firstLoadFailed = false
+    /// Tries in a row with no snapshot to show.
+    private(set) var misses = 0
+    /// When the first try started.
+    private var firstTry: Date?
     @Published var problem: String?
     /// Offers hidden here, so they vanish before the next snapshot drops them.
     @Published private(set) var hidden: Set<String> = []
@@ -18,12 +25,15 @@ final class TodayModel: ObservableObject {
     /// Fetches the snapshot; keeps the last one on screen if this fails.
     func load(app: AppModel) async {
         loading = true
+        if firstTry == nil { firstTry = Date() }
         #if DEBUG
         // `-demoSnapshot` shows the sample data even when Jarvis answers.
         if let demo = DemoSnapshot.snapshot { snapshot = demo; loading = false; return }
         #endif
         do {
             snapshot = try await app.client.snapshot()
+            misses = 0
+            if firstLoadFailed { firstLoadFailed = false }
             // The Watch's board and complications follow every snapshot.
             WatchBridge.shared.push(snapshot)
             // A notice about a chat turn Chat doesn't have yet (a message
@@ -39,6 +49,11 @@ final class TodayModel: ObservableObject {
         } catch {
             problem = ConnectionStatus.isJustNotAnswering(error) || (error as? JarvisError) == .unreachable ? nil : error.localizedDescription
             app.noteReach(error)
+            if snapshot == nil {
+                misses += 1
+                let since = Date().timeIntervalSince(firstTry ?? Date())
+                if HomeScreen.gaveUp(misses: misses, sinceFirstTry: since), !firstLoadFailed { firstLoadFailed = true }
+            }
             #if DEBUG
             if snapshot == nil, let demo = DemoSnapshot.snapshot { snapshot = demo }
             #endif
@@ -73,6 +88,12 @@ struct TodayView: View {
     /// The Home drawer: every device, full names.
     @State private var showDevices = false
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Loader, couldn't-reach, or the page (JarvisKit HomeScreen).
+    private var screen: HomeScreen {
+        HomeScreen.state(hasSnapshot: today.snapshot != nil, firstLoadFailed: today.firstLoadFailed)
+    }
     /// Home is off to the side (its spinners rest).
     @Environment(\.orbOffScreen) private var pageOffScreen
     /// The playbook ids, fetched lightly when Home shows (at most once a minute).
@@ -122,9 +143,25 @@ struct TodayView: View {
                 }
                 .reportsScrollToTabBar()
             }
+            // The whole page, tiles and status included, waits for the
+            // first snapshot and then fades in at once (Dylan, 2026-11-20:
+            // "including the top 3 panels? right now it just flashes in").
+            .opacity(screen == .ready ? 1 : 0)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.35).delay(0.2), value: screen == .ready)
             VStack { TopFade(); Spacer() }
+            if screen != .ready {
+                HomeLoader(failed: screen == .failed) {
+                    Task { await today.load(app: app) }
+                }
+                .transition(reduceMotion ? .identity : .asymmetric(
+                    insertion: .identity,
+                    // The orb lifts and shrinks away as the page fades in.
+                    removal: .opacity.combined(with: .scale(scale: 0.55)).combined(with: .offset(y: -60))
+                ))
+            }
         }
-        .floatingStatus(showsStatus: true)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.7), value: screen)
+        .floatingStatus(showsStatus: true, visible: screen == .ready)
         .sheet(isPresented: $showDevices) {
             if let home = today.snapshot?.home { DevicesSheet(home: home) }
         }
@@ -190,13 +227,6 @@ struct TodayView: View {
             } else {
                 cards(snapshot)
             }
-        } else if today.loading {
-            HStack(spacing: 10) {
-                ProgressView()
-                Text("Jarvis is thinking…").foregroundStyle(Theme.frostDim)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 80)
         }
     }
 
@@ -716,5 +746,34 @@ struct Masonry: Layout {
             view.place(at: CGPoint(x: bounds.minX + CGFloat(spot.column) * (laid.columnWidth + spacing), y: bounds.minY + spot.y),
                        proposal: ProposedViewSize(width: laid.columnWidth, height: nil))
         }
+    }
+}
+
+/// Home before its first snapshot: the orb, thinking, with "Loading" under
+/// it; or, when the first tries all missed, "Couldn't reach Jarvis" with
+/// Retry. The orb rests while Home is off to the side (orbOffScreen).
+private struct HomeLoader: View {
+    let failed: Bool
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            OrbView(state: failed ? .listening : .thinking, size: 140, tappable: false, dim: failed ? 0.55 : 1)
+            if failed {
+                Text("Couldn't reach Jarvis.")
+                    .foregroundStyle(Theme.frostDim)
+                Button("Retry", action: retry)
+                    .buttonStyle(.bordered)
+                    .tint(Theme.glacier)
+                    .frame(minHeight: 44)
+            } else {
+                Text("Loading")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.frostDim)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(failed ? "Couldn't reach Jarvis" : "Loading")
     }
 }

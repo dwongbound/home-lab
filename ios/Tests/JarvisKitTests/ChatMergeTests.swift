@@ -179,3 +179,32 @@ final class NewReplyDotTests: XCTestCase {
         XCTAssertFalse(NewReplyDot.lights(endChanged: true, lastIsJarvis: false, atBottom: false, sending: false))
     }
 }
+
+final class HomeScreenTests: XCTestCase {
+    func testTheLoaderShowsUntilTheFirstSnapshot() {
+        XCTAssertEqual(HomeScreen.state(hasSnapshot: false, firstLoadFailed: false), .loading)
+        XCTAssertEqual(HomeScreen.state(hasSnapshot: true, firstLoadFailed: false), .ready)
+    }
+
+    func testARefreshNeverBringsTheLoaderBack() {
+        // Once there's a snapshot, a failed refresh keeps the page.
+        XCTAssertEqual(HomeScreen.state(hasSnapshot: true, firstLoadFailed: true), .ready)
+    }
+
+    func testAFailedFirstLoadSaysSo() {
+        XCTAssertEqual(HomeScreen.state(hasSnapshot: false, firstLoadFailed: true), .failed)
+    }
+
+    func testFirstRetriesAreQuickThenTheUsualPace() {
+        XCTAssertEqual((1...5).map { HomeScreen.retryWait(misses: $0, usual: 15) }, [1, 2, 4, 8, 15])
+        XCTAssertEqual(HomeScreen.retryWait(misses: 0, usual: 15), 15)
+    }
+}
+
+final class HomeGiveUpTests: XCTestCase {
+    func testGivesUpAfterFourMissesOrTenSeconds() {
+        XCTAssertFalse(HomeScreen.gaveUp(misses: 1, sinceFirstTry: 3))
+        XCTAssertTrue(HomeScreen.gaveUp(misses: 4, sinceFirstTry: 3))
+        XCTAssertTrue(HomeScreen.gaveUp(misses: 1, sinceFirstTry: 12))
+    }
+}
