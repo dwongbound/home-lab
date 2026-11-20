@@ -48,36 +48,435 @@ final class PlaybooksModel: ObservableObject {
     /// Fetches the playbooks.
     #if DEBUG
     static let demoBook = #"""
-    {"book": {"playbooks": [
-      {"id": "nightly", "name": "Nightly self-improvement", "enabled": true, "madeBy": "dylan",
-       "purpose": "Jarvis looks back over the day and tidies what it learned.",
-       "trigger": {"type": "time", "at": "03:30", "days": []},
-       "steps": [{"type": "job", "job": "nightly"}, {"type": "notify", "text": "Nightly pass done"}],
-       "done": ["Memory tidied"], "lastRun": {"at": "2026-11-20T03:30:00Z", "ok": true, "detail": "done"}},
-      {"id": "arrive-home", "name": "Arrive home", "enabled": true, "madeBy": "dylan", "purpose": "",
-       "trigger": {"type": "arrive", "zone": "home", "minAway": 15},
-       "steps": [{"type": "app", "entity": "media_player.tv", "app": "Jarvis"}]}
-      ,{"id": "dinner", "name": "Dinner call", "enabled": true, "madeBy": "dylan", "purpose": "",
-       "trigger": {"type": "manual"},
-       "steps": [{"type": "speak", "speaker": "media_player.tv", "words": "Dinner is ready", "loud": true, "repeat": 2},
-                 {"type": "think", "text": "Pick a playlist", "model": "auto", "confirm": false}]}
-    ], "options": {"devices": [], "scenes": [], "apps": [{"entity": "media_player.tv", "name": "Living room TV", "apps": ["Jarvis"]}], "zones": ["home"],
-                   "jobs": [{"id": "nightly", "name": "Nightly self-improvement"}],
-                   "stepTypes": [
-                     {"type": "speak", "label": "Say something out loud", "short": "Speak", "runs": "code", "summary": "Say “{words}” on {speaker.name}",
-                      "fields": [{"key": "speaker", "label": "Speaker", "kind": "choice", "required": true, "choicesFrom": "apps"},
-                                 {"key": "words", "label": "Words", "kind": "text", "required": true},
-                                 {"key": "loud", "label": "Loud", "kind": "bool", "required": false, "default": true},
-                                 {"key": "repeat", "label": "Times", "kind": "number", "required": true, "min": 1, "max": 3}]},
-                     {"type": "think", "label": "Have Jarvis work something out", "short": "Ask Jarvis", "runs": "thinking", "summary": "Jarvis: {text}",
-                      "fields": [{"key": "text", "label": "What Jarvis should do", "kind": "longtext", "required": true},
-                                 {"key": "model", "label": "Who does it", "kind": "choice", "required": false, "choicesFrom": "thinkers"},
-                                 {"key": "confirm", "label": "Ask me first", "kind": "bool", "required": false, "default": false}]},
-                     {"type": "job", "label": "Run one of Jarvis’s jobs", "short": "Jarvis job", "summary": "Run: {job.name}",
-                      "fields": [{"key": "job", "label": "Job", "kind": "choice", "required": true, "choicesFrom": "jobs"}]},
-                     {"type": "notify", "label": "Send me a notification", "short": "Notify me", "summary": "Notify me: {text}",
-                      "fields": [{"key": "text", "label": "Message", "kind": "longtext", "required": true}]}
-                   ]}}}
+    {
+     "book": {
+      "playbooks": [
+       {
+        "id": "arrive-home",
+        "name": "Arrive home",
+        "enabled": true,
+        "purpose": "",
+        "whenToUse": "",
+        "trigger": {
+         "type": "arrive",
+         "zone": "home",
+         "minAway": 15
+        },
+        "inputs": [],
+        "steps": [
+         {
+          "type": "app",
+          "entity": "media_player.tv",
+          "app": "Jarvis"
+         }
+        ],
+        "decisions": [],
+        "done": [],
+        "edgeCases": [],
+        "standard": "",
+        "badVersion": "",
+        "madeBy": "dylan"
+       },
+       {
+        "id": "nightly",
+        "name": "Nightly self-improvement",
+        "enabled": true,
+        "purpose": "",
+        "whenToUse": "Every night after the day's talking is done.",
+        "trigger": {
+         "type": "time",
+         "at": "03:30",
+         "days": []
+        },
+        "inputs": [],
+        "steps": [
+         {
+          "type": "job",
+          "job": "nightly"
+         }
+        ],
+        "decisions": [],
+        "done": [
+         "The day's flagged mistakes were reviewed",
+         "The regression eval cases were run and scored",
+         "Memory was tidied (new facts filed, duplicates merged)",
+         "At most 3 improvement ideas were proposed, each waiting for his OK"
+        ],
+        "edgeCases": [
+         "Self-change proposals still need his OK before anything changes",
+         "Never reads data/memory.md and never pushes anything"
+        ],
+        "standard": "",
+        "badVersion": "",
+        "madeBy": "dylan"
+       },
+       {
+        "id": "every-kind",
+        "name": "Every kind",
+        "enabled": true,
+        "madeBy": "dylan",
+        "purpose": "",
+        "trigger": {
+         "type": "manual"
+        },
+        "steps": [
+         {
+          "type": "device",
+          "entity": "climate.bedroom",
+          "command": "set_temperature",
+          "value": 68
+         },
+         {
+          "type": "scene",
+          "entity": "scene.movie"
+         },
+         {
+          "type": "app",
+          "entity": "media_player.tv",
+          "app": "Netflix"
+         },
+         {
+          "type": "notify",
+          "text": "Dinner is ready"
+         },
+         {
+          "type": "think",
+          "text": "Pick a playlist",
+          "model": "auto",
+          "confirm": false
+         },
+         {
+          "type": "email",
+          "to": "someone@example.com",
+          "subject": "Hi",
+          "body": "Hello",
+          "confirm": true
+         },
+         {
+          "type": "wait",
+          "seconds": 90
+         },
+         {
+          "type": "job",
+          "job": "nightly"
+         }
+        ]
+       }
+      ],
+      "options": {
+       "devices": [
+        {
+         "entity": "light.desk",
+         "name": "Desk lamp",
+         "kind": "light",
+         "commands": [
+          "turn_on",
+          "turn_off"
+         ]
+        },
+        {
+         "entity": "climate.bedroom",
+         "name": "Thermostat",
+         "kind": "climate",
+         "commands": [
+          "set_temperature",
+          "set_hvac_mode",
+          "turn_off"
+         ]
+        },
+        {
+         "entity": "media_player.tv",
+         "name": "Living room TV",
+         "kind": "media_player",
+         "commands": [
+          "turn_on",
+          "turn_off",
+          "volume_set",
+          "select_source"
+         ]
+        }
+       ],
+       "scenes": [
+        {
+         "entity": "scene.movie",
+         "name": "Movie"
+        }
+       ],
+       "apps": [
+        {
+         "entity": "media_player.tv",
+         "name": "Living room TV",
+         "apps": [
+          "Jarvis",
+          "Netflix"
+         ]
+        }
+       ],
+       "zones": [
+        "home"
+       ],
+       "jobs": [
+        {
+         "id": "nightly",
+         "name": "The nightly self-improvement pass (memory, flagged mistakes, evals, tidy-up, ideas)"
+        }
+       ],
+       "thinkers": [
+        {
+         "id": "worker",
+         "name": "Ornith (simple, stays on the PC)"
+        },
+        {
+         "id": "claude",
+         "name": "Claude (judgment and writing)"
+        }
+       ],
+       "stepTypes": [
+        {
+         "type": "device",
+         "label": "Control a device",
+         "short": "Device",
+         "runs": "code",
+         "summary": "{entity.name}: {command} {value}",
+         "fields": [
+          {
+           "key": "entity",
+           "label": "Device",
+           "kind": "choice",
+           "required": true,
+           "choicesFrom": "devices"
+          },
+          {
+           "key": "command",
+           "label": "Do",
+           "kind": "choice",
+           "required": true,
+           "choicesFrom": "devices",
+           "dependsOn": "entity",
+           "choicesKey": "commands"
+          },
+          {
+           "key": "value",
+           "label": "Value",
+           "kind": "by_command",
+           "required": false,
+           "dependsOn": "command",
+           "byCommand": {
+            "turn_on": {
+             "label": "Brightness %",
+             "kind": "number",
+             "required": false,
+             "min": 1,
+             "max": 100,
+             "onlyDomains": [
+              "light"
+             ]
+            },
+            "volume_set": {
+             "label": "Volume (0 to 1)",
+             "kind": "number",
+             "required": true,
+             "min": 0,
+             "max": 1,
+             "step": 0.05
+            },
+            "select_source": {
+             "label": "App or input",
+             "kind": "choice",
+             "required": true,
+             "choicesFrom": "apps",
+             "dependsOn": "entity",
+             "choicesKey": "apps"
+            },
+            "set_temperature": {
+             "label": "Temperature (°F)",
+             "kind": "number",
+             "required": true,
+             "min": 45,
+             "max": 90
+            },
+            "set_hvac_mode": {
+             "label": "Mode",
+             "kind": "choice",
+             "required": true,
+             "choices": [
+              "off",
+              "heat",
+              "cool",
+              "heat_cool",
+              "auto"
+             ]
+            }
+           }
+          }
+         ]
+        },
+        {
+         "type": "scene",
+         "label": "Run a scene",
+         "short": "Scene",
+         "runs": "code",
+         "summary": "Scene: {entity.name}",
+         "fields": [
+          {
+           "key": "entity",
+           "label": "Scene",
+           "kind": "choice",
+           "required": true,
+           "choicesFrom": "scenes"
+          }
+         ]
+        },
+        {
+         "type": "app",
+         "label": "Open an app on a TV",
+         "short": "TV app",
+         "runs": "code",
+         "summary": "Open {app} on {entity.name}",
+         "fields": [
+          {
+           "key": "entity",
+           "label": "TV",
+           "kind": "choice",
+           "required": true,
+           "choicesFrom": "apps"
+          },
+          {
+           "key": "app",
+           "label": "App",
+           "kind": "choice",
+           "required": true,
+           "max": 80,
+           "choicesFrom": "apps",
+           "dependsOn": "entity",
+           "choicesKey": "apps"
+          }
+         ]
+        },
+        {
+         "type": "notify",
+         "label": "Send me a notification",
+         "short": "Notify me",
+         "runs": "code",
+         "summary": "Notify me: {text}",
+         "fields": [
+          {
+           "key": "text",
+           "label": "Message",
+           "kind": "longtext",
+           "required": true,
+           "max": 2000,
+           "placeholder": "What to tell me"
+          }
+         ]
+        },
+        {
+         "type": "think",
+         "label": "Have Jarvis work something out",
+         "short": "Ask Jarvis",
+         "runs": "thinking",
+         "summary": "Jarvis: {text}",
+         "fields": [
+          {
+           "key": "text",
+           "label": "What Jarvis should do",
+           "kind": "longtext",
+           "required": true,
+           "max": 2000,
+           "placeholder": "Check tomorrow's weather and tell me if I need a jacket"
+          },
+          {
+           "key": "model",
+           "label": "Who does it",
+           "kind": "choice",
+           "required": false,
+           "default": "claude",
+           "choicesFrom": "thinkers"
+          },
+          {
+           "key": "confirm",
+           "label": "Ask me first",
+           "kind": "bool",
+           "required": false,
+           "default": false
+          }
+         ]
+        },
+        {
+         "type": "email",
+         "label": "Send an email",
+         "short": "Email",
+         "runs": "code",
+         "summary": "Email {to}: {subject}",
+         "fields": [
+          {
+           "key": "to",
+           "label": "To",
+           "kind": "emails",
+           "required": true,
+           "maxItems": 10
+          },
+          {
+           "key": "subject",
+           "label": "Subject",
+           "kind": "text",
+           "required": true,
+           "max": 200
+          },
+          {
+           "key": "body",
+           "label": "Message",
+           "kind": "longtext",
+           "required": true,
+           "max": 5000
+          },
+          {
+           "key": "confirm",
+           "label": "Ask me first",
+           "kind": "bool",
+           "required": false,
+           "default": false
+          }
+         ]
+        },
+        {
+         "type": "wait",
+         "label": "Wait",
+         "short": "Wait",
+         "runs": "code",
+         "summary": "Wait {seconds} s",
+         "fields": [
+          {
+           "key": "seconds",
+           "label": "Seconds",
+           "kind": "number",
+           "required": true,
+           "min": 1,
+           "max": 600,
+           "default": 60
+          }
+         ]
+        },
+        {
+         "type": "job",
+         "label": "Run one of Jarvis's jobs",
+         "short": "Jarvis job",
+         "runs": "code",
+         "summary": "Run: {job.name}",
+         "fields": [
+          {
+           "key": "job",
+           "label": "Job",
+           "kind": "choice",
+           "required": true,
+           "choicesFrom": "jobs"
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
     """#
     #endif
 

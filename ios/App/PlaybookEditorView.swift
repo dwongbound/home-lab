@@ -186,7 +186,14 @@ struct PlaybookEditorView: View {
         #if DEBUG
         // `-openFirstStep`: the first step unfolded (layout checks).
         .onAppear {
-            if ProcessInfo.processInfo.arguments.contains("-openFirstStep") { openStep = steps.first?.id }
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-openFirstStep") { openStep = steps.first?.id }
+            // `-openStep <n>`: that step unfolded (1-based).
+            if let at = args.firstIndex(of: "-openStep"), at + 1 < args.count, let n = Int(args[at + 1]), n >= 1, n <= steps.count {
+                openStep = steps[n - 1].id
+                let target = steps[n - 1].id
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { proxy.scrollTo(target, anchor: .top) }
+            }
         }
         #endif
         .background(Theme.sky.ignoresSafeArea())
