@@ -1211,6 +1211,25 @@ test('a faint line at the bottom says which build this is and links its commit',
   await expect(footer.getByRole('link')).toHaveAttribute('href', /^https:\/\/github\.com\/dwongbound\/home-lab\/commit\/[0-9a-f]{7,40}$/)
 })
 
+test('Playbooks: a step can run one of Jarvis’s own jobs, with only the job to pick', async ({ page }) => {
+  await page.goto('/#playbooks')
+  await page.getByRole('button', { name: 'New playbook' }).click()
+  const editor = page.getByRole('dialog', { name: 'New playbook' })
+  await editor.getByLabel('Name').fill('Nightly self-improvement')
+  await editor.getByRole('group', { name: 'Add a step' }).getByRole('button', { name: 'Jarvis job' }).click()
+  const step = editor.getByRole('listitem', { name: 'Step 1' })
+  await expect(step).toContainText('Run one of Jarvis’s own jobs')
+  await expect(step.getByLabel('Job')).toHaveValue('nightly')
+  await editor.getByRole('button', { name: 'Save' }).click()
+  const row = page.getByRole('list', { name: 'Playbooks' }).getByRole('listitem').filter({ hasText: 'Nightly self-improvement' })
+  await expect(row).toContainText('Run: The nightly self-improvement pass')
+  // Tidy up: the other playbook story counts the sample rows.
+  await row.getByRole('button', { name: 'Edit Nightly self-improvement' }).click()
+  await page.getByRole('dialog', { name: 'Edit playbook' }).getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('dialog', { name: 'Delete this playbook?' }).getByRole('button', { name: 'Delete' }).click()
+  await expect(row).toHaveCount(0)
+})
+
 test('Playbooks: write one with a done checklist, switch it off, run it, edit it and delete it', async ({ page }) => {
   await page.goto('/#playbooks')
   const list = page.getByRole('list', { name: 'Playbooks' })

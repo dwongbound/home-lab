@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { draftPlaybook } from '../api/client'
-import { DAYS, STEP_CHOICES, THINKER_CHOICES, TRIGGER_CHOICES, blankStep, blankTrigger, commandLabel, commandTakesValue, commandTakesWords, playbookProblem } from '../lib/playbooks'
+import { DAYS, STEP_CHOICES, THINKER_CHOICES, TRIGGER_CHOICES, blankStep, stepChoices, blankTrigger, commandLabel, commandTakesValue, commandTakesWords, playbookProblem } from '../lib/playbooks'
 import type { PlaybookDay, PlaybookDraft, PlaybookOptions, PlaybookStep, PlaybookThinker, PlaybookTrigger } from '../types'
 import { useScrollLock } from '../useScrollLock'
 import { Spinner } from './Spinner'
@@ -165,7 +165,7 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
           <span className="field__label" id="playbook-add">Add a step</span>
           {/* One tap adds that kind of step at the end. */}
           <div className="playbook__chips" role="group" aria-labelledby="playbook-add">
-            {STEP_CHOICES.map((c) => (
+            {stepChoices(options).map((c) => (
               <button key={c.type} type="button" className="segmented__opt" title={c.label} onClick={() => setDraft({ ...draft, steps: [...draft.steps, blankStep(c.type, options)] })}>{c.short}</button>
             ))}
           </div>
@@ -317,6 +317,15 @@ function StepFields({ step, options, onChange }: { step: PlaybookStep; options: 
         <textarea className="field__box field__box--tall" aria-label="Message" value={step.body} maxLength={5000} placeholder="Message" onChange={(e) => onChange({ ...step, body: e.target.value })} />
         <ConfirmSwitch on={step.confirm} onChange={(confirm) => onChange({ ...step, confirm })} />
       </>
+    )
+  }
+  if (step.type === 'job') {
+    // Nothing to fill in: the job is Jarvis's own code, so the only choice is which one.
+    return (
+      <select className="field__box" aria-label="Job" value={step.job} onChange={(e) => onChange({ type: 'job', job: e.target.value })}>
+        {options.jobs.some((j) => j.id === step.job) ? null : <option value={step.job}>{step.job || 'Pick a job'}</option>}
+        {options.jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
+      </select>
     )
   }
   return (

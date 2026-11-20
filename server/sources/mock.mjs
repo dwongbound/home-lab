@@ -688,6 +688,7 @@ export function createMockSource({ now = () => new Date() } = {}) {
           scenes: state.home.filter((d) => d.kind === 'scene').map((d) => ({ entity: d.id, name: d.name })),
           apps: [{ entity: 'media_player.apple_tv', name: 'Apple TV', apps: ['Jarvis', 'Netflix', 'YouTube', 'Music'] }],
           zones: ['home'],
+          jobs: [{ id: 'nightly', name: 'The nightly self-improvement pass' }],
         },
       }
     },

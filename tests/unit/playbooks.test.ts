@@ -7,7 +7,7 @@ import { loadConfig } from '../../server/config.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
 import { cleanPlaybook, fromJarvisDraft, fromJarvisPlaybook, parsePlaybookBook, toJarvisPlaybook } from '../../server/sources/playbooks.mjs'
-import { blankPlaybook, blankStep, blankTrigger, clockLabel, daysLabel, draftOf, failedChecks, playbookProblem, stepLine, triggerLine } from '../../src/lib/playbooks'
+import { blankPlaybook, blankStep, stepChoices, blankTrigger, clockLabel, daysLabel, draftOf, failedChecks, playbookProblem, stepLine, triggerLine } from '../../src/lib/playbooks'
 import type { Playbook, PlaybookOptions } from '../../src/types'
 import { callApi } from './helpers'
 
@@ -19,6 +19,7 @@ const OPTIONS: PlaybookOptions = {
   scenes: [{ entity: 'scene.movie', name: 'Movie night' }],
   apps: [{ entity: 'media_player.tv', name: 'Apple TV', apps: ['Jarvis', 'Netflix'] }],
   zones: ['home'],
+  jobs: [{ id: 'nightly', name: 'The nightly self-improvement pass' }],
 }
 
 describe('playbook words', () => {
@@ -46,6 +47,8 @@ describe('playbook words', () => {
     expect(stepLine({ type: 'email', to: 'a@b.co', subject: 'Goodnight', body: 'x', confirm: true }, OPTIONS)).toBe('Email a@b.co: Goodnight')
     expect(stepLine({ type: 'wait', seconds: 120 }, OPTIONS)).toBe('Wait 2 min')
     expect(stepLine({ type: 'wait', seconds: 45 }, OPTIONS)).toBe('Wait 45 s')
+    expect(stepLine({ type: 'job', job: 'nightly' }, OPTIONS)).toBe('Run: The nightly self-improvement pass')
+    expect(stepLine({ type: 'job', job: 'gone' }, OPTIONS)).toBe('Run: gone')
   })
 
   it('starts new triggers and steps sensibly, without asking first in a playbook you wrote', () => {
@@ -199,7 +202,7 @@ describe('checking a playbook before Jarvis gets it', () => {
   it('keeps only the well-formed parts of Jarvis’s answer', () => {
     const book = parsePlaybookBook({
       playbooks: [{ id: 'r1', name: 'Bedtime', trigger: { type: 'time', at: '22:00' }, steps: [] }, { nope: true }],
-      options: { devices: [{ entity: 'light.lamp', name: 'Lamp', kind: 'light', commands: ['turn_on', 7] }, { name: 'no entity' }], apps: [{ entity: 'media_player.tv' }], zones: ['home', 3] },
+      options: { devices: [{ entity: 'light.lamp', name: 'Lamp', kind: 'light', commands: ['turn_on', 7] }, { name: 'no entity' }], apps: [{ entity: 'media_player.tv' }], zones: ['home', 3], jobs: [{ id: 'nightly', name: 'The nightly pass' }, { name: 'no id' }] },
     })
     expect(book.playbooks).toHaveLength(1)
     expect(book.playbooks[0].trigger).toEqual({ type: 'time', at: '22:00', days: [] })
@@ -208,8 +211,9 @@ describe('checking a playbook before Jarvis gets it', () => {
       scenes: [],
       apps: [{ entity: 'media_player.tv', name: 'media_player.tv', apps: [] }],
       zones: ['home'],
+      jobs: [{ id: 'nightly', name: 'The nightly pass' }],
     })
-    expect(parsePlaybookBook(null)).toEqual({ playbooks: [], options: { devices: [], scenes: [], apps: [], zones: [] } })
+    expect(parsePlaybookBook(null)).toEqual({ playbooks: [], options: { devices: [], scenes: [], apps: [], zones: [], jobs: [] } })
   })
 })
 
@@ -315,5 +319,30 @@ describe('playbooks from the real Jarvis', () => {
     expect(draft).not.toHaveProperty('madeBy')
     expect(fromJarvisDraft(null)).toBeNull()
     expect(fromJarvisDraft({ steps: [] })).toBeNull()
+  })
+})
+
+describe('a step that runs one of Jarvis’s own jobs', () => {
+  const nightly = { name: 'Nightly self-improvement', trigger: { type: 'time', at: '03:30', days: [] }, steps: [{ type: 'job', job: 'nightly', model: 'code' }] }
+
+  it('reads Jarvis’s step, and sends it back unchanged in meaning', () => {
+    const fromJarvis = fromJarvisPlaybook({ id: 'nightly', ...nightly })!
+    expect(fromJarvis.steps).toEqual([{ type: 'job', job: 'nightly' }])
+    const { playbook } = cleanPlaybook({ ...fromJarvis, enabled: false })
+    expect(playbook!.steps).toEqual([{ type: 'job', job: 'nightly' }])
+    expect(playbook!.enabled).toBe(false)
+    expect(toJarvisPlaybook(playbook!).steps).toEqual([{ type: 'job', job: 'nightly' }])
+  })
+
+  it('refuses a job step with no job or an odd id', () => {
+    expect(cleanPlaybook({ ...nightly, steps: [{ type: 'job' }] }).problem).toBe('Step 1 is missing something')
+    expect(cleanPlaybook({ ...nightly, steps: [{ type: 'job', job: '../x' }] }).problem).toBe('Step 1 is missing something')
+  })
+
+  it('offers the job step only when Jarvis lists jobs', () => {
+    expect(stepChoices(OPTIONS).map((c) => c.type)).toContain('job')
+    expect(stepChoices({ ...OPTIONS, jobs: [] }).map((c) => c.type)).not.toContain('job')
+    expect(blankStep('job', OPTIONS)).toEqual({ type: 'job', job: 'nightly' })
+    expect(playbookProblem({ ...blankPlaybook(), name: 'N', steps: [{ type: 'job', job: '' }] })).toMatch(/pick a job/)
   })
 })
