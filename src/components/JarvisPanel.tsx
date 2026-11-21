@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { Fragment, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { answerApproval, loadApprovals, loadChatHistory, sendFeedback, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
 import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
-import { canJoin, joinHeard, settledQuestion, splitHeard } from '../lib/heard'
+import { canJoin, heardWords, joinHeard, settledQuestion } from '../lib/heard'
 import { chipFor } from '../lib/model'
 import { Markdown } from './Markdown'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, RunningTask } from '../types'
@@ -740,13 +740,23 @@ interface SheetProps {
   onClose: () => void
 }
 
-/** Your words while you're still talking: the settled ones solid, the tail that may still change lighter. */
+/**
+ * Your words while you're still talking: the settled ones solid, the tail
+ * that may still change lighter. Each word is its own span keyed by its
+ * place, so a word that arrives fades in left to right once (CSS
+ * `chat__word`) and words already shown never replay, even when Jarvis
+ * rewrites one of the lighter ones.
+ */
 function HeardBubble({ text, stable }: { text: string; stable: number | null }) {
-  const parts = splitHeard(text, stable)
+  const words = heardWords(text, stable)
   return (
     <p className="chat__q chat__q--heard">
-      {parts.settled}
-      {parts.tentative ? <span className="chat__tentative">{parts.tentative}</span> : null}
+      {words.map((w, index) => (
+        <Fragment key={index}>
+          {index > 0 ? ' ' : null}
+          <span className={w.settled ? 'chat__word' : 'chat__word chat__tentative'}>{w.word}</span>
+        </Fragment>
+      ))}
     </p>
   )
 }
