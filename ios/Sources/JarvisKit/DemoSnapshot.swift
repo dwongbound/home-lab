@@ -31,6 +31,7 @@ public enum DemoSnapshot {
         let greeting = long
             ? "Good evening, Dylan. Volleyball is up next at the Y, and after that the CG x SOW rehearsal runs until ten. I finished rewriting the reminder code so repeats work again, the PS5 Pro is back in stock at Target, your thermostat is heating to 70, the bedroom speaker is playing lo-fi, flights to Tokyo in March dropped by eighty dollars, and tomorrow starts with the dentist at nine, so I'd aim for bed by midnight."
             : "Good evening, Dylan. Volleyball is up next and I'm rewriting the reminder code in the background."
+        let args = ProcessInfo.processInfo.arguments
         let iso = { (offset: Double) in ISO8601DateFormatter().string(from: now.addingTimeInterval(offset * 60)) }
         let cal = Calendar.current
         let sunrise = ISO8601DateFormatter().string(from: cal.date(bySettingHour: 6, minute: 28, second: 0, of: now) ?? now)
@@ -74,6 +75,7 @@ public enum DemoSnapshot {
          "jobs":{"running":[{"id":"j1","label":"Changing my code so reminders repeat","state":"running","startedAt":"\(iso(-9))"}],
                  "lookout":{"checks":["calendar","email"],"watching":["Flight prices to Tokyo in March","The PS5 Pro restock at Target"],"heldBack":[{"text":"x","reason":null},{"text":"y","reason":null}]},
                  "messenger":{"sentToday":3,"cap":8,"quiet":"10 PM–7 AM"}},
+         \(args.contains("-demoNoSleep") ? "" : #""sleep":\#(DemoSleep.summaryJSON(now: now)),"#)
          "cloud":{"health":{"yesterday":{"steps":9580},"sleep":{"asleep_min":422}},
                   "calendar":[{"id":"c1","title":"Lunch with Sam","start":"\(iso(-150))","end":"\(iso(-90))","allDay":false,"location":"Tender Greens"},
                               {"id":"c2","title":"Volleyball at the Y","start":"\(iso(42))","end":"\(iso(132))","allDay":false,"location":"Westside YMCA"},
@@ -82,6 +84,71 @@ public enum DemoSnapshot {
                   "money":{"netWorth":1}}}
         """
         return try? JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+    }
+}
+
+/// Made-up sleep for the simulator: 14 nights ending this morning, with
+/// stage timelines. Not anyone's real numbers.
+public enum DemoSleep {
+    /// The nights, newest first. `-demoSleepFirstNights` leaves out the
+    /// consistency part (too few nights yet); `-demoSleepNoVitals` the vitals.
+    public static func nights(now: Date) -> [SleepDay] {
+        let args = ProcessInfo.processInfo.arguments
+        let data = Data("[\(nightsJSON(now: now, firstNights: args.contains("-demoSleepFirstNights"), vitals: !args.contains("-demoSleepNoVitals")))]".utf8)
+        return (try? JSONDecoder().decode([SleepDay].self, from: data)) ?? []
+    }
+
+    static func summaryJSON(now: Date) -> String {
+        let args = ProcessInfo.processInfo.arguments
+        let all = nightsJSONList(now: now, firstNights: args.contains("-demoSleepFirstNights"), vitals: !args.contains("-demoSleepNoVitals"), stages: false)
+        let trend = (0..<7).map { i in
+            let night = SleepNights.key(now.addingTimeInterval(Double(-i) * 86_400))
+            return #"{"night":"\#(night)","score":\#(scores[i % scores.count]),"asleep":\#(asleeps[i % asleeps.count])}"#
+        }.joined(separator: ",")
+        return #"{"last":\#(all[0]),"trend":[\#(trend)]}"#
+    }
+
+    private static let scores = [82, 74, 88, 61, 79, 90, 69, 77, 84, 58, 72, 86, 80, 66]
+    private static let asleeps = [440, 405, 468, 352, 425, 476, 398, 415, 452, 330, 410, 462, 438, 380]
+
+    static func nightsJSON(now: Date, firstNights: Bool, vitals: Bool) -> String {
+        nightsJSONList(now: now, firstNights: firstNights, vitals: vitals, stages: true).joined(separator: ",")
+    }
+
+    private static func nightsJSONList(now: Date, firstNights: Bool, vitals: Bool, stages: Bool) -> [String] {
+        let f = ISO8601DateFormatter()
+        f.timeZone = SleepNights.zone
+        return (0..<14).map { i in
+            let night = SleepNights.key(now.addingTimeInterval(Double(-i) * 86_400))
+            let window = SleepNights.window(night)!
+            let asleep = asleeps[i % asleeps.count]
+            let bed = window.start.addingTimeInterval(Double(5 * 3600 + (i % 3) * 600))   // about 11 PM
+            let wake = bed.addingTimeInterval(Double(asleep + 25) * 60)
+            // A plausible pattern of cycles: core, deep, core, REM, a short wake.
+            var segs: [String] = []
+            var t = bed
+            let pattern: [(String, Double)] = [("core", 30), ("deep", 45), ("core", 40), ("rem", 20), ("awake", 6), ("core", 50), ("deep", 25), ("rem", 30), ("core", 60), ("rem", 35), ("awake", 4), ("core", 70), ("rem", 40)]
+            for (stage, mins) in pattern where t < wake {
+                let end = min(wake, t.addingTimeInterval(mins * 60))
+                segs.append(#"{"stage":"\#(stage)","start":"\#(f.string(from: t))","end":"\#(f.string(from: end))"}"#)
+                t = end
+            }
+            if t < wake { segs.append(#"{"stage":"core","start":"\#(f.string(from: t))","end":"\#(f.string(from: wake))"}"#) }
+            let score = scores[i % scores.count]
+            let band = score >= 85 ? "great" : score >= 70 ? "good" : score >= 50 ? "fair" : "poor"
+            let consistency = firstNights ? "null" : "\(18 + i % 10)"
+            let vitalsJSON = vitals
+                ? #"{"heartRate":{"avg":\#(54 + i % 5),"min":\#(47 + i % 4)},"hrvMs":\#(42 + i % 9),"hrvRmssdMs":null,"respiratoryRate":14.\#(i % 9),"spo2":{"avg":96,"min":\#(91 + i % 3)},"wristTempC":34.5,"wristTempDeltaC":\#(i % 2 == 0 ? "-0.2" : "0.3"),"breathingDisturbances":null}"#
+                : "null"
+            return #"""
+            {"night":"\#(night)","bedtime":"\#(f.string(from: bed))","wake":"\#(f.string(from: wake))",
+             "minutes":{"asleep":\#(asleep),"inBed":\#(asleep + 25),"awake":12,"deep":\#(asleep / 6),"rem":\#(asleep / 4),"core":\#(asleep - asleep / 6 - asleep / 4),"unspecified":0},
+             "interruptions":\#(1 + i % 3),"vitals":\#(vitalsJSON),
+             "score":\#(score),"scoreSource":"jarvis","scoreBand":"\#(band)",
+             "scoreParts":{"duration":\#(min(50, asleep * 50 / 450)),"consistency":\#(consistency),"interruptions":\#(firstNights ? "null" : "\(20 - i % 6)")},
+             "stages":[\#(stages ? segs.joined(separator: ",") : "")]}
+            """#
+        }
     }
 }
 #endif

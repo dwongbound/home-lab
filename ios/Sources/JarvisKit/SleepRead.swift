@@ -8,6 +8,20 @@
 // decodes on its own, and a field that's missing or the wrong shape is nil.
 import Foundation
 
+/// Jarvis's sleep times come without seconds ("2026-11-19T23:20-08:00"),
+/// which ISO8601DateFormatter won't read; both spellings are taken.
+public enum SleepTime {
+    public static func parse(_ text: String) -> Date? {
+        if let date = ISODate.parse(text) { return date }
+        // "…T23:20-08:00" or "…T23:20Z": add the seconds.
+        guard let t = text.firstIndex(of: "T") else { return nil }
+        let clock = text[text.index(after: t)...]
+        let cut = clock.firstIndex { $0 == "+" || $0 == "-" || $0 == "Z" } ?? clock.endIndex
+        guard clock[..<cut].count == 5 else { return nil }
+        return ISODate.parse(String(text[..<cut]) + ":00" + String(text[cut...]))
+    }
+}
+
 /// One night as Jarvis keeps it.
 public struct SleepDay: Decodable, Sendable, Identifiable, Equatable {
     public var id: String { night }
@@ -101,8 +115,8 @@ public struct SleepDay: Decodable, Sendable, Identifiable, Equatable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         night = try c.decode(String.self, forKey: .night)
-        bedtime = ((try? c.decodeIfPresent(String.self, forKey: .bedtime)) ?? nil).flatMap(ISODate.parse)
-        wake = ((try? c.decodeIfPresent(String.self, forKey: .wake)) ?? nil).flatMap(ISODate.parse)
+        bedtime = ((try? c.decodeIfPresent(String.self, forKey: .bedtime)) ?? nil).flatMap(SleepTime.parse)
+        wake = ((try? c.decodeIfPresent(String.self, forKey: .wake)) ?? nil).flatMap(SleepTime.parse)
         minutes = (try? c.decodeIfPresent(Minutes.self, forKey: .minutes)) ?? nil
         interruptions = (try? c.decodeIfPresent(Int.self, forKey: .interruptions)) ?? nil
         vitals = (try? c.decodeIfPresent(Vitals.self, forKey: .vitals)) ?? nil
@@ -113,7 +127,7 @@ public struct SleepDay: Decodable, Sendable, Identifiable, Equatable {
         struct RawStage: Decodable { let stage: String?; let start: String?; let end: String? }
         let raw = ((try? c.decodeIfPresent([RawStage].self, forKey: .stages)) ?? nil) ?? []
         stages = raw.compactMap { r in
-            guard let stage = r.stage, let start = r.start.flatMap(ISODate.parse), let end = r.end.flatMap(ISODate.parse), end > start else { return nil }
+            guard let stage = r.stage, let start = r.start.flatMap(SleepTime.parse), let end = r.end.flatMap(SleepTime.parse), end > start else { return nil }
             return Stage(stage: stage, start: start, end: end)
         }
     }

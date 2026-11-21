@@ -897,10 +897,40 @@ struct AlwaysOnView: View {
                     .staggered(4)
                 }
             }
+        case .sleep:
+            // Last night at ten feet: score, time asleep, bed and wake, the
+            // stage bar and the week. No small text, no score parts.
+            let sleep = SleepSlide.card(snapshot)
+            card(which) {
+                // One screen's worth at the card's height (no scrolling):
+                // the score and times beside the week, the stages under them.
+                HStack(alignment: .center, spacing: 30) {
+                    if sleep.kind == .noNight {
+                        Text(sleep.emptyWords ?? "").font(.title3).foregroundStyle(inkDim)
+                    } else {
+                        SleepHeadline(card: sleep, scale: 1.4, tenFeet: true)
+                    }
+                    Spacer(minLength: 0)
+                    if !sleep.trend.isEmpty {
+                        VStack(alignment: .trailing, spacing: 6) {
+                            SleepTrendBars(trend: sleep.trend, scale: 1.35)
+                            if let average = sleep.trendAverage {
+                                Text(average).font(.callout).foregroundStyle(inkDim)
+                            }
+                        }
+                    }
+                }
+                .staggered(0)
+                if sleep.kind != .noNight, !sleep.stages.isEmpty {
+                    SleepStageBar(shares: sleep.stages, scale: 2.0, legend: false).staggered(1)
+                }
+            }
+            .environment(\.sleepInk, SleepInk(ink: ink, dim: inkDim, faint: inkDim.opacity(0.75), track: inkDim.opacity(0.18)))
         case .health:
             card(which) {
                 HStack(spacing: 60) {
-                    if let asleep = snapshot.health?.sleep?.asleepMin {
+                    // Minutes asleep only from an older Jarvis; otherwise sleep has its own card.
+                    if snapshot.sleep == nil, let asleep = snapshot.health?.sleep?.asleepMin {
                         stat(TodayWording.hours(asleep), "asleep last night", symbol: "bed.double.fill")
                     }
                     if let steps = snapshot.health?.yesterday?.steps {

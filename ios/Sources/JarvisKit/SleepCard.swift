@@ -220,3 +220,22 @@ public struct SleepCard: Equatable, Sendable {
         return out
     }
 }
+
+/// When the carousels (TV, iPad kiosk) and Home show sleep. With Jarvis's
+/// `sleep` slice, sleep has its own slide and the "You" slide keeps only
+/// steps; an older Jarvis keeps the old "You" slide with minutes asleep.
+public enum SleepSlide {
+    public static func shows(_ snapshot: Snapshot) -> Bool {
+        snapshot.sleep != nil
+    }
+
+    public static func showsYou(_ snapshot: Snapshot) -> Bool {
+        if snapshot.sleep != nil { return snapshot.health?.yesterday?.steps != nil }
+        return snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil
+    }
+
+    /// The card for a snapshot, last night being this morning's date.
+    public static func card(_ snapshot: Snapshot, now: Date = Date()) -> SleepCard {
+        SleepCard(summary: snapshot.sleep, fallbackAsleepMinutes: snapshot.health?.sleep?.asleepMin, today: SleepNights.key(now))
+    }
+}

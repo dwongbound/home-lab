@@ -215,6 +215,9 @@ public enum TVCard: String, CaseIterable, Sendable {
     case reports
     /// Who's using the graphics card, as a pie.
     case gpu
+    /// Last night's sleep: score, time asleep, stages and the week
+    /// (Dylan, 2026-11-20). From the snapshot's `sleep`.
+    case sleep
 
     /// The card's title.
     public var title: String {
@@ -229,6 +232,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .jarvis: return "Jarvis"
         case .lookout: return "Lookout"
         case .health: return "You"
+        case .sleep: return "Sleep"
         case .suggestions: return "Suggestions"
         case .reports: return "Reports"
         case .gpu: return "Graphics card"
@@ -248,6 +252,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .jarvis: return "sparkles"
         case .lookout: return "binoculars.fill"
         case .health: return "heart.fill"
+        case .sleep: return "bed.double.fill"
         case .suggestions: return "lightbulb.fill"
         case .reports: return "doc.richtext"
         case .gpu: return "cpu"
@@ -259,7 +264,7 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Lookout says what Jarvis is watching for Dylan and how often he's
     /// messaged him: private too.
     /// Reports can be about anything of his: private as well.
-    public var isPrivate: Bool { self == .health || self == .suggestions || self == .lookout || self == .reports }
+    public var isPrivate: Bool { self == .health || self == .sleep || self == .suggestions || self == .lookout || self == .reports }
 }
 
 public enum TVBoard {
@@ -286,7 +291,8 @@ public enum TVBoard {
         if let lookout = snapshot.jobs?.lookout, !lookout.watching.isEmpty || (snapshot.jobs?.messenger?.sentToday ?? 0) > 0 || !lookout.checks.isEmpty {
             out.append(.lookout)
         }
-        if snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil { out.append(.health) }
+        if SleepSlide.shows(snapshot) { out.append(.sleep) }
+        if SleepSlide.showsYou(snapshot) { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.suggestions) }
         if !(snapshot.reports?.reports.isEmpty ?? true) { out.append(.reports) }
         if snapshot.gpuShare != nil { out.append(.gpu) }

@@ -87,6 +87,8 @@ struct TodayView: View {
     @State private var shortcut: Shortcut?
     /// The Home drawer: every device, full names.
     @State private var showDevices = false
+    /// The Sleep screen.
+    @State private var showSleep = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The one-time "send your sleep" card (App/SleepSync.swift).
@@ -164,6 +166,9 @@ struct TodayView: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.7), value: screen)
         .floatingStatus(showsStatus: true, visible: screen == .ready)
+        .sheet(isPresented: $showSleep) {
+            SleepDetailView().environmentObject(app)
+        }
         .sheet(isPresented: $showDevices) {
             if let home = today.snapshot?.home { DevicesSheet(home: home) }
         }
@@ -195,6 +200,7 @@ struct TodayView: View {
         .onAppear {
             let args = ProcessInfo.processInfo.arguments
             if args.contains("-openDiet") { shortcut = .diet }
+            if args.contains("-openSleep") { showSleep = true }
             if args.contains("-openDevices") { showDevices = true }
             if args.contains("-openReports") { shortcut = .reports }
             if args.contains("-openPlaybooks") { shortcut = .playbooks }
@@ -219,6 +225,8 @@ struct TodayView: View {
             #if DEBUG
             // `-gpuFirst` puts the GPU card at the top (simulator screenshots).
             if ProcessInfo.processInfo.arguments.contains("-gpuFirst"), let share = snapshot.gpuShare { GpuCard(share: share) }
+            // `-sleepFirst`: the Sleep card at the top (simulator screenshots).
+            if ProcessInfo.processInfo.arguments.contains("-sleepFirst"), SleepSlide.shows(snapshot) { sleepCard(SleepSlide.card(snapshot)) }
             #endif
             hero(snapshot)
             if sleepSync.showsCard { sleepAllowCard }
@@ -259,8 +267,13 @@ struct TodayView: View {
                     lockedMoney
                 }
             }
-            if let health = snapshot.health, health.sleep?.asleepMin != nil || health.yesterday?.steps != nil {
-                healthCard(health)
+            // Sleep has its own card when Jarvis sends the sleep slice; the
+            // "You" card keeps steps (and minutes asleep from an older Jarvis).
+            if SleepSlide.shows(snapshot) {
+                sleepCard(SleepSlide.card(snapshot))
+            }
+            if SleepSlide.showsYou(snapshot), let health = snapshot.health {
+                healthCard(health, withSleep: !SleepSlide.shows(snapshot))
             }
             if let share = snapshot.gpuShare {
                 GpuCard(share: share)
@@ -523,9 +536,41 @@ struct TodayView: View {
 
     // MARK: Health
 
+    /// Last night's sleep: the score ring, time asleep, bed and wake, the
+    /// stage bar and the score's parts, then vitals and the week on the
+    /// iPad's wider column. The whole card opens the Sleep screen.
+    private func sleepCard(_ sleep: SleepCard) -> some View {
+        Button { showSleep = true } label: {
+            card("Sleep", icon: "bed.double.fill", trailing: "Details  ›") {
+                VStack(alignment: .leading, spacing: 14) {
+                    switch sleep.kind {
+                    case .night, .minutesOnly:
+                        SleepHeadline(card: sleep)
+                        if !sleep.stages.isEmpty { SleepStageBar(shares: sleep.stages) }
+                        if !sleep.parts.isEmpty { SleepPartBars(parts: sleep.parts) }
+                        if !sleep.vitals.isEmpty { SleepVitalTiles(vitals: sleep.vitals, columns: sizeClass == .regular ? 3 : 2) }
+                    case .noNight:
+                        Text(sleep.emptyWords ?? "").font(.subheadline).foregroundStyle(Theme.frostDim)
+                    }
+                    if !sleep.trend.isEmpty {
+                        HStack(alignment: .bottom) {
+                            SleepTrendBars(trend: sleep.trend)
+                            Spacer()
+                            if let average = sleep.trendAverage {
+                                Text(average).font(.caption).foregroundStyle(Theme.frostDim)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens your sleep")
+    }
+
     /// Asked once, here, never at launch: Apple Health's own sheet follows Allow.
     private var sleepAllowCard: some View {
-        card("Sleep", icon: "bed.double.fill") {
+        card("Apple Health", icon: "heart.text.square.fill") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Send your Apple Watch sleep to Jarvis each morning: stages, heart rate, breathing and more.")
                     .font(.subheadline)
@@ -550,10 +595,10 @@ struct TodayView: View {
     }
 
     /// Last night's sleep and yesterday's steps, side by side.
-    private func healthCard(_ health: Health) -> some View {
+    private func healthCard(_ health: Health, withSleep: Bool) -> some View {
         card("You", icon: "heart.fill") {
             HStack(spacing: 10) {
-                if let asleep = health.sleep?.asleepMin {
+                if withSleep, let asleep = health.sleep?.asleepMin {
                     stat(TodayWording.hours(asleep), "Asleep last night", symbol: "bed.double.fill", tint: Color(red: 0.73, green: 0.65, blue: 0.94))
                 }
                 if let steps = health.yesterday?.steps {

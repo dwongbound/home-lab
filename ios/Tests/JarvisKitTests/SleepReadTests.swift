@@ -118,11 +118,47 @@ final class SleepReadTests: XCTestCase {
         XCTAssertNil(old.score)
     }
 
+    func testTimesWithoutSecondsAsJarvisSendsThem() throws {
+        let day = try decode(SleepDay.self, """
+        {"night":"2026-11-20","bedtime":"2026-11-19T23:20-08:00","wake":"2026-11-20T07:00-08:00",
+         "stages":[{"stage":"deep","start":"2026-11-20T01:00-08:00","end":"2026-11-20T02:00-08:00"}]}
+        """)
+        XCTAssertEqual(day.bedtime.map(SleepCard.clock), "11:20 PM")
+        XCTAssertEqual(day.wake.map(SleepCard.clock), "7:00 AM")
+        XCTAssertEqual(day.stages.count, 1)
+        XCTAssertNotNil(SleepTime.parse("2026-11-20T07:00:00Z"))
+        XCTAssertNil(SleepTime.parse("nope"))
+    }
+
     func testDurationWords() {
         XCTAssertEqual(SleepCard.durationNote(5 * 60 + 59), "Short")
         XCTAssertNil(SleepCard.durationNote(6 * 60 + 30))
         XCTAssertEqual(SleepCard.durationNote(7 * 60), "On target")
         XCTAssertEqual(SleepCard.hours(45), "45m")
         XCTAssertEqual(SleepCard.weekday("2026-11-20"), "Fr")
+    }
+}
+
+final class SleepSlideTests: XCTestCase {
+    func testTheDemoSleepDecodes() throws {
+        let now = Date()
+        let nights = DemoSleep.nights(now: now)
+        XCTAssertEqual(nights.count, 14)
+        XCTAssertFalse(nights[0].stages.isEmpty)
+        let summary = try JSONDecoder().decode(SleepSummary.self, from: Data(DemoSleep.summaryJSON(now: now).utf8))
+        XCTAssertEqual(summary.trend.count, 7)
+        XCTAssertEqual(SleepCard(summary: summary, fallbackAsleepMinutes: nil, today: SleepNights.key(now)).kind, .night)
+    }
+
+    func testSleepGetsItsOwnSlideAndYouKeepsSteps() throws {
+        let both = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"sleep":{"last":null,"trend":[]},"cloud":{"health":{"yesterday":{"steps":10},"sleep":{"asleep_min":400}}}}"#.utf8))
+        XCTAssertTrue(SleepSlide.shows(both))
+        XCTAssertTrue(SleepSlide.showsYou(both))
+        XCTAssertEqual(TVBoard.cards(both, guest: false).filter { $0 == .sleep || $0 == .health }, [.sleep, .health])
+        XCTAssertFalse(TVBoard.cards(both, guest: true).contains(.sleep), "guest-friendly mode hides sleep")
+        XCTAssertTrue(KioskPlan.panels(snapshot: both).contains(.sleep))
+        let older = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"cloud":{"health":{"sleep":{"asleep_min":400}}}}"#.utf8))
+        XCTAssertFalse(SleepSlide.shows(older))
+        XCTAssertTrue(SleepSlide.showsYou(older), "an older Jarvis keeps the You slide with minutes asleep")
     }
 }

@@ -166,7 +166,11 @@ struct KioskView: View {
 
     /// The panels taking turns: `count` at a time, cross-fading.
     private func rotating(count: Int) -> some View {
-        let panels = KioskPlan.panels(snapshot: today.snapshot)
+        var panels = KioskPlan.panels(snapshot: today.snapshot)
+        #if DEBUG
+        // `-kioskSleepFirst`: the Sleep panel in the first turn (screenshots).
+        if ProcessInfo.processInfo.arguments.contains("-kioskSleepFirst"), let i = panels.firstIndex(of: .sleep) { panels.insert(panels.remove(at: i), at: 0) }
+        #endif
         let showing = KioskPlan.showing(panels, turn: turn, count: count)
         return VStack(spacing: 20) {
             ForEach(showing, id: \.self) { panel in
@@ -194,6 +198,7 @@ struct KioskView: View {
         case .home: homePanel
         case .work: workPanel
         case .health: healthPanel
+        case .sleep: sleepPanel
         case .offers: offersPanel
         }
     }
@@ -270,11 +275,33 @@ struct KioskView: View {
         let health = today.snapshot?.health
         return frame("You", icon: "heart.fill") {
             HStack(spacing: 32) {
-                if let asleep = health?.sleep?.asleepMin {
+                // Minutes asleep only from an older Jarvis; otherwise sleep has its own slide.
+                if today.snapshot?.sleep == nil, let asleep = health?.sleep?.asleepMin {
                     stat(TodayWording.hours(asleep), "asleep last night")
                 }
                 if let steps = health?.yesterday?.steps {
                     stat(steps.formatted(), "steps yesterday")
+                }
+            }
+        }
+    }
+
+    /// Last night: the score ring and time asleep, the stage bar, the
+    /// score's parts and the week, sized for across the room.
+    @ViewBuilder
+    private var sleepPanel: some View {
+        if let snapshot = today.snapshot {
+            let sleep = SleepSlide.card(snapshot)
+            frame("Sleep", icon: "bed.double.fill", note: sleep.trendAverage) {
+                VStack(alignment: .leading, spacing: 20) {
+                    if sleep.kind == .noNight {
+                        Text(sleep.emptyWords ?? "").font(.title3).foregroundStyle(Theme.frostDim)
+                    } else {
+                        SleepHeadline(card: sleep, scale: 1.5)
+                        if !sleep.stages.isEmpty { SleepStageBar(shares: sleep.stages, scale: 1.5) }
+                        if !sleep.parts.isEmpty { SleepPartBars(parts: sleep.parts, scale: 1.3) }
+                    }
+                    if !sleep.trend.isEmpty { SleepTrendBars(trend: sleep.trend, scale: 1.4) }
                 }
             }
         }
