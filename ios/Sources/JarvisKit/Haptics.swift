@@ -111,6 +111,13 @@ public enum PageCommit {
         return Int((offsetX / width).rounded())
     }
 
+    /// The page a swipe lands on: the proposed one, but never more than one
+    /// page from where it began, and never past the ends.
+    public static func oneStep(from current: Int, proposed: Int, count: Int) -> Int {
+        let step = max(-1, min(1, proposed - current))
+        return max(0, min(count - 1, current + step))
+    }
+
     /// True when the landing page differs from the page the swipe began on.
     public static func changes(fromX: Double, toX: Double, width: Double) -> Bool {
         page(offsetX: fromX, width: width) != page(offsetX: toX, width: width)

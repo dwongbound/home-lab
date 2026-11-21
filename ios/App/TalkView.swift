@@ -585,7 +585,7 @@ struct TalkView: View {
                         .foregroundStyle(chip)
                         .background(Capsule().fill(chip.opacity(0.14)))
                 }
-                Text(reply)
+                RichTextView(text: reply)
                     .foregroundStyle(Theme.frost)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)

@@ -55,6 +55,8 @@ struct RootView: View {
     @StateObject private var bedside = PhoneKioskMonitor()
     /// Whether the keyboard is up.
     @StateObject private var keyboard = KeyboardWatch()
+    /// A leftward drag on Chat is showing message times (TimesReveal).
+    @GestureState private var timesDragging = false
     /// One page, with room for the tab bar.
     private func page<Page: View>(_ content: Page, _ screen: GeometryProxy) -> some View {
         content
@@ -162,7 +164,7 @@ struct RootView: View {
                 }
                 .scrollTargetLayout()
             }
-            .scrollTargetBehavior(TickingPaging())
+            .scrollTargetBehavior(TickingPaging(current: AppTab.allCases.firstIndex(of: tabs.tab) ?? 0, count: AppTab.allCases.count))
             .scrollDisabled(tabs.pagerHeld)
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
@@ -185,14 +187,21 @@ struct RootView: View {
         // On Chat, a leftward drag shows the messages' times (TimesReveal)
         // and the pager holds still for it: Chat is the last page, so that
         // drag only ever rubber-banded the pages.
-        .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { drag in
+        // The hold is a gesture state, so it ends with the touch however the
+        // touch ends, cancelled included: a stuck hold froze the tab swipe
+        // (Dylan, 2026-11-20, build 53).
+        .simultaneousGesture(DragGesture(minimumDistance: 8).updating($timesDragging) { drag, state, _ in
             guard app.tab == .chat, !keyboard.up else { return }
-            let revealing = TimesReveal.shared.moved(width: drag.translation.width, height: drag.translation.height)
-            if revealing, !tabs.pagerHeld { tabs.pagerHeld = true }
-        }.onEnded { _ in
-            TimesReveal.shared.ended()
-            if tabs.pagerHeld { tabs.pagerHeld = false }
+            if TimesReveal.shared.moved(width: drag.translation.width, height: drag.translation.height) { state = true }
         })
+        .onChange(of: timesDragging) { _, dragging in
+            if dragging {
+                if !tabs.pagerHeld { tabs.pagerHeld = true }
+            } else {
+                TimesReveal.shared.ended()
+                if tabs.pagerHeld { tabs.pagerHeld = false }
+            }
+        }
         .background(Theme.sky.ignoresSafeArea())
         // The bar floats over the pages; each page keeps room for it, so
         // lists scroll up from under it and buttons sit above it.
@@ -833,11 +842,20 @@ private struct WarmUp: View {
 /// PageCommit). A tap in the bar ticks there instead: its programmatic
 /// scroll isn't a gesture, so this isn't asked.
 private struct TickingPaging: ScrollTargetBehavior {
+    /// The page showing when the swipe began, and how many there are.
+    let current: Int
+    let count: Int
+
     func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
-        let from = context.originalTarget.rect.minX
-        PagingScrollTargetBehavior.paging.updateTarget(&target, context: context)
         let width = context.containerSize.width
-        if PageCommit.changes(fromX: from, toX: target.rect.minX, width: width) {
+        guard width > 0 else { return }
+        // One swipe moves one page at most, however fast the flick (Dylan,
+        // 2026-11-20: "i swipe and can go from tab 1 to tab 3"): the
+        // paging's own pick, held to the page beside the one he started on.
+        PagingScrollTargetBehavior.paging.updateTarget(&target, context: context)
+        let landing = PageCommit.oneStep(from: current, proposed: PageCommit.page(offsetX: target.rect.minX, width: width), count: count)
+        target.rect.origin.x = CGFloat(landing) * width
+        if landing != current {
             if Thread.isMainThread {
                 MainActor.assumeIsolated { Haptics.play(.tab) }
             } else {

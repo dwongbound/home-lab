@@ -61,3 +61,12 @@ final class HapticsTests: XCTestCase {
         XCTAssertEqual(HapticMoment.callStarts.feel, .medium)
     }
 }
+
+final class PageStepTests: XCTestCase {
+    func testAFastFlickMovesOnePageOnly() {
+        XCTAssertEqual(PageCommit.oneStep(from: 0, proposed: 2, count: 3), 1, "Home to Talk, not Chat")
+        XCTAssertEqual(PageCommit.oneStep(from: 2, proposed: 0, count: 3), 1, "Chat back to Talk")
+        XCTAssertEqual(PageCommit.oneStep(from: 1, proposed: 1, count: 3), 1, "springs back")
+        XCTAssertEqual(PageCommit.oneStep(from: 2, proposed: 3, count: 3), 2, "never past the end")
+    }
+}

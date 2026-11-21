@@ -689,6 +689,10 @@ struct ChatView: View {
     /// the new-reply dot clears straight away.
     private func jumpToNewest(_ scroller: ScrollViewProxy) {
         Haptics.play(.jump)
+        // The tap always wins: no place-keeping, no next page by itself,
+        // and a flick in progress stops (Dylan, 2026-11-20, build 53).
+        placeKeeper.jumpToBottom()
+        olderArmed = false
         var quiet = Transaction()
         quiet.disablesAnimations = true
         let rows = Array(chat.items.suffix(shown))
@@ -832,7 +836,8 @@ struct JarvisBubble: View {
                 }
             }
             HStack(alignment: .lastTextBaseline, spacing: 6) {
-                Text(markdown(item.text))
+                // Rich text, like the page (App/RichTextView.swift).
+                RichTextView(text: item.text)
                     .textSelection(.enabled)
                 if item.finished && !ModelWording.isNotice(item.model ?? "") {
                     Button(action: onWrong) {
@@ -1372,8 +1377,22 @@ final class PlaceKeeper {
     fileprivate var y: CGFloat = 0
     fileprivate var height: CGFloat = 0
     fileprivate var held: (y: CGFloat, height: CGFloat)?
+    /// Set while the arrow's jump to the newest runs: a page landing then
+    /// doesn't move the view (the jump ends at the bottom regardless).
+    fileprivate var jumpingUntil = Date.distantPast
+    /// Moves the list to its very bottom at once (set by PlaceKeeping).
+    fileprivate var toBottom: (() -> Void)?
+
+    /// The arrow: drop any place-keeping and go to the bottom now,
+    /// stopping a flick in progress.
+    func jumpToBottom() {
+        held = nil
+        jumpingUntil = Date().addingTimeInterval(1.2)
+        toBottom?()
+    }
 
     func hold() {
+        guard Date() > jumpingUntil else { return }
         held = (y, height)
         // Nothing grew after all (a page with nothing new): let it go.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.held = nil }
@@ -1400,7 +1419,13 @@ private struct PlaceKeeping: ViewModifier {
         @State private var position = ScrollPosition()
 
         func body(content: Content) -> some View {
-            content
+            let binding = $position
+            keeper.toBottom = {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { binding.wrappedValue.scrollTo(edge: .bottom) }
+            }
+            return content
                 .scrollPosition($position)
                 .onScrollPhaseChange { old, new in
                     if new == .interacting && old != .interacting { rearm() }
@@ -1410,6 +1435,7 @@ private struct PlaceKeeping: ViewModifier {
                     CGSize(width: g.contentOffset.y, height: g.contentSize.height)
                 } action: { _, now in
                     keeper.y = now.width
+                    if Date() < keeper.jumpingUntil { keeper.held = nil }
                     if let held = keeper.held, now.height > held.height + 1 {
                         keeper.held = nil
                         let target = held.y + (now.height - held.height)
