@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(PhoneKioskMonitor.enabledKey) private var bedside = true
     @AppStorage(AppModel.idleKioskKey) private var idleKiosk = true
     @AppStorage(PushCenter.enabledKey) private var pushOn = true
+    @AppStorage(Haptics.settingKey) private var haptics = true
     @ObservedObject private var push = PushCenter.shared
     @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
     @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
@@ -40,6 +41,14 @@ struct SettingsView: View {
                     Text("Reached through Tailscale. Tailscale signs you in, so there's no password. Turn on VPN On Demand in the Tailscale app so it reconnects by itself.")
                 }
                 if UIDevice.current.userInterfaceIdiom == .phone {
+                    Section {
+                        Group {
+                            Toggle("Haptics", isOn: $haptics)
+                        }
+                        .fullWidthSeparators()
+                    } footer: {
+                        Text("Small taps as you switch pages, send, and when Jarvis answers or a call connects.")
+                    }
                     Section {
                         Group {
                             Toggle("Bedside display", isOn: $bedside)

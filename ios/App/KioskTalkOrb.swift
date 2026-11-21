@@ -78,16 +78,15 @@ struct KioskTalkOrb: View {
     private func tap() {
         // A microphone that stopped and wouldn't come back: the tap restarts it.
         if talk.micStuck {
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            Haptics.play(.callStarts)
             talk.restartMic()
             return
         }
         switch PhoneKiosk.orbTap(callOpen: callOpen, connecting: talk.phase == .connecting) {
         case .start:
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            Haptics.play(.callStarts)
             Task { await talk.start(app: app) }
         case .hangUp:
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.6)
             talk.hangUp()
         case .nothing:
             break

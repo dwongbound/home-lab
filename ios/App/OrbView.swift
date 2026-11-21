@@ -187,7 +187,11 @@ struct OrbView: View {
             .onTapGesture(coordinateSpace: .local) { point in
                 let dots = animator.orbitScreen.map { (id: $0.key, x: Double($0.value.x), y: Double($0.value.y)) }
                 switch OrbHit.resolve(x: point.x, y: point.y, dots: dots, centerX: size / 2, centerY: size / 2, coreRadius: animator.lastCoreRadius, frozen: opened != nil) {
-                case .dot(let id): opened = id
+                case .dot(let id):
+                    #if os(iOS)
+                    Haptics.play(.orbitTap)
+                    #endif
+                    opened = id
                 case .core: onCoreTap?()
                 case .release: close()
                 case .nothing: break

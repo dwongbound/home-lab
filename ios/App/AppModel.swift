@@ -147,6 +147,7 @@ final class AppModel: ObservableObject {
     /// Keeps a chat message as a yellow dot (Dylan, 2026-11-19: "jarvis
     /// tells me something and i want to keep it so i remember it later").
     func keep(turnId: Int) async {
+        Haptics.play(.keep)
         keptTurnsHere.insert(turnId)
         do {
             let result = try await client.keep(turnId: turnId)
@@ -203,6 +204,7 @@ final class AppModel: ObservableObject {
 
     /// Let go of a chat message by its turn: finds its kept item.
     func letGo(turnId: Int) async {
+        Haptics.play(.keep)
         if let notice = Notices.kept(turnId: turnId, in: allNotices) {
             await letGo(notice)
         } else {
@@ -235,6 +237,7 @@ final class AppModel: ObservableObject {
     /// the screen.
     @discardableResult
     func answerApproval(id: String, summary: String, ok: Bool) async -> String? {
+        Haptics.play(ok ? .approve : .deny)
         settleApproval(id, line: ApprovalWording.settledLine(ok: ok, later: false, by: "page", summary: summary))
         do {
             switch try await client.answer(approval: id, ok: ok) {
@@ -398,17 +401,21 @@ final class AppModel: ObservableObject {
         do {
             switch try await client.stopJob(id: task.id) {
             case .stopped(let words):
+                Haptics.play(.stopped)
                 stoppedJobs.insert(task.id)
                 await today.load(app: self)
                 return words
             case .gone:
+                Haptics.play(.stopped)
                 stoppedJobs.insert(task.id)
                 await today.load(app: self)
                 return nil
             case .failed(let words):
+                Haptics.play(.stopFailed)
                 return words
             }
         } catch {
+            Haptics.play(.stopFailed)
             noteReach(error)
             return (error as? JarvisError)?.errorDescription ?? ErrorWording.unreachable
         }
@@ -516,6 +523,8 @@ final class AppModel: ObservableObject {
         // write redraws the whole app.
         let reached = (error as? JarvisError) != .unreachable
         if reachable != reached { reachable = reached }
+        // "Couldn't reach Jarvis": felt once, not on every quiet retry.
+        if reached { Haptics.recovered("reach") } else { Haptics.failed("reach") }
         let restarting = error.map(ConnectionStatus.isJustNotAnswering) ?? false
         if restarting != jarvisRestarting { jarvisRestarting = restarting }
     }

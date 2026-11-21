@@ -160,7 +160,7 @@ struct RootView: View {
                 }
                 .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.paging)
+            .scrollTargetBehavior(TickingPaging())
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .scrollPosition(id: Binding(get: { Optional(app.tab) }, set: { if let tab = $0, tab != app.tab { app.tab = tab } }))
@@ -540,6 +540,8 @@ struct TabBar: View {
     private func item(_ target: AppTab, _ title: String, _ symbol: String, badge: Int) -> some View {
         let on = tab == target
         return Button {
+            // One tick at the tap (a tap on the tab already showing is no change).
+            if tab != target { Haptics.play(.tab) }
             withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { tab = target }
         } label: {
             VStack(spacing: 3) {
@@ -805,6 +807,26 @@ private struct WarmUp: View {
 }
 
 /// Reports the pager's own movement to PageSlide (iOS 18 and up).
+/// The pager's own paging, plus the swipe's one haptic tick: asked where
+/// to land as he lets go, so the tick comes at that commit, once, and not
+/// for a swipe that springs back to the page it started on (JarvisKit
+/// PageCommit). A tap in the bar ticks there instead: its programmatic
+/// scroll isn't a gesture, so this isn't asked.
+private struct TickingPaging: ScrollTargetBehavior {
+    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        let from = context.originalTarget.rect.minX
+        PagingScrollTargetBehavior.paging.updateTarget(&target, context: context)
+        let width = context.containerSize.width
+        if PageCommit.changes(fromX: from, toX: target.rect.minX, width: width) {
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { Haptics.play(.tab) }
+            } else {
+                DispatchQueue.main.async { Haptics.play(.tab) }
+            }
+        }
+    }
+}
+
 private struct PageSlideWatch: ViewModifier {
     func body(content: Content) -> some View {
         // The lighter drawing path only (the iPad); the iPhone's orb keeps

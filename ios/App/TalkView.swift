@@ -97,6 +97,7 @@ final class TalkModel: ObservableObject {
     func pause() {
         guard let line else { return }
         if line.canDoze {
+            Haptics.play(.callEnds)
             line.doze()
             phase = .on(.dozing)
             level = 0
@@ -113,6 +114,7 @@ final class TalkModel: ObservableObject {
 
     /// Ends the call.
     func hangUp() {
+        if phase != .off { Haptics.play(.callEnds) }
         line?.close()
         line = nil
         phase = .off
@@ -124,6 +126,7 @@ final class TalkModel: ObservableObject {
     /// Mic off or on; the line stays open either way.
     func toggleMute() {
         muted.toggle()
+        Haptics.play(.mute)
         line?.setMuted(muted)
         if muted { level = 0 }
     }
@@ -206,6 +209,10 @@ final class TalkModel: ObservableObject {
     private func apply(_ event: TalkEvent, app: AppModel) {
         switch event {
         case .state(let state):
+            // Felt, not only seen: the call connecting, and Jarvis starting to speak.
+            // Heard him: the "got it" moment (iOS may hold it back while the
+            // mic records; see App/Haptics.swift).
+            if state == .thinking, phase == .on(.listening) { Haptics.play(.thinking) }
             phase = .on(state)
             // Listening starts quiet; dozing (paused by him or by Jarvis on
             // "that's all") drops the voice so the orb settles.
@@ -253,6 +260,7 @@ final class TalkModel: ObservableObject {
             break
         case .bye:
             // Goodbye: the call is over until Dylan taps Talk.
+            Haptics.play(.callEnds)
             line = nil
             phase = .off
             // One quiet merge as the call ends, for the last exchange.
@@ -638,6 +646,9 @@ struct TalkView: View {
 
     /// What the big button does now.
     private func mainAction() {
+        // Played at the tap, before the microphone opens and iOS holds
+        // haptics back; pausing plays its own.
+        if talk.phase == .off || talk.phase == .on(.dozing) { Haptics.play(.callStarts) }
         switch talk.phase {
         case .off: Task { await talk.start(app: app) }
         case .connecting: break

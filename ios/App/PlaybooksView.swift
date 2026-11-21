@@ -517,6 +517,7 @@ final class PlaybooksModel: ObservableObject {
 
     /// Runs one now and says how it went.
     func run(_ playbook: Playbook, client: JarvisClient) async {
+        Haptics.play(.run)
         busy = "Running \(playbook.name)…"
         defer { busy = nil }
         do {
@@ -528,6 +529,7 @@ final class PlaybooksModel: ObservableObject {
                 let friendly = PlaybookTrouble.runWords(result.detail)
                 let words = friendly ?? (result.detail.isEmpty ? (result.ok ? "Done." : "It didn't finish.") : result.detail)
                 runResult = RunOutcome(name: playbook.name, ok: result.ok, words: words, notDone: Playbooks.notDone(result.checks), raw: friendly == nil ? "" : result.detail)
+                Haptics.play(result.ok ? .runOK : .runFailed)
             }
         } catch {
             message = error.localizedDescription

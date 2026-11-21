@@ -327,7 +327,7 @@ struct NoticesSheet: View {
     }
 
     private func haptic() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.play(.fullSwipe)
     }
 
     /// Answers the approval, then clears its notice everywhere.

@@ -342,6 +342,7 @@ final class ChatModel: ObservableObject {
             PhotoDiskCache.save(previews, text: trimmed)
         }
         let mine = ChatItem.user(trimmed, photos: previews)
+        Haptics.play(.send)
         items.append(mine)
         let reply = ChatItem.jarvis("", model: nil, finished: false, question: trimmed)
         items.append(reply)
@@ -432,6 +433,7 @@ final class ChatModel: ObservableObject {
             Task { await self.catchUp(app: app) }
         } else {
             problem = ErrorWording.sendFailed
+            Haptics.play(.failure)
             failed = (text, photos)
             items.removeAll { $0.id == mine }
         }
@@ -473,6 +475,9 @@ final class ChatModel: ObservableObject {
     private func apply(_ event: ChatEvent, to replyId: String) {
         switch event {
         case .delta(let words):
+            // His first words: a soft nudge, the way a reply arriving is felt.
+            // His first words, while Chat is in front: one soft tick, nothing per word.
+            if items.first(where: { $0.id == replyId })?.text.isEmpty == true, app?.tab == .chat { Haptics.play(.replyStarts) }
             update(replyId) { $0.text += words }
         case .model(let model):
             update(replyId) { $0.model = model }
@@ -486,12 +491,14 @@ final class ChatModel: ObservableObject {
             if app?.settled.isSettled(approval.id) != true, !items.contains(where: { $0.id == "approval-\(approval.id)" }) {
                 let at = items.firstIndex(where: { $0.id == replyId }) ?? items.endIndex
                 items.insert(.approval(approval), at: at)
+                Haptics.play(.approvalArrives)
             }
         case .approvalDone(let id, let ok, let by, let later):
             let summary = knownApproval(id)?.summary ?? ""
             app?.settleApproval(id, line: ApprovalWording.settledLine(ok: ok, later: later, by: by, summary: summary))
         case .error(let message):
             problem = message
+            Haptics.play(.failure)
         case .turn(let id):
             // His message's id in history, so catching up later matches it
             // instead of showing it twice.

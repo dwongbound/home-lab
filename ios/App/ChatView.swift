@@ -647,6 +647,7 @@ struct ChatView: View {
     /// over 0.3 s, so it reads as one fast move. The box comes back and
     /// the new-reply dot clears straight away.
     private func jumpToNewest(_ scroller: ScrollViewProxy) {
+        Haptics.play(.jump)
         var quiet = Transaction()
         quiet.disablesAnimations = true
         let rows = Array(chat.items.suffix(shown))
