@@ -367,6 +367,25 @@ export function createMockSource({ now = () => new Date() } = {}) {
             { name: 'Everything else', role: 'Windows, the desktop and drivers', mb: loaded ? 440 : 190, kind: 'other' },
           ],
         },
+        // The whole PC's memory and its two disks, with who holds what.
+        ram: {
+          totalMb: 32768,
+          usedMb: loaded ? 17900 : 14200,
+          scope: 'pc',
+          users: [
+            { name: 'Windows', role: 'The desktop and its apps', mb: 6400 },
+            { name: 'File cache', role: 'Files Linux keeps handy', mb: 3900 },
+            ...(loaded ? [{ name: 'Ollama', role: 'The local model', mb: 3700 }] : []),
+            { name: 'Jarvis', role: 'The agent and his speech models', mb: 2100 },
+            { name: 'Home Assistant', role: 'Smart home', mb: 900 },
+            { name: 'Home page', role: 'This page', mb: 300 },
+            { name: 'Everything else', role: 'Other programs', mb: 600 },
+          ],
+        },
+        disks: [
+          { id: 'c', name: 'C: drive', usedGb: 216, totalGb: 238, users: [{ name: 'Linux disk', gb: 92 }, { name: 'Windows', gb: 61 }, { name: 'Everything else', gb: 63 }] },
+          { id: 'linux', name: 'Linux disk', usedGb: 92, totalGb: 1007, users: [{ name: 'Speech models', gb: 24.5 }, { name: 'Docker', gb: 18.2 }, { name: 'Ollama models', gb: 12.8 }, { name: 'Jarvis data', gb: 6.1 }, { name: 'Everything else', gb: 30.4 }] },
+        ],
         cloud,
         home: {
           devices: state.home.map((d) => ({ ...d })),

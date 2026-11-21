@@ -13,6 +13,7 @@ import { promisify } from 'node:util'
 import { createDigestReader } from './digest.mjs'
 import { createHomeReader } from './home.mjs'
 import { buildGpu, ollamaRows, parseJarvisGpu, parseSmi } from './gpu.mjs'
+import { parseSystem } from './system.mjs'
 import { HISTORY_DEFAULT, emptyHistory, historyQuery, parseHistory } from './history.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
@@ -396,6 +397,13 @@ export function createLiveSource(config, deps = {}) {
     return sleepSummary(parseSleepNights(await res.json()))
   }
 
+  /** Who is using the PC's memory and disks (GET /system); null on an older Jarvis. */
+  async function readJarvisSystem() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/system`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseSystem(await res.json())
+  }
+
   /** POSTs JSON to Jarvis as the caller; `done` is what to say when it works, `missing` when an older Jarvis answers 404. */
   async function postToJarvis(path, body, caller, done, missing) {
     if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
@@ -447,8 +455,9 @@ export function createLiveSource(config, deps = {}) {
         readJarvisReports(),
         readJarvisGpu(),
         readJarvisSleep(),
+        readJarvisSystem(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports, speechModels, sleep] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports, speechModels, sleep, system] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -492,6 +501,8 @@ export function createLiveSource(config, deps = {}) {
         },
         models: describeModels(models),
         gpu: buildGpu(gpu, [...ollamaRows(models, config.ollamaWatchModel), ...(speechModels ?? [])]),
+        ram: system?.ram ?? null,
+        disks: system?.disks ?? null,
         cloud,
         home: homeState,
         jobs,
