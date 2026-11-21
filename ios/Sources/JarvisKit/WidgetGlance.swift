@@ -20,6 +20,8 @@ public struct WidgetGlance: Codable, Equatable, Sendable {
     public var sleep: Sleep?
     /// The newest unread notice's title, as Jarvis wrote it.
     public var newestNotice: String?
+    /// The newest few unread notice titles, newest first (medium widgets).
+    public var notices: [String]?
     /// "Cloudy, 61°F".
     public var weather: String?
     /// Today's food: calories left of the goal, protein (the Watch's numbers).
@@ -54,6 +56,9 @@ public struct WidgetGlance: Codable, Equatable, Sendable {
         public var start: Date
         public var end: Date?
         public var allDay: Bool
+        public init(title: String, start: Date, end: Date?, allDay: Bool) {
+            self.title = title; self.start = start; self.end = end; self.allDay = allDay
+        }
     }
 
     public struct Sleep: Codable, Equatable, Sendable {
@@ -103,6 +108,7 @@ public struct WidgetGlance: Codable, Equatable, Sendable {
         var glance = WidgetGlance(updated: now, unread: unread.count, needsYou: unread.contains { $0.kind == .need },
                                   running: snapshot.jobs?.running.count ?? 0, agenda: Array(ahead.prefix(6)), sleep: sleep)
         glance.newestNotice = Notices.sorted(unread).first?.title
+        glance.notices = Notices.sorted(unread).prefix(3).map(\.title)
         glance.needCount = unread.filter { $0.kind == .need }.count
         if let weather = snapshot.home?.weather {
             glance.weather = TodayWording.weatherWords(weather.condition) + (weather.temperature.map { ", \(Int($0.rounded()))\(weather.unit)" } ?? "")
@@ -138,6 +144,19 @@ public struct WidgetGlance: Codable, Equatable, Sendable {
             return unread == need ? "\(need) need\(need == 1 ? "s" : "") you" : "\(unread) new · \(need) need\(need == 1 ? "s" : "") you"
         }
         return unread > 0 ? "\(unread) new" : nil
+    }
+
+    /// The Lock Screen's two short lines: "4 new" then "1 needs you" or
+    /// "2 running" (each short enough never to be cut).
+    public var lockLines: [String] {
+        var lines = [unread > 0 ? "\(unread) new" : "Nothing new"]
+        if needsYou {
+            let need = max(1, needCount)
+            lines.append("\(need) need\(need == 1 ? "s" : "") you")
+        } else if running > 0 {
+            lines.append("\(running) running")
+        }
+        return lines
     }
 
     public func encoded() -> Data? { try? JSONEncoder().encode(self) }

@@ -13,10 +13,16 @@ import SwiftUI
 import WidgetKit
 
 enum WidgetLook {
-    static let sky = Color(red: 0.06, green: 0.09, blue: 0.15)
-    static let frost = Color(white: 0.95)
-    static let dim = Color(white: 0.95).opacity(0.62)
-    static let faint = Color(white: 0.95).opacity(0.4)
+    /// Night sky in dark mode, paper in light mode.
+    private static func both(_ dark: UIColor, _ light: UIColor) -> Color {
+        Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
+    }
+    static let sky = both(UIColor(red: 0.06, green: 0.09, blue: 0.15, alpha: 1), UIColor(red: 0.97, green: 0.97, blue: 0.99, alpha: 1))
+    static let frost = both(UIColor(white: 0.95, alpha: 1), UIColor(white: 0.08, alpha: 1))
+    static let dim = both(UIColor(white: 0.95, alpha: 0.62), UIColor(white: 0.08, alpha: 0.6))
+    static let faint = both(UIColor(white: 0.95, alpha: 0.4), UIColor(white: 0.08, alpha: 0.38))
+    /// The empty part of a ring or bar.
+    static let track = both(UIColor(white: 1, alpha: 0.12), UIColor(white: 0, alpha: 0.09))
     static let orange = Color(red: 1.0, green: 0.58, blue: 0.24)
     static let blue = Color(red: 0.40, green: 0.70, blue: 1.0)
     static let accent = Color(red: 0.62, green: 0.58, blue: 0.95)
@@ -153,26 +159,44 @@ struct GlanceView: View {
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 1) {
                 Text("Jarvis").font(.headline).widgetAccentable()
-                Text(g?.noticeWords ?? "Nothing new").lineLimit(1)
-                if let g, g.running > 0 { Text("\(g.running) running").lineLimit(1) }
+                // Two short lines rather than one long one, so nothing is cut.
+                ForEach(g?.lockLines ?? ["Open Jarvis once"], id: \.self) { Text($0).lineLimit(1) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         default:
             VStack(alignment: .leading, spacing: 8) {
                 Header(title: "Jarvis", symbol: "circle.hexagongrid.fill")
                 if let g {
-                    HStack(spacing: 18) {
-                        count(g.unread, "new", Look.orange, lit: g.unread > 0)
-                        count(g.running, "running", Look.blue, lit: g.running > 0)
-                    }
                     if family == .systemMedium {
-                        if let newest = g.newestNotice {
-                            Text(newest).font(.subheadline).foregroundStyle(Look.frost).lineLimit(2)
-                        } else {
-                            Text("Nothing needs you.").font(.subheadline).foregroundStyle(Look.dim)
+                        // Counts down the left, the newest notices beside them.
+                        HStack(alignment: .top, spacing: 18) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                count(g.unread, "new", Look.orange, lit: g.unread > 0)
+                                count(g.running, "running", Look.blue, lit: g.running > 0)
+                            }
+                            let titles = g.notices ?? g.newestNotice.map { [$0] } ?? []
+                            VStack(alignment: .leading, spacing: 7) {
+                                if titles.isEmpty {
+                                    Text("Nothing needs you.").font(.subheadline).foregroundStyle(Look.dim)
+                                }
+                                ForEach(Array(titles.prefix(3).enumerated()), id: \.offset) { index, title in
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        Circle().fill(index == 0 && g.needsYou ? Look.orange : Look.faint).frame(width: 5, height: 5)
+                                        Text(title).font(.subheadline).foregroundStyle(index == 0 ? Look.frost : Look.dim).lineLimit(2)
+                                    }
+                                }
+                            }
+                            .padding(.top, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                    } else if g.needsYou {
-                        Text("Something needs you").font(.caption).foregroundStyle(Look.orange).lineLimit(1)
+                    } else {
+                        HStack(spacing: 18) {
+                            count(g.unread, "new", Look.orange, lit: g.unread > 0)
+                            count(g.running, "running", Look.blue, lit: g.running > 0)
+                        }
+                        if g.needsYou {
+                            Text("Something needs you").font(.caption).foregroundStyle(Look.orange).lineLimit(1)
+                        }
                     }
                     Spacer(minLength: 0)
                     AsOf(glance: g, now: entry.date)
@@ -213,18 +237,24 @@ struct TodayWidgetView: View {
     let family: WidgetFamily
 
     var body: some View {
-        let limit = family == .systemLarge ? 7 : family == .accessoryRectangular ? 2 : 3
+        let limit = family == .systemLarge ? 8 : family == .accessoryRectangular ? 2 : 4
         let items = entry.glance?.upcoming(at: entry.date, limit: limit) ?? []
         if family == .accessoryRectangular {
             VStack(alignment: .leading, spacing: 1) {
                 if items.isEmpty { Text("Nothing else today").font(.headline) }
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    Text("\(timeLabel(item, now: entry.date))  \(item.title)").lineLimit(1)
+                // The next one gets the time on its own line and the title the
+                // full width under it; the one after shares a line.
+                if let next = items.first {
+                    Text(timeLabel(next, now: entry.date)).font(.headline).widgetAccentable()
+                    Text(next.title).lineLimit(1)
+                }
+                if items.count > 1 {
+                    Text("\(timeLabel(items[1], now: entry.date))  \(items[1].title)").lineLimit(1).foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            VStack(alignment: .leading, spacing: family == .systemLarge ? 12 : 8) {
+            VStack(alignment: .leading, spacing: family == .systemLarge ? 11 : 6) {
                 HStack {
                     Header(title: "Today", symbol: "calendar")
                     Spacer()
@@ -290,7 +320,7 @@ struct CaloriesWidgetView: View {
                     HStack {
                         Spacer()
                         ZStack {
-                            Circle().stroke(Color.white.opacity(0.12), lineWidth: 9)
+                            Circle().stroke(Look.track, lineWidth: 9)
                             Circle().trim(from: 0, to: progress)
                                 .stroke(food.left >= 0 ? Look.green : Look.orange, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
@@ -369,7 +399,7 @@ struct SleepWidgetView: View {
     private func ring(_ sleep: WidgetGlance.Sleep) -> some View {
         let tint = Look.band(sleep.band)
         return ZStack {
-            Circle().stroke(Color.white.opacity(0.12), lineWidth: 8)
+            Circle().stroke(Look.track, lineWidth: 8)
             if let score = sleep.score {
                 Circle().trim(from: 0, to: CGFloat(score) / 100)
                     .stroke(tint, style: StrokeStyle(lineWidth: 8, lineCap: .round))
@@ -404,7 +434,7 @@ struct SleepWidgetView: View {
         HStack(alignment: .bottom, spacing: 5) {
             ForEach(Array(scores.enumerated()), id: \.offset) { index, score in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(index == scores.count - 1 ? Look.accent : Color.white.opacity(0.25))
+                    .fill(index == scores.count - 1 ? Look.accent : Look.faint)
                     .frame(width: 9, height: max(3, 26 * CGFloat(score ?? 0) / 100))
             }
         }
@@ -478,10 +508,10 @@ struct BoardView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 18) {
             TodayWidgetView(entry: entry, family: .systemLarge)
-            Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1)
+            Rectangle().fill(Look.track).frame(width: 1)
             VStack(spacing: 14) {
                 GlanceView(entry: entry, family: .systemMedium)
-                Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1)
+                Rectangle().fill(Look.track).frame(height: 1)
                 HomeWidgetView(entry: entry, family: .systemMedium)
             }
         }

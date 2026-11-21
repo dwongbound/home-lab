@@ -181,6 +181,28 @@ final class WidgetGlanceTests: XCTestCase {
         XCTAssertNotNil(g.home)
         XCTAssertNotNil(WidgetGlance.decode(g.encoded()), "round trip through the app group")
         XCTAssertTrue(g.agenda.allSatisfy { ($0.end ?? $0.start.addingTimeInterval(3600)) > now }, "only what's still to come")
+        XCTAssertEqual(g.notices?.first, g.newestNotice)
+        XCTAssertLessThanOrEqual(g.notices?.count ?? 0, 3)
+    }
+
+    /// The Lock Screen's lines stay short enough never to be cut.
+    func testLockLinesAreShort() {
+        var g = WidgetGlance(updated: Date(), unread: 4, needsYou: true, running: 1, agenda: [], sleep: nil)
+        g.needCount = 1
+        XCTAssertEqual(g.lockLines, ["4 new", "1 needs you"])
+        g.needsYou = false
+        XCTAssertEqual(g.lockLines, ["4 new", "1 running"])
+        g.unread = 0; g.running = 0
+        XCTAssertEqual(g.lockLines, ["Nothing new"])
+        g.unread = 128; g.needsYou = true; g.needCount = 12
+        XCTAssertTrue(g.lockLines.allSatisfy { $0.count <= 12 })
+    }
+
+    /// An older glance without the notice list still decodes.
+    func testOlderGlanceStillDecodes() throws {
+        var g = WidgetGlance(updated: Date(), unread: 1, needsYou: false, running: 0, agenda: [], sleep: nil)
+        g.notices = nil
+        XCTAssertNotNil(WidgetGlance.decode(g.encoded()))
     }
 
     func testNoticeWords() {
