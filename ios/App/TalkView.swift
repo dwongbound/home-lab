@@ -205,6 +205,25 @@ final class TalkModel: ObservableObject {
         Task { await activity.end(nil, dismissalPolicy: .immediate) }
     }
 
+    #if DEBUG
+    /// `-fakeHeard`: a scripted run of his live words, a partial about every
+    /// second with a revision on the way (the fade-in check; nothing is
+    /// sent to Jarvis).
+    func playFakeHeard(app: AppModel) async {
+        let steps: [(String, Int)] = [
+            ("Hey", 0), ("Hey Jarvis can you", 1), ("Hey Jarvis can you turn of the", 3),
+            ("Hey Jarvis can you turn off the bedroom", 5), ("Hey Jarvis can you turn off the bedroom lights and", 7),
+            ("Hey Jarvis can you turn off the bedroom lights and remind me about", 9),
+            ("Hey Jarvis can you turn off the bedroom lights and remind me about volleyball tomorrow", 12),
+        ]
+        try? await Task.sleep(for: .seconds(2))
+        for (words, stable) in steps {
+            apply(.partial(words, joined: false, stable: stable), app: app)
+            try? await Task.sleep(for: .seconds(1))
+        }
+    }
+    #endif
+
     /// One event from the line onto the screen.
     private func apply(_ event: TalkEvent, app: AppModel) {
         switch event {
@@ -386,6 +405,11 @@ struct TalkView: View {
         let _ = PerfCount.bump("talk")
         #endif
         ZStack {
+            #if DEBUG
+            Color.clear.task {
+                if ProcessInfo.processInfo.arguments.contains("-fakeHeard") { await talk.playFakeHeard(app: app) }
+            }
+            #endif
             Theme.sky.ignoresSafeArea()
             VStack(spacing: 0) {
                 // Room for the floating buttons (no bar).
@@ -564,10 +588,21 @@ struct TalkView: View {
         return Text(parts.settled + " ") + tail
     }
 
+    /// The open exchange's words fade in as they come (LiveWords); earlier
+    /// turns are plain text.
+    @ViewBuilder
+    private func heardBubble(_ words: String) -> some View {
+        if words == talk.heard {
+            LiveWords(text: words, stable: talk.heardStable)
+        } else {
+            heardText(words)
+        }
+    }
+
     @ViewBuilder
     private func bubbles(heard: String, reply: String, model: String?) -> some View {
         if !heard.isEmpty {
-            heardText(heard)
+            heardBubble(heard)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))

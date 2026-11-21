@@ -357,3 +357,26 @@ public struct PlaybackTracker: Equatable, Sendable {
         return due > now ? due : nil
     }
 }
+
+/// Which part of the live words is new and fades in (Dylan, 2026-11-21:
+/// "fading the words in … from left to right … instead of being one word
+/// appearing at a time"). Everything up to the first character that
+/// differs from what was shown stays as it is; from there on is fresh,
+/// moved back to the start of its word so a revised word fades in whole.
+public enum FreshWords {
+    /// The character offset where the fresh part of `new` begins
+    /// (new.count when nothing is new).
+    public static func start(old: String, new: String) -> Int {
+        let a = Array(old), b = Array(new)
+        var i = 0
+        while i < a.count, i < b.count, a[i] == b[i] { i += 1 }
+        guard i < b.count else { return b.count }
+        // Only added on the end: just the added part is fresh. A revision
+        // (it differs before the old text ran out) goes back to the start
+        // of that word, so the revised word fades in whole.
+        if i < a.count {
+            while i > 0, !b[i - 1].isWhitespace { i -= 1 }
+        }
+        return i
+    }
+}

@@ -271,3 +271,14 @@ final class SleepWeekTests: XCTestCase {
         XCTAssertNil(SleepWeek(nights: [], endNight: "2026-11-20").battery)
     }
 }
+
+
+final class FreshWordsTests: XCTestCase {
+    func testOnlyTheNewPartIsFresh() {
+        XCTAssertEqual(FreshWords.start(old: "turn off the", new: "turn off the lights"), 12)
+        XCTAssertEqual(FreshWords.start(old: "", new: "hello"), 0)
+        XCTAssertEqual(FreshWords.start(old: "same words", new: "same words"), 10, "nothing new")
+        XCTAssertEqual(FreshWords.start(old: "turn of the", new: "turn off the"), 5, "a revised word fades in whole")
+        XCTAssertEqual(FreshWords.start(old: "turn off the lights", new: "turn off"), 8, "shorter: nothing new")
+    }
+}
