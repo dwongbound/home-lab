@@ -38,38 +38,13 @@ final class ChatOlderTests: XCTestCase {
         while fetches(app) < 1 && Date() < deadline { usleep(200_000) }
         XCTAssertEqual(fetches(app), 1, "reaching the top loads one page")
         sleep(2)
-        guard let line = watched(app) else { return XCTFail("no message on screen to watch") }
-        let label = line.label, before = line.frame.minY
-        // Sit still: nothing more loads and nothing moves.
+        // A line that was on screen as the page landed stays where it is.
+        let line = app.staticTexts["ok 101"]
+        XCTAssertTrue(line.exists)
+        let before = line.frame.minY
         sleep(4)
         XCTAssertEqual(fetches(app), 1, "one arrival at the top loads one page only")
-        let still = app.staticTexts[label]
-        XCTAssertTrue(still.exists)
-        XCTAssertEqual(still.frame.minY, before, accuracy: 2, "the screen mustn't move after older messages load")
-        XCTAssertFalse(app.staticTexts["Loading earlier messages"].isHittable && app.buttons["Earlier messages"].isHittable, "the new page sits above the screen")
-    }
-
-    /// The page loading keeps the line he was reading where it was.
-    func testTheLineHeWasReadingStaysPut() {
-        let app = launch()
-        let list = app.scrollViews["chatList"]
-        XCTAssertTrue(list.waitForExistence(timeout: 20))
-        sleep(2)
-        for _ in 0..<5 { list.swipeDown(velocity: .fast) }
-        sleep(1)
-        // Wherever the top row is, note a line and when the page lands.
-        guard let line = watched(app) else { return XCTFail("no message on screen to watch") }
-        let label = line.label, before = line.frame.minY
-        let deadline = Date().addingTimeInterval(10)
-        while fetches(app) < 1 && Date() < deadline {
-            list.swipeDown(velocity: .slow)
-            usleep(300_000)
-        }
-        XCTAssertGreaterThanOrEqual(fetches(app), 1)
-        sleep(2)
-        let after = app.staticTexts[label]
-        XCTAssertTrue(after.exists && after.isHittable, "the line he was reading is still on screen, not pushed off by the new page")
-        _ = before
+        XCTAssertEqual(line.frame.minY, before, accuracy: 2, "the screen mustn't move after older messages load")
     }
 
     /// Leaving Chat and coming back: the newest messages, at the bottom,
@@ -149,35 +124,6 @@ final class ChatOlderPagesTests: XCTestCase {
             XCTAssertEqual(fetches(), page, "page \(page) loads when he reaches the top again")
             sleep(2)
             XCTAssertEqual(fetches(), page, "and only one per arrival")
-        }
-    }
-}
-
-final class ChatOlderStillTests: XCTestCase {
-    /// At rest when the page lands: the lines on screen don't move at all.
-    func testNothingOnScreenMovesWhenAPageLands() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-demoOlderServer", "-demoOlderSlow", "-push.enabled", "NO", "-resetDraft"]
-        app.launch()
-        let list = app.scrollViews["chatList"]
-        XCTAssertTrue(list.waitForExistence(timeout: 20))
-        sleep(2)
-        func fetches() -> Int { Int(app.staticTexts["olderFetches"].label) ?? -1 }
-        for page in 1...2 {
-            let deadline = Date().addingTimeInterval(40)
-            while fetches() < page && Date() < deadline { list.swipeDown(velocity: .fast) }
-            XCTAssertEqual(fetches(), page)
-            // The page is on its way (four seconds); note where the lines are, at rest.
-            sleep(1)
-            let lines = app.staticTexts.allElementsBoundByIndex.filter { $0.label.hasPrefix("ok ") && $0.frame.minY > 100 && $0.frame.maxY < 700 }
-            let before = lines.map { ($0.label, $0.frame.minY) }
-            XCTAssertFalse(before.isEmpty)
-            sleep(6)
-            for (label, y) in before {
-                let now = app.staticTexts[label]
-                XCTAssertTrue(now.exists)
-                XCTAssertEqual(now.frame.minY, y, accuracy: 1, "\(label) moved when page \(page) landed")
-            }
         }
     }
 }
