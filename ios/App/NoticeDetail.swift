@@ -92,11 +92,19 @@ struct NoticeDetail: View {
     @ViewBuilder
     private var actions: some View {
         let canDismiss = !notice.isApproval && !notice.kept && notice.source != "push"
+        // A kept one: one Dismiss, which lets it go (no Keep beside it).
+        let keptDismiss = notice.kept && !notice.isApproval
         // Chat can open any message it can find, loaded or not.
         let open = notice.turnId != nil && notice.source != "push"
         let report = notice.reportId
-        if canDismiss || open || report != nil {
+        if canDismiss || keptDismiss || open || report != nil {
             HStack(spacing: 10) {
+                if keptDismiss {
+                    button("Dismiss", main: !open && report == nil) {
+                        dismiss()
+                        Task { await app.letGo(notice) }
+                    }
+                }
                 if canDismiss {
                     button("Keep", main: false) {
                         dismiss()

@@ -207,7 +207,7 @@ struct NoticesSheet: View {
                                     // nothing that could look like an answer.
                                     .swipeActions(edge: .trailing, allowsFullSwipe: !notice.kept && !notice.isApproval) {
                                         if notice.kept {
-                                            Button(NoticeAction.unkeep.label, systemImage: "bookmark.slash") {
+                                            Button(NoticeAction.unkeep.label, systemImage: "xmark") {
                                                 haptic()
                                                 Task { await app.letGo(notice) }
                                             }

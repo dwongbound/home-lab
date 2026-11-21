@@ -714,7 +714,7 @@ struct OrbitCallout: View {
     var onOpen: (() -> Void)? = nil
     /// Closes without clearing, so the dot stays; nil hides the button.
     var onKeep: (() -> Void)? = nil
-    /// A kept (yellow) item's "Unkeep"; nil hides the button.
+    /// A kept (yellow) item's "Dismiss" (lets it go); nil hides the button.
     var onLetGo: (() -> Void)? = nil
     /// "Keep": the dot stays, yellow, until Unkeep.
     var onKeepForGood: (() -> Void)? = nil

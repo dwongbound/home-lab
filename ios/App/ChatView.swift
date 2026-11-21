@@ -1269,7 +1269,7 @@ private struct ChatRowsList: View, Equatable {
             .contextMenu {
                 if let turnId = item.turnId {
                     if keptTurns.contains(turnId) {
-                        Button("Unkeep", systemImage: "bookmark.slash") { actions.letGo(turnId) }
+                        Button("Dismiss", systemImage: "xmark") { actions.letGo(turnId) }
                     } else {
                         Button("Keep", systemImage: "bookmark") { actions.keep(turnId) }
                     }
@@ -1287,7 +1287,7 @@ private struct ChatRowsList: View, Equatable {
                         .contextMenu {
                             if let turnId = item.turnId, item.finished {
                                 if keptTurns.contains(turnId) {
-                                    Button("Unkeep", systemImage: "bookmark.slash") { actions.letGo(turnId) }
+                                    Button("Dismiss", systemImage: "xmark") { actions.letGo(turnId) }
                                 } else {
                                     Button("Keep", systemImage: "bookmark") { actions.keep(turnId) }
                                 }

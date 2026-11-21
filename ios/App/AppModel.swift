@@ -194,11 +194,12 @@ final class AppModel: ObservableObject {
                 await today.load(app: self)
             } else {
                 letGoHere.remove(notice.id)
-                chat.problem = result.message.isEmpty ? "Jarvis couldn't let that go." : result.message
+                noticeProblem = result.message.isEmpty ? "Jarvis couldn't dismiss that, so it's still kept." : result.message
             }
         } catch {
             letGoHere.remove(notice.id)
             noteReach(error)
+            noticeProblem = "Couldn't reach Jarvis, so that's still kept. Try again in a moment."
         }
     }
 

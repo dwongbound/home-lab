@@ -248,7 +248,9 @@ public enum NoticeAction: Equatable, Sendable, CaseIterable {
         case .done: return "Done"
         case .approve: return "Approve"
         case .deny: return "Deny"
-        case .unkeep: return "Unkeep"
+        // A kept item's way out reads Dismiss (Dylan, 2026-11-21): letting
+        // it go takes it off the list, like dismissing any notice.
+        case .unkeep: return "Dismiss"
         case .keep: return "Keep"
         case .seeInChat: return "See in chat"
         case .seeMore: return "See more"
