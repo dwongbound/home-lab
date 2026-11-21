@@ -1447,6 +1447,23 @@ final class PlaceKeeper {
     @MainActor private func sizeChanged(_ view: UIScrollView) {
         let height = view.contentSize.height
         defer { lastHeight = height }
+        // Resting at the bottom and the last row grew (a reply's text laid
+        // out a pass after it arrived, rich text measuring itself): stay at
+        // the bottom, in the same pass, so it ends just above the box.
+        // Build 76 left the end of a reply 25 pt under the box (Dylan,
+        // 2026-11-21: a sent message lands like a normal text thread).
+        if held == nil, height > lastHeight + 0.5, !view.isTracking, !view.isDecelerating {
+            let oldBottom = max(-view.adjustedContentInset.top, lastHeight - view.bounds.height + view.adjustedContentInset.bottom)
+            // Within a short way of it counts: scrolling to the "bottom"
+            // marker stops 12 pt short of UIKit's true bottom.
+            if view.contentOffset.y >= oldBottom - 24 {
+                let bottom = PlaceKeeper.bottomOffset(view)
+                if bottom > view.contentOffset.y + 0.5 {
+                    view.setContentOffset(CGPoint(x: view.contentOffset.x, y: bottom), animated: false)
+                }
+                return
+            }
+        }
         guard let held, height > lastHeight + 1 else { return }
         self.held = nil
         let added = height - held.height
