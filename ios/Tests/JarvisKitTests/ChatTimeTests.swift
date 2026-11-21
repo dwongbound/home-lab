@@ -98,3 +98,18 @@ final class ChatTimeParseTests: XCTestCase {
         XCTAssertNil(ChatTime.parse("yesterday"))
     }
 }
+
+final class ChatTimeLiveShapeTests: XCTestCase {
+    /// The exact shape Jarvis writes (build 92): UTC, to the second, "+00:00".
+    func testTheLiveFormatParsesBothWays() {
+        let live = "2026-11-20T21:53:06+00:00"
+        XCTAssertNotNil(SleepTime.parse(live), "the parser in builds 53 to 59 read it too")
+        XCTAssertEqual(ChatTime.parse(live), SleepTime.parse(live))
+        var la = Calendar(identifier: .gregorian)
+        la.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        XCTAssertEqual(ChatTime.clock(ChatTime.parse(live)!, calendar: la), "1:53 PM", "shown in his own time zone")
+        // 11:30 PM on the 20th in Los Angeles is the 21st in UTC: the day line follows his zone.
+        let late = ChatTime.parse("2026-11-21T07:30:00+00:00")!
+        XCTAssertEqual(ChatTime.dayBreaks([ChatTime.parse(live), late], calendar: la), [true, false])
+    }
+}

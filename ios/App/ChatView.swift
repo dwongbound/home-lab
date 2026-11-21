@@ -1132,7 +1132,7 @@ final class TimesReveal: ObservableObject {
     /// plus the gap, so every time comes fully into view right beside its
     /// bubble (Dylan, 2026-11-21: "it doesnt drag enough").
     static var width: CGFloat {
-        let font = UIFont.preferredFont(forTextStyle: .caption2)
+        let font = UIFont.preferredFont(forTextStyle: .caption1)
         let digits = UIFont.monospacedDigitSystemFont(ofSize: font.pointSize, weight: .regular)
         let widest = ["12:59 PM", "10:59 AM", "11:58 PM"].map { ($0 as NSString).size(withAttributes: [.font: digits]).width }.max() ?? 52
         return ceil(widest) + gap
@@ -1157,8 +1157,11 @@ final class TimesReveal: ObservableObject {
 
     /// One move of a drag on Chat; true while it's revealing times.
     func moved(width w: CGFloat, height h: CGFloat) -> Bool {
-        if reveals == nil, abs(w) > 8 || abs(h) > 8 {
-            reveals = w < 0 && abs(w) > abs(h) * 1.4
+        // Decided once the finger has clearly moved: a real finger drifts a
+        // little up or down, so mostly-sideways-left is enough (the first
+        // few points used to decide it, which a slight angle failed).
+        if reveals == nil, abs(w) > 14 || abs(h) > 14 {
+            reveals = w < 0 && abs(w) > abs(h)
         }
         guard reveals == true else { return false }
         var quiet = Transaction()
@@ -1211,9 +1214,9 @@ private struct ChatRowsList: View, Equatable {
                 .overlay(alignment: .trailing) {
                     if let at = item.at, item.isTurn {
                         Text(ChatTime.clock(at))
-                            .font(.caption2)
+                            .font(.caption)
                             .monospacedDigit()
-                            .foregroundStyle(Theme.frostFaint)
+                            .foregroundStyle(Theme.frostDim)
                             .fixedSize()
                             .offset(x: TimesReveal.width)
                             .accessibilityIdentifier("messageTime")
