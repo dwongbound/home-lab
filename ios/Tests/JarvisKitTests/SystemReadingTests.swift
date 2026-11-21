@@ -91,14 +91,23 @@ final class SystemReadingTests: XCTestCase {
     }
 
     /// The same name gets the same colour whatever the order, and no two
-    /// names in one breakdown share one.
+    /// names in one breakdown share one (up to the palette's 12).
     func testColoursByName() throws {
         let s = try XCTUnwrap(DemoSnapshot.build(now: Date(), sparse: false))
         let ram = try XCTUnwrap(s.ramBreakdown)
-        let slots = ram.slices.compactMap { ram.colorSlot($0, slots: 8) }
+        let slots = ram.slices.compactMap { ram.colorSlot($0, slots: 12) }
         XCTAssertEqual(Set(slots).count, slots.count)
         let reordered = SystemBreakdown(id: "ram", title: "", note: nil, slices: ram.slices.reversed(), usedGb: ram.usedGb, totalGb: ram.totalGb)
-        for slice in ram.slices { XCTAssertEqual(ram.colorSlot(slice, slots: 8), reordered.colorSlot(slice, slots: 8)) }
-        XCTAssertNil(ram.colorSlot(ram.slices.first { $0.name == "Everything else" }!, slots: 8))
+        for slice in ram.slices { XCTAssertEqual(ram.colorSlot(slice, slots: 12), reordered.colorSlot(slice, slots: 12)) }
+        XCTAssertNil(ram.colorSlot(ram.slices.first { $0.name == "Everything else" }!, slots: 12))
+    }
+
+    /// Null on a server failure: the gauges still come from metrics.
+    func testNullBreakdowns() throws {
+        let s = try snapshot(#""ram":null,"disks":null,"metrics":[{"id":"ram","value":20,"total":32},{"id":"disk","value":24,"total":255}]"#)
+        XCTAssertNil(s.ramBreakdown)
+        XCTAssertTrue(s.diskBreakdowns.isEmpty)
+        XCTAssertEqual(s.systemGauges.map(\.kind), [.ram, .disk])
+        XCTAssertEqual(s.systemGauges.last?.used, 231)
     }
 }

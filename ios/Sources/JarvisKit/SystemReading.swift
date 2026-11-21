@@ -158,7 +158,7 @@ public struct SystemSlice: Equatable, Sendable, Identifiable {
 
     /// "168 GB", "9.2 GB", "370 MB" (a 41 MB row isn't "0.0 GB").
     public var sizeText: String {
-        if gb >= 100 { return "\(Int(gb.rounded())) GB" }
+        if gb >= 10 { return "\(Int(gb.rounded())) GB" }
         if gb < 0.95 { return "\(Int((gb * 1024).rounded())) MB" }
         return String(format: "%.1f GB", gb)
     }

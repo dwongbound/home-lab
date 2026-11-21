@@ -22,6 +22,10 @@ enum SystemStyle {
         Color(red: 0.45, green: 0.85, blue: 0.85),
         Color(red: 0.98, green: 0.84, blue: 0.40),
         Color(red: 0.80, green: 0.55, blue: 0.90),
+        Color(red: 0.70, green: 0.88, blue: 0.40),
+        Color(red: 0.55, green: 0.62, blue: 0.85),
+        Color(red: 1.00, green: 0.66, blue: 0.80),
+        Color(red: 0.40, green: 0.78, blue: 0.62),
     ]
     static let other = Color.gray.opacity(0.75)
 
