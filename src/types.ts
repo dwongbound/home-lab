@@ -183,6 +183,10 @@ export interface Snapshot {
   models: LoadedModel[]
   /** The graphics card's memory and who holds it; null when nvidia-smi can't be read. */
   gpu: GpuUse | null
+  /** Who is using the PC's memory (Jarvis GET /system); null on an older Jarvis. */
+  ram: RamUse | null
+  /** The PC's disks and their biggest folders (Jarvis GET /system); null on an older Jarvis. */
+  disks: DiskUse[] | null
   /** null until the digest is set up (no token) or before its first read. */
   cloud: CloudDigest | null
   /** null without a Home Assistant token, or when it doesn't answer. */
@@ -462,6 +466,33 @@ export interface GpuUse {
   /** How busy the card is, 0 to 100; null when the driver doesn't say. */
   utilization: number | null
   users: GpuUser[]
+}
+
+/** One holder of the PC's memory: a program, a group of them, or the unnamed rest. */
+export interface RamUser {
+  name: string
+  /** What it's for, in a few plain words; '' when Jarvis doesn't say. */
+  role: string
+  mb: number
+}
+
+/** The PC's memory right now. `users` are biggest first and add up to at most `usedMb`; the rest of `totalMb` is free. */
+export interface RamUse {
+  totalMb: number
+  usedMb: number
+  /** What the numbers cover: the whole computer, or only the Linux side Jarvis lives in. */
+  scope: 'pc' | 'linux'
+  users: RamUser[]
+}
+
+/** One disk and its biggest folders. `users` are biggest first and add up to at most `usedGb`. */
+export interface DiskUse {
+  /** A short stable id ("c", "linux"). */
+  id: string
+  name: string
+  usedGb: number
+  totalGb: number
+  users: { name: string; gb: number }[]
 }
 
 /** One model Ollama has loaded (GET /api/ps), and its job on jarvis. */

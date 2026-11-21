@@ -69,6 +69,10 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       if (url.includes('/photo/9')) return Response.json({ error: 'no photo' }, { status: 404 })
       return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg; charset=binary' } })
     }
+    if (url === `${config.jarvisApiUrl}/system`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      return Response.json({ ram: { total_mb: 32000, used_mb: 9000, scope: 'pc', users: [{ name: 'Jarvis', role: 'The agent', mb: 2100 }] }, disks: [{ id: 'c', name: 'C: drive', used_gb: 200, total_gb: 238, users: [] }] }, { status: jarvisStatusCode })
+    }
     if (url.startsWith(`${config.jarvisApiUrl}/health/sleep`)) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       const night = { night: '2026-11-18', minutes: { asleep: 400 }, score: 72, score_source: 'jarvis', stages: [{ stage: 'rem', start: '2026-11-18T03:00:00-08:00', end: '2026-11-18T04:00:00-08:00' }] }
@@ -550,6 +554,15 @@ describe('live chat with Jarvis', () => {
     expect(snapshot.sleep?.last).not.toHaveProperty('stages')
     expect(snapshot.sleep?.trend).toEqual([{ night: '2026-11-18', score: 72, asleep: 400 }, { night: '2026-11-17', score: 60, asleep: 380 }])
     expect((await liveWith({ jarvisAnswers: false }).source.snapshot()).sleep).toBeNull()
+  })
+
+  it('puts who holds the memory and the disks in the snapshot, null on an older Jarvis', async () => {
+    const snapshot = await liveWith({}).source.snapshot()
+    expect(snapshot.ram).toMatchObject({ totalMb: 32000, usedMb: 9000, scope: 'pc', users: [{ name: 'Jarvis', role: 'The agent', mb: 2100 }, { name: 'Everything else', mb: 6900 }] })
+    expect(snapshot.disks).toEqual([{ id: 'c', name: 'C: drive', usedGb: 200, totalGb: 238, users: [{ name: 'Everything else', gb: 200 }] }])
+    const older = await liveWith({ jarvisStatusCode: 404 }).source.snapshot()
+    expect(older.ram).toBeNull()
+    expect(older.disks).toBeNull()
   })
 
   it("warms Jarvis's chat engine as the caller, and skips it without a login", async () => {
