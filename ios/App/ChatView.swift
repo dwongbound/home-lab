@@ -705,10 +705,25 @@ struct ChatView: View {
     /// the new-reply dot clears straight away.
     private func jumpToNewest(_ scroller: ScrollViewProxy) {
         Haptics.play(.jump)
-        // The tap always wins: no place-keeping, no next page by itself,
-        // and a flick in progress stops (Dylan, 2026-11-20, build 53).
-        placeKeeper.jumpToBottom()
         olderArmed = false
+        unseenReply = false
+        TimesReveal.shared.ended()
+        // One move on the list's own scroll view (Dylan, 2026-11-21: "it
+        // should halt all motion in the chat screen and just scroll fast to
+        // the bottom"): everything stops in the same frame as the tap, then
+        // one short ease-out to the very bottom, nothing after it.
+        if let view = placeKeeper.scrollView {
+            placeKeeper.cancelForJump()
+            let duration = reduceMotion ? 0 : 0.28
+            PlaceKeeper.glide(view, toBottomIn: duration) {
+                // The box comes back once the list is still, so its change
+                // of size never lands mid-scroll.
+                readingUp = false
+            }
+            return
+        }
+        // Without the scroll view (not found): the old way.
+        placeKeeper.jumpToBottom()
         var quiet = Transaction()
         quiet.disablesAnimations = true
         let rows = Array(chat.items.suffix(shown))
@@ -1447,6 +1462,41 @@ final class PlaceKeeper {
         held = nil
         jumpingUntil = Date().addingTimeInterval(1.2)
         toBottom?()
+    }
+
+    /// The arrow: drop any held place and any correction to come, stop
+    /// a flick dead, and keep pages landing meanwhile from moving the view.
+    func cancelForJump() {
+        held = nil
+        jumpingUntil = Date().addingTimeInterval(1.2)
+        if let view = scrollView { view.setContentOffset(view.contentOffset, animated: false) }
+    }
+
+    /// The very bottom of the list, as UIKit counts it.
+    static func bottomOffset(_ view: UIScrollView) -> CGFloat {
+        max(-view.adjustedContentInset.top, view.contentSize.height - view.bounds.height + view.adjustedContentInset.bottom)
+    }
+
+    /// From wherever the list is to its bottom as one ease-out of a fixed
+    /// short time. A long way up, it first jumps (unanimated) to a screen
+    /// and a half above the bottom, so the move looks the same at any
+    /// distance and nothing in between is drawn mid-move.
+    @MainActor static func glide(_ view: UIScrollView, toBottomIn duration: TimeInterval, then done: @escaping () -> Void) {
+        let bottom = bottomOffset(view)
+        let near = bottom - view.bounds.height * 1.5
+        if view.contentOffset.y < near {
+            view.setContentOffset(CGPoint(x: view.contentOffset.x, y: near), animated: false)
+        }
+        guard duration > 0 else {
+            view.setContentOffset(CGPoint(x: view.contentOffset.x, y: bottom), animated: false)
+            done()
+            return
+        }
+        UIView.animate(withDuration: duration, delay: 0, options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
+            view.contentOffset = CGPoint(x: view.contentOffset.x, y: bottom)
+        } completion: { _ in
+            done()
+        }
     }
 
     func hold() {
