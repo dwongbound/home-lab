@@ -192,3 +192,12 @@ final class WidgetGlanceTests: XCTestCase {
         XCTAssertEqual(g.noticeWords, "3 new · 1 needs you")
     }
 }
+
+final class DaySwipeTests: XCTestCase {
+    func testSidewaysMovesADayAndVerticalDoesNot() {
+        XCTAssertEqual(DaySwipe.step(width: -120, height: 20), 1, "left: the next day")
+        XCTAssertEqual(DaySwipe.step(width: 110, height: -30), -1, "right: the day before, a little angled")
+        XCTAssertNil(DaySwipe.step(width: -60, height: 200), "mostly vertical: the list's scroll")
+        XCTAssertNil(DaySwipe.step(width: -30, height: 0), "too short")
+    }
+}

@@ -379,6 +379,16 @@ struct DietView: View {
             .onChange(of: topBlock) { _, id in
                 if let id { model.dayInView = id }
             }
+            // A sideways swipe on the page moves a day (Dylan, 2026-11-21:
+            // "swiping the page in the drawer should also change the
+            // dates"); the week row follows. Decided per touch: a mostly
+            // vertical drag is the list's scroll.
+            .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { drag in
+                guard let step = DaySwipe.step(width: drag.translation.width, height: drag.translation.height),
+                      let target = Diet.shift(model.dayInView, by: step), target <= Diet.dayString(Date()) else { return }
+                Haptics.play(.tab)
+                go(to: target)
+            })
             // No pull to refresh (Dylan, 2026-11-20): it loads each time Diet
             // opens and when the app comes back to it.
         }

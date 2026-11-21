@@ -265,3 +265,13 @@ public enum SleepSlide {
         SleepCard(summary: snapshot.sleep, fallbackAsleepMinutes: snapshot.health?.sleep?.asleepMin, today: SleepNights.key(now))
     }
 }
+
+/// A sideways swipe in a drawer with a date row (Diet, Sleep): left is the
+/// next day, right the one before; nil for a drag that's mostly vertical or
+/// too short, which belongs to the list's scroll.
+public enum DaySwipe {
+    public static func step(width w: CGFloat, height h: CGFloat) -> Int? {
+        guard abs(w) >= 50, abs(w) > abs(h) * 1.3 else { return nil }
+        return w < 0 ? 1 : -1
+    }
+}
