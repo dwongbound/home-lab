@@ -92,6 +92,11 @@ struct WidgetGallery: View {
                     tile("Today · medium", 364, 170) { TodayWidgetView(entry: none, family: .systemMedium) }
                 case 3:
                     tile("Jarvis board · iPad extra large", 715, 334) { BoardView(entry: e) }
+                case 5:
+                    HStack(spacing: 16) {
+                        tile("System · small", 170, 170) { SystemWidgetView(entry: e, family: .systemSmall) }
+                    }
+                    tile("System · medium", 364, 170) { SystemWidgetView(entry: e, family: .systemMedium) }
                 case 4:
                     // The tinted Home Screen, approximated: iOS draws the real
                     // one itself (monochrome over the wallpaper, in his tint).

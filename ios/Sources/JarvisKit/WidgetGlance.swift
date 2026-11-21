@@ -30,6 +30,22 @@ public struct WidgetGlance: Codable, Equatable, Sendable {
     public var home: HomeLine?
     /// The week's sleep scores, oldest first (nil for a night without one).
     public var sleepWeek: [Int?] = []
+    /// The PC's gauges (GPU, memory, disk, CPU); nil from an older app.
+    public var system: [Gauge]?
+
+    /// One ring on the System widget. The percent is rounded to 5 so a
+    /// processor flickering between 17 and 19% doesn't redraw the widgets.
+    public struct Gauge: Codable, Equatable, Sendable {
+        /// gpu, ram, disk or cpu.
+        public var kind: String
+        public var title: String
+        public var percent: Int
+        /// "10.1 of 12 GB", "18% busy".
+        public var amount: String
+        public init(kind: String, title: String, percent: Int, amount: String) {
+            self.kind = kind; self.title = title; self.percent = percent; self.amount = amount
+        }
+    }
 
     public struct Food: Codable, Equatable, Sendable {
         public var left: Double
@@ -130,6 +146,13 @@ public struct WidgetGlance: Codable, Equatable, Sendable {
                 thermostat: thermostat.flatMap { t in t.state == "off" ? "Off" : t.target.map { "\(t.detail?.capitalized ?? "Set") to \(Int($0.rounded()))°" } },
                 lightsOn: lights.filter(\.isOn).count, lights: lights.count,
                 on: devices.filter { $0.isOn && $0.kind != "climate" }.map(\.name).prefix(4).map { $0 })
+        }
+        let gauges = snapshot.systemGauges
+        if !gauges.isEmpty {
+            glance.system = gauges.map {
+                Gauge(kind: $0.kind.rawValue, title: $0.title, percent: Int(($0.fraction * 20).rounded()) * 5,
+                      amount: $0.kind == .cpu ? "busy" : "\(SystemGauge.number($0.used)) of \(SystemGauge.number($0.total)) GB")
+            }
         }
         if let trend = snapshot.sleep?.trend {
             glance.sleepWeek = trend.prefix(7).reversed().map(\.score)

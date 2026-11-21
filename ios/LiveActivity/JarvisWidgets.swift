@@ -517,3 +517,81 @@ struct BoardView: View {
         }
     }
 }
+
+// MARK: System
+
+/// The PC as rings (Dylan, 2026-11-21: "i like these graphs and stuff vs
+/// words"): GPU, memory, disk and CPU, the same colours as the app's
+/// System panel. Small: four rings two by two; medium: in a row with the
+/// amounts.
+struct SystemWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "JarvisSystem", provider: GlanceProvider()) { entry in
+            FamilyReader { SystemWidgetView(entry: entry, family: $0) }
+                .containerBackground(Look.sky, for: .widget)
+                .widgetURL(URL(string: "jarvis://system"))
+        }
+        .configurationDisplayName("System")
+        .description("The PC's graphics card, memory, disk and processor.")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+struct SystemWidgetView: View {
+    let entry: GlanceEntry
+    let family: WidgetFamily
+
+    static func tint(_ kind: String) -> Color {
+        switch kind {
+        case "gpu": return Color(red: 0.40, green: 0.70, blue: 1.00)
+        case "ram": return Color(red: 0.62, green: 0.58, blue: 0.95)
+        case "disk": return Color(red: 0.91, green: 0.69, blue: 0.42)
+        default: return Color(red: 0.58, green: 0.84, blue: 0.68)
+        }
+    }
+
+    var body: some View {
+        let gauges = entry.glance?.system ?? []
+        VStack(alignment: .leading, spacing: 8) {
+            Header(title: "System", symbol: "desktopcomputer")
+            if gauges.isEmpty {
+                Empty(words: entry.glance == nil ? openOnce : "No readings from the PC.")
+            } else if family == .systemMedium {
+                HStack(alignment: .top, spacing: 6) {
+                    ForEach(gauges, id: \.kind) { gauge in
+                        VStack(spacing: 4) {
+                            ring(gauge, size: 54)
+                            Text(gauge.title).font(.caption.weight(.semibold)).foregroundStyle(Look.frost)
+                            Text(gauge.amount).font(.caption2).monospacedDigit().foregroundStyle(Look.dim).lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                Spacer(minLength: 0)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(gauges.prefix(4), id: \.kind) { gauge in
+                        VStack(spacing: 2) {
+                            ring(gauge, size: 44)
+                            Text(gauge.title).font(.system(size: 10, weight: .semibold)).foregroundStyle(Look.dim)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func ring(_ gauge: WidgetGlance.Gauge, size: CGFloat) -> some View {
+        ZStack {
+            Circle().stroke(Look.track, lineWidth: 5)
+            Circle().trim(from: 0, to: CGFloat(gauge.percent) / 100)
+                .stroke(SystemWidgetView.tint(gauge.kind), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(gauge.percent)%").font(.system(size: size * 0.26, weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(Look.frost)
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(gauge.title) \(gauge.percent) percent")
+    }
+}

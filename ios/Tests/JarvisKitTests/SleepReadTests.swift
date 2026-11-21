@@ -185,6 +185,16 @@ final class WidgetGlanceTests: XCTestCase {
         XCTAssertLessThanOrEqual(g.notices?.count ?? 0, 3)
     }
 
+    /// The System widget's rings, rounded to 5% so they redraw rarely.
+    func testSystemGauges() throws {
+        guard let snapshot = DemoSnapshot.build(now: Date(), sparse: false) else { return XCTFail("demo") }
+        let g = WidgetGlance.from(snapshot)
+        let system = try XCTUnwrap(g.system)
+        XCTAssertEqual(system.map(\.kind), ["gpu", "ram", "disk", "cpu"])
+        XCTAssertTrue(system.allSatisfy { $0.percent % 5 == 0 })
+        XCTAssertEqual(system.first { $0.kind == "disk" }?.amount, "231 of 255 GB")
+    }
+
     /// The Lock Screen's lines stay short enough never to be cut.
     func testLockLinesAreShort() {
         var g = WidgetGlance(updated: Date(), unread: 4, needsYou: true, running: 1, agenda: [], sleep: nil)
