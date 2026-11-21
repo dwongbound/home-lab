@@ -37,7 +37,7 @@ final class NoticeSheetTests: XCTestCase {
 
     /// Open chat lands on the message and dismisses the notice.
     func testOpenChatDismissesTheNotice() {
-        let app = launch(["-onHome", "-demoChat", "-openNoticeDetail", "n0"])
+        let app = launch(["-onHome", "-demoChat", "-demoLocalClears", "-openNoticeDetail", "n0"])
         XCTAssertTrue(app.staticTexts["noticeTitle"].waitForExistence(timeout: 15))
         let before = newCount(app)
         app.buttons["Open chat"].tap()

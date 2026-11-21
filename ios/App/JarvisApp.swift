@@ -164,7 +164,10 @@ struct RootView: View {
                 }
                 .scrollTargetLayout()
             }
-            .scrollTargetBehavior(TickingPaging(current: AppTab.allCases.firstIndex(of: tabs.tab) ?? 0, count: AppTab.allCases.count))
+            .scrollTargetBehavior(TickingPaging(count: AppTab.allCases.count))
+            // The page a swipe starts on, noted as the finger goes down
+            // (the tab itself follows the page mid-swipe).
+            .modifier(SwipeStartWatch(page: { AppTab.allCases.firstIndex(of: tabs.tab) ?? 0 }))
             .scrollDisabled(tabs.pagerHeld)
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
@@ -841,9 +844,33 @@ private struct WarmUp: View {
 /// for a swipe that springs back to the page it started on (JarvisKit
 /// PageCommit). A tap in the bar ticks there instead: its programmatic
 /// scroll isn't a gesture, so this isn't asked.
+/// The page showing when a swipe began (SwipeStartWatch notes it).
+enum SwipeStart {
+    nonisolated(unsafe) static var page = 0
+    /// True from the finger going down until the pages settle: only then
+    /// is a landing held to one page (a tab tap or a layout change isn't).
+    nonisolated(unsafe) static var active = false
+}
+
+private struct SwipeStartWatch: ViewModifier {
+    let page: () -> Int
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollPhaseChange { old, new in
+                if new == .interacting && old != .interacting {
+                    SwipeStart.page = page()
+                    SwipeStart.active = true
+                }
+                if new == .idle { SwipeStart.active = false }
+            }
+        } else {
+            content
+        }
+    }
+}
+
 private struct TickingPaging: ScrollTargetBehavior {
-    /// The page showing when the swipe began, and how many there are.
-    let current: Int
+    /// How many pages there are.
     let count: Int
 
     func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
@@ -853,6 +880,8 @@ private struct TickingPaging: ScrollTargetBehavior {
         // 2026-11-20: "i swipe and can go from tab 1 to tab 3"): the
         // paging's own pick, held to the page beside the one he started on.
         PagingScrollTargetBehavior.paging.updateTarget(&target, context: context)
+        guard SwipeStart.active else { return }
+        let current = SwipeStart.page
         let landing = PageCommit.oneStep(from: current, proposed: PageCommit.page(offsetX: target.rect.minX, width: width), count: count)
         target.rect.origin.x = CGFloat(landing) * width
         if landing != current {

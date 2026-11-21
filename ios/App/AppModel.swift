@@ -273,8 +273,8 @@ final class AppModel: ObservableObject {
     func clearNotices(_ ids: [String]) async {
         clearedNotices.hide(ids)
         #if DEBUG
-        // Sample data: cleared here only, nothing is sent anywhere.
-        if ProcessInfo.processInfo.arguments.contains("-demoSnapshot") { return }
+        // `-demoLocalClears`: sample data cleared here only, nothing sent.
+        if ProcessInfo.processInfo.arguments.contains("-demoLocalClears") { return }
         #endif
         do {
             try await client.clearNotices(ids: ids)
