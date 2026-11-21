@@ -28,14 +28,16 @@ final class TodayModel: ObservableObject {
         if firstTry == nil { firstTry = Date() }
         #if DEBUG
         // `-demoSnapshot` shows the sample data even when Jarvis answers.
-        if let demo = DemoSnapshot.snapshot { snapshot = demo; loading = false; return }
+        if let demo = DemoSnapshot.snapshot { snapshot = demo; WidgetShare.write(demo); loading = false; return }
         #endif
         do {
             snapshot = try await app.client.snapshot()
             misses = 0
             if firstLoadFailed { firstLoadFailed = false }
-            // The Watch's board and complications follow every snapshot.
+            // The Watch's board and complications follow every snapshot,
+            // and so do the Home Screen widgets.
             WatchBridge.shared.push(snapshot)
+            if let snapshot { WidgetShare.write(snapshot) }
             // A notice about a chat turn Chat doesn't have yet (a message
             // Jarvis sent unasked): lay it into Chat now, quietly, so it's
             // there before he swipes over or taps the notice.
@@ -83,6 +85,11 @@ struct TodayView: View {
     @ObservedObject var today: TodayModel
     /// True once the greeting's body has been tapped open.
     @State private var greetingOpen = false
+    /// The page has been laid out under the loader and handed over (one
+    /// cross-fade, Dylan 2026-11-21: "should be smoother").
+    @State private var pageShown = false
+    /// When the loader first showed, so a fast answer still lets it be seen.
+    @State private var loaderSince = Date()
     /// Which shortcut's screen is up (Reports, Diet or Playbooks).
     @State private var shortcut: Shortcut?
     /// The Home drawer: every device, full names.
@@ -150,22 +157,30 @@ struct TodayView: View {
             // The whole page, tiles and status included, waits for the
             // first snapshot and then fades in at once (Dylan, 2026-11-20:
             // "including the top 3 panels? right now it just flashes in").
-            .opacity(screen == .ready ? 1 : 0)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.35).delay(0.2), value: screen == .ready)
+            // Built as soon as the snapshot is here, but shown only once
+            // it's laid out (pageShown), so the fade never carries layout.
+            .opacity(pageShown ? 1 : 0)
             VStack { TopFade(); Spacer() }
-            if screen != .ready {
+            if !pageShown {
                 HomeLoader(failed: screen == .failed) {
                     Task { await today.load(app: app) }
                 }
-                .transition(reduceMotion ? .identity : .asymmetric(
-                    insertion: .identity,
-                    // The orb lifts and shrinks away as the page fades in.
-                    removal: .opacity.combined(with: .scale(scale: 0.55)).combined(with: .offset(y: -60))
-                ))
+                // The orb settles back a touch as it fades; the page fades in
+                // over the same third of a second (one cross-fade).
+                .transition(.opacity.combined(with: .scale(scale: reduceMotion ? 1 : 0.94)))
             }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.7), value: screen)
-        .floatingStatus(showsStatus: true, visible: screen == .ready)
+        .floatingStatus(showsStatus: true, visible: pageShown)
+        .onAppear { if screen == .ready { pageShown = true } }
+        .task(id: screen == .ready) {
+            guard screen == .ready, !pageShown else { return }
+            // Let the page lay out under the loader first (a couple of
+            // frames), and keep a fast answer from flashing the loader.
+            let seen = Date().timeIntervalSince(loaderSince)
+            try? await Task.sleep(for: .milliseconds(Int(max(80, (0.45 - seen) * 1000))))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? .linear(duration: 0.15) : .easeInOut(duration: 0.35)) { pageShown = true }
+        }
         .sheet(isPresented: $showSleep) {
             SleepDetailView().environmentObject(app)
         }

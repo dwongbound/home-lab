@@ -169,3 +169,26 @@ final class SleepSlideTests: XCTestCase {
         XCTAssertTrue(SleepSlide.showsYou(older), "an older Jarvis keeps the You slide with minutes asleep")
     }
 }
+
+final class WidgetGlanceTests: XCTestCase {
+    func testTheDemoDayBecomesAGlance() throws {
+        let now = Date()
+        guard let snapshot = DemoSnapshot.build(now: now, sparse: false) else { return XCTFail("demo") }
+        let g = WidgetGlance.from(snapshot, now: now)
+        XCTAssertEqual(g.unread, snapshot.notices.filter { !$0.kept }.count)
+        XCTAssertTrue(g.needsYou)
+        XCTAssertNotNil(g.newestNotice)
+        XCTAssertNotNil(g.home)
+        XCTAssertNotNil(WidgetGlance.decode(g.encoded()), "round trip through the app group")
+        XCTAssertTrue(g.agenda.allSatisfy { ($0.end ?? $0.start.addingTimeInterval(3600)) > now }, "only what's still to come")
+    }
+
+    func testNoticeWords() {
+        var g = WidgetGlance(updated: Date(), unread: 0, needsYou: false, running: 0, agenda: [], sleep: nil)
+        XCTAssertNil(g.noticeWords)
+        g.unread = 3
+        XCTAssertEqual(g.noticeWords, "3 new")
+        g.needsYou = true; g.needCount = 1
+        XCTAssertEqual(g.noticeWords, "3 new · 1 needs you")
+    }
+}

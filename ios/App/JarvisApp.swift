@@ -17,14 +17,27 @@ struct JarvisApp: App {
         WatchBridge.shared.start()
     }
 
+    /// The tabs, over the night sky, always dark like the page.
+    private var root: some View {
+        RootView()
+            .environmentObject(app)
+            .environmentObject(app.tabs)
+            .preferredColorScheme(.dark)
+            .tint(Theme.glacier)
+    }
+
     /// One window: the tabs, over the night sky, always dark like the page.
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(app)
-                .environmentObject(app.tabs)
-                .preferredColorScheme(.dark)
-                .tint(Theme.glacier)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-widgetGallery") {
+                WidgetGallery()
+            } else {
+                root
+            }
+            #else
+            root
+            #endif
         }
         // Money hides again the moment the app leaves the screen.
         .onChange(of: scenePhase) { _, phase in
