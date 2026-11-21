@@ -163,6 +163,10 @@ struct RootView: View {
                         .id(AppTab.chat)
                 }
                 .scrollTargetLayout()
+                // No bounce at Home or Chat (Dylan, 2026-11-21: a swipe to an
+                // end tab "over does the tab switch and like bounces off the
+                // side"): a flick lands on the page and stops there.
+                .background(PagerNoBounce())
             }
             .scrollTargetBehavior(TickingPaging(count: AppTab.allCases.count))
             // The page a swipe starts on, noted as the finger goes down
@@ -876,6 +880,26 @@ private struct WarmUp: View {
 /// for a swipe that springs back to the page it started on (JarvisKit
 /// PageCommit). A tap in the bar ticks there instead: its programmatic
 /// scroll isn't a gesture, so this isn't asked.
+/// Turns off the pager's bounce at its ends, on the pager's own
+/// UIScrollView (found from inside its content; draws nothing).
+private struct PagerNoBounce: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView { Finder() }
+    func updateUIView(_ view: UIView, context: Context) {}
+
+    final class Finder: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            isUserInteractionEnabled = false
+            var view = superview
+            while let v = view, !(v is UIScrollView) { view = v.superview }
+            if let pager = view as? UIScrollView {
+                pager.bounces = false
+                pager.alwaysBounceHorizontal = false
+            }
+        }
+    }
+}
+
 /// The page showing when a swipe began (SwipeStartWatch notes it).
 enum SwipeStart {
     nonisolated(unsafe) static var page = 0

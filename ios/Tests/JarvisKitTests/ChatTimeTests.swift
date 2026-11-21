@@ -72,3 +72,29 @@ final class NoticeFullTextTests: XCTestCase {
         XCTAssertEqual(full?.body.count, 400)
     }
 }
+
+final class ChatTimeParseTests: XCTestCase {
+    private let la = TimeZone(identifier: "America/Los_Angeles")!
+    private func clock(_ d: Date?) -> String? {
+        var c = Calendar(identifier: .gregorian); c.timeZone = la
+        return d.map { ChatTime.clock($0, calendar: c) }
+    }
+
+    func testEveryFormTheWireMightUse() {
+        XCTAssertEqual(clock(ChatTime.parse("2026-11-20T19:32:10-08:00")), "7:32 PM")
+        XCTAssertEqual(clock(ChatTime.parse("2026-11-20T19:32-08:00")), "7:32 PM", "no seconds")
+        XCTAssertEqual(clock(ChatTime.parse("2026-11-20T19:32:10.123456-08:00")), "7:32 PM", "six fraction digits")
+        XCTAssertEqual(clock(ChatTime.parse("2026-11-21T03:32:10.5Z")), "7:32 PM", "UTC")
+        XCTAssertEqual(clock(ChatTime.parse("2026-11-20 19:32:10")), "7:32 PM", "a space, no offset: Jarvis's Pacific clock")
+        XCTAssertEqual(clock(ChatTime.parse("2026-11-20T19:32:10.123456")), "7:32 PM", "no offset, fractions")
+        XCTAssertEqual(clock(ChatTime.parse("2026-11-20T19:32:10-0800")), "7:32 PM", "offset without a colon")
+        XCTAssertEqual(clock(ChatTime.parse("1763695930")), "7:32 PM", "Unix seconds")
+        XCTAssertEqual(clock(ChatTime.parse("1763695930000")), "7:32 PM", "Unix milliseconds")
+    }
+
+    func testUnreadableIsNothingNotAWrongTime() {
+        XCTAssertNil(ChatTime.parse(""))
+        XCTAssertNil(ChatTime.parse("7:32 PM"))
+        XCTAssertNil(ChatTime.parse("yesterday"))
+    }
+}

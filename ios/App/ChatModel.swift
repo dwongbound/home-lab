@@ -389,7 +389,7 @@ final class ChatModel: ObservableObject {
                 item = .jarvis(turn.text, model: turn.model, finished: true, question: ModelWording.isNotice(turn.model ?? "") ? "" : lastQuestion)
             }
             item.turnId = turn.id
-            item.at = SleepTime.parse(turn.at)
+            item.at = ChatTime.parse(turn.at)
             item.writer = turn.writer
             item.kept = turn.kept ?? false
             out.append(item)
