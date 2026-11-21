@@ -14,6 +14,23 @@ public struct Metric: Decodable, Equatable, Sendable {
     public let id: String
     public let value: Double?
     public let total: Double?
+    /// The last samples, oldest first (the server keeps 24).
+    public let history: [Double]?
+
+    enum CodingKeys: String, CodingKey { case id, value, total, history }
+
+    public init(id: String, value: Double?, total: Double?, history: [Double]? = nil) {
+        self.id = id; self.value = value; self.total = total; self.history = history
+    }
+
+    /// A bad history (a null sample) is dropped, not fatal.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        value = (try? c.decodeIfPresent(Double.self, forKey: .value)) ?? nil
+        total = (try? c.decodeIfPresent(Double.self, forKey: .total)) ?? nil
+        history = ((try? c.decodeIfPresent([Double?].self, forKey: .history)) ?? nil)?.compactMap { $0 }
+    }
 }
 
 /// One model Ollama has loaded.

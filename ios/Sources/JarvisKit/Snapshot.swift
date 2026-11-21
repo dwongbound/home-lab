@@ -34,8 +34,12 @@ public struct Snapshot: Decodable, Sendable {
     public var gpuUsers: [GpuUser] = []
     /// The card's own reading with every holder named (newer servers).
     public var gpu: GpuReading?
+    /// Memory and who holds it (newer servers).
+    public var ram: RamReading?
+    /// The disks and their biggest folders (newer servers).
+    public var disks: [DiskReading]?
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu, ram, disks }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -81,6 +85,8 @@ public struct Snapshot: Decodable, Sendable {
         models = ((try? c.decodeIfPresent([LoadedModel].self, forKey: .models)) ?? nil) ?? []
         gpuUsers = ((try? c.decodeIfPresent([GpuUser].self, forKey: .gpuUsers)) ?? nil) ?? []
         gpu = (try? c.decodeIfPresent(GpuReading.self, forKey: .gpu)) ?? nil
+        ram = (try? c.decodeIfPresent(RamReading.self, forKey: .ram)) ?? nil
+        disks = ((try? c.decodeIfPresent([LenientRow<DiskReading>].self, forKey: .disks)) ?? nil)?.compactMap(\.value)
     }
 
     /// Who's using the graphics card right now; nil without a GPU reading.

@@ -239,7 +239,7 @@ struct TodayView: View {
         if let snapshot = today.snapshot {
             #if DEBUG
             // `-gpuFirst` puts the GPU card at the top (simulator screenshots).
-            if ProcessInfo.processInfo.arguments.contains("-gpuFirst"), let share = snapshot.gpuShare { GpuCard(share: share) }
+            if ProcessInfo.processInfo.arguments.contains("-gpuFirst"), !snapshot.systemGauges.isEmpty { SystemPanel(snapshot: snapshot) }
             // `-sleepFirst`: the Sleep card at the top (simulator screenshots).
             if ProcessInfo.processInfo.arguments.contains("-sleepFirst"), SleepSlide.shows(snapshot) { sleepCard(SleepSlide.card(snapshot)) }
             #endif
@@ -290,8 +290,9 @@ struct TodayView: View {
             if SleepSlide.showsYou(snapshot), let health = snapshot.health {
                 healthCard(health, withSleep: !SleepSlide.shows(snapshot))
             }
-            if let share = snapshot.gpuShare {
-                GpuCard(share: share)
+            // The PC: GPU, memory, disk and processor (Dylan, 2026-11-21).
+            if !snapshot.systemGauges.isEmpty {
+                SystemPanel(snapshot: snapshot)
             }
             if let running = snapshot.jobs?.running, !running.isEmpty {
                 card("Jarvis is working on", icon: "sparkles") {
