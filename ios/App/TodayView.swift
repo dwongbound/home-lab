@@ -160,6 +160,9 @@ struct TodayView: View {
             // Built as soon as the snapshot is here, but shown only once
             // it's laid out (pageShown), so the fade never carries layout.
             .opacity(pageShown ? 1 : 0)
+            // Settles up into place as it fades in (Dylan, 2026-11-21:
+            // "should be smoother"), instead of only appearing.
+            .scaleEffect(pageShown || reduceMotion ? 1 : 0.985, anchor: .top)
             VStack { TopFade(); Spacer() }
             if !pageShown {
                 HomeLoader(failed: screen == .failed) {
@@ -179,7 +182,7 @@ struct TodayView: View {
             let seen = Date().timeIntervalSince(loaderSince)
             try? await Task.sleep(for: .milliseconds(Int(max(80, (0.45 - seen) * 1000))))
             guard !Task.isCancelled else { return }
-            withAnimation(reduceMotion ? .linear(duration: 0.15) : .easeInOut(duration: 0.35)) { pageShown = true }
+            withAnimation(reduceMotion ? .linear(duration: 0.15) : .smooth(duration: 0.55)) { pageShown = true }
         }
         .sheet(isPresented: $showSleep) {
             SleepDetailView().environmentObject(app)
