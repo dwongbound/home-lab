@@ -704,6 +704,8 @@ html[data-modal] { overflow: hidden; }
 .chat__q--heard { border: 1px dashed var(--glass-edge); background: rgba(255,255,255,.06); }
 /* The last words he's still unsure of; the settled ones before them are solid and never change. */
 .chat__tentative { opacity: .55; }
+/* One live word: inline-block so its fade-in mask (motion block) covers just that word. */
+.chat__word { display: inline-block; }
 /* Still your turn: he went back to listening for the rest of this sentence, so the bubble stays open. */
 .chat__q--open { border: 1px dashed var(--glass-edge); }
 /* Listening: the orb goes a touch greener so it's clear it's your turn. */
@@ -811,6 +813,20 @@ html[data-modal] { overflow: hidden; }
 
 /* ---------- Motion: only when wanted ---------- */
 @media (prefers-reduced-motion: no-preference) {
+  /* A live word fades in left to right as Jarvis hears it, like Claude's
+     dictation (Dylan, 2026-11-21): a soft edge sweeps across the word once,
+     when its span first appears. Mask only, on a small span, so it stays cheap. */
+  .chat__word {
+    -webkit-mask-image: linear-gradient(90deg, #000 40%, transparent 60%);
+    mask-image: linear-gradient(90deg, #000 40%, transparent 60%);
+    -webkit-mask-size: 300% 100%;
+    mask-size: 300% 100%;
+    animation: word-in 320ms ease-out both;
+  }
+  @keyframes word-in {
+    from { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+    to { -webkit-mask-position: 0 0; mask-position: 0 0; }
+  }
   /* The thermostat's dot breathes while it heats or cools. Opacity only, on one small dot, so it stays cheap inside glass. */
   .thermo[data-activity='heating'] .thermo__dot, .thermo[data-activity='cooling'] .thermo__dot { animation: thermo-breathe 2.4s ease-in-out infinite; }
   @keyframes thermo-breathe { 50% { opacity: .45; } }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canJoin, joinHeard, settledQuestion, splitHeard } from '../../src/lib/heard'
+import { canJoin, joinHeard, settledQuestion, heardWords } from '../../src/lib/heard'
 import { stableCount } from '../../src/lib/talk'
 
 const turns = [
@@ -31,15 +31,20 @@ describe('joinHeard', () => {
   })
 })
 
-describe('splitHeard', () => {
-  it('keeps the settled words apart from the tail that may still change', () => {
-    expect(splitHeard('turn the big light', 2)).toEqual({ settled: 'turn the', tentative: ' big light' })
-    expect(splitHeard('turn the big light', 4)).toEqual({ settled: 'turn the big light', tentative: '' })
-    expect(splitHeard('turn the big light', 9)).toEqual({ settled: 'turn the big light', tentative: '' })
+describe('heardWords', () => {
+  it('marks the first stable words settled and the tail not', () => {
+    expect(heardWords('turn  the big light', 2)).toEqual([
+      { word: 'turn', settled: true },
+      { word: 'the', settled: true },
+      { word: 'big', settled: false },
+      { word: 'light', settled: false },
+    ])
+    expect(heardWords('turn the', 9).every((w) => w.settled)).toBe(true)
   })
   it('treats every word as unsettled when Jarvis sends no count', () => {
-    expect(splitHeard('turn the', null)).toEqual({ settled: '', tentative: 'turn the' })
-    expect(splitHeard('turn the', 0)).toEqual({ settled: '', tentative: 'turn the' })
+    expect(heardWords('turn the', null).some((w) => w.settled)).toBe(false)
+    expect(heardWords('turn the', 0).some((w) => w.settled)).toBe(false)
+    expect(heardWords('  ', 3)).toEqual([])
   })
 })
 

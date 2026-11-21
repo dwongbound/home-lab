@@ -29,19 +29,19 @@ export function joinHeard<T extends HeardTurn>(turns: T[], openId: number, quest
 // settled: Jarvis won't change those again. Only the tail after them is
 // still a guess, and the page shows that part lighter.
 
-/** The live words in two parts: what's settled and the tail that may still change. */
-export interface HeardParts { settled: string; tentative: string }
+/** One live word and whether Jarvis has settled it. */
+export interface HeardWord { word: string; settled: boolean }
 
 /**
- * Splits the live words after their first `stable` words. An older Jarvis
- * sends no count (null): then every word may still change.
+ * The live words one by one, the first `stable` of them settled. An older
+ * Jarvis sends no count (null): then every word may still change. One entry
+ * per word lets the page fade each new word in as it arrives (Dylan,
+ * 2026-11-21: "fading it from left to right") while words already shown stay put.
  */
-export function splitHeard(text: string, stable: number | null): HeardParts {
-  if (stable === null || stable <= 0) return { settled: '', tentative: text }
+export function heardWords(text: string, stable: number | null): HeardWord[] {
+  const count = stable === null ? 0 : stable
   const words = text.split(/\s+/).filter((word) => word !== '')
-  if (stable >= words.length) return { settled: text, tentative: '' }
-  // The space between the two parts goes with the tail, so the settled part never shifts.
-  return { settled: words.slice(0, stable).join(' '), tentative: ` ${words.slice(stable).join(' ')}` }
+  return words.map((word, index) => ({ word, settled: index < count }))
 }
 
 /**
