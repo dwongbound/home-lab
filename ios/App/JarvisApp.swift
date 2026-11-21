@@ -169,14 +169,19 @@ struct RootView: View {
                 // side"): a flick lands on the page and stops there.
                 .background(PagerNoBounce())
             }
-            .scrollTargetBehavior(TickingPaging(count: AppTab.allCases.count))
-            // The page a swipe starts on, noted as the finger goes down
-            // (the tab itself follows the page mid-swipe).
-            .modifier(SwipeStartWatch(page: { AppTab.allCases.firstIndex(of: tabs.tab) ?? 0 }))
+            // The system's own paging (Dylan, 2026-11-21: "there shouldn't
+            // be a concept of swipe speed"): one page a swipe, the standard
+            // page slide when he lets go, no momentum and no overshoot. The
+            // custom target behaviour of builds 51 to 64 (for the haptic
+            // tick) turned this into a free scroll that snapped, which is
+            // where the skipped tabs, the bounce and the speed came from.
+            .scrollTargetBehavior(.paging)
             .scrollDisabled(tabs.pagerHeld)
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .scrollPosition(id: Binding(get: { Optional(app.tab) }, set: { if let tab = $0, tab != app.tab { app.tab = tab } }))
+            // Set only by the swipe itself (the bar sets the tab directly and
+            // ticks on its own), so the swipe's one tick is here.
+            .scrollPosition(id: Binding(get: { Optional(app.tab) }, set: { if let tab = $0, tab != app.tab { Haptics.play(.tab); app.tab = tab } }))
             // While the pages move, the orb rests (it redrew at 120 Hz
             // beside the page sliding in, Dylan's iPad's worst moment).
             .modifier(PageSlideWatch())
@@ -903,56 +908,6 @@ private struct PagerNoBounce: UIViewRepresentable {
             if let pager = view as? UIScrollView {
                 pager.bounces = false
                 pager.alwaysBounceHorizontal = false
-            }
-        }
-    }
-}
-
-/// The page showing when a swipe began (SwipeStartWatch notes it).
-enum SwipeStart {
-    nonisolated(unsafe) static var page = 0
-    /// True from the finger going down until the pages settle: only then
-    /// is a landing held to one page (a tab tap or a layout change isn't).
-    nonisolated(unsafe) static var active = false
-}
-
-private struct SwipeStartWatch: ViewModifier {
-    let page: () -> Int
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.onScrollPhaseChange { old, new in
-                if new == .interacting && old != .interacting {
-                    SwipeStart.page = page()
-                    SwipeStart.active = true
-                }
-                if new == .idle { SwipeStart.active = false }
-            }
-        } else {
-            content
-        }
-    }
-}
-
-private struct TickingPaging: ScrollTargetBehavior {
-    /// How many pages there are.
-    let count: Int
-
-    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
-        let width = context.containerSize.width
-        guard width > 0 else { return }
-        // One swipe moves one page at most, however fast the flick (Dylan,
-        // 2026-11-20: "i swipe and can go from tab 1 to tab 3"): the
-        // paging's own pick, held to the page beside the one he started on.
-        PagingScrollTargetBehavior.paging.updateTarget(&target, context: context)
-        guard SwipeStart.active else { return }
-        let current = SwipeStart.page
-        let landing = PageCommit.oneStep(from: current, proposed: PageCommit.page(offsetX: target.rect.minX, width: width), count: count)
-        target.rect.origin.x = CGFloat(landing) * width
-        if landing != current {
-            if Thread.isMainThread {
-                MainActor.assumeIsolated { Haptics.play(.tab) }
-            } else {
-                DispatchQueue.main.async { Haptics.play(.tab) }
             }
         }
     }
