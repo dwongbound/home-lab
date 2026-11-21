@@ -166,3 +166,12 @@ final class SleepNightTests: XCTestCase {
         XCTAssertEqual(SleepNights.recent(3, now: t("2026-11-20 09:00")), ["2026-11-18", "2026-11-19", "2026-11-20"])
     }
 }
+
+final class SleepAccessTests: XCTestCase {
+    func testOnlyWhenTheAppCanReallyAsk() {
+        XCTAssertTrue(SleepAccess.canAsk(entitled: true, healthAvailable: true, isPhone: true))
+        XCTAssertFalse(SleepAccess.canAsk(entitled: false, healthAvailable: true, isPhone: true), "no entitlement: no card, no switch")
+        XCTAssertFalse(SleepAccess.canAsk(entitled: true, healthAvailable: false, isPhone: true))
+        XCTAssertFalse(SleepAccess.canAsk(entitled: true, healthAvailable: true, isPhone: false), "not on the iPad")
+    }
+}

@@ -56,7 +56,15 @@ final class SleepSync: ObservableObject {
 
     /// Health exists here: an iPhone (never the iPad, TV or Watch builds).
     static var available: Bool {
-        HKHealthStore.isHealthDataAvailable() && UIDevice.current.userInterfaceIdiom == .phone
+        SleepAccess.canAsk(entitled: entitled, healthAvailable: HKHealthStore.isHealthDataAvailable(),
+                           isPhone: UIDevice.current.userInterfaceIdiom == .phone)
+    }
+
+    /// The build carries the HealthKit entitlement: set in Info.plist
+    /// (JarvisHealthKit) in the same change that adds the entitlement, so
+    /// the two can't disagree.
+    static var entitled: Bool {
+        Bundle.main.object(forInfoDictionaryKey: "JarvisHealthKit") as? Bool == true
     }
 
     /// Jarvis at the address in Settings (the same one AppModel uses); read

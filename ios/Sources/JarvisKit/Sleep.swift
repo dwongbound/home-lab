@@ -365,3 +365,13 @@ public struct SentNights: Equatable, Sendable {
     /// As stored (UserDefaults takes a [String: String]).
     public var stored: [String: String] { sent }
 }
+
+/// Whether the app may offer Apple Health at all (Dylan, 2026-11-21: the
+/// Allow card did nothing): only on an iPhone with Health, in a build that
+/// carries the HealthKit entitlement. Without it, Apple's sheet can never
+/// appear, so neither the card nor the Settings switch shows.
+public enum SleepAccess {
+    public static func canAsk(entitled: Bool, healthAvailable: Bool, isPhone: Bool) -> Bool {
+        entitled && healthAvailable && isPhone
+    }
+}
