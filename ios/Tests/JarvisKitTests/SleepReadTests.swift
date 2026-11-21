@@ -201,3 +201,32 @@ final class DaySwipeTests: XCTestCase {
         XCTAssertNil(DaySwipe.step(width: -30, height: 0), "too short")
     }
 }
+
+final class SleepWeekTests: XCTestCase {
+    private func day(_ night: String, asleep: Double?, score: Int?) -> SleepDay {
+        SleepDay(night: night, minutes: SleepDay.Minutes(asleep: asleep), score: score, scoreBand: score.map { $0 >= 85 ? "great" : $0 >= 70 ? "good" : "fair" })
+    }
+
+    func testSevenNightsWithGapsAndNullScores() {
+        let nights = [day("2026-11-20", asleep: 420, score: 80), day("2026-11-19", asleep: 480, score: nil),
+                      day("2026-11-16", asleep: 360, score: 60)]
+        let week = SleepWeek(nights: nights, endNight: "2026-11-20")
+        XCTAssertEqual(week.nights.map(\.night), ["2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20"])
+        XCTAssertEqual(week.nights.map(\.recorded), [false, false, true, false, false, true, true])
+        XCTAssertNil(week.nights[5].ring, "a null score is an empty ring, not 0")
+        XCTAssertNil(week.nights[0].ring)
+        XCTAssertEqual(week.recordedCount, 3)
+        XCTAssertEqual(week.averageAsleep, "7h 00m", "over the three recorded nights")
+        XCTAssertEqual(week.averageScore, 70, "null scores left out")
+        // 1260 minutes against 3 × 450 = 1350: 90 short.
+        XCTAssertEqual(week.battery, "1h 30m short")
+        XCTAssertEqual(week.nights.last?.dayNumber, "20")
+    }
+
+    func testTheWeekEndsOnTheLatestNight() {
+        let nights = [day("2026-11-20", asleep: 400, score: 70)]
+        XCTAssertEqual(SleepWeek.endNight(today: "2026-11-21", nights: nights), "2026-11-20", "4 AM, not yet asleep")
+        XCTAssertEqual(SleepWeek.endNight(today: "2026-11-20", nights: nights), "2026-11-20")
+        XCTAssertNil(SleepWeek(nights: [], endNight: "2026-11-20").battery)
+    }
+}

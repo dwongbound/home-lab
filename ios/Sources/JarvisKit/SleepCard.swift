@@ -275,3 +275,67 @@ public enum DaySwipe {
         return w < 0 ? 1 : -1
     }
 }
+
+/// The Sleep screen's week (Dylan, 2026-11-21: "always keep a last 7 nights
+/// with an average at the top … this will let you know how much sleep you
+/// have in the battery"): seven nights as rings, the averages over the
+/// nights recorded, and the week against Jarvis's 7.5 hour target.
+public struct SleepWeek: Equatable, Sendable {
+    public struct Night: Equatable, Sendable, Identifiable {
+        public var id: String { night }
+        public let night: String
+        /// "Th" and "20".
+        public let weekday: String
+        public let dayNumber: String
+        public let recorded: Bool
+        public let score: Int?
+        public let band: String?
+        /// 0…1 of the ring; nil draws an empty faint ring.
+        public var ring: Double? { score.map { Double(max(0, min(100, $0))) / 100 } }
+    }
+
+    public let nights: [Night]
+    /// "7h 02m" and 78, over the recorded nights only.
+    public let averageAsleep: String?
+    public let averageScore: Int?
+    /// How many of the seven have a record.
+    public let recordedCount: Int
+    /// "4h 10m short", "1h 05m ahead", "On target", over the recorded nights.
+    public let battery: String?
+    /// Short (negative) or ahead, in minutes; for the bar.
+    public let balanceMinutes: Double?
+
+    /// Jarvis's target: a full duration score at 7.5 hours.
+    public static let targetMinutes: Double = 450
+
+    /// The seven nights ending `endNight`, oldest first, from what was fetched.
+    public init(nights fetched: [SleepDay], endNight: String) {
+        let byNight = Dictionary(fetched.map { ($0.night, $0) }, uniquingKeysWith: { a, _ in a })
+        var keys: [String] = [endNight]
+        while keys.count < 7, let before = SleepCard.dayBefore(keys[0]) { keys.insert(before, at: 0) }
+        nights = keys.map { key in
+            let day = byNight[key]
+            let number = key.split(separator: "-").last.map { String(Int($0) ?? 0) } ?? ""
+            return Night(night: key, weekday: SleepCard.weekday(key), dayNumber: number, recorded: day != nil, score: day?.score, band: day?.scoreBand)
+        }
+        let recorded = keys.compactMap { byNight[$0] }
+        recordedCount = recorded.count
+        let times = recorded.compactMap(\.minutes?.asleep)
+        averageAsleep = times.isEmpty ? nil : SleepCard.hours(times.reduce(0, +) / Double(times.count))
+        let scores = recorded.compactMap(\.score)
+        averageScore = scores.isEmpty ? nil : Int((Double(scores.reduce(0, +)) / Double(scores.count)).rounded())
+        if times.isEmpty {
+            battery = nil; balanceMinutes = nil
+        } else {
+            let balance = times.reduce(0, +) - Self.targetMinutes * Double(times.count)
+            balanceMinutes = balance
+            if abs(balance) < 15 { battery = "On target" }
+            else { battery = SleepCard.hours(abs(balance)) + (balance < 0 ? " short" : " ahead") }
+        }
+    }
+
+    /// The night the week ends on: this morning's when it's recorded, else last night's.
+    public static func endNight(today: String, nights: [SleepDay]) -> String {
+        nights.contains { $0.night == today } ? today : (SleepCard.dayBefore(today) ?? today)
+    }
+}
