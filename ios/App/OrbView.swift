@@ -112,7 +112,7 @@ struct OrbView: View {
                         if let notice = item.notice { answer(notice, ok) }
                         opened = nil
                     }
-                }, onOpen: item.notice?.turnId == nil ? nil : onOpen.map { open in
+                }, onOpen: item.notice == nil ? nil : onOpen.map { open in
                     {
                         if let notice = item.notice { open(notice) }
                         opened = nil
@@ -218,10 +218,9 @@ struct OrbView: View {
         opened = nil
     }
 
+    /// Closing never reads or clears the notice (Dylan, 2026-11-20: "it
+    /// shouldnt auto dismiss"): its dot stays lit until he dismisses it.
     private func close() {
-        if let id = opened, let notice = animator.item(id)?.notice, Orbit.readOnView(notice) {
-            onRead?(notice)
-        }
         opened = nil
     }
 
@@ -745,22 +744,24 @@ struct OrbitCallout: View {
                     // Who's doing a task: the chat chip ("Jarvis (CO)").
                     if item.kind == .task { JobChip(model: item.model) }
                     Text(Self.plainTitle(item.title))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(Theme.frost)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     if item.kind == .task {
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             Text(item.detail.isEmpty ? "Running · \(Orbit.elapsed(since: item.startedAt, now: context.date) ?? "now")" : item.detail)
-                                .font(.caption.monospacedDigit())
+                                .font(.footnote.monospacedDigit())
                                 .foregroundStyle(Theme.frostDim)
                                 .lineLimit(1)
                         }
                     } else {
                         if !item.detail.isEmpty {
-                            Text(item.detail).font(.footnote).foregroundStyle(Theme.frostDim).lineLimit(3).truncationMode(.tail)
+                            Text(item.detail).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(3).truncationMode(.tail)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         if let created = item.notice?.created, !Notices.when(created).isEmpty {
-                            Text(Notices.when(created)).font(.caption2).foregroundStyle(Theme.frostFaint)
+                            Text(Notices.when(created)).font(.caption).foregroundStyle(Theme.frostFaint)
                         }
                     }
                 }
@@ -812,7 +813,7 @@ struct OrbitCallout: View {
         switch action {
         case .approve: onAnswer?(true)
         case .deny: onAnswer?(false)
-        case .open, .seeInChat: onOpen?()
+        case .open, .seeInChat, .seeMore: onOpen?()
         case .unkeep: onLetGo?()
         case .keep: onKeepForGood?()
         case .dismiss, .done: onClose()

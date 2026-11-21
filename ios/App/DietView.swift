@@ -169,9 +169,7 @@ struct DietView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
+                SheetClose { dismiss() }
             }
         }
         .preferredColorScheme(.dark)

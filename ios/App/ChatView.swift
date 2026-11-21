@@ -428,6 +428,7 @@ struct ChatView: View {
                 try? await Task.sleep(for: .milliseconds(50))
                 let item = chat.items[index]
                 withAnimation(.easeOut(duration: 0.4)) { scroller.scrollTo(item.id, anchor: .center) }
+                await app.turnFound(true)
                 // A soft tint on the bubble that fades in, rests and
                 // fades out over about two seconds (Dylan, 2026-11-18:
                 // the old outline "is quite ugly"). Reduce Motion: a
@@ -440,10 +441,13 @@ struct ChatView: View {
                 #endif
                 try? await Task.sleep(for: .seconds(rest))
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.9)) { highlighted = nil }
-            } else if let fallback {
-                // The message isn't in the chat any more: the notice's
-                // own full text, not the bottom of Chat.
-                app.readingNotice = fallback
+            } else {
+                await app.turnFound(false)
+                if let fallback {
+                    // The message isn't in the chat any more: the notice's
+                    // own full text, not the bottom of Chat.
+                    app.readingNotice = fallback
+                }
             }
             app.focusTurn = nil
         }

@@ -236,3 +236,40 @@ extension View {
         #endif
     }
 }
+
+#if os(iOS)
+/// Every sheet's close control (Dylan, 2026-11-20: "for all bottom drawers,
+/// instead of a close button on the top left there should just be a simple
+/// "x" on the top right"): a plain, light xmark with a 44 pt target. Where a
+/// sheet's own action (Save, Send) already sits top right, as Apple places
+/// it, the x goes top left instead (SheetClose.leading).
+struct SheetCloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.frostDim)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Close")
+        .accessibilityIdentifier("sheetClose")
+    }
+}
+
+/// The x as a toolbar item: top right, or top left beside a sheet's own
+/// top-right action.
+struct SheetClose: ToolbarContent {
+    var leading = false
+    let action: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: leading ? .topBarLeading : .topBarTrailing) {
+            SheetCloseButton(action: action)
+        }
+    }
+}
+#endif

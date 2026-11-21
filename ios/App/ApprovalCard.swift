@@ -124,9 +124,8 @@ struct WrongSheet: View {
             .navigationTitle("That was wrong")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
+                // Send stays top right, where Apple puts it; the x takes the left.
+                SheetClose(leading: true) { dismiss() }
                 ToolbarItem(placement: .confirmationAction) {
                     if sending {
                         ProgressView().accessibilityLabel("Sending")

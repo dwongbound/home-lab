@@ -74,9 +74,7 @@ struct ReportsListView: View {
             }
             .navigationTitle("Reports")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
+                SheetClose { dismiss() }
             }
             .confirmationDialog("Delete this report?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { report in
                 Button("Delete", role: .destructive) { Task { await app.deleteReport(report.id) } }

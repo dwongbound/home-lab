@@ -380,6 +380,23 @@ final class AppModel: ObservableObject {
     /// notice clears everywhere). `about` is the notice itself: when its
     /// message isn't in the chat any more (or it has none), its own full
     /// text opens instead (JarvisKit NoticeFocus).
+    /// A notice to clear once Chat has found its message ("Open chat").
+    var clearWhenFound: Notice?
+
+    /// Opens Chat at a notice's message and dismisses the notice only once
+    /// the message is found there; a message that can't be found leaves it.
+    func openTurn(_ turnId: Int?, clearingWhenFound notice: Notice?, about: Notice? = nil) async {
+        clearWhenFound = turnId == nil ? nil : notice
+        await openTurn(turnId, about: about)
+    }
+
+    /// Chat found (or couldn't find) the message it was asked to open.
+    func turnFound(_ found: Bool) async {
+        guard let notice = clearWhenFound else { return }
+        clearWhenFound = nil
+        if found { await clearNotices([notice.id]) }
+    }
+
     func openTurn(_ turnId: Int?, clearing notice: Notice? = nil, about: Notice? = nil) async {
         showNotices = false
         if turnId == nil, let about {

@@ -63,10 +63,11 @@ struct DevicesSheet: View {
             .navigationTitle("Home")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                SheetClose { dismiss() }
             }
         }
-        .presentationDetents([.medium, .large])
+        // Full height (Dylan, 2026-11-20: "default open a full drawer, not half").
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)

@@ -81,8 +81,9 @@ struct PlaybookEditorView: View {
             .navigationTitle(isNew ? "New playbook" : "Edit playbook")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }.disabled(busy != nil)
+                // Save stays top right, where Apple puts it; the x takes the left.
+                ToolbarItem(placement: .topBarLeading) {
+                    SheetCloseButton { dismiss() }.disabled(busy != nil)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await save() } }

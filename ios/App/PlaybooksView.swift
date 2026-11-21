@@ -576,9 +576,7 @@ struct PlaybooksView: View {
             }
             .navigationTitle("Playbooks")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
+                SheetClose { dismiss() }
                 ToolbarItem(placement: .primaryAction) {
                     Button { editing = EditTarget(draft: PlaybookDraft()) } label: {
                         Image(systemName: "plus")
@@ -746,7 +744,7 @@ private struct RunResultView: View {
             .navigationTitle(outcome.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                SheetClose { dismiss() }
             }
         }
         .presentationDetents([.medium])

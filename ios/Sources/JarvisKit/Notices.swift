@@ -237,6 +237,9 @@ public struct KeepResult: Equatable, Sendable {
 /// and swipe that shows one reads the same.
 public enum NoticeAction: Equatable, Sendable, CaseIterable {
     case open, dismiss, done, approve, deny, unkeep, keep, seeInChat
+    /// The note's whole text in the bottom sheet (Dylan, 2026-11-20: "see
+    /// more" like the notification center's).
+    case seeMore
 
     public var label: String {
         switch self {
@@ -248,6 +251,7 @@ public enum NoticeAction: Equatable, Sendable, CaseIterable {
         case .unkeep: return "Unkeep"
         case .keep: return "Keep"
         case .seeInChat: return "See in chat"
+        case .seeMore: return "See more"
         }
     }
 
@@ -260,16 +264,16 @@ public enum NoticeAction: Equatable, Sendable, CaseIterable {
         case .task:
             return canOpen ? [.open] : []
         case .kept:
-            return [.unkeep] + (canOpen ? [.open] : [])
+            return [.unkeep] + (canOpen ? [.seeMore] : [])
         case .notice:
             let clear: NoticeAction = notice?.source == "reminder" ? .done : .dismiss
             // Keep turns it into a yellow dot that stays (Dylan, 2026-11-20:
             // "a way to keep a glowing orb after seeing it").
             if notice?.source == "reminder" {
                 // A reminder's main act is "Done" (stop the nag).
-                return (canDismiss ? [.keep] : []) + (canOpen ? [.open] : []) + (canDismiss ? [clear] : [])
+                return (canDismiss ? [.keep] : []) + (canOpen ? [.seeMore] : []) + (canDismiss ? [clear] : [])
             }
-            return (canDismiss ? [clear, .keep] : []) + (canOpen ? [.open] : [])
+            return (canDismiss ? [clear, .keep] : []) + (canOpen ? [.seeMore] : [])
         }
     }
 }
@@ -302,4 +306,30 @@ public enum NoticeFocus: Equatable, Sendable {
 
     /// A long body: worth a "More" on the row.
     public static func isLong(_ body: String) -> Bool { body.count > 120 || body.contains("\n") }
+}
+
+/// A notice's whole text, from the chat turn it points to (Dylan,
+/// 2026-11-20: "when tapping view more, i should see everything"). The page
+/// server cuts a notice's title and body at 300 characters each; the turn
+/// holds the message as Jarvis wrote it, usually the title's line then the
+/// body.
+public struct NoticeFullText: Equatable, Sendable {
+    public let title: String
+    public let body: String
+
+    /// The cap the page server puts on a notice's title and body.
+    public static let wireCap = 300
+
+    /// The whole text, or nil when the turn says no more than the notice.
+    public static func from(turn: String, title: String, body: String) -> NoticeFullText? {
+        let text = turn.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count > title.count + body.count + 1 else { return nil }
+        let stem = String(title.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: ".…")).prefix(30))
+        let lines = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        if let first = lines.first, !stem.isEmpty, first.hasPrefix(stem) {
+            let rest = lines.count > 1 ? String(lines[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            return NoticeFullText(title: String(first), body: rest)
+        }
+        return NoticeFullText(title: title, body: text)
+    }
 }

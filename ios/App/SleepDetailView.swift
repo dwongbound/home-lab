@@ -28,9 +28,7 @@ struct SleepDetailView: View {
             }
             .navigationTitle("Sleep")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
+                SheetClose { dismiss() }
             }
         }
         .task { await load() }

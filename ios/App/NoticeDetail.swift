@@ -9,17 +9,25 @@ struct NoticeDetail: View {
     let notice: Notice
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
+    /// The whole message from its chat turn: the notice itself carries at
+    /// most 300 characters of title and of body (the page server's cap), so
+    /// a long one stopped mid-word (Dylan, 2026-11-20). Nil until it's read,
+    /// or when the turn can't be found: then the notice's own text shows.
+    @State private var full: NoticeFullText?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(notice.title)
+                    Text(full?.title ?? notice.title)
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(Theme.frost)
                         .textSelection(.enabled)
-                    if !notice.body.isEmpty {
-                        Text(MarkdownCache.shared.attributed(notice.body))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("noticeTitle")
+                    if !(full?.body ?? notice.body).isEmpty {
+                        // The same light markdown as the message in Chat.
+                        Text(MarkdownCache.shared.attributed(full?.body ?? notice.body))
                             .font(.body)
                             .foregroundStyle(Theme.frost)
                             .textSelection(.enabled)
@@ -27,7 +35,7 @@ struct NoticeDetail: View {
                     Text(meta)
                         .font(.footnote)
                         .foregroundStyle(Theme.frostDim)
-                    if notice.turnId != nil, notice.source == "push" || !inChat {
+                    if notice.turnId != nil, notice.source == "push" {
                         Text("This message isn't in your chat history any more, so here it is in full.")
                             .font(.footnote)
                             .foregroundStyle(Theme.frostFaint)
@@ -41,14 +49,31 @@ struct NoticeDetail: View {
             .navigationTitle(Notices.kindWords(notice))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                SheetClose { dismiss() }
             }
             .safeAreaInset(edge: .bottom) { actions }
+            .task { await loadFull() }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
         .fontDesign(.rounded)
+    }
+
+    /// Reads the message's chat turn (a read-only history GET) and keeps its
+    /// whole text when it's longer than what the notice carries.
+    private func loadFull() async {
+        guard let turnId = notice.turnId, notice.source != "push" else { return }
+        let text: String?
+        if let held = app.chat.items.first(where: { $0.turnId == turnId }) {
+            text = held.text
+        } else {
+            text = (try? await app.client.history(.around(turnId, limit: 3)))?.turns.first { $0.id == turnId }?.text
+        }
+        guard let text, let whole = NoticeFullText.from(turn: text, title: notice.title, body: notice.body) else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { full = whole }
     }
 
     /// Where it came from and when.
@@ -67,7 +92,8 @@ struct NoticeDetail: View {
     @ViewBuilder
     private var actions: some View {
         let canDismiss = !notice.isApproval && !notice.kept && notice.source != "push"
-        let open = inChat
+        // Chat can open any message it can find, loaded or not.
+        let open = notice.turnId != nil && notice.source != "push"
         let report = notice.reportId
         if canDismiss || open || report != nil {
             HStack(spacing: 10) {
@@ -89,7 +115,10 @@ struct NoticeDetail: View {
                 } else if open {
                     button("Open chat", main: true) {
                         dismiss()
-                        Task { await app.openTurn(notice.turnId, about: notice) }
+                        // Opening it in Chat dismisses it too (Dylan,
+                        // 2026-11-20), once Chat has found the message.
+                        let clears = !notice.isApproval && !notice.kept && notice.source != "push"
+                        Task { await app.openTurn(notice.turnId, clearingWhenFound: clears ? notice : nil, about: notice) }
                     }
                 }
             }

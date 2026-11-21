@@ -400,7 +400,7 @@ struct TalkView: View {
                         // size (Dylan, 2026-11-20: it "does some flashing").
                         let full = orbSize(in: area.size)
                         let scale: CGFloat = hasWords ? Self.talkingScale : 1
-                        OrbView(state: mood, size: full, level: Double(talk.level), tone: Double(talk.tone), orbit: Orbit.items(running: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, notices: app.orbitNotices), dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } }, onRead: { notice in Task { await app.readNotice(notice) } }, onOpen: { notice in Task { await app.openTurn(notice.turnId, clearing: notice.kept ? nil : notice, about: notice) } }, onLetGo: { notice in Task { await app.letGo(notice) } }, onKeepNotice: { notice in Task { await app.keep(notice) } })
+                        OrbView(state: mood, size: full, level: Double(talk.level), tone: Double(talk.tone), orbit: Orbit.items(running: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, notices: app.orbitNotices), dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } }, onOpen: { notice in app.readingNotice = notice }, onLetGo: { notice in Task { await app.letGo(notice) } }, onKeepNotice: { notice in Task { await app.keep(notice) } })
                             .scaleEffect(scale, anchor: .top)
                             .frame(width: full, height: full * scale, alignment: .top)
                             // Above the words below it, so a work callout isn't covered.

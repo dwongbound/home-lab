@@ -58,7 +58,9 @@ public enum Orbit {
         count <= 8 ? 1 : max(0.55, (8.0 / Double(count)).squareRoot())
     }
     /// How long a tapped dot holds everything still before it all moves on.
-    public static let holdSeconds: Double = 6
+    /// A minute (Dylan, 2026-11-20: "it shouldnt auto close until 1 minute
+    /// later"); a tap elsewhere still closes it at once.
+    public static let holdSeconds: Double = 60
 
     /// The dots: unread notices first (needs, then heads-ups, then FYIs),
     /// then running tasks. At night only the notices that need Dylan, so the

@@ -54,9 +54,7 @@ struct ReportReader: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close") { dismiss() }
-                }
+                SheetClose { dismiss() }
                 // Like the page: retention and Share at the bottom left.
                 ToolbarItemGroup(placement: .bottomBar) {
                     if let report {

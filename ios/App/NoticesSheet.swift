@@ -220,7 +220,7 @@ struct NoticesSheet: View {
                                         }
                                         if notice.turnId != nil {
                                             Button(NoticeAction.seeInChat.label, systemImage: "bubble.left") {
-                                                Task { await app.openTurn(notice.turnId, clearing: Orbit.readOnView(notice) && !notice.kept ? notice : nil, about: notice) }
+                                                Task { await app.openTurn(notice.turnId, clearingWhenFound: !notice.kept && !notice.isApproval ? notice : nil, about: notice) }
                                                 dismiss()
                                             }
                                             .tint(Theme.glacier)

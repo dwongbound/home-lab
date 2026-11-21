@@ -51,3 +51,24 @@ final class ChatTimeTests: XCTestCase {
         XCTAssertEqual(ChatTime.dayBreaks([b, c], calendar: calendar("Asia/Tokyo")), [true, false], "both on Nov 20 in Tokyo")
     }
 }
+
+final class NoticeFullTextTests: XCTestCase {
+    func testAWireCutNoticeGetsItsWholeTextFromTheTurn() {
+        let title = String(repeating: "t", count: 20) + " lesson…"
+        let body = String(repeating: "b", count: 300)
+        let turn = String(repeating: "t", count: 20) + " lesson at ten, with more words\n" + body + " and the rest of it."
+        let full = NoticeFullText.from(turn: turn, title: title, body: body)
+        XCTAssertEqual(full?.title, String(repeating: "t", count: 20) + " lesson at ten, with more words")
+        XCTAssertTrue(full?.body.hasSuffix("the rest of it.") ?? false)
+    }
+
+    func testNothingMoreMeansTheNoticeAsItIs() {
+        XCTAssertNil(NoticeFullText.from(turn: "Hi\nThere", title: "Hi", body: "There"))
+    }
+
+    func testATurnThatDoesNotStartWithTheTitleIsAllBody() {
+        let full = NoticeFullText.from(turn: String(repeating: "x", count: 400), title: "Heads up", body: "short")
+        XCTAssertEqual(full?.title, "Heads up")
+        XCTAssertEqual(full?.body.count, 400)
+    }
+}
