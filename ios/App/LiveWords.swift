@@ -18,12 +18,13 @@ struct LiveWords: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Seconds a sweep takes (the web /talk page uses about the same).
+    /// The web Talk page's sweep: 320 ms, ease-out, once per new word.
     static let sweep: Double = {
         #if DEBUG
         // `-slowSweep`: ten times slower, to see a sweep mid-way.
-        if ProcessInfo.processInfo.arguments.contains("-slowSweep") { return 3 }
+        if ProcessInfo.processInfo.arguments.contains("-slowSweep") { return 3.2 }
         #endif
-        return 0.3
+        return 0.32
     }()
 
     @State private var shown = ""
@@ -34,16 +35,17 @@ struct LiveWords: View {
         let styled = LiveWords.styled(text, stable: stable, freshFrom: freshFrom)
         Group {
             if #available(iOS 18.0, *) {
-                styled.textRenderer(SweepRenderer(progress: progress, plain: reduceMotion))
+                styled.textRenderer(SweepRenderer(progress: progress))
             } else {
                 styled
             }
         }
         .onAppear { shown = text }
         .onChange(of: text) { old, new in
-            let from = FreshWords.start(old: shown, new: new)
+            let from = FreshWords.firstNew(old: shown, new: new)
             shown = new
-            guard from < new.count else { return }
+            // Reduce Motion: no animation at all (as the page).
+            guard !reduceMotion, from < new.split(whereSeparator: \.isWhitespace).count else { return }
             // Start from 0 with no animation, then sweep in the next turn of
             // the run loop: set together, SwiftUI would see 1 → 1 and skip it.
             var still = Transaction()
@@ -53,30 +55,22 @@ struct LiveWords: View {
                 progress = 0
             }
             DispatchQueue.main.async {
-                withAnimation(.linear(duration: LiveWords.sweep)) { progress = 1 }
+                withAnimation(.easeOut(duration: LiveWords.sweep)) { progress = 1 }
             }
         }
     }
 
-    /// The words as one Text: settled solid, tail light, the fresh part
-    /// tagged for the renderer.
+    /// The words as one Text: settled solid, tail at 0.55, and each new
+    /// word (from word index `freshFrom`) tagged on its own so it gets its
+    /// own sweep.
     static func styled(_ text: String, stable: Int?, freshFrom: Int) -> Text {
-        let parts = HeardWords.split(text, stable: stable)
-        // Rebuilt from the split so spacing matches what's drawn.
-        let whole = parts.tail.isEmpty ? parts.settled : (parts.settled.isEmpty ? parts.tail : parts.settled + " " + parts.tail)
-        let settledEnd = parts.settled.count
-        let chars = Array(whole)
-        let cut = min(max(freshFrom, 0), chars.count)
-        // Pieces split at the settled/tail boundary and where fresh begins.
-        var bounds = Set([0, chars.count, settledEnd, cut]).filter { $0 >= 0 && $0 <= chars.count }.sorted()
-        if bounds.first != 0 { bounds.insert(0, at: 0) }
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let settled = min(max(stable ?? 0, 0), words.count)
         var out = Text("")
-        for (a, b) in zip(bounds, bounds.dropFirst()) where b > a {
-            var piece = Text(String(chars[a..<b]))
-            if a >= settledEnd, !parts.tail.isEmpty { piece = piece.foregroundColor(.white.opacity(HeardWords.tailOpacity)) }
-            if a >= cut {
-                if #available(iOS 18.0, *) { piece = piece.customAttribute(Fresh()) }
-            }
+        for (i, word) in words.enumerated() {
+            var piece = Text((i == 0 ? "" : " ") + word)
+            if i >= settled { piece = piece.foregroundColor(.white.opacity(HeardWords.tailOpacity)) }
+            if i >= freshFrom, #available(iOS 18.0, *) { piece = piece.customAttribute(Fresh(word: i)) }
             out = out + piece
         }
         return out
@@ -85,43 +79,40 @@ struct LiveWords: View {
 
 /// Marks the fresh run.
 @available(iOS 18.0, *)
-private struct Fresh: TextAttribute {}
+private struct Fresh: TextAttribute {
+    /// Its place in the line, so neighbouring new words stay separate runs.
+    let word: Int
+}
 
-/// Draws the text; the fresh run's glyphs fade in one after another from
-/// left to right (reading order, across lines) as `progress` runs 0 → 1.
+/// Draws the text; each new word is revealed by a soft edge sweeping left
+/// to right across it as `progress` runs 0 → 1 (the web page's mask: a
+/// gradient opaque at 40% and clear at 60% of a mask three words wide,
+/// slid from 100% to 0).
 @available(iOS 18.0, *)
 private struct SweepRenderer: TextRenderer, Animatable {
     var progress: Double
-    var plain: Bool
     var animatableData: Double {
         get { progress }
         set { progress = newValue }
     }
 
-    /// How much of the sweep each glyph takes to come in: a soft edge.
-    private let edge = 0.35
-
     func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
-        // How many fresh glyphs there are, so each knows its place.
-        var total = 0
-        for line in layout { for run in line where run[Fresh.self] != nil { total += run.count } }
-        var index = 0
         for line in layout {
             for run in line {
                 guard run[Fresh.self] != nil, progress < 1 else {
                     ctx.draw(run)
                     continue
                 }
-                for slice in run {
+                // The word's glyphs, left to right: the soft edge (0.6 of the
+                // word wide, as 20% of a 3× mask) moves from before its
+                // start to past its end.
+                let count = max(run.count, 1)
+                let edge = -0.6 + progress * 2.2
+                for (i, slice) in run.enumerated() {
+                    let at = (Double(i) + 0.5) / Double(count)
                     var c = ctx
-                    if plain {
-                        c.opacity = progress
-                    } else {
-                        let at = Double(index) / Double(max(total, 1)) * (1 - edge)
-                        c.opacity = min(1, max(0, (progress - at) / edge))
-                    }
+                    c.opacity = min(1, max(0, (edge - at) / 0.6 + 0.5))
                     c.draw(slice)
-                    index += 1
                 }
             }
         }

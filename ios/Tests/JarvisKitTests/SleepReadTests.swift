@@ -274,11 +274,11 @@ final class SleepWeekTests: XCTestCase {
 
 
 final class FreshWordsTests: XCTestCase {
-    func testOnlyTheNewPartIsFresh() {
-        XCTAssertEqual(FreshWords.start(old: "turn off the", new: "turn off the lights"), 12)
-        XCTAssertEqual(FreshWords.start(old: "", new: "hello"), 0)
-        XCTAssertEqual(FreshWords.start(old: "same words", new: "same words"), 10, "nothing new")
-        XCTAssertEqual(FreshWords.start(old: "turn of the", new: "turn off the"), 5, "a revised word fades in whole")
-        XCTAssertEqual(FreshWords.start(old: "turn off the lights", new: "turn off"), 8, "shorter: nothing new")
+    func testOnlyWordsBeyondTheOldOnesAreNew() {
+        XCTAssertEqual(FreshWords.firstNew(old: "turn off the", new: "turn off the bedroom lights"), 3)
+        XCTAssertEqual(FreshWords.firstNew(old: "", new: "hello"), 0)
+        XCTAssertEqual(FreshWords.firstNew(old: "same words", new: "same words"), 2, "nothing new")
+        XCTAssertEqual(FreshWords.firstNew(old: "turn of the", new: "turn off the"), 3, "a rewritten word doesn't replay")
+        XCTAssertEqual(FreshWords.firstNew(old: "turn off the lights", new: "turn off"), 2, "shorter: nothing new")
     }
 }
