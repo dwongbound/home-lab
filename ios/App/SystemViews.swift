@@ -215,3 +215,26 @@ struct SystemGaugeRow: View {
         }
     }
 }
+
+/// "Checked 10:34 AM": when the PC was read (the snapshot's own time).
+/// Orange with its age once it's over a minute old. A fixed slot and
+/// monospaced digits, so the header never shifts as it changes.
+struct SystemCheckedLabel: View {
+    @Environment(\.sleepInk) private var ink
+    let generatedAt: String
+    var scale: CGFloat = 1
+
+    var body: some View {
+        // Re-read every 15 s so the age keeps counting while nothing new comes.
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            if let words = SystemChecked.words(generatedAt: generatedAt, now: context.date) {
+                Text(words.text)
+                    .font(.system(size: 11 * scale, weight: words.stale ? .semibold : .regular, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(words.stale ? Color(red: 1, green: 0.58, blue: 0.24) : ink.dim)
+                    .lineLimit(1)
+                    .frame(minWidth: 112 * scale, alignment: .trailing)
+            }
+        }
+    }
+}

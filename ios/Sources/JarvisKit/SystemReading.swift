@@ -318,3 +318,24 @@ extension Snapshot {
         }
     }
 }
+
+/// "Checked 10:34 AM" on the System panel (Dylan, 2026-11-21: "can we add a
+/// last checked (time)? so i know"): when the PC was read, from the
+/// snapshot's own `generatedAt`, not the phone's clock. Over a minute old
+/// (Jarvis or Tailscale unreachable) it says how old, and is stale.
+public enum SystemChecked {
+    public static let staleAfter: TimeInterval = 60
+
+    public static func words(generatedAt: String, now: Date = Date()) -> (text: String, stale: Bool)? {
+        guard let at = AgendaTime.parse(generatedAt) else { return nil }
+        let age = now.timeIntervalSince(at)
+        guard age > staleAfter else {
+            return ("Checked \(at.formatted(date: .omitted, time: .shortened))", false)
+        }
+        let minutes = Int(age / 60)
+        if minutes < 60 { return ("Checked \(minutes) min ago", true) }
+        let hours = minutes / 60
+        if hours < 24 { return ("Checked \(hours) h ago", true) }
+        return ("Checked \(at.formatted(date: .abbreviated, time: .shortened))", true)
+    }
+}

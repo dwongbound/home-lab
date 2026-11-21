@@ -339,3 +339,13 @@ public struct SleepWeek: Equatable, Sendable {
         nights.contains { $0.night == today } ? today : (SleepCard.dayBefore(today) ?? today)
     }
 }
+
+extension SleepWeek {
+    /// A night's heading on the Sleep screen: only the single newest
+    /// recorded night may be "Last night", and only when it is today's or
+    /// yesterday's key; every other night is its weekday ("Thursday night").
+    public static func heading(night: String, newest: String?, today: String) -> String {
+        if night == newest, night == today || night == SleepCard.dayBefore(today) { return "Last night" }
+        return SleepCard.weekdayName(night) + " night"
+    }
+}

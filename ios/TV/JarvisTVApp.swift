@@ -956,6 +956,9 @@ struct AlwaysOnView: View {
                 // One screen's worth at the card's height: the rings, then
                 // the graphics card's holders as a bar.
                 VStack(alignment: .leading, spacing: 16) {
+                    SystemCheckedLabel(generatedAt: snapshot.generatedAt, scale: 1.6)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, -44)
                     SystemGaugeRow(snapshot: snapshot, scale: 1.35, ringSize: 62)
                     if let gpu = snapshot.gpuShare?.breakdown {
                         SystemBreakdownBar(breakdown: gpu, scale: 1.2, legendLimit: 0)

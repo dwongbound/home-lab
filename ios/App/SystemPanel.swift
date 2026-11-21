@@ -23,7 +23,9 @@ struct SystemPanel: View {
                     Image(systemName: "desktopcomputer").font(.footnote.weight(.semibold)).foregroundStyle(Theme.glacier)
                     Text("System").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.frost)
                     Spacer()
-                    Text("Details  ›").font(.caption).foregroundStyle(Theme.frostDim)
+                    // When the PC was read (Dylan, 2026-11-21: "so i know").
+                    SystemCheckedLabel(generatedAt: snapshot.generatedAt)
+                    Text("›").font(.caption).foregroundStyle(Theme.frostDim)
                 }
                 SystemGaugeRow(snapshot: snapshot, ringSize: snapshot.systemGauges.count > 3 ? 58 : 66)
             }
@@ -72,6 +74,8 @@ private struct SystemDrawerBody: View {
     var body: some View {
         let snapshot = today.snapshot ?? fallback
         VStack(spacing: 14) {
+            SystemCheckedLabel(generatedAt: snapshot.generatedAt, scale: 1.15)
+                .frame(maxWidth: .infinity, alignment: .trailing)
             ForEach(snapshot.systemGauges) { gauge in
                 section(gauge, snapshot: snapshot)
             }

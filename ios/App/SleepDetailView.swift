@@ -66,7 +66,7 @@ struct SleepDetailView: View {
                 ForEach(keys, id: \.self) { key in
                     ScrollView(.vertical) {
                         if let night = nights.first(where: { $0.night == key }) {
-                            nightPanel(night)
+                            nightPanel(night, newest: keys.last)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 12)
                         }
@@ -92,11 +92,11 @@ struct SleepDetailView: View {
     }
 
     /// One night, heading to vitals: the page that slides.
-    private func nightPanel(_ night: SleepDay) -> some View {
+    private func nightPanel(_ night: SleepDay, newest: String?) -> some View {
         let card = SleepCard(summary: SleepSummary(last: night, trend: []), fallbackAsleepMinutes: nil, today: today)
         return VStack(alignment: .leading, spacing: 8) {
             // "Last night", or "Thursday night": the night, not the morning after.
-            Text(card.whenWords ?? SleepCard.dayTitle(night.night))
+            Text(SleepWeek.heading(night: night.night, newest: newest, today: today))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.frostDim)
                 .padding(.leading, 4)

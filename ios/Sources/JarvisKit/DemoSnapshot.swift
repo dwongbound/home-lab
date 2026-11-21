@@ -39,7 +39,7 @@ public enum DemoSnapshot {
         let tomorrow9 = ISO8601DateFormatter().string(from: cal.date(byAdding: .day, value: 1, to: cal.date(bySettingHour: 9, minute: 0, second: 0, of: now) ?? now) ?? now)
         if sparse {
             let json = """
-            {"generatedAt":"x","services":[{"id":"j","name":"Jarvis","detail":"","status":"up"}],"today":[],
+            {"generatedAt":"\(iso(0))","services":[{"id":"j","name":"Jarvis","detail":"","status":"up"}],"today":[],
              "home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"off","current":69}],
                "weather":{"condition":"sunny","temperature":66,"unit":"°F"},"sun":{"rising":"\(sunrise)","setting":"\(sunset)"}}}
             """
@@ -50,7 +50,7 @@ public enum DemoSnapshot {
             return #"{"at":"\#(iso(Double(h) * 60))","condition":"\#(conditions[h - 1])","temperature":\#(62 - h),"rain":\#([10, 20, 40, 70, 60, 30, 10, 0, 0, 0][h - 1])}"#
         }.joined(separator: ",")
         let json = """
-        {"generatedAt":"x",
+        {"generatedAt":"\(iso(0))",
          "notices":[\(args.contains("-demoLongNotice") ? DemoSnapshot.longNotice + "," : "")
                     {"id":"n0","kind":"heads","title":"⏰ Buy Natalia's Secret Santa gift.","body":"Secret Santa Overflow is Wednesday, November 25th. Tell me once it's bought and I'll stop reminding you.","source":"reminder","created":"\(iso(-1440))","turnId":12},
                     {"id":"n1","kind":"need","title":"Turn off the bedroom lights?","body":"Jarvis wants to run home_service light.turn_off","source":"approval","created":"\(iso(-3))","approvalId":"ap1"},

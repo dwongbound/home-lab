@@ -235,6 +235,15 @@ final class DaySwipeTests: XCTestCase {
 }
 
 final class SleepWeekTests: XCTestCase {
+    /// Two adjacent recorded nights: only the newest is "Last night".
+    func testOnlyTheNewestIsLastNight() {
+        let today = "2026-11-21"
+        XCTAssertEqual(SleepWeek.heading(night: "2026-11-21", newest: "2026-11-21", today: today), "Last night")
+        XCTAssertEqual(SleepWeek.heading(night: "2026-11-20", newest: "2026-11-21", today: today), "Thursday night", "keyed by the morning it ended")
+        XCTAssertEqual(SleepWeek.heading(night: "2026-11-20", newest: "2026-11-20", today: today), "Last night")
+        XCTAssertEqual(SleepWeek.heading(night: "2026-11-18", newest: "2026-11-18", today: today), "Tuesday night", "an older newest night is its weekday")
+    }
+
     private func day(_ night: String, asleep: Double?, score: Int?) -> SleepDay {
         SleepDay(night: night, minutes: SleepDay.Minutes(asleep: asleep), score: score, scoreBand: score.map { $0 >= 85 ? "great" : $0 >= 70 ? "good" : "fair" })
     }

@@ -317,6 +317,9 @@ struct KioskView: View {
         if let snapshot = today.snapshot {
             frame("System", icon: "desktopcomputer") {
                 VStack(alignment: .leading, spacing: 22) {
+                    SystemCheckedLabel(generatedAt: snapshot.generatedAt, scale: 1.4)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, -38)
                     SystemGaugeRow(snapshot: snapshot, scale: 1.4, ringSize: 64)
                     if let gpu = snapshot.gpuShare?.breakdown {
                         SystemBreakdownBar(breakdown: gpu, scale: 1.2, legendLimit: 3)

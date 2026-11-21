@@ -110,4 +110,22 @@ final class SystemReadingTests: XCTestCase {
         XCTAssertEqual(s.systemGauges.map(\.kind), [.ram, .disk])
         XCTAssertEqual(s.systemGauges.last?.used, 231)
     }
+
+    /// When the PC was read: its time while fresh, its age once stale.
+    func testCheckedWords() throws {
+        let now = ISO8601DateFormatter().date(from: "2026-11-21T18:34:30Z")!
+        let fresh = try XCTUnwrap(SystemChecked.words(generatedAt: "2026-11-21T18:34:15Z", now: now))
+        XCTAssertFalse(fresh.stale)
+        XCTAssertTrue(fresh.text.hasPrefix("Checked "))
+        let old = try XCTUnwrap(SystemChecked.words(generatedAt: "2026-11-21T18:28:00Z", now: now))
+        XCTAssertEqual(old.text, "Checked 6 min ago")
+        XCTAssertTrue(old.stale)
+        XCTAssertEqual(SystemChecked.words(generatedAt: "2026-11-21T15:00:00Z", now: now)?.text, "Checked 3 h ago")
+        XCTAssertNil(SystemChecked.words(generatedAt: "x", now: now))
+    }
+
+    func testDemoHasACheckedTime() throws {
+        let s = try XCTUnwrap(DemoSnapshot.build(now: Date(), sparse: false))
+        XCTAssertNotNil(SystemChecked.words(generatedAt: s.generatedAt), "generatedAt: \(s.generatedAt)")
+    }
 }
