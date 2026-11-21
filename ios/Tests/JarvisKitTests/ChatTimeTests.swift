@@ -113,3 +113,19 @@ final class ChatTimeLiveShapeTests: XCTestCase {
         XCTAssertEqual(ChatTime.dayBreaks([ChatTime.parse(live), late], calendar: la), [true, false])
     }
 }
+
+final class NoticeWholeTextTests: XCTestCase {
+    /// Jarvis now sends notices word for word (his own masking in place):
+    /// the app shows them as they come, a long body whole.
+    func testALongBodyIsUsedAsItComes() throws {
+        let body = "Dinner came to $42.80. Your [balance] is not shown. " + String(repeating: "More words. ", count: 240)
+        XCTAssertGreaterThan(body.count, 2900)
+        let json = #"{"id":"n9","kind":"heads","title":"Spending","body":"\#(body)","source":"lookout"}"#
+        let notice = try JSONDecoder().decode(Notice.self, from: Data(json.utf8))
+        XCTAssertEqual(notice.body, body, "nothing cut or scrubbed by the app")
+        XCTAssertTrue(notice.body.contains("$42.80"))
+        XCTAssertTrue(notice.body.contains("[balance]"))
+        // The same text in its chat turn: no swap needed, the body is whole.
+        XCTAssertNil(NoticeFullText.from(turn: "Spending\n" + body, title: "Spending", body: body))
+    }
+}
