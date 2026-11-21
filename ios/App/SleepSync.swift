@@ -26,7 +26,7 @@ import JarvisKit
 /// The upload switch for this build. Off until the page route
 /// /api/jarvis/health/sleep is live; turn it on by setting `live` to true.
 enum SleepUpload {
-    static let live = false
+    static let live = true
 }
 
 @MainActor

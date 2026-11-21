@@ -57,7 +57,7 @@ struct SettingsView: View {
                             }
                             .fullWidthSeparators()
                         } footer: {
-                            Text("Sends each night's sleep from Apple Health (stages, heart rate, breathing, oxygen, wrist temperature) to your own Jarvis, in the morning. Nothing is written to Health.")
+                            Text("Sends each night's sleep from Apple Health (stages, heart rate, breathing, oxygen, wrist temperature) to your own Jarvis, in the morning. Nothing is written to Health. To change what Jarvis may read, open the Health app, then Sharing, Apps, Jarvis.")
                         }
                     }
                     Section {
