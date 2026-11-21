@@ -131,3 +131,72 @@ final class ChatOlderTests: XCTestCase {
         XCTAssertNotNil(time?.label.range(of: #"^\d{1,2}:\d{2} [AP]M$"#, options: .regularExpression), "hour and minute, like 7:32 PM")
     }
 }
+
+final class ChatOlderPagesTests: XCTestCase {
+    /// Up to the top three times: three pages load, one per arrival.
+    func testThreePagesLoadOneAtATime() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-demoOlderServer", "-push.enabled", "NO", "-resetDraft"]
+        app.launch()
+        let list = app.scrollViews["chatList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 20))
+        sleep(2)
+        // Each arrival at the top shows one more page (fetched, or already held).
+        func fetches() -> Int { Int(app.staticTexts["olderPages"].label) ?? -1 }
+        for page in 1...3 {
+            let deadline = Date().addingTimeInterval(45)
+            while fetches() < page && Date() < deadline { list.swipeDown(velocity: .fast) }
+            XCTAssertEqual(fetches(), page, "page \(page) loads when he reaches the top again")
+            sleep(2)
+            XCTAssertEqual(fetches(), page, "and only one per arrival")
+        }
+    }
+}
+
+final class ChatOlderStillTests: XCTestCase {
+    /// At rest when the page lands: the lines on screen don't move at all.
+    func testNothingOnScreenMovesWhenAPageLands() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-demoOlderServer", "-demoOlderSlow", "-push.enabled", "NO", "-resetDraft"]
+        app.launch()
+        let list = app.scrollViews["chatList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 20))
+        sleep(2)
+        func fetches() -> Int { Int(app.staticTexts["olderFetches"].label) ?? -1 }
+        for page in 1...2 {
+            let deadline = Date().addingTimeInterval(40)
+            while fetches() < page && Date() < deadline { list.swipeDown(velocity: .fast) }
+            XCTAssertEqual(fetches(), page)
+            // The page is on its way (four seconds); note where the lines are, at rest.
+            sleep(1)
+            let lines = app.staticTexts.allElementsBoundByIndex.filter { $0.label.hasPrefix("ok ") && $0.frame.minY > 100 && $0.frame.maxY < 700 }
+            let before = lines.map { ($0.label, $0.frame.minY) }
+            XCTAssertFalse(before.isEmpty)
+            sleep(6)
+            for (label, y) in before {
+                let now = app.staticTexts[label]
+                XCTAssertTrue(now.exists)
+                XCTAssertEqual(now.frame.minY, y, accuracy: 1, "\(label) moved when page \(page) landed")
+            }
+        }
+    }
+}
+
+final class ChatOlderLandTests: XCTestCase {
+    /// For the screen recording: up to the top, then still while the page lands.
+    func testLandWhileStill() {
+        let app = XCUIApplication()
+        var args = ["-jarvis.server", "http://127.0.0.1:9", "-openChat", "-demoChat", "-demoOlderServer", "-demoOlderSlow", "-push.enabled", "NO", "-resetDraft"]
+        if ProcessInfo.processInfo.environment["OFFSET_KEEPER"] != nil { args.append("-offsetKeeper") }
+        app.launchArguments = args
+        app.launch()
+        let list = app.scrollViews["chatList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 20))
+        sleep(2)
+        let count = app.staticTexts["olderFetches"]
+        let deadline = Date().addingTimeInterval(60)
+        while count.label == "0" && Date() < deadline { list.swipeDown(velocity: .fast) }
+        print("LANDMARK fetched", Date().timeIntervalSince1970)
+        sleep(8)
+    }
+}

@@ -87,6 +87,8 @@ final class ChatModel: ObservableObject {
     #if DEBUG
     /// `-demoOlderServer`: pages fetched, for the UI test.
     @Published var demoOlderFetches = 0
+    /// Pages shown at the top (fetched or already held), for the UI test.
+    @Published var demoOlderPages = 0
     #endif
     static var demoOlderServer: Bool {
         #if DEBUG
@@ -290,7 +292,8 @@ final class ChatModel: ObservableObject {
         #if DEBUG
         if Self.demoOlderServer {
             demoOlderFetches += 1
-            try? await Task.sleep(for: .milliseconds(600))
+            // `-demoOlderSlow`: four seconds, so a test can watch the screen as it lands.
+            try? await Task.sleep(for: .milliseconds(ProcessInfo.processInfo.arguments.contains("-demoOlderSlow") ? 4000 : 600))
             let all = DemoChat.items()
             let end = all.firstIndex { $0.turnId == first } ?? 0
             let page = Array(all[max(0, end - HistoryQuery.pageSize)..<end])

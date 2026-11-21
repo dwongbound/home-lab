@@ -63,6 +63,11 @@ struct ChatView: View {
                     .opacity(0.02)
                     .accessibilityIdentifier("olderFetches")
                     .allowsHitTesting(false)
+                Text("\(chat.demoOlderPages)")
+                    .font(.system(size: 2))
+                    .opacity(0.02)
+                    .accessibilityIdentifier("olderPages")
+                    .allowsHitTesting(false)
             }
             #endif
             // A blocking "Sending photos…" (or "Telling Jarvis…") while it goes.
@@ -178,15 +183,23 @@ struct ChatView: View {
                             }
                     }
                     // A leftward drag slides the rows to show their times.
-                    RevealTimes {
-                        ChatRowsList(items: Array(chat.items.suffix(shown)), highlighted: highlighted, keptTurns: keptTurns,
-                                     mealBusy: chat.busy != nil, actions: rowActions)
-                            .equatable()
+                    // The messages are the scroll targets (the "earlier" row
+                    // above them is not): the list keeps the line he's reading
+                    // in place by its identity when older rows are added
+                    // above, in the same frame (PlaceKeeping's ScrollPosition).
+                    VStack(alignment: .leading, spacing: 14) {
+                        RevealTimes {
+                            ChatRowsList(items: Array(chat.items.suffix(shown)), highlighted: highlighted, keptTurns: keptTurns,
+                                         mealBusy: chat.busy != nil, actions: rowActions)
+                                .equatable()
+                        }
                     }
+
                     // An invisible marker after the last line: on screen
                     // means the chat is scrolled to the bottom.
                     Color.clear
                         .frame(height: 1)
+                        .background(ScrollViewTap(keeper: placeKeeper))
                         .id("bottom")
                         // While Jarvis thinks, the dots sit in the gap
                         // between the last bubble and the box, taking no
@@ -487,6 +500,9 @@ struct ChatView: View {
         // 2026-11-20: it kept loading page after page by itself).
         olderArmed = false
         let total = chat.items.count
+        #if DEBUG
+        if ChatModel.demoOlderServer { chat.demoOlderPages += 1 }
+        #endif
         guard ChatWindow.hasMore(shown: shown, total: total) else {
             // Everything held is drawn: ask the server for an older page.
             let anchor = chat.items.first?.id
@@ -1377,6 +1393,36 @@ final class PlaceKeeper {
     fileprivate var y: CGFloat = 0
     fileprivate var height: CGFloat = 0
     fileprivate var held: (y: CGFloat, height: CGFloat)?
+    /// The list's own scroll view, found once (ScrollViewTap): its content
+    /// size is watched as UIKit lays it out, so the correction lands in the
+    /// same layout pass as the new rows, before anything is drawn. Without
+    /// it (not found), the correction above runs a frame later.
+    fileprivate weak var scrollView: UIScrollView?
+    private var watch: NSKeyValueObservation?
+    private var lastHeight: CGFloat = 0
+
+    fileprivate func attach(_ view: UIScrollView) {
+        guard scrollView !== view else { return }
+        scrollView = view
+        lastHeight = view.contentSize.height
+        watch = view.observe(\.contentSize, options: [.new]) { [weak self] view, _ in
+            MainActor.assumeIsolated { self?.sizeChanged(view) }
+        }
+    }
+
+    /// Older rows went in above: move down by exactly what was added, so
+    /// what he's reading doesn't move. Only right after hold().
+    @MainActor private func sizeChanged(_ view: UIScrollView) {
+        let height = view.contentSize.height
+        defer { lastHeight = height }
+        guard let held, height > lastHeight + 1 else { return }
+        self.held = nil
+        let added = height - held.height
+        let target = held.y + added
+        if abs(view.contentOffset.y - target) > 0.5 {
+            view.setContentOffset(CGPoint(x: view.contentOffset.x, y: target), animated: false)
+        }
+    }
     /// Set while the arrow's jump to the newest runs: a page landing then
     /// doesn't move the view (the jump ends at the bottom regardless).
     fileprivate var jumpingUntil = Date.distantPast
@@ -1393,7 +1439,14 @@ final class PlaceKeeper {
 
     func hold() {
         guard Date() > jumpingUntil else { return }
-        held = (y, height)
+        if let view = scrollView {
+            // Stop any glide first, so the place he's at is the place kept.
+            view.setContentOffset(view.contentOffset, animated: false)
+            held = (view.contentOffset.y, view.contentSize.height)
+            lastHeight = view.contentSize.height
+        } else {
+            held = (y, height)
+        }
         // Nothing grew after all (a page with nothing new): let it go.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.held = nil }
     }
@@ -1436,7 +1489,7 @@ private struct PlaceKeeping: ViewModifier {
                 } action: { _, now in
                     keeper.y = now.width
                     if Date() < keeper.jumpingUntil { keeper.held = nil }
-                    if let held = keeper.held, now.height > held.height + 1 {
+                    if keeper.scrollView == nil, let held = keeper.held, now.height > held.height + 1 {
                         keeper.held = nil
                         let target = held.y + (now.height - held.height)
                         if abs(target - now.width) > 1 {
@@ -1447,6 +1500,26 @@ private struct PlaceKeeping: ViewModifier {
                     }
                     keeper.height = now.height
                 }
+        }
+    }
+}
+
+/// Finds the chat list's UIScrollView from inside its content and hands it
+/// to the PlaceKeeper (a zero-size view; draws nothing).
+private struct ScrollViewTap: UIViewRepresentable {
+    let keeper: PlaceKeeper
+    func makeUIView(context: Context) -> UIView { Finder(keeper: keeper) }
+    func updateUIView(_ view: UIView, context: Context) {}
+
+    final class Finder: UIView {
+        let keeper: PlaceKeeper
+        init(keeper: PlaceKeeper) { self.keeper = keeper; super.init(frame: .zero); isUserInteractionEnabled = false }
+        required init?(coder: NSCoder) { fatalError() }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            var view = superview
+            while let v = view, !(v is UIScrollView) { view = v.superview }
+            if let scroll = view as? UIScrollView { keeper.attach(scroll) }
         }
     }
 }
