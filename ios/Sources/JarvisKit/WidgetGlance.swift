@@ -77,6 +77,11 @@ public struct WidgetGlance: Codable, Equatable, Sendable {
         }
     }
 
+    public init(updated: Date, unread: Int, needsYou: Bool, running: Int, agenda: [Item], sleep: Sleep?) {
+        self.updated = updated; self.unread = unread; self.needsYou = needsYou
+        self.running = running; self.agenda = agenda; self.sleep = sleep
+    }
+
     /// The app group both the app and the widgets can read.
     public static let appGroup = "group.com.dwongbound.jarvis"
     public static let key = "widget.glance"

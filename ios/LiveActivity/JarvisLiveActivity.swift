@@ -16,6 +16,7 @@ struct JarvisLiveActivityBundle: WidgetBundle {
         SleepWidget()
         HomeWidget()
         BoardWidget()
+        OrbWidget()
     }
 }
 
