@@ -169,14 +169,26 @@ struct ChatView: View {
                     ChatRowsList(items: Array(chat.items.suffix(shown)), highlighted: highlighted, keptTurns: keptTurns,
                                  mealBusy: chat.busy != nil, actions: rowActions)
                         .equatable()
-                    if showDots {
-                        TypingDots(label: chat.working).id("dots")
-                    }
                     // An invisible marker after the last line: on screen
                     // means the chat is scrolled to the bottom.
                     Color.clear
                         .frame(height: 1)
                         .id("bottom")
+                        // While Jarvis thinks, the dots sit in the gap
+                        // between the last bubble and the box, taking no
+                        // room of their own: his message lands just above
+                        // the box and nothing moves again until the reply
+                        // starts (Dylan, 2026-11-20: "it scrolls down way
+                        // too much after i hit enter").
+                        .overlay(alignment: .topLeading) {
+                            if showDots {
+                                TypingDots(label: chat.working)
+                                    .fixedSize()
+                                    .offset(y: -12)
+                                    .transition(.opacity)
+                            }
+                        }
+                        .animation(.easeOut(duration: 0.2), value: showDots)
                         // iOS 17 only; on 18 the scroll's own geometry decides (ReadingUpWatch).
                         .onAppear { if #unavailable(iOS 18.0) { atBottom = true } }
                         .onDisappear { if #unavailable(iOS 18.0) { atBottom = false } }
@@ -251,8 +263,11 @@ struct ChatView: View {
                     }
                     return
                 }
+                // To the marker after the last line: a reply that hasn't
+                // started yet draws nothing, so its own id is no place to
+                // scroll to.
                 withAnimation(.easeOut(duration: 0.2)) {
-                    scroller.scrollTo(new.last?.id, anchor: .bottom)
+                    scroller.scrollTo("bottom", anchor: .bottom)
                 }
             }
             #if DEBUG
@@ -954,6 +969,7 @@ private struct ComposerField: View {
             }
             .disabled(!canSend)
             .accessibilityLabel("Send")
+            .accessibilityIdentifier("sendButton")
         }
         .onChange(of: text) { _, new in
             let filled = !new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1041,6 +1057,7 @@ private struct ChatRowsList: View, Equatable {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))
+                        .accessibilityIdentifier("userBubble")
                         // A kept message carries a small yellow dot.
                         .overlay(alignment: .topLeading) {
                             if keptTurns.contains(item.turnId ?? -1) {
@@ -1068,6 +1085,7 @@ private struct ChatRowsList: View, Equatable {
                 VStack(alignment: .leading, spacing: 8) {
                     // A notice opened here: the bubble itself glows softly.
                     JarvisBubble(item: item, glowing: item.turnId != nil && item.turnId == highlighted, kept: keptTurns.contains(item.turnId ?? -1)) { actions.flag(item) }
+                        .accessibilityIdentifier("jarvisBubble")
                         // Keep any finished message as a yellow dot, or let
                         // a kept one go (Dylan, 2026-11-19).
                         .contextMenu {

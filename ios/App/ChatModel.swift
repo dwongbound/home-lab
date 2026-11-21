@@ -361,7 +361,7 @@ final class ChatModel: ObservableObject {
         failed = nil
 
         do {
-            for try await event in app.client.chat(trimmed, offerId: offerId, photos: photos.map { ChatPhoto(jpeg: $0.jpeg) }) {
+            for try await event in replyStream(trimmed, offerId: offerId, photos: photos, app: app) {
                 uploading = false
                 apply(event, to: reply.id)
             }
@@ -382,7 +382,41 @@ final class ChatModel: ObservableObject {
         uploading = false
         finish(reply.id)
         // The new turns' ids come with history; Keep needs them.
-        if problem == nil { Task { try? await Task.sleep(for: .seconds(1)); if !self.isSending { await self.load(app: app) } } }
+        if problem == nil, !Self.fixtureChat { Task { try? await Task.sleep(for: .seconds(1)); if !self.isSending { await self.load(app: app) } } }
+    }
+
+    /// Jarvis's reply to a send, as it streams in. `-fixtureChat` (debug
+    /// builds) plays a canned reply instead, so the chat's send behaviour
+    /// can be tested without writing to live Jarvis.
+    private func replyStream(_ text: String, offerId: String?, photos: [PickedPhoto], app: AppModel) -> AsyncThrowingStream<ChatEvent, Error> {
+        #if DEBUG
+        if Self.fixtureChat {
+            return AsyncThrowingStream { continuation in
+                Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    continuation.yield(.turn(9_000 + Int.random(in: 0..<999)))
+                    continuation.yield(.model("claude"))
+                    try? await Task.sleep(for: .seconds(20))
+                    for chunk in ["Sure. ", "Here's what ", "I found: ", "it's sunny tomorrow, ", "so no jacket needed."] {
+                        continuation.yield(.delta(chunk))
+                        try? await Task.sleep(for: .milliseconds(250))
+                    }
+                    continuation.yield(.done)
+                    continuation.finish()
+                }
+            }
+        }
+        #endif
+        return app.client.chat(text, offerId: offerId, photos: photos.map { ChatPhoto(jpeg: $0.jpeg) })
+    }
+
+    /// Debug builds: `-fixtureChat` answers sends with a canned reply.
+    static var fixtureChat: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-fixtureChat")
+        #else
+        return false
+        #endif
     }
 
     /// A send that broke. Nothing back yet: it didn't go, so say so and
