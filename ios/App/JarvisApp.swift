@@ -56,7 +56,8 @@ struct RootView: View {
     /// Whether the keyboard is up.
     @StateObject private var keyboard = KeyboardWatch()
     /// A leftward drag on Chat is showing message times (TimesReveal).
-    @GestureState private var timesDragging = false
+    /// This touch's times drag: undecided, a times drag, or not (resets with the touch).
+    @GestureState private var timesDrag: Bool? = nil
     /// One page, with room for the tab bar.
     private func page<Page: View>(_ content: Page, _ screen: GeometryProxy) -> some View {
         content
@@ -197,11 +198,18 @@ struct RootView: View {
         // The hold is a gesture state, so it ends with the touch however the
         // touch ends, cancelled included: a stuck hold froze the tab swipe
         // (Dylan, 2026-11-20, build 53).
-        .simultaneousGesture(DragGesture(minimumDistance: 8).updating($timesDragging) { drag, state, _ in
+        .simultaneousGesture(DragGesture(minimumDistance: 8).updating($timesDrag) { drag, state, _ in
             guard app.tab == .chat, !keyboard.up else { return }
-            if TimesReveal.shared.moved(width: drag.translation.width, height: drag.translation.height) { state = true }
+            if state == nil {
+                state = TimesReveal.decide(width: drag.translation.width, height: drag.translation.height)
+                #if DEBUG
+                // `-logTimesDrag`: each touch's decision (no message text).
+                if let decided = state, ProcessInfo.processInfo.arguments.contains("-logTimesDrag") { NSLog("timesdrag %@", decided ? "sideways" : "rejected") }
+                #endif
+            }
+            if state == true { TimesReveal.shared.follow(width: drag.translation.width) }
         })
-        .onChange(of: timesDragging) { _, dragging in
+        .onChange(of: timesDrag == true) { _, dragging in
             if dragging {
                 if !tabs.pagerHeld { tabs.pagerHeld = true }
             } else {

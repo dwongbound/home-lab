@@ -1125,8 +1125,11 @@ private struct DayLine: View {
 @MainActor
 final class TimesReveal: ObservableObject {
     static let shared = TimesReveal()
-    /// The gap between a bubble and its time once slid in.
-    static let gap: CGFloat = 8
+    /// The page's side margin: at rest each time starts at least this far
+    /// past a row's right edge, so it begins at the screen's edge or beyond
+    /// and nothing of it shows (Dylan, 2026-11-21: "I can see a 1 even
+    /// without dragging left").
+    static let gap: CGFloat = 16
 
     /// How far the rows slide: the widest time ("12:59 PM") at his text size
     /// plus the gap, so every time comes fully into view right beside its
@@ -1139,8 +1142,6 @@ final class TimesReveal: ObservableObject {
     }
     /// The finger's sideways travel (negative: leftward), 0 at rest.
     @Published var drag: CGFloat = 0
-    /// Decided on a drag's first move: sideways-left reveals.
-    var reveals: Bool?
 
     /// The rows' offset: the travel with a rubber band, never past the width.
     var offset: CGFloat {
@@ -1155,24 +1156,25 @@ final class TimesReveal: ObservableObject {
         return -(d <= w ? d : w + min(24, (d - w) * 0.2))
     }
 
-    /// One move of a drag on Chat; true while it's revealing times.
-    func moved(width w: CGFloat, height h: CGFloat) -> Bool {
-        // Decided once the finger has clearly moved: a real finger drifts a
-        // little up or down, so mostly-sideways-left is enough (the first
-        // few points used to decide it, which a slight angle failed).
-        if reveals == nil, abs(w) > 14 || abs(h) > 14 {
-            reveals = w < 0 && abs(w) > abs(h)
-        }
-        guard reveals == true else { return false }
+    /// Whether a drag is a times drag, decided once the finger has clearly
+    /// moved: mostly leftward. The decision belongs to that one touch (a
+    /// gesture state in RootView), so nothing carries over to the next: a
+    /// stored "no" from one vertical scroll used to switch the drag off for
+    /// good (Dylan, 2026-11-21: "it did at first but now doesn't").
+    static func decide(width w: CGFloat, height h: CGFloat) -> Bool? {
+        guard abs(w) > 14 || abs(h) > 14 else { return nil }
+        return w < 0 && abs(w) > abs(h)
+    }
+
+    /// The rows follow the finger.
+    func follow(width w: CGFloat) {
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { drag = min(0, w) }
-        return true
     }
 
     /// Let go: back they spring.
     func ended() {
-        reveals = nil
         if drag != 0 { withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { drag = 0 } }
     }
 }
