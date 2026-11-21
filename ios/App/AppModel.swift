@@ -272,6 +272,10 @@ final class AppModel: ObservableObject {
     /// snapshot is fetched again right after, so this device is current.
     func clearNotices(_ ids: [String]) async {
         clearedNotices.hide(ids)
+        #if DEBUG
+        // Sample data: cleared here only, nothing is sent anywhere.
+        if ProcessInfo.processInfo.arguments.contains("-demoSnapshot") { return }
+        #endif
         do {
             try await client.clearNotices(ids: ids)
             await today.load(app: self)

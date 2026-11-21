@@ -51,7 +51,8 @@ public enum DemoSnapshot {
         }.joined(separator: ",")
         let json = """
         {"generatedAt":"x",
-         "notices":[{"id":"n0","kind":"heads","title":"⏰ Buy Natalia's Secret Santa gift.","body":"Secret Santa Overflow is Wednesday, November 25th. Tell me once it's bought and I'll stop reminding you.","source":"reminder","created":"\(iso(-1440))","turnId":12},
+         "notices":[\(args.contains("-demoLongNotice") ? DemoSnapshot.longNotice + "," : "")
+                    {"id":"n0","kind":"heads","title":"⏰ Buy Natalia's Secret Santa gift.","body":"Secret Santa Overflow is Wednesday, November 25th. Tell me once it's bought and I'll stop reminding you.","source":"reminder","created":"\(iso(-1440))","turnId":12},
                     {"id":"n1","kind":"need","title":"Turn off the bedroom lights?","body":"Jarvis wants to run home_service light.turn_off","source":"approval","created":"\(iso(-3))","approvalId":"ap1"},
                     {"id":"n2","kind":"heads","title":"PS5 Pro back in stock at Target","body":"Lookout spotted it 10 minutes ago","source":"lookout","created":"\(iso(-12))"},
                     {"id":"n3","kind":"fyi","title":"Reminder code rewrite finished","body":"Changing my code so reminders repeat: done","source":"job","created":"\(iso(-95))"}],
@@ -84,6 +85,16 @@ public enum DemoSnapshot {
                   "money":{"netWorth":1}}}
         """
         return try? JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+    }
+}
+
+extension DemoSnapshot {
+    /// `-demoLongNotice`: a notice with a title over three lines and a body
+    /// over two screens, ending "the very last words." (UI tests).
+    static var longNotice: String {
+        let title = String(repeating: "A long heads-up title that runs on ", count: 5) + "and ends here"
+        let body = (1...60).map { "Line \($0) of a long notice body, with enough words to wrap." }.joined(separator: " ") + " The very last words."
+        return #"{"id":"nlong","kind":"heads","title":"\#(title)","body":"\#(body)","source":"lookout","created":"2026-11-20T19:00:00-08:00","turnId":77}"#
     }
 }
 

@@ -160,8 +160,9 @@ struct OrbView: View {
             if let opened, !ids.contains(opened) { self.opened = nil }
         }
         #if DEBUG
-        // `-openNotice` opens the first orange dot's label a few seconds in.
-        .task {
+        // `-openNotice` opens the first orange dot's label a few seconds in
+        // (again as the dots arrive: the snapshot lands after launch).
+        .task(id: orbit.map(\.id)) {
             guard tappable, ProcessInfo.processInfo.arguments.contains("-openNotice") else { return }
             for _ in 0..<20 {
                 try? await Task.sleep(for: .seconds(1))

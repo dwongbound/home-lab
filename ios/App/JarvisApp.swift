@@ -271,6 +271,12 @@ struct RootView: View {
                 await app.openReport(id: args[at + 1])
                 return
             }
+            // `-openNoticeDetail <id>` opens that notice's sheet (UI tests).
+            if let at = args.firstIndex(of: "-openNoticeDetail"), at + 1 < args.count {
+                try? await Task.sleep(for: .seconds(3))
+                if let notice = app.notices.first(where: { $0.id == args[at + 1] }) { app.readingNotice = notice }
+                return
+            }
             // `-focusMissingNotice` taps the first notice whose turn isn't
             // in the chat (the "no longer in history" check).
             if args.contains("-focusMissingNotice") {
