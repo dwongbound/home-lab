@@ -303,10 +303,7 @@ struct PlaybookEditorView: View {
                         Button {
                             animate { if !on { draft.trigger = DraftTrigger.blank(tile.type) } }
                         } label: {
-                            Label(tile.short, systemImage: tile.icon)
-                                .font(.subheadline.weight(on ? .semibold : .regular))
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                .padding(.horizontal, 10)
+                            KindTile(title: tile.short, icon: tile.icon, bold: on)
                                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(on ? Theme.glacier.opacity(0.32) : Color.white.opacity(0.06)))
                                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? Theme.glacier : .clear, lineWidth: 1))
                                 .contentShape(Rectangle())
@@ -402,7 +399,7 @@ struct PlaybookEditorView: View {
 
     /// The "Add a step" row: one tap adds that kind at the end, opened.
     private var addStepButtons: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
             // The kinds Jarvis describes (the built-in eight on an older Jarvis).
             ForEach(options.stepChoices) { choice in
                 Button {
@@ -412,11 +409,7 @@ struct PlaybookEditorView: View {
                         openStep = added.id
                     }
                 } label: {
-                    Label(choice.short, systemImage: PlaybookWording.stepIcon(choice.type))
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                    KindTile(title: choice.short, icon: PlaybookWording.stepIcon(choice.type))
                         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.07)))
                         .contentShape(Rectangle())
                 }
@@ -672,5 +665,30 @@ private struct StepFieldBox: View {
         default:
             TextField(rule.placeholder ?? rule.label, text: Binding(get: { step[key]?.text ?? "" }, set: { set(.text($0)) }))
         }
+    }
+}
+
+/// One choice in the editor's grids (when it runs, a step to add): its
+/// icon and words together as one unit, centred, the same size in every
+/// tile (Dylan, 2026-11-21: "the Ask Jarvis and Notify Me buttons aren't
+/// spaced well maybe put the icons closer"). A long label shrinks a little
+/// rather than wrapping or cutting off.
+struct KindTile: View {
+    let title: String
+    let icon: String
+    var bold = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .frame(width: 20)
+            Text(title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .font(.subheadline.weight(bold ? .semibold : .regular))
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 44)
     }
 }
