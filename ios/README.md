@@ -58,6 +58,11 @@ Home; swiping and the tab bar follow that order.
 
 Next: push notifications, Siri and widgets, the iPad always-on view, a TV icon.
 
+## Reference screenshots
+
+The Sleep card, Sleep screen and slides as they should look (made-up demo data), in `docs/screenshots/`: `sleep-iphone-card.png`, `sleep-iphone-card-firstnights.png`, `sleep-iphone-detail.png`, `sleep-ipad-card.jpg`, `sleep-ipad-kiosk.jpg`, `sleep-tv-day.jpg` and `sleep-tv-night.jpg`.
+`playbook-editor-before-after.png` shows the playbook editor's row height and full-width dividers, before and after.
+
 ## Layout
 
 | Path | What |
