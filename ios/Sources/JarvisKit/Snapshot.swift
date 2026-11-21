@@ -15,6 +15,9 @@ public struct Snapshot: Decodable, Sendable {
     public var money: Money?
     /// Sleep and steps from the cloud digest (Apple Health by way of the PC).
     public var health: Health?
+    /// Last night's sleep and a 7 night trend; nil from an older Jarvis or
+    /// before any night exists (then `health.sleep` is the fallback).
+    public var sleep: SleepSummary?
     /// Calendar events from the cloud digest, with their end and place.
     public var events: [CalendarEvent] = []
     /// Unread notices, newest first; empty from an older server.
@@ -32,7 +35,7 @@ public struct Snapshot: Decodable, Sendable {
     /// The card's own reading with every holder named (newer servers).
     public var gpu: GpuReading?
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices, nutrition, reports, metrics, models, gpuUsers, gpu }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -72,6 +75,7 @@ public struct Snapshot: Decodable, Sendable {
         nutrition = try? c.decodeIfPresent(Nutrition.self, forKey: .nutrition)
         notices = ((try? c.decodeIfPresent([MaybeNotice].self, forKey: .notices)) ?? nil)?.compactMap(\.notice) ?? []
         health = cloud?.health
+        sleep = (try? c.decodeIfPresent(SleepSummary.self, forKey: .sleep)) ?? nil
         reports = try? c.decodeIfPresent(ReportShelf.self, forKey: .reports)
         metrics = ((try? c.decodeIfPresent([Metric].self, forKey: .metrics)) ?? nil) ?? []
         models = ((try? c.decodeIfPresent([LoadedModel].self, forKey: .models)) ?? nil) ?? []

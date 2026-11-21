@@ -194,7 +194,9 @@ public enum SleepNights {
             .filter { $0.start < asleepEnd && $0.end > asleepStart }
             .map { SleepSegment(stage: $0.value.stage ?? "unspecified", start: max($0.start, asleepStart), end: min($0.end, asleepEnd)) }
             .filter { $0.end > $0.start }
-        let merged = Array(mergeTouching(segments).prefix(maxStages))
+        // Back-to-back pieces of a stage are one; never cut short here (a
+        // night with more than Jarvis takes isn't sent: SleepWire.sendable).
+        let merged = mergeTouching(segments)
 
         // In bed: any source's in-bed time around the main sleep, else the sleep itself.
         let beds = inWindow.filter { $0.value == .inBed && $0.start < asleepEnd && $0.end > asleepStart }
@@ -301,6 +303,31 @@ public enum SleepWire {
         if let v = n.wristTempC { body[name("wristTempC", style)] = v }
         if let v = n.breathingDisturbances { body[name("breathingDisturbances", style)] = Int(v.rounded()) }
         return body
+    }
+
+    /// Jarvis takes 1 to 500 stages; a night outside that is skipped, not cut.
+    public static func sendable(_ n: SleepNight) -> Bool {
+        (1...SleepNights.maxStages).contains(n.stages.count)
+    }
+
+    /// What to do after a send, by the answer's status: 2xx it's stored; a
+    /// 400 is a night Jarvis won't take, so it's not tried again; anything
+    /// else (502 while Jarvis is away, no answer at all) waits for the next
+    /// wake or return to the app.
+    public enum Outcome: Equatable, Sendable { case stored, refused, later }
+
+    public static func outcome(status: Int?) -> Outcome {
+        guard let status else { return .later }
+        if (200..<300).contains(status) { return .stored }
+        if (400..<500).contains(status) && status != 408 && status != 429 { return .refused }
+        return .later
+    }
+
+    /// How long to leave Jarvis after `failures` sends in a row didn't
+    /// reach him: 15 minutes, doubling, at most 6 hours.
+    public static func backoff(failures: Int) -> TimeInterval {
+        guard failures > 0 else { return 0 }
+        return min(15 * 60 * pow(2, Double(failures - 1)), 6 * 3600)
     }
 
     /// A short fingerprint of what was sent for a night (times and counts,

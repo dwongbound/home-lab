@@ -19,7 +19,13 @@ final class OrientationLock: NSObject, UIApplicationDelegate {
     /// The notification delegate is set before launch finishes, so a tap on
     /// a notification that opened the app is handled too.
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        MainActor.assumeIsolated { UNUserNotificationCenter.current().delegate = PushCenter.shared }
+        MainActor.assumeIsolated {
+            UNUserNotificationCenter.current().delegate = PushCenter.shared
+            // Sleep's observer must be back in place at every launch, a
+            // background one from Health included, for a finished night to
+            // go in the morning (once he's allowed it; App/SleepSync.swift).
+            SleepSync.shared.start()
+        }
         return true
     }
 

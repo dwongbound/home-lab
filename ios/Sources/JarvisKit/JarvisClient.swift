@@ -458,6 +458,21 @@ public struct JarvisClient: Sendable {
         _ = try await send(pushRegisterRequest(token: token, platform: platform, environment: environment, bundle: bundle, name: name))
     }
 
+    /// Where the app sends a night of sleep (the page server's route).
+    public static let sleepPath = "api/jarvis/health/sleep"
+
+    /// The last `days` nights (1 to 30), newest first; nil when Jarvis
+    /// couldn't be asked.
+    public func sleepNights(days: Int = 14) async throws -> [SleepDay]? {
+        let data = try await send(request(Self.sleepPath, query: ["days": String(max(1, min(30, days)))]))
+        return try JSONDecoder().decode(SleepNightsAnswer.self, from: data).nights
+    }
+
+    /// Sends one night of sleep (SleepWire.body); re-sending a night replaces it.
+    public func sendSleep(_ body: [String: Any]) async throws {
+        try await post(Self.sleepPath, body)
+    }
+
     private func post(_ path: String, _ json: [String: Any]) async throws {
         _ = try await send(request(path, method: "POST", json: json))
     }

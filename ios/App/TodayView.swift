@@ -89,6 +89,8 @@ struct TodayView: View {
     @State private var showDevices = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The one-time "send your sleep" card (App/SleepSync.swift).
+    @ObservedObject private var sleepSync = SleepSync.shared
 
     /// Loader, couldn't-reach, or the page (JarvisKit HomeScreen).
     private var screen: HomeScreen {
@@ -219,6 +221,7 @@ struct TodayView: View {
             if ProcessInfo.processInfo.arguments.contains("-gpuFirst"), let share = snapshot.gpuShare { GpuCard(share: share) }
             #endif
             hero(snapshot)
+            if sleepSync.showsCard { sleepAllowCard }
             // On an iPad's full width the cards sit side by side, each in
             // the shortest column (Dylan, 2026-11-20: more on screen, no
             // empty side margins); otherwise one column, as on the iPhone.
@@ -519,6 +522,32 @@ struct TodayView: View {
     }
 
     // MARK: Health
+
+    /// Asked once, here, never at launch: Apple Health's own sheet follows Allow.
+    private var sleepAllowCard: some View {
+        card("Sleep", icon: "bed.double.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Send your Apple Watch sleep to Jarvis each morning: stages, heart rate, breathing and more.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.frost)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let problem = sleepSync.askProblem {
+                    Text(problem).font(.footnote).foregroundStyle(Theme.rose)
+                }
+                HStack(spacing: 10) {
+                    Button("Allow") { Task { await sleepSync.allow() } }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.glacier)
+                        .foregroundStyle(Theme.basalt)
+                        .frame(minHeight: 44)
+                    Button("Not now") { sleepSync.dismissCard() }
+                        .buttonStyle(.bordered)
+                        .tint(Theme.frostDim)
+                        .frame(minHeight: 44)
+                }
+            }
+        }
+    }
 
     /// Last night's sleep and yesterday's steps, side by side.
     private func healthCard(_ health: Health) -> some View {

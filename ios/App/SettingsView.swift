@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage(AppModel.idleKioskKey) private var idleKiosk = true
     @AppStorage(PushCenter.enabledKey) private var pushOn = true
     @AppStorage(Haptics.settingKey) private var haptics = true
+    @AppStorage(SleepSync.enabledKey) private var sleepOn = true
     @ObservedObject private var push = PushCenter.shared
     @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
     @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
@@ -48,6 +49,16 @@ struct SettingsView: View {
                         .fullWidthSeparators()
                     } footer: {
                         Text("Small taps as you switch pages, send, and when Jarvis answers or a call connects.")
+                    }
+                    if SleepSync.available {
+                        Section {
+                            Group {
+                                Toggle("Sleep details", isOn: $sleepOn)
+                            }
+                            .fullWidthSeparators()
+                        } footer: {
+                            Text("Sends each night's sleep from Apple Health (stages, heart rate, breathing, oxygen, wrist temperature) to your own Jarvis, in the morning. Nothing is written to Health.")
+                        }
                     }
                     Section {
                         Group {
