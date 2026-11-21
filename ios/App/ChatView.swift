@@ -1110,8 +1110,18 @@ private struct DayLine: View {
 @MainActor
 final class TimesReveal: ObservableObject {
     static let shared = TimesReveal()
-    /// How far the rows slide at most.
-    static let width: CGFloat = 68
+    /// The gap between a bubble and its time once slid in.
+    static let gap: CGFloat = 8
+
+    /// How far the rows slide: the widest time ("12:59 PM") at his text size
+    /// plus the gap, so every time comes fully into view right beside its
+    /// bubble (Dylan, 2026-11-21: "it doesnt drag enough").
+    static var width: CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .caption2)
+        let digits = UIFont.monospacedDigitSystemFont(ofSize: font.pointSize, weight: .regular)
+        let widest = ["12:59 PM", "10:59 AM", "11:58 PM"].map { ($0 as NSString).size(withAttributes: [.font: digits]).width }.max() ?? 52
+        return ceil(widest) + gap
+    }
     /// The finger's sideways travel (negative: leftward), 0 at rest.
     @Published var drag: CGFloat = 0
     /// Decided on a drag's first move: sideways-left reveals.
@@ -1124,8 +1134,10 @@ final class TimesReveal: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("-pinTimes") { return -Self.width }
         #endif
         guard drag < 0 else { return 0 }
-        let d = -drag
-        return -(Self.width * d / (d + Self.width))
+        // With the finger all the way to the full width, then a light
+        // rubber band past it.
+        let d = -drag, w = Self.width
+        return -(d <= w ? d : w + min(24, (d - w) * 0.2))
     }
 
     /// One move of a drag on Chat; true while it's revealing times.
@@ -1188,7 +1200,7 @@ private struct ChatRowsList: View, Equatable {
                             .monospacedDigit()
                             .foregroundStyle(Theme.frostFaint)
                             .fixedSize()
-                            .offset(x: TimesReveal.width + 4)
+                            .offset(x: TimesReveal.width)
                             .accessibilityIdentifier("messageTime")
                     }
                 }
