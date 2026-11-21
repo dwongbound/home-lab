@@ -26,19 +26,16 @@ struct SleepDetailView: View {
             ZStack {
                 Theme.sky.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    // The week stays at the top while the night scrolls below
+                    // The week stays at the top while the nights page below
                     // (Dylan, 2026-11-21, like Diet's week row).
                     if let nights { weekHeader(nights) }
-                    List {
-                        content
+                    if let nights, !nights.isEmpty {
+                        pager(nights)
+                    } else {
+                        List { content }
+                            .jarvisRows()
+                            .scrollContentBackground(.hidden)
                     }
-                    .jarvisRows()
-                    .scrollContentBackground(.hidden)
-                    // A sideways swipe moves a night, the row following.
-                    .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { drag in
-                        guard let step = DaySwipe.step(width: drag.translation.width, height: drag.translation.height) else { return }
-                        move(by: step)
-                    })
                 }
             }
             .navigationTitle("Sleep")
@@ -48,6 +45,77 @@ struct SleepDetailView: View {
             }
         }
         .task { await load() }
+    }
+
+    /// The nights as pages side by side, oldest on the left (Dylan,
+    /// 2026-11-21: "i want the whole last night panel to slide"): a real
+    /// system pager, so the next night is already laid out beside this one
+    /// and follows the finger. One swipe is one night; no bounce at the ends.
+    private func pager(_ nights: [SleepDay]) -> some View {
+        let keys = nights.map(\.night).sorted()
+        let selected = Binding<String?>(
+            get: { shownKey(nights) },
+            set: { key in
+                guard let key, key != shownKey(nights) else { return }
+                Haptics.play(.tab)
+                chosen = key
+                page = weekPage(of: key, nights: nights)
+            })
+        return ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(keys, id: \.self) { key in
+                    ScrollView(.vertical) {
+                        if let night = nights.first(where: { $0.night == key }) {
+                            nightPanel(night)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    .containerRelativeFrame(.horizontal)
+                    .id(key)
+                }
+            }
+            .scrollTargetLayout()
+            .background(PagerNoBounce())
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollIndicators(.hidden)
+        .scrollPosition(id: selected)
+    }
+
+    /// Which week of the row holds this night: 0 the latest, 1 the one before.
+    private func weekPage(of key: String, nights: [SleepDay]) -> Int {
+        let end = SleepWeek.endNight(today: today, nights: nights)
+        let firstOfLatest = (0..<6).reduce(end) { k, _ in SleepCard.dayBefore(k) ?? k }
+        return key < firstOfLatest ? 1 : 0
+    }
+
+    /// One night, heading to vitals: the page that slides.
+    private func nightPanel(_ night: SleepDay) -> some View {
+        let card = SleepCard(summary: SleepSummary(last: night, trend: []), fallbackAsleepMinutes: nil, today: today)
+        return VStack(alignment: .leading, spacing: 8) {
+            // "Last night", or "Thursday night": the night, not the morning after.
+            Text(card.whenWords ?? SleepCard.dayTitle(night.night))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.frostDim)
+                .padding(.leading, 4)
+            VStack(alignment: .leading, spacing: 16) {
+                SleepHeadline(card: card)
+                if !card.stages.isEmpty { SleepStageBar(shares: card.stages) }
+                SleepTimeline(stages: night.stages)
+                if !card.parts.isEmpty { SleepPartBars(parts: card.parts) }
+                if let interruptions = night.interruptions {
+                    Label(interruptions == 1 ? "Woke once" : "Woke \(interruptions) times", systemImage: "moon.zzz.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.frostDim)
+                }
+                if !card.vitals.isEmpty { SleepVitalTiles(vitals: card.vitals, columns: sizeClass == .regular ? 3 : 2) }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.white.opacity(0.07)))
+        }
     }
 
     private var today: String { SleepNights.key(Date()) }
@@ -95,7 +163,8 @@ struct SleepDetailView: View {
                 ForEach(week.nights) { night in
                     Button {
                         Haptics.play(.tab)
-                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { chosen = night.night }
+                        // The pager slides there (straight there with Reduce Motion).
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) { chosen = night.night }
                     } label: {
                         VStack(spacing: 6) {
                             Text(night.weekday).font(.caption2.weight(.semibold))
@@ -133,24 +202,6 @@ struct SleepDetailView: View {
         .glassPanel()
         .padding(.horizontal, 16)
         .padding(.top, 8)
-    }
-
-    /// One night on, or back, among the recorded ones; the row's week follows.
-    private func move(by step: Int) {
-        guard let nights else { return }
-        let keys = nights.map(\.night).sorted()
-        let current = shownKey(nights)
-        guard let index = keys.firstIndex(of: current) else { return }
-        let next = index + step
-        guard keys.indices.contains(next) else { return }
-        Haptics.play(.tab)
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) {
-            chosen = keys[next]
-            // The week holding it.
-            let end = SleepWeek.endNight(today: today, nights: nights)
-            let firstOfLatest = (0..<6).reduce(end) { k, _ in SleepCard.dayBefore(k) ?? k }
-            page = keys[next] < firstOfLatest ? 1 : 0
-        }
     }
 
     @ViewBuilder

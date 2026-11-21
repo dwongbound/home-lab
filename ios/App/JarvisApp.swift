@@ -908,7 +908,7 @@ private struct WarmUp: View {
 /// scroll isn't a gesture, so this isn't asked.
 /// Turns off the pager's bounce at its ends, on the pager's own
 /// UIScrollView (found from inside its content; draws nothing).
-private struct PagerNoBounce: UIViewRepresentable {
+struct PagerNoBounce: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView { Finder() }
     func updateUIView(_ view: UIView, context: Context) {}
 
