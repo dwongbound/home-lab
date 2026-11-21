@@ -210,6 +210,11 @@ struct RootView: View {
         // lists scroll up from under it and buttons sit above it.
         // The keyboard covers the bar rather than lifting it (Dylan,
         // 2026-11-18): it stays at the bottom, out of sight while typing.
+        // The notices chip and Settings, drawn once above the pages: they
+        // hold still while the pages slide under them (Dylan, 2026-11-21).
+        .overlay(alignment: .top) {
+            StatusLine(showsStatus: false, showsButtons: true, onHome: tabs.tab == .today)
+        }
         .overlay(alignment: .bottom) {
             TabBar(tab: $app.tab, chatBadge: app.chat.pendingCount, expanded: barExpanded) { touchBar() }
                 .opacity(keyboard.up ? 0 : 1)
@@ -394,6 +399,14 @@ struct StatusLine: View {
     /// Tailscale and Jarvis's status: on Home only; Chat and Talk show just
     /// the buttons (Dylan, 2026-11-20).
     var showsStatus = true
+    /// The notices chip, the iPad's Kiosk and Settings. They live once above
+    /// the pages (RootView), so they hold still while the pages swipe under
+    /// them (Dylan, 2026-11-21: "should stay at the top and not swipe with
+    /// the tabs"); each page draws only its own status, if any.
+    var showsButtons = true
+    /// For the fixed buttons: whether Home is the tab (the Kiosk button
+    /// fades in place there, never slides).
+    var onHome = true
 
     /// "On Tailscale · jarvis" in green, "Can't reach Jarvis" in rose, or
     /// "Connecting…" before the first answer.
@@ -426,6 +439,21 @@ struct StatusLine: View {
             .accessibilityLabel(status.spoken)
             }
             Spacer()
+            if showsButtons { buttons }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .animation(.smooth, value: app.notices.count)
+        // Pulling down on the status row opens the notices.
+        .contentShape(Rectangle())
+        .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { drag in
+            if drag.translation.height > 40 && abs(drag.translation.width) < drag.translation.height { app.showNotices = true }
+        })
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        HStack(spacing: 12) {
             // The notices: one dot and a count, when any.
             if let status = Notices.statusButton(unread: app.notices, running: running.count) {
                 Button {
@@ -457,7 +485,7 @@ struct StatusLine: View {
             // The iPad's always-on room display, from Home's top right
             // beside the notices and settings (Dylan, 2026-11-20). Kiosk is
             // iPad-only, so the iPhone doesn't get the button.
-            if showsStatus && UIDevice.current.userInterfaceIdiom == .pad {
+            if UIDevice.current.userInterfaceIdiom == .pad {
                 Button {
                     app.padKiosk = true
                 } label: {
@@ -468,6 +496,11 @@ struct StatusLine: View {
                 }
                 .foregroundStyle(Theme.frost)
                 .accessibilityLabel("Kiosk")
+                // Home's only: fades in place as the tab changes.
+                .opacity(onHome ? 1 : 0)
+                .allowsHitTesting(onHome)
+                .accessibilityHidden(!onHome)
+                .animation(.easeInOut(duration: 0.25), value: onHome)
             }
             Button {
                 app.showSettings = true
@@ -480,14 +513,6 @@ struct StatusLine: View {
             .foregroundStyle(Theme.frost)
             .accessibilityLabel("Settings")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 4)
-        .animation(.smooth, value: app.notices.count)
-        // Pulling down on the status row opens the notices.
-        .contentShape(Rectangle())
-        .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { drag in
-            if drag.translation.height > 40 && abs(drag.translation.width) < drag.translation.height { app.showNotices = true }
-        })
     }
 
     /// What Jarvis is working on right now.
@@ -776,11 +801,18 @@ struct PadKioskAndNotices: ViewModifier {
 extension View {
     /// The floating status and buttons over a page (Dylan, 2026-11-20: no
     /// bar across the top; glass buttons over the content instead).
+    /// A page's own part of the top row: Home's status (the buttons float
+    /// above the pages, RootView); nothing on a page without one.
+    @ViewBuilder
     func floatingStatus(showsStatus: Bool, visible: Bool = true) -> some View {
-        overlay(alignment: .top) {
-            StatusLine(showsStatus: showsStatus)
-                .opacity(visible ? 1 : 0)
-                .allowsHitTesting(visible)
+        if showsStatus {
+            overlay(alignment: .top) {
+                StatusLine(showsStatus: true, showsButtons: false)
+                    .opacity(visible ? 1 : 0)
+                    .allowsHitTesting(visible)
+            }
+        } else {
+            self
         }
     }
 }
