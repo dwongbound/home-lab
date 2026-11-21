@@ -199,6 +199,8 @@ export interface Snapshot {
   notices: Notice[] | null
   /** Today's calories (GET /nutrition/today), for the Watch complication; null on an older Jarvis. */
   nutrition: NutritionToday | null
+  /** Last night's sleep and a week's trend (Jarvis GET /health/sleep); null on an older Jarvis or before any night. */
+  sleep: SleepSummary | null
 }
 
 /** Calories and grams of protein, fat and carbs; null where Jarvis has no number. */
@@ -213,6 +215,48 @@ export interface NutritionItem extends Macros {
   /** "1 bowl", or null when Jarvis has no portion for it. */
   portion: string | null
   hasPhoto: boolean
+}
+
+/** An average and a lowest reading over one night; null where the Watch had none. */
+export interface NightRange {
+  avg: number | null
+  min: number | null
+}
+
+/** One night of sleep from the Apple Watch, as Jarvis stores and scores it (GET /api/jarvis/health/sleep). */
+export interface SleepNight {
+  /** The date of the morning it ended, Pacific time. */
+  night: string
+  bedtime: string | null
+  wake: string | null
+  minutes: { asleep: number | null; inBed: number | null; awake: number | null; deep: number | null; rem: number | null; core: number | null; unspecified: number | null }
+  /** Awakenings of five minutes or more; null when the night's detail is gone. */
+  interruptions: number | null
+  vitals: {
+    heartRate: NightRange | null
+    hrvMs: number | null
+    hrvRmssdMs: number | null
+    respiratoryRate: number | null
+    spo2: NightRange | null
+    wristTempC: number | null
+    wristTempDeltaC: number | null
+    breathingDisturbances: number | null
+  }
+  /** Out of 100: Jarvis's own estimate unless `scoreSource` is apple. */
+  score: number | null
+  scoreSource: 'jarvis' | 'apple' | null
+  /** The word for the score, as Jarvis says it: 85 great, 70 good, 50 fair, under that poor. */
+  scoreBand: 'great' | 'good' | 'fair' | 'poor' | null
+  /** Duration out of 50, bedtime consistency out of 30, interruptions out of 20. */
+  scoreParts: { duration: number | null; consistency: number | null; interruptions: number | null } | null
+  /** The night as a timeline, in time order; empty when Jarvis no longer has the detail. */
+  stages: { stage: 'core' | 'deep' | 'rem' | 'awake' | 'unspecified'; start: string; end: string }[]
+}
+
+/** Sleep in the snapshot, for Home and the TV carousel: the latest night (no timeline) and up to seven nights' trend, newest first. */
+export interface SleepSummary {
+  last: Omit<SleepNight, 'stages'>
+  trend: { night: string; score: number | null; asleep: number | null }[]
 }
 
 /** One day of the meal log for the apps' Diet screen (Jarvis GET /nutrition/day). */
@@ -713,6 +757,10 @@ export interface DataSource {
   nutritionWeek(start: string, caller?: { login?: string }): Promise<NutritionWeek | null>
   /** `count` days of the meal log ending at `end` ('' = today), newest first. Null when Jarvis can't be asked. */
   nutritionDays(end: string, count: number, caller?: { login?: string }): Promise<NutritionDays | null>
+  /** Nights of sleep with their score, newest first: one `night`, or the last `days`. Null when Jarvis can't be asked. */
+  sleepNights(ask: { night: string; days: number }, caller?: { login?: string }): Promise<SleepNight[] | null>
+  /** Stores one night of sleep (already in Jarvis's shape); `refused` when he says the night itself is wrong. */
+  saveSleepNight(night: Record<string, unknown>, caller?: { login?: string }): Promise<ActionResult & { refused?: boolean; night?: SleepNight | null }>
   /** One meal's photo, or its small thumbnail when `thumb` is true. */
   mealPhoto(id: string, thumb: boolean, caller?: { login?: string }): Promise<MealPhoto>
   /** Searches past conversations (newest and best matches first). */

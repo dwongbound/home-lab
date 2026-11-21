@@ -5,6 +5,7 @@
 // It also keeps a tiny bit of state (is the local model loaded?) so the Unload and
 // Load buttons visibly do something in the preview.
 
+import { scoreBand, sleepSummary } from './sleep.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { HISTORY_DEFAULT, pageOfTurns } from './history.mjs'
 import { DEFAULT_STEP_TYPES, DEFAULT_THINKERS } from './step-types.mjs'
@@ -220,6 +221,29 @@ function sampleOffers() {
   ]
 }
 
+/** A made-up night of sleep for `date` (the morning it ended), in the apps' shape. */
+function sampleNight(date) {
+  return {
+    night: date,
+    bedtime: `${date}T00:40:00-08:00`,
+    wake: `${date}T08:00:00-08:00`,
+    minutes: { asleep: 420, inBed: 450, awake: 20, deep: 70, rem: 95, core: 255, unspecified: 0 },
+    interruptions: 1,
+    vitals: { heartRate: { avg: 54, min: 47 }, hrvMs: 48, hrvRmssdMs: null, respiratoryRate: 14.5, spo2: { avg: 96, min: 91 }, wristTempC: null, wristTempDeltaC: null, breathingDisturbances: null },
+    score: 78,
+    scoreSource: 'jarvis',
+    scoreBand: scoreBand(78),
+    scoreParts: { duration: 44, consistency: 18, interruptions: 16 },
+    stages: [
+      { stage: 'core', start: `${date}T00:40:00-08:00`, end: `${date}T02:10:00-08:00` },
+      { stage: 'deep', start: `${date}T02:10:00-08:00`, end: `${date}T03:20:00-08:00` },
+      { stage: 'awake', start: `${date}T03:20:00-08:00`, end: `${date}T03:40:00-08:00` },
+      { stage: 'rem', start: `${date}T03:40:00-08:00`, end: `${date}T05:15:00-08:00` },
+      { stage: 'core', start: `${date}T05:15:00-08:00`, end: `${date}T08:00:00-08:00` },
+    ],
+  }
+}
+
 export function createMockSource({ now = () => new Date() } = {}) {
   const state = {
     modelLoaded: true,
@@ -230,6 +254,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
     // Approvals the pretend Jarvis is waiting on: id -> {approval, answer(ok)}.
     approvals: new Map(),
     nextApproval: 1,
+    // Nights of sleep the pretend app has sent, by date.
+    sleep: new Map(),
     // Pretend things Jarvis remembers (made up: this repo is public).
     facts: sampleFacts(now()),
     // Pretend tasks Jarvis offers (made up), until Start or Hide.
@@ -364,6 +390,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
         notices: currentNotices(t).map((n) => ({ ...n })),
         // Made-up calories for today.
         reports: mockReports(state.reports),
+        // The last made-up night and a week of them.
+        sleep: sleepSummary(await this.sleepNights({ night: '', days: 7 })),
         nutrition: { date: pacificDay(t), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140, fat: 38, fatGoal: 55, carbs: 110, carbsGoal: 175 },
       }
     },
@@ -607,6 +635,21 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const facts = [...state.facts].sort((a, b) => b.learned.localeCompare(a.learned))
       const lastDistill = new Date(now().getTime() - 7 * 3600_000).toISOString()
       return { facts, turns: 1284 + state.chat.length, lastDistill }
+    },
+
+    /** Made-up nights of sleep, newest first: one `night`, or the last `days`; a night that was sent is given back as stored. */
+    async sleepNights(ask) {
+      const dates = []
+      if (ask.night) dates.push(ask.night)
+      for (let i = 0; !ask.night && i < ask.days; i += 1) dates.push(pacificDay(new Date(now().getTime() - i * 86_400_000)))
+      return dates.map((date) => state.sleep.get(date) ?? sampleNight(date))
+    },
+
+    /** Remembers one night as the pretend Jarvis would, with a made-up score. */
+    async saveSleepNight(night) {
+      const stored = { ...sampleNight(night.night), vitals: { ...sampleNight(night.night).vitals, hrvMs: night.hrv_ms ?? null, wristTempC: night.wrist_temp_c ?? null } }
+      state.sleep.set(night.night, stored)
+      return { ok: true, message: 'Saved', night: stored }
     },
 
     /** A sample day of food: the same three meals whichever day is asked for. */

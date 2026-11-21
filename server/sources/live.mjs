@@ -17,6 +17,7 @@ import { HISTORY_DEFAULT, emptyHistory, historyQuery, parseHistory } from './his
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
 import { parseNotice, parseNotices } from './notices.mjs'
+import { parseSleepNight, parseSleepNights, sleepSummary } from './sleep.mjs'
 import { parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek, photoType } from './nutrition.mjs'
 import { fromJarvisDraft, parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
 import { DEFAULT_STEP_TYPES } from './step-types.mjs'
@@ -388,6 +389,13 @@ export function createLiveSource(config, deps = {}) {
     return parseNutrition(await res.json())
   }
 
+  /** The latest night of sleep and a week's trend (GET /health/sleep?days=7); null on an older Jarvis or before any night. */
+  async function readJarvisSleep() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/health/sleep?days=7`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return sleepSummary(parseSleepNights(await res.json()))
+  }
+
   /** POSTs JSON to Jarvis as the caller; `done` is what to say when it works, `missing` when an older Jarvis answers 404. */
   async function postToJarvis(path, body, caller, done, missing) {
     if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
@@ -438,8 +446,9 @@ export function createLiveSource(config, deps = {}) {
         readJarvisNutrition(),
         readJarvisReports(),
         readJarvisGpu(),
+        readJarvisSleep(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports, speechModels] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports, speechModels, sleep] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -490,6 +499,7 @@ export function createLiveSource(config, deps = {}) {
         offers,
         notices,
         nutrition,
+        sleep,
         reports,
       }
     },
@@ -861,6 +871,45 @@ export function createLiveSource(config, deps = {}) {
         }
       } catch {
         return null
+      }
+    },
+
+    /** Nights of sleep with their score, newest first (Jarvis GET /health/sleep), as the caller: one `night`, or the last `days`. Null when he can't be asked. */
+    async sleepNights(ask, caller = {}) {
+      if (!caller.login) return null
+      try {
+        const query = ask.night ? `?night=${encodeURIComponent(ask.night)}` : `?days=${ask.days}`
+        const res = await fetchFn(`${config.jarvisApiUrl}/health/sleep${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        return parseSleepNights(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /** Stores one night of sleep (Jarvis POST /health/sleep), as the caller; `refused` when he says the night itself is wrong. */
+    async saveSleepNight(night, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/health/sleep`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify(night),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+        })
+        if (res.status === 404) return { ok: false, message: 'Jarvis can’t take sleep details yet' }
+        const answer = await res.json().catch(() => null)
+        if (res.status === 400) {
+          const why = typeof answer?.error === 'string' ? answer.error.slice(0, 200) : 'Jarvis refused that night'
+          return { ok: false, refused: true, message: why }
+        }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
+        return { ok: true, message: 'Saved', night: parseSleepNight(answer?.detail) }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
       }
     },
 

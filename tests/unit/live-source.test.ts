@@ -69,6 +69,15 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       if (url.includes('/photo/9')) return Response.json({ error: 'no photo' }, { status: 404 })
       return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg; charset=binary' } })
     }
+    if (url.startsWith(`${config.jarvisApiUrl}/health/sleep`)) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      const night = { night: '2026-11-18', minutes: { asleep: 400 }, score: 72, score_source: 'jarvis', stages: [{ stage: 'rem', start: '2026-11-18T03:00:00-08:00', end: '2026-11-18T04:00:00-08:00' }] }
+      if (init?.method === 'POST') {
+        if (JSON.parse(String(init.body)).night === '2026-01-01') return Response.json({ error: 'night is too old' }, { status: 400 })
+        return Response.json({ ok: true, night: '2026-11-18', summary: 'Sleep: 6 h 40 min', detail: night }, { status: jarvisStatusCode })
+      }
+      return Response.json({ nights: [{ night: '2026-11-17', minutes: { asleep: 380 }, score: 60 }, night] }, { status: jarvisStatusCode })
+    }
     if (url.startsWith(`${config.jarvisApiUrl}/nutrition/days`)) {
       const older = { date: '2026-11-16', goals: {}, totals: {}, items: [] }
       const newer = { date: '2026-11-17', goals: {}, totals: {}, items: [{ id: 4, at: '2026-11-17T08:00:00-08:00', name: 'Latte' }] }
@@ -515,6 +524,32 @@ describe('live chat with Jarvis', () => {
     expect(await source.nutritionWeek('', {})).toBeNull()
     expect(await liveWith({ jarvisAnswers: false }).source.nutritionDay('', login)).toBeNull()
     expect(await liveWith({ jarvisStatusCode: 404 }).source.nutritionDay('', login)).toBeNull()
+  })
+
+  it('reads and stores nights of sleep as the caller, and puts the latest in the snapshot', async () => {
+    const { source, fetch } = liveWith({})
+    const login = { login: 'dylan@example.com' }
+    const nights = await source.sleepNights({ night: '', days: 7 }, login)
+    expect(nights?.map((night: { night: string }) => night.night)).toEqual(['2026-11-18', '2026-11-17'])
+    expect(nights?.[0]).toMatchObject({ score: 72, scoreBand: 'good' })
+    expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/health/sleep?days=7') && (c[1]?.headers as Record<string, string>)?.['tailscale-user-login'] === 'dylan@example.com')).toBe(true)
+    await source.sleepNights({ night: '2026-11-18', days: 7 }, login)
+    expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/health/sleep?night=2026-11-18'))).toBe(true)
+    expect(await source.sleepNights({ night: '', days: 7 }, {})).toBeNull()
+    expect(await liveWith({ jarvisStatusCode: 404 }).source.sleepNights({ night: '', days: 7 }, login)).toBeNull()
+
+    const saved = await source.saveSleepNight({ night: '2026-11-18', stages: [] }, login)
+    expect(saved).toMatchObject({ ok: true, message: 'Saved', night: { night: '2026-11-18', score: 72 } })
+    expect(await source.saveSleepNight({ night: '2026-01-01', stages: [] }, login)).toEqual({ ok: false, refused: true, message: 'night is too old' })
+    expect((await source.saveSleepNight({ night: '2026-11-18' }, {})).ok).toBe(false)
+    expect(await liveWith({ jarvisStatusCode: 404 }).source.saveSleepNight({ night: '2026-11-18' }, login)).toEqual({ ok: false, message: 'Jarvis can’t take sleep details yet' })
+    expect(await liveWith({ jarvisAnswers: false }).source.saveSleepNight({ night: '2026-11-18' }, login)).toEqual({ ok: false, message: 'Jarvis is not answering' })
+
+    const snapshot = await source.snapshot()
+    expect(snapshot.sleep?.last).toMatchObject({ night: '2026-11-18', score: 72 })
+    expect(snapshot.sleep?.last).not.toHaveProperty('stages')
+    expect(snapshot.sleep?.trend).toEqual([{ night: '2026-11-18', score: 72, asleep: 400 }, { night: '2026-11-17', score: 60, asleep: 380 }])
+    expect((await liveWith({ jarvisAnswers: false }).source.snapshot()).sleep).toBeNull()
   })
 
   it("warms Jarvis's chat engine as the caller, and skips it without a login", async () => {
