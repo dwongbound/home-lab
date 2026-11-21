@@ -11,6 +11,8 @@
 //   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
 //   GET  /api/jarvis/nutrition/day?date=    one day of the meal log, with what was eaten ({day})
 //   GET  /api/jarvis/nutrition/week?start=  seven days of calories against the goal ({week})
+//   GET  /api/jarvis/health/sleep?night= | ?days=  nights of sleep with their score ({nights})
+//   POST /api/jarvis/health/sleep    one night from the iPhone app's Health reading
 //   GET  /api/jarvis/playbooks       Jarvis's playbooks and what their steps can use ({book})
 //   POST /api/jarvis/playbooks       {"op": "save", "playbook"} | {"op": "delete" | "run", "id"} | {"op": "draft", "text"}
 //   GET  /api/jarvis/voice          how Jarvis sounds + every voice; POST saves {voice, speed, blend}
@@ -36,6 +38,7 @@
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
 import { createMockSource } from './sources/mock.mjs'
 import { dayCount, isDay, isMealId } from './sources/nutrition.mjs'
+import { cleanSleepNight, sleepDayCount } from './sources/sleep.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
@@ -53,6 +56,8 @@ const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
 const REPORT_PATH = /^\/reports\/([^/]+)$/
 const MAX_BODY_BYTES = 8 * 1024
 // A chat message may carry photos (the apps shrink them first), so it gets more room.
+// A night of sleep can carry 500 stages with two times each.
+const MAX_SLEEP_BYTES = 96 * 1024
 const MAX_CHAT_BYTES = 19 * 1024 * 1024
 const MAX_CHAT_IMAGES = 4
 const MAX_IMAGE_CHARS = 4.5 * 1024 * 1024
@@ -253,6 +258,31 @@ export function createApi(source) {
     const login = req.headers['tailscale-user-login'] ?? ''
     if (which === 'week') return sendJson(res, 200, { week: await source.nutritionWeek(value, { login }) })
     return sendJson(res, 200, { day: await source.nutritionDay(value, { login }) })
+  }
+
+  /** Nights of sleep with their score, newest first: one night with ?night=, or the last ?days= (7 when neither). */
+  async function handleSleepNights(req, res, night, days) {
+    const howMany = sleepDayCount(days)
+    if ((night !== '' && !isDay(night)) || howMany === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send night as YYYY-MM-DD or days as a number' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { nights: await source.sleepNights({ night, days: howMany }, { login }) })
+  }
+
+  /** Stores one night of sleep read from Health by the iPhone app; sending the same night again replaces it. */
+  async function handleSleepSave(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const checked = cleanSleepNight(await readJson(req, MAX_SLEEP_BYTES))
+    if (checked.problem) return sendJson(res, 400, { ok: false, message: checked.problem })
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.saveSleepNight(checked.night, { login })
+    let status = 502
+    if (result.ok) status = 200
+    if (result.refused) status = 400
+    return sendJson(res, status, { ok: result.ok, message: result.message, night: result.night ?? null })
   }
 
   /** A run of days of the meal log ending at `end` ('' = today), newest first, for the Diet screen's endless list. */
@@ -646,6 +676,13 @@ export function createApi(source) {
       if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/week') {
         const start = new URL(req.url ?? '/', 'http://localhost').searchParams.get('start') ?? ''
         return await handleNutrition(req, res, 'week', start)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/health/sleep') {
+        const params = new URL(req.url ?? '/', 'http://localhost').searchParams
+        return await handleSleepNights(req, res, params.get('night') ?? '', params.get('days'))
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/health/sleep') {
+        return await handleSleepSave(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/memory') {
         return await handleMemoryChange(req, res)

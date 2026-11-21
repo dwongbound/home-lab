@@ -151,6 +151,46 @@ describe('Jarvis memory', () => {
   })
 })
 
+describe('Sleep from the Watch', () => {
+  it('gives the last nights or one night, and refuses a bad ask', async () => {
+    const api = createApi(createMockSource())
+    const week = (await callApi(api, 'GET', '/api/jarvis/health/sleep')).json().nights
+    expect(week).toHaveLength(7)
+    expect(week[0]).toMatchObject({ score: 78, scoreBand: 'good', scoreSource: 'jarvis' })
+    expect(week[0].stages.length).toBeGreaterThan(0)
+    expect((await callApi(api, 'GET', '/api/jarvis/health/sleep?days=99')).json().nights).toHaveLength(30)
+    const one = (await callApi(api, 'GET', '/api/jarvis/health/sleep?night=2026-11-17')).json().nights
+    expect(one.map((night: { night: string }) => night.night)).toEqual(['2026-11-17'])
+    expect((await callApi(api, 'GET', '/api/jarvis/health/sleep?night=monday')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/health/sleep?days=some')).statusCode).toBe(400)
+  })
+
+  it('stores a night from the app, needs the header, and says what is wrong with a bad one', async () => {
+    const api = createApi(createMockSource())
+    const night = { night: '2026-11-17', stages: [{ stage: 'deep', start: '2026-11-17T01:00:00-08:00', end: '2026-11-17T02:00:00-08:00' }], hrvMs: 61 }
+    expect((await callApi(api, 'POST', '/api/jarvis/health/sleep', {}, JSON.stringify(night))).statusCode).toBe(403)
+    const saved = await callApi(api, 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, JSON.stringify(night))
+    expect(saved.statusCode).toBe(200)
+    expect(saved.json()).toMatchObject({ ok: true, message: 'Saved', night: { night: '2026-11-17', vitals: { hrvMs: 61 } } })
+    const back = (await callApi(api, 'GET', '/api/jarvis/health/sleep?night=2026-11-17')).json().nights
+    expect(back[0].vitals.hrvMs).toBe(61)
+    const bad = await callApi(api, 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, JSON.stringify({ ...night, hrvMs: 900 }))
+    expect(bad.statusCode).toBe(400)
+    expect(bad.json()).toEqual({ ok: false, message: 'hrvMs must be between 1 and 300' })
+    expect((await callApi(api, 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, 'not json')).statusCode).toBe(400)
+  })
+
+  it('passes on Jarvis refusing a night as a 400, and his being away as a 502', async () => {
+    const night = { night: '2026-11-17', stages: [{ stage: 'deep', start: '2026-11-17T01:00:00-08:00', end: '2026-11-17T02:00:00-08:00' }] }
+    const refusing = { ...createMockSource(), saveSleepNight: async () => ({ ok: false, refused: true, message: 'stages overlap' }) }
+    const refused = await callApi(createApi(refusing), 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, JSON.stringify(night))
+    expect(refused.statusCode).toBe(400)
+    expect(refused.json()).toEqual({ ok: false, message: 'stages overlap', night: null })
+    const away = { ...createMockSource(), saveSleepNight: async () => ({ ok: false, message: 'Jarvis is not answering' }) }
+    expect((await callApi(createApi(away), 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, JSON.stringify(night))).statusCode).toBe(502)
+  })
+})
+
 describe('Diet screen (meal log)', () => {
   it('gives a day and a week (sample data), and refuses a date that isn\'t one', async () => {
     const api = createApi(createMockSource())
