@@ -109,13 +109,20 @@ final class SleepReadTests: XCTestCase {
     func testNoDataAtAll() throws {
         let none = SleepCard(summary: nil, fallbackAsleepMinutes: nil, today: "2026-11-20")
         XCTAssertEqual(none.kind, .noNight)
-        XCTAssertEqual(none.emptyWords, "No sleep recorded last night")
+        XCTAssertEqual(none.emptyWords, "No sleep recorded yet")
         XCTAssertTrue(none.isEmpty)
-        // A summary whose last night is an older one: say so, keep the trend.
-        let old = SleepCard(summary: try summary(), fallbackAsleepMinutes: nil, today: "2026-11-21")
-        XCTAssertEqual(old.kind, .noNight)
-        XCTAssertFalse(old.isEmpty)
-        XCTAssertNil(old.score)
+        // At 3 AM before sleeping, last night is still the one before.
+        let early = SleepCard(summary: try summary(), fallbackAsleepMinutes: nil, today: "2026-11-21")
+        XCTAssertEqual(early.kind, .night, "the night before still counts until the next is recorded")
+        XCTAssertEqual(SleepCard.dayBefore("2026-11-01"), "2026-10-31")
+        XCTAssertEqual(early.whenWords, "Last night")
+        // Days on with nothing new: still that night, named by its weekday.
+        let old = SleepCard(summary: try summary(), fallbackAsleepMinutes: nil, today: "2026-11-24")
+        XCTAssertEqual(old.kind, .night)
+        XCTAssertEqual(old.whenWords, "Thursday night", "the night of Thu Nov 19 into Fri Nov 20")
+        XCTAssertEqual(old.score, 82)
+        // The morning a new night arrives, that one is last night.
+        XCTAssertEqual(SleepCard(summary: try summary(), fallbackAsleepMinutes: nil, today: "2026-11-20").whenWords, "Last night")
     }
 
     func testTimesWithoutSecondsAsJarvisSendsThem() throws {

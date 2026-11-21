@@ -74,7 +74,9 @@ public struct SleepCard: Equatable, Sendable {
     public let trend: [TrendBar]
     /// "Avg 7h 02m" over the trend's nights with a time.
     public let trendAverage: String?
-    /// Plain words when there's no night: "No sleep recorded last night".
+    /// "Last night", or "Thursday night" for an older latest night.
+    public let whenWords: String?
+    /// Plain words when there's no night at all.
     public let emptyWords: String?
 
     /// Whether there's anything to show at all.
@@ -94,8 +96,14 @@ public struct SleepCard: Equatable, Sendable {
         let times = trendNights.compactMap(\.asleep)
         trendAverage = times.isEmpty ? nil : "Avg " + Self.hours(times.reduce(0, +) / Double(times.count))
 
-        if let last, last.night == today {
+        // The latest recorded night is always the one shown (Dylan,
+        // 2026-11-21: at 3 AM, not yet asleep, it's still the night before):
+        // "Last night" when it's this morning's or yesterday morning's,
+        // else its weekday ("Thursday night"), never an empty state just
+        // because the clock moved on.
+        if let last {
             kind = .night
+            whenWords = (last.night == today || last.night == Self.dayBefore(today)) ? "Last night" : Self.weekdayName(last.night) + " night"
             score = last.score
             band = last.scoreBand
             bandWord = last.scoreBand.map { $0.prefix(1).uppercased() + $0.dropFirst() }
@@ -111,6 +119,7 @@ public struct SleepCard: Equatable, Sendable {
             emptyWords = nil
         } else if summary == nil, let minutes = fallbackAsleepMinutes {
             kind = .minutesOnly
+            whenWords = "Last night"
             score = nil; band = nil; bandWord = nil; estimate = nil
             asleep = Self.hours(Double(minutes))
             asleepNote = Self.durationNote(Double(minutes))
@@ -118,11 +127,28 @@ public struct SleepCard: Equatable, Sendable {
             emptyWords = nil
         } else {
             kind = .noNight
+            whenWords = nil
             score = nil; band = nil; bandWord = nil; estimate = nil
             asleep = nil; asleepNote = nil; bedtime = nil; wake = nil
             stages = []; parts = []; vitals = []
-            emptyWords = "No sleep recorded last night"
+            emptyWords = "No sleep recorded yet"
         }
+    }
+
+    /// "2026-11-20" → "Friday".
+    public static func weekdayName(_ night: String) -> String {
+        guard let w = SleepNights.window(night) else { return night }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = SleepNights.zone
+        f.dateFormat = "EEEE"
+        return f.string(from: w.start)
+    }
+
+    /// "2026-11-21" → "2026-11-20".
+    public static func dayBefore(_ night: String) -> String? {
+        guard let w = SleepNights.window(night) else { return nil }
+        return SleepNights.key(w.start)
     }
 
     // MARK: Pieces (also used by the detail screen's list of nights)

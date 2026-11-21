@@ -105,12 +105,9 @@ final class ReportWordsTests: XCTestCase {
 }
 
 final class TVReportsCardTests: XCTestCase {
-    func testTheCardShowsForDylanOnlyWhenThereAreReports() throws {
+    func testTheTVNeverShowsReports() throws {
         let with = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","today":[],"services":[],"reports":{"reports":[{"id":"95430f3fbe7f29d3","title":"Disk"}],"totalBytes":1,"keepDays":30,"maxBytes":0}}"#.utf8))
-        XCTAssertTrue(TVBoard.cards(with, guest: false).contains(.reports))
-        XCTAssertFalse(TVBoard.cards(with, guest: true).contains(.reports), "private in guest mode")
-        let without = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","today":[],"services":[]}"#.utf8))
-        XCTAssertFalse(TVBoard.cards(without, guest: false).contains(.reports))
+        XCTAssertFalse(TVBoard.cards(with, guest: false).map(\.rawValue).contains("reports"), "reports stay on the iPhone and iPad")
     }
 }
 

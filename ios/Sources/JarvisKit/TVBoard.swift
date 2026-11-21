@@ -211,8 +211,6 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Every home device, grouped, lit when on (Dylan, 2026-11-20: "make
     /// sure theres a device slide on apple tv"). Display only.
     case devices
-    /// Jarvis's reports, read-only: titles and summaries (read on the iPhone).
-    case reports
     /// Who's using the graphics card, as a pie.
     case gpu
     /// Last night's sleep: score, time asleep, stages and the week
@@ -234,7 +232,6 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .health: return "You"
         case .sleep: return "Sleep"
         case .suggestions: return "Suggestions"
-        case .reports: return "Reports"
         case .gpu: return "Graphics card"
         }
     }
@@ -254,7 +251,6 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .health: return "heart.fill"
         case .sleep: return "bed.double.fill"
         case .suggestions: return "lightbulb.fill"
-        case .reports: return "doc.richtext"
         case .gpu: return "cpu"
         }
     }
@@ -264,7 +260,7 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Lookout says what Jarvis is watching for Dylan and how often he's
     /// messaged him: private too.
     /// Reports can be about anything of his: private as well.
-    public var isPrivate: Bool { self == .health || self == .sleep || self == .suggestions || self == .lookout || self == .reports }
+    public var isPrivate: Bool { self == .health || self == .sleep || self == .suggestions || self == .lookout }
 }
 
 public enum TVBoard {
@@ -294,7 +290,7 @@ public enum TVBoard {
         if SleepSlide.shows(snapshot) { out.append(.sleep) }
         if SleepSlide.showsYou(snapshot) { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.suggestions) }
-        if !(snapshot.reports?.reports.isEmpty ?? true) { out.append(.reports) }
+        // No reports on the TV (Dylan, 2026-11-21): they're read on the iPhone and iPad.
         if snapshot.gpuShare != nil { out.append(.gpu) }
         return guest ? out.filter { !$0.isPrivate } : out
     }

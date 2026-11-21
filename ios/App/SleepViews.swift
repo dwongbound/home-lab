@@ -255,7 +255,7 @@ struct SleepHeadline: View {
                                 .foregroundStyle(note == "Short" ? SleepStyle.color("awake") : SleepStyle.band("great"))
                         }
                     }
-                    if !tenFeet { Text("asleep")
+                    if !tenFeet { Text(["asleep", card.whenWords?.lowercased()].compactMap { $0 }.joined(separator: " · "))
                         .font(.system(size: 12 * scale, design: .rounded))
                         .foregroundStyle(colors.dim) }
                 }
