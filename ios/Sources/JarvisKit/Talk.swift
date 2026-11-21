@@ -314,12 +314,16 @@ public struct PlaybackTracker: Equatable, Sendable {
     public private(set) var replyDone = false
     /// When the last scheduled audio should finish playing.
     public private(set) var expectedEnd: Date?
+    /// "idle" already went out for a reply cut short (stop, pause): its
+    /// late "done" mustn't send a second one.
+    public private(set) var cutShort = false
 
     public init() {}
 
     /// A buffer of `seconds` of audio was scheduled at `now`; it plays after
     /// whatever is still queued.
     public mutating func scheduled(seconds: TimeInterval, now: Date) {
+        cutShort = false
         queued += 1
         let start = max(now, expectedEnd ?? now)
         expectedEnd = start.addingTimeInterval(seconds)
@@ -329,12 +333,30 @@ public struct PlaybackTracker: Equatable, Sendable {
     public mutating func played() { queued = max(0, queued - 1) }
 
     /// Jarvis's "done": no more audio for this reply.
-    public mutating func done() { replyDone = true }
+    public mutating func done() {
+        // The "done" of a reply already cut short and answered with idle.
+        if cutShort, queued == 0, expectedEnd == nil { cutShort = false; return }
+        replyDone = true
+    }
 
-    /// The engine restarted (route or configuration change): buffers in
-    /// flight won't report, so stop waiting on their callbacks and go by
-    /// the clock alone.
-    public mutating func engineRestarted() { queued = 0 }
+    /// The engine stopped and restarted (a route change: Bluetooth on or
+    /// off, AirPods out; a configuration change; a media reset). Whatever
+    /// was queued went with it and won't report, and nothing is playing
+    /// now: the audio has ended, so a finished reply is owed idle at once.
+    public mutating func engineRestarted() {
+        queued = 0
+        expectedEnd = nil
+    }
+
+    /// His voice was cut off (Jarvis's "stop" for a barge-in, Pause, the
+    /// line resetting): true when a reply was playing or owed idle, so idle
+    /// goes out now, once. Its "done", if it comes later, sends nothing.
+    public mutating func interrupted() -> Bool {
+        let owed = replyDone || queued > 0 || expectedEnd != nil
+        self = PlaybackTracker()
+        cutShort = owed
+        return owed
+    }
 
     /// Dylan talked over him, or the line reset: nothing is owed.
     public mutating func reset() { self = PlaybackTracker() }

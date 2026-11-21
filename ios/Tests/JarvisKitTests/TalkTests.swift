@@ -159,6 +159,69 @@ final class PlaybackTrackerTests: XCTestCase {
         p.reset()
         XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(10)))
     }
+
+    /// Barge-in (Jarvis's "stop") or Pause mid-reply: idle goes out once,
+    /// at once, and the reply's late "done" sends nothing more.
+    func testCutShortSendsIdleOnce() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 3, now: t0)
+        XCTAssertTrue(p.interrupted(), "idle owed: he was speaking")
+        p.done()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(10)), "the late done is spent")
+        XCTAssertNil(p.nextCheck(now: t0))
+    }
+
+    /// Stopping with nothing playing and nothing owed sends nothing.
+    func testCutShortWithNothingPlayingOwesNothing() {
+        var p = PlaybackTracker()
+        XCTAssertFalse(p.interrupted())
+        p.scheduled(seconds: 1, now: t0)
+        p.played()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(1)))
+        XCTAssertFalse(p.interrupted(), "already idle")
+    }
+
+    /// The next reply after one cut short works as normal.
+    func testNextReplyAfterCutShort() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 1, now: t0)
+        XCTAssertTrue(p.interrupted())
+        p.scheduled(seconds: 1, now: t0.addingTimeInterval(5))
+        p.played()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(6)))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(7)), "once")
+    }
+
+    /// A route change mid-sentence (AirPods out) before "done": the queued
+    /// audio is gone, more sentences come and play, and idle goes out once
+    /// when the last one has played, not on the lost sentence's clock.
+    func testRouteChangeMidSentence() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 4, now: t0)
+        p.engineRestarted()
+        XCTAssertNil(p.expectedEnd, "nothing is playing after the restart")
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(1)), "not done yet")
+        p.scheduled(seconds: 1, now: t0.addingTimeInterval(1))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(1.5)), "audio still queued")
+        p.done()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(1.5)), "still playing")
+        p.played()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(2)))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(3)))
+    }
+
+    /// A route change after "done", with audio still queued: the audio has
+    /// ended with the engine, so idle goes out right away, once.
+    func testRouteChangeAfterDone() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 4, now: t0)
+        p.done()
+        p.engineRestarted()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(0.5)))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(5)))
+    }
 }
 
 final class ChatWindowTests: XCTestCase {

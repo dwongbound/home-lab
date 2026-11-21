@@ -341,7 +341,12 @@ final class TalkLine: @unchecked Sendable {
     /// Drops whatever of his voice is still queued (Dylan talked over him).
     private func silence() {
         generation += 1
-        playback.reset()
+        // A reply cut off still ends: tell Jarvis the speaker is quiet,
+        // once (he'd otherwise wait out his 3 s watchdog).
+        if playback.interrupted() {
+            talkLog("idle (cut short)")
+            send(text: TalkMessage.idle)
+        }
         voice.stop()
         voice.play()
     }
