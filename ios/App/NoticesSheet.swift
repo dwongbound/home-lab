@@ -23,14 +23,19 @@ struct NoticesSheet: View {
             // its own (Dismiss, See in chat), so the pages change by the
             // switch at the top, or by a sideways swipe on the Running page
             // or an empty Notices page (Dylan, 2026-11-19).
+            // Three pages (Dylan, 2026-11-21): notices, then what he kept
+            // in the middle, then what's running: orange, yellow, blue.
             ZStack {
                 if page == 0 {
                     noticesPage
                         .transition(.move(edge: .leading))
+                } else if page == 1 {
+                    keptPage
+                        .transition(.opacity)
                 } else {
                     runningPage
                         .transition(.move(edge: .trailing))
-                        .simultaneousGesture(pageSwipe(to: 0, when: { $0 > 60 }))
+                        .simultaneousGesture(pageSwipe(to: 1, when: { $0 > 60 }))
                 }
             }
             .animation(.snappy(duration: 0.3), value: page)
@@ -38,9 +43,10 @@ struct NoticesSheet: View {
             .contentMargins(.top, 6, for: .scrollContent)
             .listSectionSpacing(.compact)
             .onAppear {
-                if app.notices.isEmpty && !running.isEmpty { page = 1 }
+                if app.notices.isEmpty && !running.isEmpty { page = 2 }
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("-runningPage") { page = 1 }
+                if ProcessInfo.processInfo.arguments.contains("-runningPage") { page = 2 }
+                if ProcessInfo.processInfo.arguments.contains("-keptPage") { page = 1 }
                 #endif
             }
             .background(Theme.sky.ignoresSafeArea())
@@ -52,7 +58,8 @@ struct NoticesSheet: View {
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 4) {
                         pageDot(0, color: OrbView.noticeOrange(onLight: false), count: app.notices.count, name: "Notices")
-                        pageDot(1, color: OrbView.taskBlue(onLight: false), count: running.count, name: "Running")
+                        pageDot(1, color: OrbView.keptYellow(onLight: false), count: app.keptNotices.count, name: "Kept")
+                        pageDot(2, color: OrbView.taskBlue(onLight: false), count: running.count, name: "Running")
                     }
                     .padding(3)
                     .glassChip(Capsule())
@@ -181,6 +188,52 @@ struct NoticesSheet: View {
         }
         .jarvisRows()
         .scrollContentBackground(.hidden)
+    }
+
+    /// The middle page: everything he kept, notices and chat messages
+    /// alike (keeping a message makes a kept notice for it), newest first.
+    /// Tap one to read it whole; the swipe and its button say Dismiss
+    /// (Dylan: kept items say Dismiss, never Unkeep), which lets it go.
+    @ViewBuilder
+    private var keptPage: some View {
+        let kept = Notices.sorted(app.keptNotices)
+        if kept.isEmpty {
+            ContentUnavailableView("Nothing kept", systemImage: "bookmark", description: Text("Keep a notice or a message to find it here."))
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 30).onEnded { drag in
+                    guard abs(drag.translation.width) > abs(drag.translation.height) else { return }
+                    page = drag.translation.width < -60 ? 2 : drag.translation.width > 60 ? 0 : page
+                })
+        } else {
+            List {
+                ForEach(kept) { notice in
+                    Section {
+                        Group {
+                            row(notice)
+                                .listRowBackground(Color.white.opacity(0.06))
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(NoticeAction.unkeep.label, systemImage: "xmark") {
+                                        haptic()
+                                        Task { await app.letGo(notice) }
+                                    }
+                                    .tint(OrbView.keptYellow(onLight: false))
+                                    if notice.turnId != nil {
+                                        Button(NoticeAction.seeInChat.label, systemImage: "bubble.left") {
+                                            Task { await app.openTurn(notice.turnId, clearingWhenFound: nil, about: notice) }
+                                            dismiss()
+                                        }
+                                        .tint(Theme.glacier)
+                                    }
+                                }
+                        }
+                        .fullWidthSeparators()
+                    }
+                }
+            }
+            .jarvisRows()
+            .scrollContentBackground(.hidden)
+            .animation(.smooth, value: kept.map(\.id))
+        }
     }
 
     /// The first page: the notices.

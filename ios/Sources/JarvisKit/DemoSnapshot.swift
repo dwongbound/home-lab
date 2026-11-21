@@ -55,7 +55,7 @@ public enum DemoSnapshot {
                     {"id":"n0","kind":"heads","title":"⏰ Buy Natalia's Secret Santa gift.","body":"Secret Santa Overflow is Wednesday, November 25th. Tell me once it's bought and I'll stop reminding you.","source":"reminder","created":"\(iso(-1440))","turnId":12},
                     {"id":"n1","kind":"need","title":"Turn off the bedroom lights?","body":"Jarvis wants to run home_service light.turn_off","source":"approval","created":"\(iso(-3))","approvalId":"ap1"},
                     {"id":"n2","kind":"heads","title":"PS5 Pro back in stock at Target","body":"Lookout spotted it 10 minutes ago","source":"lookout","created":"\(iso(-12))"},
-                    {"id":"n3","kind":"fyi","title":"Reminder code rewrite finished","body":"Changing my code so reminders repeat: done","source":"job","created":"\(iso(-95))"}],
+                    {"id":"n3","kind":"fyi","title":"Reminder code rewrite finished","body":"Changing my code so reminders repeat: done","source":"job","created":"\(iso(-95))"}\(args.contains("-demoKept") ? DemoSnapshot.keptJSON(iso) : "")],
          "services":[{"id":"h","name":"Home Assistant","detail":"","status":"up"},{"id":"o","name":"Ollama","detail":"","status":"idle"},{"id":"j","name":"Jarvis","detail":"","status":"up"}],
          "today":[{"id":"jarvis-a@0830","at":"\(iso(-300))","title":"Marketplace deal watch","detail":"Jarvis: scan","status":"done"},
                   {"id":"c1","at":"\(iso(-150))","title":"Lunch with Sam"},
@@ -98,6 +98,14 @@ public enum DemoSnapshot {
 }
 
 extension DemoSnapshot {
+    /// `-demoKept`: two kept items (the Kept page), made up.
+    static func keptJSON(_ iso: (Double) -> String) -> String {
+        """
+        ,{"id":"k1","kind":"fyi","title":"The ramen place Sam liked is Marufuku on Post St","body":"You asked me to remember this for date night.","source":"chat","created":"\(iso(-2880))","turnId":41,"kept":true},
+        {"id":"k2","kind":"heads","title":"Passport renewal: book the appointment before December 10","body":"","source":"reminder","created":"\(iso(-600))","kept":true}
+        """
+    }
+
     /// `-demoLongNotice`: a notice with a title over three lines and a body
     /// over two screens, ending "the very last words." (UI tests).
     static var longNotice: String {
