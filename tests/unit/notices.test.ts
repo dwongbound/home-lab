@@ -41,6 +41,12 @@ describe('parseNotices', () => {
     const many = Array.from({ length: 40 }, (_, n) => ({ id: `n${n}`, kind: 'fyi', title: 'Done' }))
     expect(parseNotices({ notices: many })).toHaveLength(30)
   })
+
+  it('keeps a whole long message: 3000 characters of body, 300 of title', () => {
+    const [notice] = parseNotices({ notices: [{ id: 'n1', kind: 'heads', title: 't'.repeat(400), body: 'b'.repeat(4000) }] }) ?? []
+    expect(notice.title).toHaveLength(300)
+    expect(notice.body).toHaveLength(3000)
+  })
 })
 
 describe('parseClear and parsePushDevice', () => {

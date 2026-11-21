@@ -9,25 +9,27 @@
 const MAX_NOTICES = 30
 // Kept ones come after the unread ones and have their own, roomier limit.
 const MAX_KEPT = 100
-const MAX_TEXT = 300
+const MAX_TITLE = 300
+// A body is the whole message now, the same length Jarvis allows (Dylan, 2026-11-21: nothing cut).
+const MAX_BODY = 3000
 // "need" = waiting on Dylan (an approval), "heads" = worth knowing, "fyi" = just so he knows.
 const KINDS = ['need', 'heads', 'fyi']
 // "kept" = a chat message he asked to keep, which never was a notification.
 const SOURCES = ['approval', 'lookout', 'reminder', 'alert', 'job', 'message', 'kept']
 const ID = /^[\w-]{1,64}$/
 
-/** Trimmed text cut to a card's length, or '' when it isn't text. */
-function words(value) {
+/** Trimmed text of at most `max` characters, or '' when it isn't text. */
+function words(value, max) {
   if (typeof value !== 'string') return ''
-  return value.trim().slice(0, MAX_TEXT)
+  return value.trim().slice(0, max)
 }
 
 /** One notice, or null when it lacks an id, a known kind or a title. */
 export function parseNotice(raw) {
   const id = typeof raw?.id === 'string' && ID.test(raw.id) ? raw.id : null
-  const title = words(raw?.title)
+  const title = words(raw?.title, MAX_TITLE)
   if (id === null || !KINDS.includes(raw?.kind) || title === '') return null
-  const notice = { id, kind: raw.kind, title, body: words(raw.body), source: 'message', created: null }
+  const notice = { id, kind: raw.kind, title, body: words(raw.body, MAX_BODY), source: 'message', created: null }
   if (SOURCES.includes(raw.source)) notice.source = raw.source
   if (typeof raw.created === 'string' && !Number.isNaN(Date.parse(raw.created))) notice.created = raw.created
   // The approval this notice is about, so Approve and Deny can sit on its row.
