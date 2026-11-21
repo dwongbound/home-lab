@@ -950,42 +950,19 @@ struct AlwaysOnView: View {
                 }
             }
         case .gpu:
-            // Who's using the graphics card: a donut and its legend.
-            if let share = snapshot.gpuShare {
-                card(which) {
-                    HStack(alignment: .center, spacing: 44) {
-                        Chart(share.slices) { slice in
-                            SectorMark(angle: .value("GB", slice.gb), innerRadius: .ratio(0.62), angularInset: 2)
-                                .cornerRadius(4)
-                                .foregroundStyle(gpuColor(slice, in: share))
-                        }
-                        .chartLegend(.hidden)
-                        // The GB in use in the middle of the ring.
-                        .chartBackground { _ in
-                            VStack(spacing: 0) {
-                                Text(String(format: "%.1f", share.usedGb)).font(.title2.weight(.semibold))
-                                Text("GB used").font(.caption).foregroundStyle(inkDim)
-                            }
-                        }
-                        .frame(width: 220, height: 220)
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(Array(share.slices.prefix(5).enumerated()), id: \.element.id) { index, slice in
-                                HStack(alignment: .center, spacing: 14) {
-                                    Circle().fill(gpuColor(slice, in: share)).frame(width: 16, height: 16)
-                                    // The name, and its job under it in the dim ink.
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(slice.name).lineLimit(1)
-                                        if let role = slice.role { Text(role).font(.callout).foregroundStyle(inkDim).lineLimit(1) }
-                                    }
-                                    Spacer(minLength: 10)
-                                    Text(slice.sizeText).monospacedDigit().foregroundStyle(inkDim)
-                                }
-                                .staggered(index)
-                            }
-                            Text(share.summary).font(.callout).foregroundStyle(inkDim)
-                        }
+            // The PC (Dylan, 2026-11-21): a ring per gauge, split by who
+            // holds it, with its recent line, and the card's holders as a bar.
+            card(which) {
+                // One screen's worth at the card's height: the rings, then
+                // the graphics card's holders as a bar.
+                VStack(alignment: .leading, spacing: 16) {
+                    SystemGaugeRow(snapshot: snapshot, scale: 1.35, ringSize: 62)
+                    if let gpu = snapshot.gpuShare?.breakdown {
+                        SystemBreakdownBar(breakdown: gpu, scale: 1.2, legendLimit: 0)
+                            .staggered(1)
                     }
                 }
+                .environment(\.sleepInk, SleepInk(ink: ink, dim: inkDim, faint: inkDim.opacity(0.75), track: inkDim.opacity(0.18)))
             }
         }
     }

@@ -232,7 +232,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .health: return "You"
         case .sleep: return "Sleep"
         case .suggestions: return "Suggestions"
-        case .gpu: return "Graphics card"
+        case .gpu: return "System"
         }
     }
 
@@ -251,7 +251,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .health: return "heart.fill"
         case .sleep: return "bed.double.fill"
         case .suggestions: return "lightbulb.fill"
-        case .gpu: return "cpu"
+        case .gpu: return "desktopcomputer"
         }
     }
 
@@ -291,7 +291,8 @@ public enum TVBoard {
         if SleepSlide.showsYou(snapshot) { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.suggestions) }
         // No reports on the TV (Dylan, 2026-11-21): they're read on the iPhone and iPad.
-        if snapshot.gpuShare != nil { out.append(.gpu) }
+        // The PC (rawValue "gpu" kept so `-tvCard gpu` still works).
+        if !snapshot.systemGauges.isEmpty { out.append(.gpu) }
         return guest ? out.filter { !$0.isPrivate } : out
     }
 

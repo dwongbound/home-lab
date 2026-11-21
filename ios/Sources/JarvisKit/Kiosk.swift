@@ -23,6 +23,8 @@ public enum KioskPanel: String, CaseIterable, Sendable {
     case sleep
     /// Jarvis's suggestions (offers), titles only.
     case offers
+    /// The PC: GPU, memory, disk and processor rings (Dylan, 2026-11-21).
+    case system
 }
 
 public enum KioskPlan {
@@ -68,6 +70,7 @@ public enum KioskPlan {
         if SleepSlide.shows(snapshot) { out.append(.sleep) }
         if SleepSlide.showsYou(snapshot) { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.offers) }
+        if !snapshot.systemGauges.isEmpty { out.append(.system) }
         return out
     }
 

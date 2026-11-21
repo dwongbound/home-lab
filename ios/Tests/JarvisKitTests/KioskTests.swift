@@ -80,6 +80,12 @@ final class SunLineTests: XCTestCase {
         let s = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","services":[],"today":[],"offers":{"greeting":null,"offers":[{"id":"o","title":"Draft the RSVP","body":"b","startText":"s"}]}}"#.utf8))
         XCTAssertEqual(KioskPlan.panels(snapshot: s), [.schedule, .offers])
     }
+
+    func testSystemPanelWithGauges() throws {
+        let s = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","services":[],"today":[],"metrics":[{"id":"cpu","value":18,"total":100}]}"#.utf8))
+        XCTAssertEqual(KioskPlan.panels(snapshot: s), [.schedule, .system])
+        XCTAssertTrue(TVBoard.cards(s, guest: true).contains(.gpu), "the PC isn't private")
+    }
 }
 
 final class GreetingPartsTests: XCTestCase {

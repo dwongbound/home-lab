@@ -170,6 +170,8 @@ struct KioskView: View {
         #if DEBUG
         // `-kioskSleepFirst`: the Sleep panel in the first turn (screenshots).
         if ProcessInfo.processInfo.arguments.contains("-kioskSleepFirst"), let i = panels.firstIndex(of: .sleep) { panels.insert(panels.remove(at: i), at: 0) }
+        // `-kioskSystemFirst`: the System panel in the first turn.
+        if ProcessInfo.processInfo.arguments.contains("-kioskSystemFirst"), let i = panels.firstIndex(of: .system) { panels.insert(panels.remove(at: i), at: 0) }
         #endif
         let showing = KioskPlan.showing(panels, turn: turn, count: count)
         return VStack(spacing: 20) {
@@ -200,6 +202,7 @@ struct KioskView: View {
         case .health: healthPanel
         case .sleep: sleepPanel
         case .offers: offersPanel
+        case .system: systemPanel
         }
     }
 
@@ -302,6 +305,22 @@ struct KioskView: View {
                         if !sleep.parts.isEmpty { SleepPartBars(parts: sleep.parts, scale: 1.3) }
                     }
                     if !sleep.trend.isEmpty { SleepTrendBars(trend: sleep.trend, scale: 1.4) }
+                }
+            }
+        }
+    }
+
+    /// The PC: a ring per gauge with its sparkline, and who holds the
+    /// graphics card as a bar.
+    @ViewBuilder
+    private var systemPanel: some View {
+        if let snapshot = today.snapshot {
+            frame("System", icon: "desktopcomputer") {
+                VStack(alignment: .leading, spacing: 22) {
+                    SystemGaugeRow(snapshot: snapshot, scale: 1.4, ringSize: 64)
+                    if let gpu = snapshot.gpuShare?.breakdown {
+                        SystemBreakdownBar(breakdown: gpu, scale: 1.2, legendLimit: 3)
+                    }
                 }
             }
         }
