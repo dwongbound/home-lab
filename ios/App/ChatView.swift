@@ -55,6 +55,16 @@ struct ChatView: View {
             // The list fills the whole page; the box, the arrow and what
             // rides with them float over it (messages())
             messages
+            #if DEBUG
+            // `-demoOlderServer`: how many older pages were fetched, for the UI test.
+            if ChatModel.demoOlderServer {
+                Text("\(chat.demoOlderFetches)")
+                    .font(.system(size: 2))
+                    .opacity(0.02)
+                    .accessibilityIdentifier("olderFetches")
+                    .allowsHitTesting(false)
+            }
+            #endif
             // A blocking "Sending photos…" (or "Telling Jarvis…") while it goes.
             if chat.uploading || chat.busy != nil {
                 Color.black.opacity(0.35).ignoresSafeArea()
@@ -159,16 +169,20 @@ struct ChatView: View {
                             // In view: only a lazy list builds this row when
                             // it's reached; a full one knows by watching it.
                             .modifier(OlderRowWatch(inView: $olderInView))
-                            .task(id: "\(shown)-\(chat.items.count)-\(readingUp)-\(olderInView)") {
-                                guard readingUp, olderInView else { return }
+                            .onChange(of: olderInView) { _, inView in if !inView { olderArmed = true } }
+                            .task(id: "\(shown)-\(chat.items.count)-\(readingUp)-\(olderInView)-\(olderArmed)") {
+                                guard readingUp, olderInView, olderArmed else { return }
                                 try? await Task.sleep(for: .milliseconds(150))
                                 guard !Task.isCancelled else { return }
                                 loadOlder(scroller)
                             }
                     }
-                    ChatRowsList(items: Array(chat.items.suffix(shown)), highlighted: highlighted, keptTurns: keptTurns,
-                                 mealBusy: chat.busy != nil, actions: rowActions)
-                        .equatable()
+                    // A leftward drag slides the rows to show their times.
+                    RevealTimes {
+                        ChatRowsList(items: Array(chat.items.suffix(shown)), highlighted: highlighted, keptTurns: keptTurns,
+                                     mealBusy: chat.busy != nil, actions: rowActions)
+                            .equatable()
+                    }
                     // An invisible marker after the last line: on screen
                     // means the chat is scrolled to the bottom.
                     Color.clear
@@ -206,6 +220,7 @@ struct ChatView: View {
             // pinned, reading further up stays put.
             .defaultScrollAnchor(.bottom)
             .modifier(BottomAnchorOnResize())
+            .modifier(PlaceKeeping(keeper: placeKeeper, rearm: { olderArmed = true }))
             // For the UI tests: the page scroller is a scroll view too now.
             .accessibilityIdentifier("chatList")
             // Nothing to show yet: message-shaped placeholders in the list's
@@ -300,7 +315,23 @@ struct ChatView: View {
             // empty Chat (Dylan, 2026-11-20). Coming on screen, it settles
             // on its newest line, unanimated, unless he's reading further up.
             .onChange(of: pageOffScreen) { _, away in
-                guard !away, !readingUp, app.focusTurn == nil, highlighted == nil else { return }
+                if away {
+                    // Off to another tab: back to the newest page, at the
+                    // bottom, with earlier pages let go (Dylan, 2026-11-20:
+                    // "when i leave the chat and come back, it should reset
+                    // the view (and dont show earlier messages)"). Done
+                    // while Chat is off screen, so nothing flashes.
+                    guard app.focusTurn == nil, highlighted == nil else { return }
+                    chat.trimToNewest()
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { shown = ChatWindow.first(total: chat.items.count) }
+                    readingUp = false
+                    unseenReply = false
+                    olderArmed = true
+                    return
+                }
+                guard !readingUp, app.focusTurn == nil, highlighted == nil else { return }
                 settleAtNewest(scroller)
             }
             .onChange(of: chat.items.count) { old, _ in
@@ -447,6 +478,10 @@ struct ChatView: View {
     /// Adds the next page of older messages above, keeping his place: the
     /// message that was at the top stays where it was.
     private func loadOlder(_ scroller: ScrollViewProxy) {
+        // One page per arrival at the top: the next waits until the older
+        // row has left the screen, or he starts a new drag (Dylan,
+        // 2026-11-20: it kept loading page after page by itself).
+        olderArmed = false
         let total = chat.items.count
         guard ChatWindow.hasMore(shown: shown, total: total) else {
             // Everything held is drawn: ask the server for an older page.
@@ -455,6 +490,7 @@ struct ChatView: View {
                 await chat.loadOlder(app: app)
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
+                placeKeeper.hold()
                 withTransaction(quiet) { shown = ChatWindow.grow(shown, total: chat.items.count) }
                 keepPlace(at: anchor, scroller)
             }
@@ -463,6 +499,7 @@ struct ChatView: View {
         let anchor = chat.items.suffix(shown).first?.id
         var quiet = Transaction()
         quiet.disablesAnimations = true
+        placeKeeper.hold()
         withTransaction(quiet) { shown = ChatWindow.grow(shown, total: total) }
         keepPlace(at: anchor, scroller)
     }
@@ -692,6 +729,12 @@ struct ChatView: View {
     /// The "earlier messages" row is on screen (always true for the lazy
     /// list of iOS 17, which only builds it once it's reached).
     @State private var olderInView = !RowsStackKind.full
+    /// Whether reaching the top may load a page (one page per arrival).
+    @State private var olderArmed = true
+    /// Holds his place while older messages are added above (iOS 18).
+    @State private var placeKeeper = PlaceKeeper()
+    /// How far the rows are slid left to show their times (0 at rest).
+    @State private var timesReveal: CGFloat = 0
 
     /// How much of the list's end the floating box covers, measured while
     /// it shows; never changed while he's scrolled up, so nothing jumps.
@@ -1013,6 +1056,81 @@ struct ChatRowActions {
     let answerMeal: (ChatItem, String) -> Void
 }
 
+/// A day's line between messages: a hairline either side of its date.
+private struct DayLine: View {
+    let label: String
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(Color.white.opacity(0.10)).frame(height: 0.5)
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Theme.frostFaint)
+                .fixedSize()
+            Rectangle().fill(Color.white.opacity(0.10)).frame(height: 0.5)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("dayLine")
+    }
+}
+
+/// Messages' leftward drag (Dylan, 2026-11-20: "when i drag from right to
+/// left, i should see the minute time of when the message was sent"): the
+/// rows follow the finger left, up to about 68 pt with a rubber band, to
+/// show each message's time; letting go springs them back. The drag is
+/// read where the page swipe is (RootView), since the pager's own pan takes
+/// sideways touches before anything inside Chat sees them; a mostly
+/// vertical drag is the list's scroll, and a rightward one still goes back
+/// to Talk. Only RevealTimes watches it, so a drag never redraws the rows.
+@MainActor
+final class TimesReveal: ObservableObject {
+    static let shared = TimesReveal()
+    /// How far the rows slide at most.
+    static let width: CGFloat = 68
+    /// The finger's sideways travel (negative: leftward), 0 at rest.
+    @Published var drag: CGFloat = 0
+    /// Decided on a drag's first move: sideways-left reveals.
+    var reveals: Bool?
+
+    /// The rows' offset: the travel with a rubber band, never past the width.
+    var offset: CGFloat {
+        #if DEBUG
+        // `-pinTimes`: held fully open (the UI test can't read the screen mid-drag).
+        if ProcessInfo.processInfo.arguments.contains("-pinTimes") { return -Self.width }
+        #endif
+        guard drag < 0 else { return 0 }
+        let d = -drag
+        return -(Self.width * d / (d + Self.width))
+    }
+
+    /// One move of a drag on Chat; true while it's revealing times.
+    func moved(width w: CGFloat, height h: CGFloat) -> Bool {
+        if reveals == nil, abs(w) > 8 || abs(h) > 8 {
+            reveals = w < 0 && abs(w) > abs(h) * 1.4
+        }
+        guard reveals == true else { return false }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { drag = min(0, w) }
+        return true
+    }
+
+    /// Let go: back they spring.
+    func ended() {
+        reveals = nil
+        if drag != 0 { withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { drag = 0 } }
+    }
+}
+
+private struct RevealTimes<Rows: View>: View {
+    @ObservedObject private var reveal = TimesReveal.shared
+    @ViewBuilder let rows: () -> Rows
+
+    var body: some View {
+        rows().offset(x: reveal.offset)
+    }
+}
+
 /// Every chat row. Equatable on what it shows, so a redraw of the Chat
 /// screen (a tab swipe, the bar, a keystroke) skips all of them unless a
 /// message, the glow or a kept mark actually changed.
@@ -1028,8 +1146,28 @@ private struct ChatRowsList: View, Equatable {
     }
 
     var body: some View {
-        ForEach(items) { item in
-            row(item).id(item.id)
+        let breaks = ChatTime.dayBreaks(items.map(\.at))
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            // A light line with the day, above each day's first message.
+            if breaks[index], let at = item.at {
+                DayLine(label: ChatTime.dayLabel(at)).id("day-\(item.id)")
+            }
+            row(item)
+                .frame(maxWidth: .infinity, alignment: item.kind == .user ? .trailing : .leading)
+                // The time, just past the right edge: a leftward drag
+                // slides it into view (RevealTimes).
+                .overlay(alignment: .trailing) {
+                    if let at = item.at, item.isTurn {
+                        Text(ChatTime.clock(at))
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.frostFaint)
+                            .fixedSize()
+                            .offset(x: TimesReveal.width + 4)
+                            .accessibilityIdentifier("messageTime")
+                    }
+                }
+                .id(item.id)
         }
     }
 
@@ -1218,6 +1356,71 @@ enum ChatColumn {
 
 /// Keeps the chat's distance from its bottom when its content changes size
 /// (iOS 18 and up; 17 keeps the plain bottom anchor).
+/// Keeps his place while older messages are added above (Dylan,
+/// 2026-11-20: after "Loading earlier messages" he landed at the top of the
+/// new batch, which loaded the next, and the next). Just before the rows
+/// grow, `hold()` notes how far down he is and how tall the content was;
+/// when the content grows, the list is moved down by exactly what was
+/// added, so the message he was reading stays put and the new ones sit
+/// above the screen. Whether or not iOS's own bottom anchor already did it,
+/// this lands in the same place. iOS 18 and up.
+final class PlaceKeeper {
+    fileprivate var y: CGFloat = 0
+    fileprivate var height: CGFloat = 0
+    fileprivate var held: (y: CGFloat, height: CGFloat)?
+
+    func hold() {
+        held = (y, height)
+        // Nothing grew after all (a page with nothing new): let it go.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.held = nil }
+    }
+}
+
+private struct PlaceKeeping: ViewModifier {
+    let keeper: PlaceKeeper
+    /// A new drag by him may load the next page.
+    let rearm: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.modifier(Keep(keeper: keeper, rearm: rearm))
+        } else {
+            content
+        }
+    }
+
+    @available(iOS 18.0, *)
+    private struct Keep: ViewModifier {
+        let keeper: PlaceKeeper
+        let rearm: () -> Void
+        @State private var position = ScrollPosition()
+
+        func body(content: Content) -> some View {
+            content
+                .scrollPosition($position)
+                .onScrollPhaseChange { old, new in
+                    if new == .interacting && old != .interacting { rearm() }
+                }
+                // Noted on every change, written nowhere: scrolling stays cheap.
+                .onScrollGeometryChange(for: CGSize.self) { g in
+                    CGSize(width: g.contentOffset.y, height: g.contentSize.height)
+                } action: { _, now in
+                    keeper.y = now.width
+                    if let held = keeper.held, now.height > held.height + 1 {
+                        keeper.held = nil
+                        let target = held.y + (now.height - held.height)
+                        if abs(target - now.width) > 1 {
+                            var quiet = Transaction()
+                            quiet.disablesAnimations = true
+                            withTransaction(quiet) { position.scrollTo(y: target) }
+                        }
+                    }
+                    keeper.height = now.height
+                }
+        }
+    }
+}
+
 private struct BottomAnchorOnResize: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {

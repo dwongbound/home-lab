@@ -553,4 +553,8 @@ final class AppModel: ObservableObject {
 /// Which tab is showing (AppModel.tabs).
 final class TabState: ObservableObject {
     @Published var tab: AppTab = .today
+    /// True while a leftward drag on Chat is showing message times: the
+    /// pager holds still for it (Chat is the last page, so that drag only
+    /// ever rubber-banded the pages).
+    @Published var pagerHeld = false
 }

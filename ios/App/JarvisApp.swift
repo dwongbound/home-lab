@@ -163,6 +163,7 @@ struct RootView: View {
                 .scrollTargetLayout()
             }
             .scrollTargetBehavior(TickingPaging())
+            .scrollDisabled(tabs.pagerHeld)
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .scrollPosition(id: Binding(get: { Optional(app.tab) }, set: { if let tab = $0, tab != app.tab { app.tab = tab } }))
@@ -180,6 +181,17 @@ struct RootView: View {
             if keyboard.up, PageSwipe.isSideways(width: drag.translation.width, height: drag.translation.height) {
                 KeyboardWatch.dismiss()
             }
+        })
+        // On Chat, a leftward drag shows the messages' times (TimesReveal)
+        // and the pager holds still for it: Chat is the last page, so that
+        // drag only ever rubber-banded the pages.
+        .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { drag in
+            guard app.tab == .chat, !keyboard.up else { return }
+            let revealing = TimesReveal.shared.moved(width: drag.translation.width, height: drag.translation.height)
+            if revealing, !tabs.pagerHeld { tabs.pagerHeld = true }
+        }.onEnded { _ in
+            TimesReveal.shared.ended()
+            if tabs.pagerHeld { tabs.pagerHeld = false }
         })
         .background(Theme.sky.ignoresSafeArea())
         // The bar floats over the pages; each page keeps room for it, so

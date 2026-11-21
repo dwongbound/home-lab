@@ -41,15 +41,18 @@ struct ChatItem: Identifiable, Equatable {
     var writer: String?
     /// True when Jarvis's record says this message is kept (a yellow dot).
     var kept = false
+    /// When it was sent (history's `at`; now, for one just sent here). Nil
+    /// for approval cards. Shown on a leftward drag and in the day lines.
+    var at: Date?
 
     /// A line of Dylan's.
     static func user(_ text: String, photos: [UIImage] = [], photoCount: Int? = nil) -> ChatItem {
-        ChatItem(id: UUID().uuidString, kind: .user, text: text, model: nil, finished: true, question: "", outcome: nil, photos: photos, photoCount: photoCount ?? photos.count)
+        ChatItem(id: UUID().uuidString, kind: .user, text: text, model: nil, finished: true, question: "", outcome: nil, photos: photos, photoCount: photoCount ?? photos.count, at: Date())
     }
 
     /// A reply of Jarvis's, empty until words arrive.
     static func jarvis(_ text: String, model: String?, finished: Bool, question: String) -> ChatItem {
-        ChatItem(id: UUID().uuidString, kind: .jarvis, text: text, model: model, finished: finished, question: question, outcome: nil)
+        ChatItem(id: UUID().uuidString, kind: .jarvis, text: text, model: model, finished: finished, question: question, outcome: nil, at: Date())
     }
 
     /// A line of Dylan's or Jarvis's (not an approval card).
@@ -81,6 +84,38 @@ final class ChatModel: ObservableObject {
     @Published private(set) var older = OlderPaging(hasMore: false)
     var olderOnServer: Bool { older.state != .done }
     var loadingOlder: Bool { older.state == .loading }
+    #if DEBUG
+    /// `-demoOlderServer`: pages fetched, for the UI test.
+    @Published var demoOlderFetches = 0
+    #endif
+    static var demoOlderServer: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-demoOlderServer")
+        #else
+        false
+        #endif
+    }
+
+    /// Leaving Chat for another tab: back to the newest page only, so
+    /// earlier pages are fetched again only if he scrolls up for them, and
+    /// nothing old is drawn when he comes back (Dylan, 2026-11-20). A
+    /// message still going out stays.
+    func trimToNewest() {
+        let keep = HistoryQuery.pageSize
+        let turns = items.filter(\.isTurn).count
+        guard turns > keep, !isSending else { return }
+        var seen = 0
+        var cut = items.endIndex
+        for index in items.indices.reversed() where items[index].isTurn {
+            seen += 1
+            if seen == keep { cut = index; break }
+        }
+        items.removeFirst(cut)
+        var paging = older
+        paging.reset(hasMore: true)
+        if paging != older { older = paging }
+    }
+
     /// After a failed older page, try again (his tap).
     func retryOlder() { older.retry() }
     /// An older window is showing (opened round a notice's turn); newer
@@ -116,6 +151,21 @@ final class ChatModel: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("-demoChat") {
             // Through the same merge as a real load, so the demo shows what
             // a reload does to the rows (`-mockTalkTurns` adds turns).
+            // `-demoOlderServer`: only the newest page, the rest paged in
+            // from the "server" as he scrolls up (UITests/ChatOlderTests).
+            if Self.demoOlderServer {
+                let all = DemoChat.items()
+                let newest = Array(all.suffix(ChatWindow.page))
+                let next = merged(newest, around: false)
+                if items.isEmpty || next.first?.turnId == newest.first?.turnId {
+                    if next != items { items = next }
+                    var paging = older
+                    paging.reset(hasMore: all.count > newest.count)
+                    if paging != older { older = paging }
+                }
+                if !loaded { loaded = true }
+                return
+            }
             let next = merged(DemoChat.items(), around: false)
             if next != items { items = next }
             if !loaded { loaded = true }
@@ -237,6 +287,18 @@ final class ChatModel: ObservableObject {
     /// asked for when the server says there is one.
     func loadOlder(app: AppModel) async {
         guard let first = items.compactMap(\.turnId).first, older.begin() else { return }
+        #if DEBUG
+        if Self.demoOlderServer {
+            demoOlderFetches += 1
+            try? await Task.sleep(for: .milliseconds(600))
+            let all = DemoChat.items()
+            let end = all.firstIndex { $0.turnId == first } ?? 0
+            let page = Array(all[max(0, end - HistoryQuery.pageSize)..<end])
+            items.insert(contentsOf: page, at: 0)
+            older.finish(added: page.count, hasMore: end - page.count > 0)
+            return
+        }
+        #endif
         do {
             let page = try await app.client.history(.before(first, limit: HistoryQuery.pageSize))
             let known = Set(items.compactMap(\.turnId))
@@ -324,6 +386,7 @@ final class ChatModel: ObservableObject {
                 item = .jarvis(turn.text, model: turn.model, finished: true, question: ModelWording.isNotice(turn.model ?? "") ? "" : lastQuestion)
             }
             item.turnId = turn.id
+            item.at = SleepTime.parse(turn.at)
             item.writer = turn.writer
             item.kept = turn.kept ?? false
             out.append(item)
@@ -625,9 +688,12 @@ enum DemoChat {
         for i in 0..<turns {
             var me = ChatItem.user(i % 5 == 0 ? "Can you look at tomorrow and tell me what I need to bring?" : "ok \(i)", photoCount: i % 9 == 0 ? 2 : 0)
             me.turnId = i
+            // Every three hours back from now, so the demo spans days.
+            me.at = Date().addingTimeInterval(-Double(turns - i) * 3 * 3600)
             out.append(me)
             var reply = ChatItem.jarvis(i % 3 == 0 ? long : "Done. **Logged** it: \(i * 7) calories, `\(i)P`. Anything else?", model: ["claude", "ornith", "qwen"][i % 3], finished: true, question: "q")
             reply.turnId = 1000 + i
+            reply.at = me.at?.addingTimeInterval(60)
             reply.kept = i % 11 == 0
             out.append(reply)
         }

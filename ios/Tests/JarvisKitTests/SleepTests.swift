@@ -122,6 +122,12 @@ final class SleepNightTests: XCTestCase {
         XCTAssertNil(SleepNights.build(night: "not a night", stages: night, vitals: SleepVitals()))
     }
 
+    func testTimesGoWithSecondsAndOffsetNoFractions() {
+        let when = Date(timeIntervalSince1970: 1_763_700_000.789)
+        let text = SleepWire.time(when)
+        XCTAssertNotNil(text.range(of: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$"#, options: .regularExpression), text)
+    }
+
     func testUnits() {
         XCTAssertEqual(SleepUnits.breathsPerMinute(perSecond: 0.25), 15)
         XCTAssertEqual(SleepUnits.percent(fraction: 0.96), 96, accuracy: 0.0001)
