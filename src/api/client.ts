@@ -6,7 +6,7 @@
 // A build made with VITE_DATA=static has no server (that's the shareable
 // preview), so it runs the mock source inside the browser instead.
 import useSWR from 'swr'
-import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, PlaybookBook, PlaybookChange, PlaybookDraftResult, PlaybookResult, ReportChange, Snapshot, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
+import type { ActionName, ActionResult, Approval, ApprovalAnswerResult, ChatEvent, ChatTurn, DataSource, DigestRefresh, HomeCommand, JarvisFeedback, JarvisMemory, MemoryChange, MemoryHit, MoneyPickChange, PlaybookBook, PlaybookChange, PlaybookDraftResult, PlaybookResult, ReportChange, Snapshot, SteerKind, VoiceChoice, VoiceSample, VoiceSettings } from '../types'
 
 export const SNAPSHOT_KEY = '/api/snapshot'
 const REFRESH_MS = 15_000
@@ -91,6 +91,7 @@ export async function streamJarvis(
   onWorking: (label: string | null) => void = () => {},
   offerId?: string,
   onModel: (model: string) => void = () => {},
+  onPlaced: (how: SteerKind | 'queued') => void = () => {},
 ): Promise<ChatResult> {
   let soFar = ''
   let outcome: ActionResult = { ok: false, message: 'Jarvis stopped answering partway' }
@@ -111,6 +112,10 @@ export async function streamJarvis(
       onModel(event.model)
     } else if (event.type === 'error') {
       outcome = { ok: false, message: event.message }
+    } else if (event.type === 'steered') {
+      onPlaced(event.as)
+    } else if (event.type === 'queued') {
+      onPlaced('queued')
     }
     // A meal_question only follows a photo, and the page's chat sends none: the apps answer those.
   }

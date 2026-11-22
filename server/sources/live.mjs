@@ -26,6 +26,8 @@ import { parseReport, parseReports } from './reports.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
+/** How a message sent mid-reply was taken: into the reply, as a stop, or as the answer to a waiting approval. */
+const STEER_KINDS = ['steered', 'stopped', 'approval']
 const realExecFile = promisify(execFileCallback)
 // Making a voice sample can take a few seconds when the GPU is busy.
 const SAMPLE_TIMEOUT_MS = 15_000
@@ -640,6 +642,14 @@ export function createLiveSource(config, deps = {}) {
           } else if (event.type === 'turn' && Number.isInteger(event.id) && event.id > 0) {
             // His number for the message just sent, so the apps can find its reply in the history later.
             onEvent({ type: 'turn', id: event.id })
+          } else if (event.type === 'steered' && STEER_KINDS.includes(event.as)) {
+            // Sent while he was still answering (Dylan, 2026-11-21): taken into that reply, which
+            // keeps coming on the first message's stream; "stopped" = it only said stop; "approval" = it answered one.
+            const into = Number.isInteger(event.into) && event.into > 0 ? event.into : null
+            onEvent({ type: 'steered', into, as: event.as })
+          } else if (event.type === 'queued' && Number.isInteger(event.after) && event.after > 0) {
+            // Too late to steer: this message gets its own reply on this stream once the running one ends.
+            onEvent({ type: 'queued', after: event.after })
           }
         }
       } catch {
