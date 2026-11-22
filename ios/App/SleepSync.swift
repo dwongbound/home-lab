@@ -89,7 +89,10 @@ final class SleepSync: ObservableObject {
         ]
         for id in quantities { types.insert(HKQuantityType(id)) }
         if #available(iOS 18.0, *) { types.insert(HKQuantityType(.appleSleepingBreathingDisturbances)) }
+        // RMSSD is new in the iOS 27 SDK; CI's older Xcode must not see it.
+        #if compiler(>=6.4)
         if #available(iOS 27.0, *) { types.insert(HKQuantityType(.heartRateVariabilityRMSSD)) }
+        #endif
         return types
     }
 
@@ -194,9 +197,11 @@ final class SleepSync: ObservableObject {
         let perSecond = HKUnit.count().unitDivided(by: .second())
         vitals.heartRate = await readings(.heartRate, unit: perMinute, in: window)
         vitals.hrvSDNN = await readings(.heartRateVariabilitySDNN, unit: .secondUnit(with: .milli), in: window)
+        #if compiler(>=6.4)
         if #available(iOS 27.0, *) {
             vitals.hrvRMSSD = await readings(.heartRateVariabilityRMSSD, unit: .secondUnit(with: .milli), in: window)
         }
+        #endif
         vitals.respiratoryPerSecond = await readings(.respiratoryRate, unit: perSecond, in: window)
         vitals.oxygenFraction = await readings(.oxygenSaturation, unit: .percent(), in: window)
         vitals.wristTemperature = await readings(.appleSleepingWristTemperature, unit: .degreeCelsius(), in: window)

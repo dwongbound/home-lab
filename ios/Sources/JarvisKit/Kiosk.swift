@@ -374,16 +374,17 @@ public struct ConnectionStatus: Equatable, Sendable {
     /// `jarvisRestarting`: it answered, but Jarvis is restarting or down
     /// (502, 503, 504) after the quiet retries.
     public static func of(reachable: Bool?, jarvisRestarting: Bool) -> ConnectionStatus {
-        switch reachable {
-        case nil:
+        // Written as ifs, not a switch over Bool?: CI's older Swift doesn't
+        // count nil/false/true as exhaustive.
+        guard let reachable else {
             return ConnectionStatus(tailnet: .unknown, jarvis: .unknown, tailnetWords: "Tailscale", jarvisWords: "Connecting")
-        case false:
-            return ConnectionStatus(tailnet: .bad, jarvis: .unknown, tailnetWords: "Tailscale off", jarvisWords: "Jarvis")
-        case true:
-            return jarvisRestarting
-                ? ConnectionStatus(tailnet: .good, jarvis: .waiting, tailnetWords: "Tailscale", jarvisWords: "Jarvis restarting")
-                : ConnectionStatus(tailnet: .good, jarvis: .good, tailnetWords: "Tailscale", jarvisWords: "Jarvis")
         }
+        if !reachable {
+            return ConnectionStatus(tailnet: .bad, jarvis: .unknown, tailnetWords: "Tailscale off", jarvisWords: "Jarvis")
+        }
+        return jarvisRestarting
+            ? ConnectionStatus(tailnet: .good, jarvis: .waiting, tailnetWords: "Tailscale", jarvisWords: "Jarvis restarting")
+            : ConnectionStatus(tailnet: .good, jarvis: .good, tailnetWords: "Tailscale", jarvisWords: "Jarvis")
     }
 
     /// Both states in words for VoiceOver.
