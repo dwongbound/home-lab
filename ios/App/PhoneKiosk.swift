@@ -36,7 +36,10 @@ final class OrientationLock: NSObject, UIApplicationDelegate {
 
     /// No token this time (no network, or a build without push): tried
     /// again at the next launch.
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {}
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        let words = error.localizedDescription
+        MainActor.assumeIsolated { PushLog.add("APNs gave no token: \(words)") }
+    }
 
     /// Asked by UIKit whenever it considers rotating.
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {

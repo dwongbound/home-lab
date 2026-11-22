@@ -22,6 +22,28 @@ public enum PushWords {
         debug ? "sandbox" : "production"
     }
 
+    /// Which APNs a build's tokens belong to, from its provisioning profile
+    /// (embedded.mobileprovision) rather than the build configuration
+    /// (Dylan, 2026-11-21: a Release build installed from Xcode registered
+    /// as "production", APNs refused its sandbox token, and no pushes came).
+    /// The profile's `aps-environment` entitlement "development" means the
+    /// sandbox; no profile (TestFlight, App Store) or "production" means
+    /// production.
+    public static func environment(profile: Data?) -> String {
+        guard let profile, let plist = profilePlist(profile) else { return "production" }
+        let entitlements = plist["Entitlements"] as? [String: Any]
+        return (entitlements?["aps-environment"] as? String) == "development" ? "sandbox" : "production"
+    }
+
+    /// The property list inside a provisioning profile (a signed CMS
+    /// envelope around an XML plist): cut out from "<?xml" to "</plist>".
+    static func profilePlist(_ data: Data) -> [String: Any]? {
+        guard let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex) else { return nil }
+        let xml = data.subdata(in: start.lowerBound..<end.upperBound)
+        return (try? PropertyListSerialization.propertyList(from: xml, options: [], format: nil)) as? [String: Any]
+    }
+
     /// The approval a notification is about, from `approval_id` at the top
     /// of the payload or inside its `jarvis` part.
     public static func approvalId(from payload: [AnyHashable: Any]) -> String? {

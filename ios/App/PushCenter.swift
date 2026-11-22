@@ -48,7 +48,11 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
             }
             await refreshStatus()
             let settings = await center.notificationSettings()
-            if enabled && (settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional) {
+            PushLog.add("launch: switch \(enabled ? "on" : "off"), permission \(settings.authorizationStatus.rawValue)")
+            if enabled && settings.authorizationStatus == .notDetermined {
+                // Never asked on this device (the iPad had no token at all).
+                await askIfNeeded()
+            } else if enabled && (settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral) {
                 UIApplication.shared.registerForRemoteNotifications()
             }
         }
@@ -104,19 +108,21 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
     func gotToken(_ token: Data) {
         guard let app else { return }
         let hex = PushWords.hex(token)
-        #if DEBUG
-        let environment = PushWords.environment(debug: true)
-        #else
-        let environment = PushWords.environment(debug: false)
-        #endif
+        // From the build's own provisioning profile: an Xcode install (any
+        // configuration) has a development profile and a sandbox token.
+        let profile = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision").flatMap { try? Data(contentsOf: $0) }
+        let environment = PushWords.environment(profile: profile)
+        PushLog.add("got a token (\(environment))")
         Task {
             do {
                 try await app.client.registerPush(token: hex, platform: "ios", environment: environment, bundle: Bundle.main.bundleIdentifier ?? "com.dwongbound.jarvis", name: UIDevice.current.name)
                 UserDefaults.standard.set(hex, forKey: Self.tokenKey)
                 status = .registered
+                PushLog.add("registered with Jarvis (\(environment))")
             } catch {
                 // Tried again at the next launch.
                 status = .failed(error.localizedDescription)
+                PushLog.add("register failed: \(error.localizedDescription)")
             }
         }
     }
@@ -197,5 +203,19 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
         case .notices:
             app.showNotices = true
         }
+    }
+}
+
+
+/// A short log of push setup on this device (no tokens), kept in the app's
+/// Documents as push-log.txt so it can be read back from the Mac.
+enum PushLog {
+    static func add(_ line: String) {
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let url = dir.appendingPathComponent("push-log.txt")
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        var lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        lines.append("\(stamp) \(line)")
+        try? lines.suffix(60).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 }
