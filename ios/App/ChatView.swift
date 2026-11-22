@@ -643,10 +643,12 @@ struct ChatView: View {
                     .frame(width: 44, height: 44)
                     .foregroundStyle(PhotoLimits.room(holding: picked.count) > 0 ? Theme.frost : Theme.frostFaint)
             }
-            .disabled(PhotoLimits.room(holding: picked.count) == 0 || chat.isSending)
+            // Usable while Jarvis answers: a photo message queues as its own turn.
+            .disabled(PhotoLimits.room(holding: picked.count) == 0)
             .accessibilityLabel("Add photos")
             ComposerField(hasText: $hasText, focus: $typing,
-                          hasPhotos: !picked.isEmpty, sending: chat.isSending) { text in send(text) }
+                          // Send stays usable mid-reply: Jarvis steers or queues it.
+                          hasPhotos: !picked.isEmpty, sending: false) { text in send(text) }
         }
         .padding(.horizontal, 2)
     }
@@ -823,7 +825,7 @@ struct ChatView: View {
 
     /// Sends the words (the box has already cleared itself) and any photos.
     private func send(_ text: String) {
-        guard !chat.isSending, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !picked.isEmpty else { return }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !picked.isEmpty else { return }
         let photos = picked
         picked = []
         Task { await chat.send(text, photos: photos, app: app) }
@@ -1261,6 +1263,11 @@ private struct ChatRowsList: View, Equatable {
                                     .accessibilityLabel("Kept")
                             }
                         }
+                }
+                // Sent while Jarvis was answering and waiting its turn.
+                if item.queued {
+                    Text("Queued").font(.caption2).foregroundStyle(Theme.frostFaint)
+                        .accessibilityIdentifier("queuedLabel")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)

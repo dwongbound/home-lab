@@ -41,6 +41,9 @@ struct ChatItem: Identifiable, Equatable {
     var writer: String?
     /// True when Jarvis's record says this message is kept (a yellow dot).
     var kept = false
+    /// Dylan's lines: sent while a reply was running and waiting its turn
+    /// (Jarvis's "queued"); a small grey "Queued" until its reply starts.
+    var queued = false
     /// When it was sent (history's `at`; now, for one just sent here). Nil
     /// for approval cards. Shown on a leftward drag and in the day lines.
     var at: Date?
@@ -70,8 +73,11 @@ struct ChatItem: Identifiable, Equatable {
 @MainActor
 final class ChatModel: ObservableObject {
     @Published private(set) var items: [ChatItem] = []
-    /// True from Send until the reply ends.
-    @Published private(set) var isSending = false
+    /// Sends going out or replies still streaming (several at once: he can
+    /// send while Jarvis is answering, Dylan 2026-11-21).
+    @Published private(set) var sendsInFlight = 0
+    /// True from Send until every reply has ended.
+    var isSending: Bool { sendsInFlight > 0 }
     /// The slow lookup Jarvis is doing ("Searching the web."), or nil.
     @Published private(set) var working: String?
     /// The last problem, worded for Dylan, or nil.
@@ -401,7 +407,7 @@ final class ChatModel: ObservableObject {
     /// streams. A refused photo (400) keeps the message for "Try again".
     func send(_ text: String, photos: [PickedPhoto] = [], offerId: String? = nil, app: AppModel) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !photos.isEmpty, !isSending else { return }
+        guard !trimmed.isEmpty || !photos.isEmpty else { return }
         let previews = photos.map(\.preview)
         if !photos.isEmpty {
             sentPhotos[trimmed] = previews
@@ -409,10 +415,19 @@ final class ChatModel: ObservableObject {
         }
         let mine = ChatItem.user(trimmed, photos: previews)
         Haptics.play(.send)
+        // Sent while a reply is still running: Jarvis steers it or queues
+        // this one (its stream says which). Its own reply, if any, is made
+        // only when its words start, so a steered message never shows an
+        // empty bubble of its own.
+        let alongside = isSending
         items.append(mine)
-        let reply = ChatItem.jarvis("", model: nil, finished: false, question: trimmed)
-        items.append(reply)
-        isSending = true
+        var replyId: String?
+        if !alongside {
+            let reply = ChatItem.jarvis("", model: nil, finished: false, question: trimmed)
+            items.append(reply)
+            replyId = reply.id
+        }
+        sendsInFlight += 1
         uploading = !photos.isEmpty
         // Leaving the app right after Send must not stop the message going
         // out: iOS gives a little time to finish the request and read the
@@ -428,9 +443,35 @@ final class ChatModel: ObservableObject {
         failed = nil
 
         do {
-            for try await event in replyStream(trimmed, offerId: offerId, photos: photos, app: app) {
+            for try await event in replyStream(trimmed, offerId: offerId, photos: photos, alongside: alongside, app: app) {
                 uploading = false
-                apply(event, to: reply.id)
+                switch event {
+                case .turn(let id):
+                    update(mine.id) { $0.turnId = id }
+                case .steered:
+                    // Into the running reply: his message goes just above
+                    // the words still coming (all three kinds: steered,
+                    // stopped, an approval's answer); no reply of its own.
+                    placeSteered(mine.id)
+                case .queued:
+                    update(mine.id) { $0.queued = true }
+                case .delta, .model, .working, .mealQuestion, .approval:
+                    if replyId == nil {
+                        // A queued message's reply starts: it moves into
+                        // its own turn at the end, its reply under it.
+                        update(mine.id) { $0.queued = false }
+                        if let index = items.firstIndex(where: { $0.id == mine.id }) {
+                            let moved = items.remove(at: index)
+                            items.append(moved)
+                        }
+                        let reply = ChatItem.jarvis("", model: nil, finished: false, question: trimmed)
+                        items.append(reply)
+                        replyId = reply.id
+                    }
+                    apply(event, to: replyId ?? "")
+                default:
+                    apply(event, to: replyId ?? "")
+                }
             }
             app.noteReach(nil)
         } catch let error as JarvisError {
@@ -439,24 +480,54 @@ final class ChatModel: ObservableObject {
                 failed = (trimmed, photos)
                 items.removeAll { $0.id == mine.id }
             } else {
-                sendDropped(error, text: trimmed, photos: photos, mine: mine.id, reply: reply.id, app: app)
+                sendDropped(error, text: trimmed, photos: photos, mine: mine.id, reply: replyId ?? "", app: app)
             }
             app.noteReach(error)
         } catch {
-            sendDropped(error, text: trimmed, photos: photos, mine: mine.id, reply: reply.id, app: app)
+            sendDropped(error, text: trimmed, photos: photos, mine: mine.id, reply: replyId ?? "", app: app)
             app.noteReach(error)
         }
         uploading = false
-        finish(reply.id)
+        update(mine.id) { $0.queued = false }
+        finish(replyId)
         // The new turns' ids come with history; Keep needs them.
         if problem == nil, !Self.fixtureChat { Task { try? await Task.sleep(for: .seconds(1)); if !self.isSending { await self.load(app: app) } } }
+    }
+
+    /// A steered message: just above the reply still coming (SendFlow).
+    private func placeSteered(_ mine: String) {
+        let lines = items.map { SendFlow.Line(id: $0.id, isUser: $0.kind == .user, open: $0.kind == .jarvis && !$0.finished) }
+        guard let at = SendFlow.steeredIndex(lines, mine: mine), let from = items.firstIndex(where: { $0.id == mine }) else { return }
+        let moved = items.remove(at: from)
+        items.insert(moved, at: min(at, items.count))
     }
 
     /// Jarvis's reply to a send, as it streams in. `-fixtureChat` (debug
     /// builds) plays a canned reply instead, so the chat's send behaviour
     /// can be tested without writing to live Jarvis.
-    private func replyStream(_ text: String, offerId: String?, photos: [PickedPhoto], app: AppModel) -> AsyncThrowingStream<ChatEvent, Error> {
+    private func replyStream(_ text: String, offerId: String?, photos: [PickedPhoto], alongside: Bool, app: AppModel) -> AsyncThrowingStream<ChatEvent, Error> {
         #if DEBUG
+        // `-fixtureChat`: a send while one is running is steered, or with
+        // `-fixtureQueue` queued then answered (nothing reaches Jarvis).
+        if Self.fixtureChat, alongside {
+            let queue = ProcessInfo.processInfo.arguments.contains("-fixtureQueue")
+            return AsyncThrowingStream { continuation in
+                Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    continuation.yield(.turn(9_500 + Int.random(in: 0..<499)))
+                    if queue {
+                        continuation.yield(.queued(after: nil))
+                        try? await Task.sleep(for: .seconds(25))
+                        continuation.yield(.model("claude"))
+                        continuation.yield(.delta("And for the second thing: yes, done."))
+                    } else {
+                        continuation.yield(.steered(into: nil, as: "steered"))
+                    }
+                    continuation.yield(.done)
+                    continuation.finish()
+                }
+            }
+        }
         if Self.fixtureChat {
             return AsyncThrowingStream { continuation in
                 Task {
@@ -567,8 +638,10 @@ final class ChatModel: ObservableObject {
             Haptics.play(.failure)
         case .turn(let id):
             // His message's id in history, so catching up later matches it
-            // instead of showing it twice.
+            // instead of showing it twice (send() sets it on its own message).
             if let mine = items.lastIndex(where: { $0.kind == .user && $0.turnId == nil }) { items[mine].turnId = id }
+        case .steered, .queued:
+            break
         case .mealQuestion(let key, let choices):
             update(replyId) { $0.mealKey = key; $0.mealChoices = choices }
         case .done:
@@ -577,10 +650,10 @@ final class ChatModel: ObservableObject {
     }
 
     /// Marks the reply finished; an empty one is dropped.
-    private func finish(_ replyId: String) {
-        isSending = false
-        working = nil
-        if let index = items.firstIndex(where: { $0.id == replyId }) {
+    private func finish(_ replyId: String?) {
+        sendsInFlight = max(0, sendsInFlight - 1)
+        if sendsInFlight == 0 { working = nil }
+        if let replyId, let index = items.firstIndex(where: { $0.id == replyId }) {
             if items[index].text.isEmpty {
                 items.remove(at: index)
             } else {

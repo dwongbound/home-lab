@@ -44,6 +44,17 @@ public enum ChatEvent: Equatable, Sendable {
     /// The first event of a send: the id Jarvis saved Dylan's message
     /// under, the same id history gives it.
     case turn(Int)
+    /// A message sent while a reply was still running was taken into it
+    /// (Dylan, 2026-11-21: "i should be able to send more than one message
+    /// even while claude is thinking (and it should steer it)"). `into` is
+    /// the running turn (nil when Jarvis doesn't say); `as` is "steered"
+    /// (the reply carries on, on the first stream, reflecting it),
+    /// "stopped" (it was a stop word; the first reply ends with what it
+    /// had) or "approval" (it answered a waiting approval).
+    case steered(into: Int?, as: String)
+    /// A message sent mid-reply that waits its turn: this same stream
+    /// carries its own reply once the running one ends.
+    case queued(after: Int?)
 
     /// Reads one line of the stream. Blank lines, bad JSON and event types
     /// this build doesn't know yet come back nil, so a newer Jarvis never
@@ -81,6 +92,10 @@ public enum ChatEvent: Equatable, Sendable {
         case "turn":
             guard let id = (object["id"] as? NSNumber)?.intValue else { return nil }
             return .turn(id)
+        case "steered":
+            return .steered(into: (object["into"] as? NSNumber)?.intValue, as: object["as"] as? String ?? "steered")
+        case "queued":
+            return .queued(after: (object["after"] as? NSNumber)?.intValue)
         case "meal_question":
             guard let key = object["key"] as? String, !key.isEmpty else { return nil }
             let choices = (object["choices"] as? [String] ?? MealChoice.all).filter { MealChoice.all.contains($0) }
@@ -134,3 +149,42 @@ public struct ChatTurn: Codable, Equatable, Sendable {
     }
 }
 
+
+
+/// Where a message sent mid-reply goes (the page's layout): a steered one
+/// moves to just above the reply still coming (under the question being
+/// answered); a queued one waits at the end, marked Queued, and moves into
+/// its own turn when its reply starts. Pure, over the chat's lines.
+public enum SendFlow {
+    public struct Line: Equatable, Sendable {
+        public let id: String
+        public let isUser: Bool
+        /// A reply of Jarvis's still coming in.
+        public let open: Bool
+        public init(id: String, isUser: Bool, open: Bool) {
+            self.id = id; self.isUser = isUser; self.open = open
+        }
+    }
+
+    /// Where `mine` belongs once steered into the running reply: the index
+    /// to move it to (just above the reply still coming), or nil to leave
+    /// it where it is (no reply still open, e.g. it had just ended).
+    public static func steeredIndex(_ lines: [Line], mine: String) -> Int? {
+        guard let from = lines.firstIndex(where: { $0.id == mine }),
+              let reply = lines.lastIndex(where: { !$0.isUser && $0.open }),
+              reply < from else { return nil }
+        // Above the reply, after any of his other steered messages already there.
+        return reply
+    }
+
+    /// The lines with `mine` moved to `to` (for steered), or to the end
+    /// (for a queued one whose reply starts).
+    public static func move(_ ids: [String], _ mine: String, to index: Int?) -> [String] {
+        guard let from = ids.firstIndex(of: mine) else { return ids }
+        var out = ids
+        out.remove(at: from)
+        let at = min(index ?? out.count, out.count)
+        out.insert(mine, at: at)
+        return out
+    }
+}
