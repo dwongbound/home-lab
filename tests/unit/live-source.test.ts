@@ -425,6 +425,23 @@ describe('live chat with Jarvis', () => {
     ])
   })
 
+  it('passes on where a message sent mid-reply went (steered into the running turn, or queued after it)', async () => {
+    const body = [
+      '{"type":"turn","id":9}', '{"type":"steered","into":7,"as":"steered"}', '{"type":"steered","into":0,"as":"stopped"}',
+      '{"type":"steered","into":7,"as":"bogus"}', '{"type":"queued","after":7}', '{"type":"queued","after":"x"}', '{"type":"done"}',
+    ].join('\n') + '\n'
+    const fetch = vi.fn(async () => new Response(body))
+    const events: unknown[] = []
+    await createLiveSource(config, { fetch, execFile: vi.fn(), statfs: vi.fn(), restartWaitMs: 0 }).chat('dim it', { login: 'dylan@example.com' }, (e: unknown) => events.push(e))
+    expect(events).toEqual([
+      { type: 'turn', id: 9 },
+      { type: 'steered', into: 7, as: 'steered' },
+      { type: 'steered', into: null, as: 'stopped' },
+      { type: 'queued', after: 7 },
+      { type: 'done', ok: true },
+    ])
+  })
+
   it('says Jarvis is restarting in plain words, and sends a chat message once more when he was', async () => {
     expect(jarvisSaid(502)).toBe('Jarvis is restarting. Try again in a moment.')
     expect(jarvisSaid(500)).toBe('Jarvis answered 500')

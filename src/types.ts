@@ -548,6 +548,16 @@ export type ChatEvent =
   | { type: 'turn'; id: number }
   /** A meal photo that looks like one already logged; answered with POST /api/jarvis/chat/meal (the apps show the choices as buttons). */
   | { type: 'meal_question'; key: string; choices: string[] }
+  /**
+   * A message sent while he was still answering (Dylan, 2026-11-21): `steered` = taken into the
+   * running reply (`into` = its turn id), which keeps coming on the first message's stream;
+   * `stopped` = it only said stop, so that reply ends; `approval` = it answered a waiting approval.
+   */
+  | { type: 'steered'; into: number | null; as: SteerKind }
+  /** Too late to steer: this message gets its own reply on this stream once the one running (`after`) ends. */
+  | { type: 'queued'; after: number }
+/** How a message sent mid-reply was taken. */
+export type SteerKind = 'steered' | 'stopped' | 'approval'
 /** One saved line of the web chat. model: who wrote one of Jarvis's lines, when known. */
 /** `images` = how many photos went with the message (the bytes aren't kept in the history). */
 /** One line of the chat. `id` is Jarvis's number for it; `model` is who wrote it, or "notice:reminder" for a message he sent unasked, and then `writer` is the model that wrote that message (none for a plain reminder). */
