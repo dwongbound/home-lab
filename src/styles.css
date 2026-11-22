@@ -337,6 +337,24 @@ a.cloud__title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jobs__heading { margin: 16px 0 6px; font-size: 13px; font-weight: 600; color: var(--frost-dim); }
 .jobs__plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
 .jobs__why { color: var(--frost-faint); }
+.jobs__chip { margin: 0; flex: none; }
+
+/* ---------- Graphics card pie ---------- */
+.gpu__body { display: grid; grid-template-columns: minmax(120px, 170px) 1fr; gap: clamp(14px, 3vw, 26px); align-items: center; }
+.gpu__chart { position: relative; aspect-ratio: 1; }
+/* Slices start at the top and run clockwise. */
+.gpu__ring { width: 100%; height: 100%; transform: rotate(-90deg); display: block; }
+.gpu__centre { position: absolute; inset: 0; margin: 0; display: grid; place-content: center; text-align: center; }
+.gpu__used { font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.gpu__of { font-size: 12.5px; color: var(--frost-faint); }
+.gpu__legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.gpu__row { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; }
+.gpu__dot { width: 12px; height: 12px; border-radius: 50%; }
+.gpu__who { display: grid; min-width: 0; }
+.gpu__name { font-weight: 600; font-size: 14.5px; }
+.gpu__role { font-size: 12.5px; color: var(--frost-dim); }
+.gpu__mb { font-variant-numeric: tabular-nums; color: var(--frost-dim); font-size: 14px; }
+@media (max-width: 420px) { .gpu__body { grid-template-columns: 1fr; } .gpu__chart { width: min(170px, 60%); justify-self: center; } }
 
 /* ---------- Model ---------- */
 .model { display: grid; align-content: start; gap: 16px; }
@@ -594,6 +612,8 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .bgtasks__item[data-state='queued'] .bgtasks__ring { border-style: dashed; border-color: rgba(255,255,255,.3); }
 .bgtasks__label { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-wrap: pretty; }
 .bgtasks__queued { grid-column: 2; color: var(--frost-dim); font-size: .85em; }
+.bgtasks__model { grid-column: 2; margin: 2px 0 0; }
+.bgtasks__step { grid-column: 2; color: var(--frost-dim); font-size: .85em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* "Jarvis" sits above the orb on /talk. */
 /* Kept for screen readers, hidden from view. */
 .chat__status[data-quiet] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -644,6 +664,7 @@ html:has(.dialog--chat[data-page]) { scrollbar-gutter: auto; }
 .chat__model { justify-self: start; display: inline-block; margin-bottom: -4px; padding: 2px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5; letter-spacing: .02em; color: #ffd3a8; background: rgba(255, 150, 60, .22); border: 1px solid rgba(255, 170, 90, .45); }
 .chat__model[data-model='local'] { color: #bfe0ff; background: rgba(80, 150, 255, .22); border-color: rgba(110, 170, 255, .45); }
 /* A message he sent unasked (a reminder, a Lookout ping): a quiet word, no model colour. */
+.chat__source { color: #c9d2e0; opacity: .8; }
 .chat__model[data-model='notice'] { color: #c9d2e0; background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .22); }
 .chat__caret { display: inline-block; width: .6em; height: 1.1em; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--glacier); }
 /* Jarvis typing: three dots in a small bubble, plus what he's looking up. Still dots without motion. */
@@ -680,7 +701,11 @@ html[data-modal] { overflow: hidden; }
 .approval__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .approval__hint { color: var(--frost-dim); font-size: 13.5px; }
 .approval__error { color: #ffc2c8; font-size: 13.5px; }
-.chat__q--heard { opacity: .6; border: 1px dashed var(--glass-edge); background: rgba(255,255,255,.06); }
+.chat__q--heard { border: 1px dashed var(--glass-edge); background: rgba(255,255,255,.06); }
+/* The last words he's still unsure of; the settled ones before them are solid and never change. */
+.chat__tentative { opacity: .55; }
+/* One live word: inline-block so its fade-in mask (motion block) covers just that word. */
+.chat__word { display: inline-block; }
 /* Still your turn: he went back to listening for the rest of this sentence, so the bubble stays open. */
 .chat__q--open { border: 1px dashed var(--glass-edge); }
 /* Listening: the orb goes a touch greener so it's clear it's your turn. */
@@ -712,20 +737,12 @@ html[data-modal] { overflow: hidden; }
 .spinner__ring { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.2); border-top-color: var(--frost); }
 .state { border-radius: var(--r-panel); display: grid; gap: 12px; justify-items: start; max-width: 560px; }
 .state p { color: var(--frost-dim); }
-.state--loading { grid-column: 1 / -1; grid-row: 1 / -1; min-height: calc(100dvh - 160px); place-items: center; max-width: none; justify-items: center; }
 
 /* ---------- The first-load loader (ThinkingLoader) ---------- */
-.thinking { display: grid; justify-items: center; gap: 34px; }
-.thinking__orb { position: relative; width: 168px; height: 168px; display: grid; place-items: center; }
-.thinking__orb > * { position: absolute; border-radius: 50%; }
-.thinking__halo { inset: -30px; background: radial-gradient(circle, rgba(142, 197, 234, .38), rgba(142, 197, 234, 0) 62%); }
-.thinking__core { width: 64px; height: 64px; background: radial-gradient(circle at 34% 32%, #fff, #cfe8f8 18%, var(--glacier) 52%, #3f78a3 100%); box-shadow: 0 0 34px rgba(142, 197, 234, .75), 0 0 90px rgba(142, 197, 234, .35), inset -6px -8px 18px rgba(20, 50, 80, .45); }
-/* Three orbits on different tilts; each carries one spark on its rim. */
-.thinking__orbit { inset: 0; border: 1px solid rgba(185, 220, 243, .28); }
-.thinking__orbit--a { transform: rotateX(68deg) rotateZ(0deg); }
-.thinking__orbit--b { inset: 14px; transform: rotateY(64deg) rotateZ(30deg); border-color: rgba(185, 220, 243, .2); }
-.thinking__orbit--c { inset: 28px; transform: rotateX(58deg) rotateY(40deg); border-color: rgba(185, 220, 243, .16); }
-.thinking__spark { position: absolute; top: -3px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 2px rgba(185, 220, 243, .9); }
+/* Over the page, in the middle of the screen, and never in the way of a tap. */
+.thinking { position: fixed; inset: 0; z-index: 5; display: grid; place-content: center; justify-items: center; gap: 12px; pointer-events: none; }
+/* Room for the constellation, which reaches well past the orb's core. */
+.thinking__orb { display: grid; place-items: center; padding: clamp(30px, 7vmin, 56px); }
 .thinking__label { font-family: var(--font-display); font-size: clamp(20px, 2.4vw, 26px); font-weight: 500; letter-spacing: -0.01em; color: var(--frost); }
 .thinking__dots { margin-left: 2px; }
 /* Their own colour: inline-blocks aren't painted by the label's shimmer (background-clip: text). */
@@ -796,6 +813,20 @@ html[data-modal] { overflow: hidden; }
 
 /* ---------- Motion: only when wanted ---------- */
 @media (prefers-reduced-motion: no-preference) {
+  /* A live word fades in left to right as Jarvis hears it, like Claude's
+     dictation (Dylan, 2026-11-21): a soft edge sweeps across the word once,
+     when its span first appears. Mask only, on a small span, so it stays cheap. */
+  .chat__word {
+    -webkit-mask-image: linear-gradient(90deg, #000 40%, transparent 60%);
+    mask-image: linear-gradient(90deg, #000 40%, transparent 60%);
+    -webkit-mask-size: 300% 100%;
+    mask-size: 300% 100%;
+    animation: word-in 320ms ease-out both;
+  }
+  @keyframes word-in {
+    from { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+    to { -webkit-mask-position: 0 0; mask-position: 0 0; }
+  }
   /* The thermostat's dot breathes while it heats or cools. Opacity only, on one small dot, so it stays cheap inside glass. */
   .thermo[data-activity='heating'] .thermo__dot, .thermo[data-activity='cooling'] .thermo__dot { animation: thermo-breathe 2.4s ease-in-out infinite; }
   @keyframes thermo-breathe { 50% { opacity: .45; } }
@@ -816,18 +847,17 @@ html[data-modal] { overflow: hidden; }
   .spinner__ring { animation: spin .9s linear infinite; }
   .bgtasks__item[data-state='running'] .bgtasks__ring { animation: spin .9s linear infinite; }
 
-  /* The first-load loader: the orb breathes, its halo pulses a beat
-     behind, the orbits turn at different speeds, and the dots bounce. */
-  .thinking__core { animation: think-breathe 2.4s ease-in-out infinite; }
-  .thinking__halo { animation: think-halo 2.4s ease-in-out infinite; }
-  .thinking__orbit--a { animation: think-orbit-a 3.2s linear infinite; }
-  .thinking__orbit--b { animation: think-orbit-b 4.6s linear infinite; }
-  .thinking__orbit--c { animation: think-orbit-c 2.6s linear infinite reverse; }
+  /* The first-load loader: the orb turns by itself (JarvisOrb), the words
+     shimmer and the dots bounce. It eases in, and when the page is ready it
+     leaves: words first, then the orb lifts, shrinks and fades. */
   .thinking__label { background: linear-gradient(90deg, var(--frost-dim) 0%, #fff 45%, var(--frost-dim) 90%) 0 0 / 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: think-shimmer 2.8s linear infinite; }
   .thinking__dots span { animation: think-dot 1.3s ease-in-out infinite; }
   .thinking__dots span:nth-child(2) { animation-delay: .16s; }
   .thinking__dots span:nth-child(3) { animation-delay: .32s; }
-  .thinking { animation: rise .5s ease both; }
+  .thinking { animation: loader-in .7s cubic-bezier(.2, .8, .2, 1) both; }
+  .thinking[data-leaving] { animation: none; }
+  .thinking[data-leaving] .thinking__orb { animation: loader-orb-out .7s cubic-bezier(.5, 0, .2, 1) both; will-change: transform, opacity; }
+  .thinking[data-leaving] .thinking__label { animation: loader-label-out .25s ease both; }
   /* Jarvis's orb: still when idle; the glass core breathes while he
      thinks and the amber sweep turns while he works. The constellation
      turns on its canvases (JarvisOrb.tsx), which stop when idle; the core's
@@ -915,11 +945,9 @@ html[data-modal] { overflow: hidden; }
 @keyframes orb-halo { 0%, 100% { opacity: .5; transform: scale(.92); } 55% { opacity: .95; transform: scale(1.08); } }
 @keyframes orb-scan { to { transform: rotate(360deg); } }
 @keyframes caret { from { opacity: 1; } to { opacity: 0; } }
-@keyframes think-breathe { 0%, 100% { transform: scale(.92); } 50% { transform: scale(1.06); } }
-@keyframes think-halo { 0%, 100% { opacity: .55; transform: scale(.9); } 55% { opacity: 1; transform: scale(1.08); } }
-@keyframes think-orbit-a { from { transform: rotateX(68deg) rotateZ(0deg); } to { transform: rotateX(68deg) rotateZ(360deg); } }
-@keyframes think-orbit-b { from { transform: rotateY(64deg) rotateZ(30deg); } to { transform: rotateY(64deg) rotateZ(390deg); } }
-@keyframes think-orbit-c { from { transform: rotateX(58deg) rotateY(40deg) rotateZ(0deg); } to { transform: rotateX(58deg) rotateY(40deg) rotateZ(360deg); } }
+@keyframes loader-in { from { opacity: 0; transform: scale(.82); } }
+@keyframes loader-orb-out { to { opacity: 0; transform: translateY(-24vh) scale(.28); } }
+@keyframes loader-label-out { to { opacity: 0; transform: translateY(8px); } }
 @keyframes think-shimmer { from { background-position: 110% 0; } to { background-position: -110% 0; } }
 @keyframes think-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-6px); opacity: 1; } }
 @keyframes enter-glass-from-right { from { translate: 56px 0; } }
@@ -1121,15 +1149,36 @@ html[data-modal] { overflow: hidden; }
 .playbooks__when { font-size: 14px; color: var(--frost-dim); margin-top: 2px; }
 .playbooks__steps { font-size: 13.5px; color: var(--frost-faint); margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .playbooks__row[data-off] .playbooks__text { opacity: .55; }
+/* The report viewer: a big fixed box, the report scrolling inside its frame. */
+.dialog.dialog--report { width: min(960px, calc(100vw - 32px)); height: calc(var(--safe-h) - 32px); grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; padding: 18px; }
+.report__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report__frame-box { position: relative; min-height: 0; border-radius: 12px; overflow: hidden; background: #fff; }
+.report__frame { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.report__wait { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(22, 33, 44, 0.72); cursor: progress; }
+
 /* Reports (Services): each row is the report's link and words, then Keep and Delete. */
 .reports__item { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--hairline, rgba(255, 255, 255, 0.12)); }
 .reports__item:first-child { border-top: 0; }
 .reports__text { min-width: 0; }
 .reports__title { display: inline-block; min-height: 44px; padding: 10px 0; color: var(--frost); font: 600 16px var(--font-body); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .reports__controls { display: flex; align-items: center; gap: 8px; flex: none; }
-.reports__keep { margin-top: 0; }
-.reports__keep:disabled { opacity: .5; cursor: default; }
-.reports__block { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(22, 33, 44, 0.72); border-radius: 12px; cursor: progress; }
+/* A report's description stays to two lines, so a long one can't crowd the row (Dylan, 2026-11-19). */
+.reports__summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+/* How long a report is kept (ReportKeep): a plain dropdown shaped like the buttons beside it. */
+.keep { position: relative; display: inline-flex; flex-direction: column; }
+.keep__select { height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,.1); color: var(--frost); font: 600 14.5px var(--font-body); cursor: pointer; }
+.keep__select:disabled { opacity: .5; cursor: default; }
+.keep__select option { color: #111; }
+.keep__block { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(22, 33, 44, 0.9); border-radius: 999px; cursor: progress; font-size: 13px; white-space: nowrap; }
+.keep__block .spinner { gap: 8px; }
+.keep__block .spinner__ring { width: 16px; height: 16px; }
+.keep__error { color: #ffc2c8; font-size: 13px; }
+.share { display: inline-flex; align-items: center; gap: 8px; }
+.share__status { color: var(--frost-dim); font-size: 13px; white-space: nowrap; }
+.reports__controls .icon-btn, .report__keep .icon-btn { width: 44px; height: 44px; }
+/* Under an open report: keep time and Share at the left, Close at the right. */
+.report__actions { justify-content: space-between; align-items: center; }
+.report__keep { display: flex; align-items: center; gap: 8px; min-width: 0; }
 @media (max-width: 640px) {
   .reports__item { flex-direction: column; align-items: stretch; }
 }
@@ -1146,7 +1195,13 @@ html[data-modal] { overflow: hidden; }
 .field__box:focus, .field__box:focus-visible { outline: none; border-color: rgba(255,255,255,.4); }
 .field__box--tall { min-height: 88px; padding: 10px 14px; resize: none; }
 select.field__box option { color: #111; }
-.playbook__heading { font-size: 15px; margin-top: 6px; }
+.playbook__heading { font-size: 16px; margin-top: 10px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.playbook__more .playbook__heading { border-top: 0; padding-top: 0; font-size: 15px; }
+.playbook__optional { font-size: 12.5px; font-weight: 400; color: var(--frost-faint); }
+.playbook__describe { display: grid; gap: 8px; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); }
+.playbook__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.playbook__assumed { margin: 0; padding-left: 18px; font-size: 13px; color: var(--frost-dim); display: grid; gap: 4px; }
+.playbook__chips .segmented__opt { min-height: 44px; padding: 0 14px; }
 .playbook__hint { font-size: 13px; color: var(--frost-faint); }
 .playbook__days { display: flex; flex-wrap: wrap; gap: 6px; }
 .playbook__days .segmented__opt[aria-pressed='true'] { background: var(--frost); color: var(--basalt); border-color: transparent; }
@@ -1157,8 +1212,10 @@ select.field__box option { color: #111; }
 .playbook__kind { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; }
 .playbook__mini { width: 44px; padding: 0; flex: none; }
 .playbook__fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
-.playbook__fields--inline { grid-template-columns: 110px auto; align-items: center; justify-content: start; }
 .playbook__confirm { margin-top: 0; }
+/* Words, addresses and switches take the whole row; dropdowns and numbers sit side by side. */
+.playbook__wide { grid-column: 1 / -1; }
+.playbook__number { display: grid; grid-template-columns: 110px auto; align-items: center; gap: 8px; }
 .playbook__delete { margin-right: auto; color: #ffc2c8; }
 @media (max-width: 640px) {
   .playbooks__row { grid-template-columns: minmax(0, 1fr); }

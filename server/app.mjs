@@ -5,12 +5,16 @@
 //   POST /api/actions/ollama-load   load it back
 //   POST /api/jarvis/ask            {"text": "..."} -> Jarvis's reply
 //   POST /api/jarvis/chat           {"text": "..."} -> Jarvis's reply, streamed as NDJSON
-//   GET  /api/jarvis/history        the web chat so far
+//   GET  /api/jarvis/history        the web chat, a page at a time (?limit=&before=&around=)
 //   GET  /api/jarvis/memory         what Jarvis remembers ({memory})
 //   GET  /api/jarvis/memory/search?q=  past conversations matching q ({hits})
 //   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
+//   GET  /api/jarvis/nutrition/day?date=    one day of the meal log, with what was eaten ({day})
+//   GET  /api/jarvis/nutrition/week?start=  seven days of calories against the goal ({week})
+//   GET  /api/jarvis/health/sleep?night= | ?days=  nights of sleep with their score ({nights})
+//   POST /api/jarvis/health/sleep    one night from the iPhone app's Health reading
 //   GET  /api/jarvis/playbooks       Jarvis's playbooks and what their steps can use ({book})
-//   POST /api/jarvis/playbooks       {"op": "save", "playbook"} | {"op": "delete" | "run", "id"}
+//   POST /api/jarvis/playbooks       {"op": "save", "playbook"} | {"op": "delete" | "run", "id"} | {"op": "draft", "text"}
 //   GET  /api/jarvis/voice          how Jarvis sounds + every voice; POST saves {voice, speed, blend}
 //   GET  /api/jarvis/voice/sample   a WAV of ?voice=&speed=&voice2=&mix=
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
@@ -18,7 +22,10 @@
 //   (chat messages may add "images": up to 4 photos as {"media_type", "data": base64})
 //   POST /api/jarvis/chat/meal     {"key", "choice"} -> same | leftovers | new, for a meal photo he may have logged already
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
+//   POST /api/jarvis/jobs/stop     {"id"} -> stop one piece of background work and clean up after it
 //   POST /api/jarvis/notices/clear {"ids"} or {"all": true} -> clears notifications on every device
+//   POST /api/jarvis/notices/keep {"turnId"} or {"id"} -> keeps a chat message or a notice until he lets it go
+//   POST /api/jarvis/notices/unkeep {"id"} -> lets a kept one go
 //   POST /api/jarvis/push/register {"token", "platform", "environment", "bundle"} -> an app asking for pushes
 //   POST /api/jarvis/feedback      {question, answer, note} -> "That was wrong" on one of his replies
 //   POST /api/jarvis/sleep          {"asleep": true|false, "source"?} -> tells Jarvis you've gone to bed, or are up
@@ -30,11 +37,18 @@
 // The production server (server/index.mjs) and the Vite dev server
 // (vite.config.ts) both mount this same handler, so dev and prod can't drift.
 import { createMockSource } from './sources/mock.mjs'
+import { dayCount, isDay, isMealId } from './sources/nutrition.mjs'
+import { cleanSleepNight, sleepDayCount } from './sources/sleep.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
-import { parseClear, parsePushDevice } from './sources/notices.mjs'
+import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
+import { parseHistoryPage } from './sources/history.mjs'
+import { isJobId } from './sources/jobs.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
-import { REPORT_CSP, isReportId, missingReportPage } from './sources/reports.mjs'
+
+// The most a "describe it" box may send Jarvis to turn into a playbook.
+const DRAFT_TEXT_MAX = 1000
+import { REPORT_CSP, isReportId, parseKeepChoice, missingReportPage } from './sources/reports.mjs'
 
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
@@ -42,6 +56,8 @@ const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
 const REPORT_PATH = /^\/reports\/([^/]+)$/
 const MAX_BODY_BYTES = 8 * 1024
 // A chat message may carry photos (the apps shrink them first), so it gets more room.
+// A night of sleep can carry 500 stages with two times each.
+const MAX_SLEEP_BYTES = 96 * 1024
 const MAX_CHAT_BYTES = 19 * 1024 * 1024
 const MAX_CHAT_IMAGES = 4
 const MAX_IMAGE_CHARS = 4.5 * 1024 * 1024
@@ -175,9 +191,18 @@ export function createApi(source) {
     res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' })
     // If the phone leaves mid-reply, keep reading Jarvis's answer to the end
     // (he saves it to the chat history) and just stop writing to the page.
+    // Jarvis is told the asker has gone, so he sends the reply as a push instead.
+    let turnId = null
+    let finished = false
+    res.on('close', () => {
+      if (!finished) void source.chatLeft(turnId, { login })
+    })
     await source.chat(text, caller, (event) => {
+      if (event.type === 'turn') turnId = event.id
+      if (event.type === 'done' || event.type === 'error') finished = true
       if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`)
     })
+    finished = true
     res.end()
   }
 
@@ -195,10 +220,18 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
-  /** The web chat so far, so the page can show it after a reload. */
+  /**
+   * The web chat, newest turns first time round (so a reload keeps the
+   * conversation), then a page at a time: ?before=<turn id> for the turns just
+   * older, ?around=<turn id> for a window centred on one, ?limit= up to 100.
+   */
   async function handleHistory(req, res) {
+    const page = parseHistoryPage(new URL(req.url ?? '/', 'http://localhost').searchParams)
+    if (!page) {
+      return sendJson(res, 400, { ok: false, message: 'Send limit (1 to 100) and at most one of before or around, each a turn id' })
+    }
     const login = req.headers['tailscale-user-login'] ?? ''
-    return sendJson(res, 200, { turns: await source.history({ login }) })
+    return sendJson(res, 200, await source.history({ login }, page))
   }
 
   /** What Jarvis remembers. */
@@ -211,6 +244,68 @@ export function createApi(source) {
   async function handleMemorySearch(req, res, query) {
     const login = req.headers['tailscale-user-login'] ?? ''
     return sendJson(res, 200, { hits: await source.searchMemory(query, { login }) })
+  }
+
+  /**
+   * One day of the meal log (`which` = 'day') or a week of totals ('week'),
+   * for the apps' Diet screen. `value` is the date or week start asked for;
+   * none means today / this week, anything that isn't a day is refused.
+   */
+  async function handleNutrition(req, res, which, value) {
+    if (value !== '' && !isDay(value)) {
+      return sendJson(res, 400, { ok: false, message: 'Send a day as YYYY-MM-DD' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    if (which === 'week') return sendJson(res, 200, { week: await source.nutritionWeek(value, { login }) })
+    return sendJson(res, 200, { day: await source.nutritionDay(value, { login }) })
+  }
+
+  /** Nights of sleep with their score, newest first: one night with ?night=, or the last ?days= (7 when neither). */
+  async function handleSleepNights(req, res, night, days) {
+    const howMany = sleepDayCount(days)
+    if ((night !== '' && !isDay(night)) || howMany === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send night as YYYY-MM-DD or days as a number' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { nights: await source.sleepNights({ night, days: howMany }, { login }) })
+  }
+
+  /** Stores one night of sleep read from Health by the iPhone app; sending the same night again replaces it. */
+  async function handleSleepSave(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const checked = cleanSleepNight(await readJson(req, MAX_SLEEP_BYTES))
+    if (checked.problem) return sendJson(res, 400, { ok: false, message: checked.problem })
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.saveSleepNight(checked.night, { login })
+    let status = 502
+    if (result.ok) status = 200
+    if (result.refused) status = 400
+    return sendJson(res, status, { ok: result.ok, message: result.message, night: result.night ?? null })
+  }
+
+  /** A run of days of the meal log ending at `end` ('' = today), newest first, for the Diet screen's endless list. */
+  async function handleNutritionDays(req, res, end, count) {
+    const howMany = dayCount(count)
+    if ((end !== '' && !isDay(end)) || howMany === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send end as YYYY-MM-DD and count as a number' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const run = await source.nutritionDays(end, howMany, { login })
+    return sendJson(res, 200, { days: run?.days ?? null, earliest: run?.earliest ?? null })
+  }
+
+  /** One meal's photo, or its small thumbnail with ?size=thumb; only for the signed-in caller, kept in his device's cache for a day. */
+  async function handleMealPhoto(req, res, id, size) {
+    if (!isMealId(id) || (size !== null && size !== 'thumb')) {
+      return sendJson(res, 400, { ok: false, message: 'Send a meal id, and size=thumb for the small one' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const photo = await source.mealPhoto(id, size === 'thumb', { login })
+    if (!photo.ok) return sendJson(res, photo.gone ? 404 : 502, { ok: false, message: photo.message })
+    res.writeHead(200, { 'content-type': photo.type, 'content-length': photo.bytes.byteLength, 'cache-control': 'private, max-age=86400', 'x-content-type-options': 'nosniff' })
+    res.end(Buffer.from(photo.bytes.buffer, photo.bytes.byteOffset, photo.bytes.byteLength))
   }
 
   /** Adds or forgets one fact. */
@@ -237,7 +332,7 @@ export function createApi(source) {
     return sendJson(res, 200, { book: await source.playbooks({ login }) })
   }
 
-  /** Saves, deletes or runs one playbook. */
+  /** Saves, deletes or runs one playbook, or has Jarvis draft one from a description. */
   async function handlePlaybookChange(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
       return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
@@ -245,9 +340,16 @@ export function createApi(source) {
     const body = await readJson(req)
     const login = req.headers['tailscale-user-login'] ?? ''
     if (body?.op === 'save') {
-      const checked = cleanPlaybook(body.playbook)
+      const checked = cleanPlaybook(body.playbook, await source.stepTypes())
       if (checked.problem) return sendJson(res, 400, { ok: false, message: checked.problem })
       const result = await source.changePlaybook({ op: 'save', playbook: checked.playbook }, { login })
+      return sendJson(res, result.ok ? 200 : 502, result)
+    }
+    if (body?.op === 'draft') {
+      if (typeof body.text !== 'string' || body.text.trim() === '') {
+        return sendJson(res, 400, { ok: false, message: 'Say what the playbook should do' })
+      }
+      const result = await source.draftPlaybook(body.text.trim().slice(0, DRAFT_TEXT_MAX), { login })
       return sendJson(res, result.ok ? 200 : 502, result)
     }
     const known = body?.op === 'delete' || body?.op === 'run'
@@ -258,20 +360,21 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 502, result)
   }
 
-  /** Keeps a report past its 30 days (or lets it go again), or deletes it. */
+  /** Sets how long a report is kept (2 weeks, 1 month, 3 months, or for good), or deletes it. */
   async function handleReportChange(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
       return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
     }
     const body = await readJson(req)
-    const keep = body?.op === 'keep' && typeof body.keep === 'boolean'
-    const known = keep || body?.op === 'delete'
+    let choice = null
+    if (body?.op === 'keep') choice = parseKeepChoice(body)
+    const known = choice !== null || body?.op === 'delete'
     if (!known || !isReportId(body.id)) {
-      return sendJson(res, 400, { ok: false, message: 'Send {"op": "keep", "id": "...", "keep": true | false} or {"op": "delete", "id": "..."}' })
+      return sendJson(res, 400, { ok: false, message: 'Send {"op": "keep", "id": "...", "days": 14 | 30 | 90} or "keep": true | false, or {"op": "delete", "id": "..."}' })
     }
     const login = req.headers['tailscale-user-login'] ?? ''
     let change = { op: 'delete', id: body.id }
-    if (keep) change = { op: 'keep', id: body.id, keep: body.keep }
+    if (choice !== null) change = { op: 'keep', id: body.id, ...choice }
     const result = await source.changeReport(change, { login })
     return sendJson(res, result.ok ? 200 : 502, result)
   }
@@ -356,6 +459,22 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
+  /** Stops one piece of background work Jarvis is running or has queued. */
+  async function handleStopJob(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const body = await readJson(req)
+    if (!isJobId(body?.id)) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"id": "r1"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.stopJob(body.id, { login })
+    // 410 = it already finished (or was stopped elsewhere): drop its row.
+    if (result.gone) return sendJson(res, 410, result)
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
   /** Hide on an offer card: Jarvis drops it and won't offer it again soon. */
   async function handleHideOffer(req, res) {
     if (req.headers['x-home-lab'] !== '1') {
@@ -381,6 +500,34 @@ export function createApi(source) {
     }
     const login = req.headers['tailscale-user-login'] ?? ''
     const result = await source.clearNotices(which, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
+  /** Keep on a chat message or a notice: it stays on the list, on every device, until he lets it go. */
+  async function handleKeepNotice(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const what = parseKeep(await readJson(req))
+    if (what === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"turnId": 12} or {"id": "n1"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.keepNotice(what, { login })
+    return sendJson(res, result.ok ? 200 : 409, result)
+  }
+
+  /** Letting a kept one go: it leaves the list on every device. */
+  async function handleUnkeepNotice(req, res) {
+    if (req.headers['x-home-lab'] !== '1') {
+      return sendJson(res, 403, { ok: false, message: 'Missing x-home-lab header' })
+    }
+    const id = parseUnkeep(await readJson(req))
+    if (id === null) {
+      return sendJson(res, 400, { ok: false, message: 'Send JSON like {"id": "n1"}' })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const result = await source.unkeepNotice(id, { login })
     return sendJson(res, result.ok ? 200 : 409, result)
   }
 
@@ -514,6 +661,29 @@ export function createApi(source) {
         const query = new URL(req.url ?? '/', 'http://localhost').searchParams.get('q') ?? ''
         return await handleMemorySearch(req, res, query.slice(0, 200))
       }
+      if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/day') {
+        const date = new URL(req.url ?? '/', 'http://localhost').searchParams.get('date') ?? ''
+        return await handleNutrition(req, res, 'day', date)
+      }
+      if (req.method === 'GET' && pathname.startsWith('/api/jarvis/nutrition/photo/')) {
+        const id = pathname.slice('/api/jarvis/nutrition/photo/'.length)
+        return await handleMealPhoto(req, res, id, new URL(req.url ?? '/', 'http://localhost').searchParams.get('size'))
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/days') {
+        const params = new URL(req.url ?? '/', 'http://localhost').searchParams
+        return await handleNutritionDays(req, res, params.get('end') ?? '', params.get('count'))
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/nutrition/week') {
+        const start = new URL(req.url ?? '/', 'http://localhost').searchParams.get('start') ?? ''
+        return await handleNutrition(req, res, 'week', start)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/health/sleep') {
+        const params = new URL(req.url ?? '/', 'http://localhost').searchParams
+        return await handleSleepNights(req, res, params.get('night') ?? '', params.get('days'))
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/health/sleep') {
+        return await handleSleepSave(req, res)
+      }
       if (req.method === 'POST' && pathname === '/api/jarvis/memory') {
         return await handleMemoryChange(req, res)
       }
@@ -538,6 +708,9 @@ export function createApi(source) {
       if (req.method === 'POST' && pathname === '/api/jarvis/approve') {
         return await handleApprove(req, res)
       }
+      if (req.method === 'POST' && pathname === '/api/jarvis/jobs/stop') {
+        return await handleStopJob(req, res)
+      }
       if (req.method === 'POST' && pathname === '/api/jarvis/offers/hide') {
         return await handleHideOffer(req, res)
       }
@@ -546,6 +719,12 @@ export function createApi(source) {
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/notices/clear') {
         return await handleClearNotices(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/notices/keep') {
+        return await handleKeepNotice(req, res)
+      }
+      if (req.method === 'POST' && pathname === '/api/jarvis/notices/unkeep') {
+        return await handleUnkeepNotice(req, res)
       }
       if (req.method === 'POST' && pathname === '/api/jarvis/push/register') {
         return await handleRegisterPush(req, res)

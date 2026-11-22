@@ -33,6 +33,23 @@ final class OrbitTests: XCTestCase {
         XCTAssertEqual(Orbit.dotScale(count: 5), 1)
     }
 
+    func testEveryDotStaysInsideTheOrbsFrame() {
+        let side = 300.0
+        // The working shell, swollen by a voice: 0.42 of the side, plus 11%.
+        let scale = Orbit.scale(shellRadius: side * 0.42 * 1.11, side: side)
+        for i in 0..<40 {
+            let path = Orbit.path(for: "notice-\(i)")
+            XCTAssertLessThanOrEqual(path.radius, Orbit.widest)
+            for t in stride(from: 0.0, to: 30, by: 0.7) {
+                let p = Orbit.position(path, t: t)
+                XCTAssertLessThanOrEqual(abs(p.x * scale), side * Orbit.reach + 0.0001)
+                XCTAssertLessThanOrEqual(abs(p.y * scale), side * Orbit.reach + 0.0001)
+            }
+        }
+        // A small shell is left as it is.
+        XCTAssertEqual(Orbit.scale(shellRadius: 90, side: side), 90)
+    }
+
     func testPathsAreStableAndDiffer() {
         XCTAssertEqual(Orbit.path(for: "task-j1"), Orbit.path(for: "task-j1"))
         XCTAssertNotEqual(Orbit.path(for: "task-j1"), Orbit.path(for: "notice-n"))

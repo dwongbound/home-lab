@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { Fragment, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { answerApproval, loadApprovals, loadChatHistory, sendFeedback, streamJarvis, warmJarvis, type ApprovalEvent, type ChatResult } from '../api/client'
 import { CATCH_UP_EVERY_MS, CATCH_UP_MS, findAnswer } from '../lib/chatCatchUp'
-import { canJoin, joinHeard } from '../lib/heard'
-import { modelLabel, modelTone } from '../lib/model'
+import { canJoin, heardWords, joinHeard, settledQuestion } from '../lib/heard'
+import { addFollowUp, dropFollowUp } from '../lib/steer'
+import { chipFor } from '../lib/model'
 import { Markdown } from './Markdown'
 import type { Approval, ApprovalBy, ApprovalOutcome, ChatTurn, JarvisOffer, RunningTask } from '../types'
 import { OfferCards } from './OfferCards'
@@ -22,8 +23,10 @@ import { Spinner } from './Spinner'
 // over him and he stops). The conversation outlives closing the sheet and
 // changing pages, for this visit.
 
+/** writer: for a message he sent unasked (model "notice:lookout"), the model that wrote it, when Jarvis says. */
 /** model: who wrote the answer (a Claude model id like "claude-opus-5-5", plain "claude" from an older Jarvis, or "ornith" when he fell back to the local model), once Jarvis has said. */
-interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[]; flagged?: boolean; model?: string }
+/** followUps: messages he sent while this one was still being answered, shown under it (src/lib/steer.ts). */
+interface Turn { id: number; question: string; answer: string; ok: boolean; done: boolean; approvals?: ApprovalView[]; flagged?: boolean; model?: string; writer?: string; followUps?: string[] }
 /** An approval as the chat shows it: waiting, being sent, or settled (and how). */
 interface ApprovalView extends Approval {
   outcome?: ApprovalOutcome
@@ -110,6 +113,7 @@ function toTurns(lines: ChatTurn[]): Turn[] {
     } else if (turns.length > 0 && turns[turns.length - 1].answer === '') {
       turns[turns.length - 1].answer = line.text
       if (line.model) turns[turns.length - 1].model = line.model
+      if (line.writer) turns[turns.length - 1].writer = line.writer
     }
   }
   return turns
@@ -131,9 +135,19 @@ function showTyping(turn: Turn, latest: boolean, state: OrbState, stalled: boole
   return stalled
 }
 
-/** The small chip over a reply naming who wrote it: Claude, or the local model. */
-function ModelChip({ model }: { model: string }) {
-  return <span className="chat__model" data-model={modelTone(model)}>{modelLabel(model)}</span>
+/**
+ * The small chip over a reply naming who wrote it: Claude, or the local
+ * model. Over a message he sent unasked it also says, in grey, where the
+ * message came from ("Jarvis (CO) Lookout").
+ */
+function ModelChip({ model, writer }: { model: string; writer?: string }) {
+  const chip = chipFor(model, writer)
+  return (
+    <span className="chat__model" data-model={chip.tone}>
+      {chip.label}
+      {chip.source ? <span className="chat__source"> {chip.source}</span> : null}
+    </span>
+  )
 }
 
 /** Three dots in a reply bubble, like someone typing; label says what he's looking up, if anything. */
@@ -185,6 +199,10 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
   // /talk, paused but still on the line: Jarvis listens only for "Hey Jarvis" (Dylan, 2026-11-14).
   const [dozing, setDozing] = useState(false)
   const [heard, setHeard] = useState('')
+  // How many of those live words are settled (null: an older Jarvis, or the demo, doesn't say).
+  const [heardStable, setHeardStable] = useState<number | null>(null)
+  // The live words as last shown, for keeping them when the final says the same.
+  const shownHeard = useRef('')
   // Why Talk ended by itself (no microphone, the line dropped), shown in the status line.
   const [notice, setNotice] = useState('')
   // What Jarvis is off doing while the orb shows working ("Searching the web.").
@@ -200,6 +218,10 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
   const line = useRef<TalkLine | null>(null)
   // The turn the voice line is answering right now.
   const talkTurn = useRef(-1)
+  // The typed question being answered right now (-1 when none), which a message sent meanwhile steers.
+  const chatTurn = useRef(-1)
+  // Messages sent mid-reply whose own request hasn't ended yet, so the orb doesn't settle early.
+  const steering = useRef(0)
   const busy = state !== 'idle' || talkingOn
 
   /** Updates the turns here and in the copy that outlives this page. */
@@ -320,16 +342,74 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
   function send(e: FormEvent) {
     e.preventDefault()
     const question = text.trim()
-    if (!question || busy) return
+    if (!question || talkingOn) return
+    // Still answering a typed question: this one steers it (Dylan, 2026-11-21).
+    if (busy && chatTurn.current >= 0) {
+      setText('')
+      void steer(question)
+      return
+    }
+    if (busy) return
     setText('')
     setOpen(true)
     void ask(question)
+  }
+
+  /**
+   * A message sent while Jarvis is still answering. It shows at once under the
+   * question he's on, and he takes it into that reply. When it came too late
+   * for that ("queued", or an older Jarvis that just answers it), it moves out
+   * into a turn of its own, which gets its own reply on this request.
+   */
+  async function steer(question: string) {
+    const into = chatTurn.current
+    setTurns((t) => addFollowUp(t, into, question))
+    let ownId: number | null = null
+    /** Its own turn, made the first time something of its own arrives. */
+    const ownTurn = (): number => {
+      if (ownId !== null) return ownId
+      const id = savedTurns.length
+      ownId = id
+      setTurns((t) => [...dropFollowUp(t, into, question), { id, question, answer: '', ok: true, done: false }])
+      return id
+    }
+    steering.current += 1
+    let result: ChatResult
+    try {
+      result = await streamJarvis(
+        question,
+        (soFar, added) => {
+          const id = ownTurn()
+          setState('speaking')
+          pulse(Math.min(1, 0.45 + added.trim().length / 12))
+          setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer: soFar } : x)))
+        },
+        (event) => onApprovalEvent(ownId ?? into, event),
+        onWorking,
+        undefined,
+        (model) => {
+          const id = ownTurn()
+          setTurns((t) => t.map((x) => (x.id === id ? { ...x, model } : x)))
+        },
+        (how) => { if (how === 'queued') ownTurn() },
+      )
+    } catch (err) {
+      result = { ok: false, message: err instanceof Error ? err.message : 'The request failed' }
+    }
+    steering.current -= 1
+    // Taken into the running reply: nothing more to show. Otherwise its own turn ends here, or says why it failed.
+    if (ownId !== null || !result.ok) {
+      const id = ownTurn()
+      setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer: result.message, ok: result.ok, done: true } : x)))
+    }
+    if (chatTurn.current < 0 && steering.current === 0) setState('idle')
   }
 
   /** Asks one question and types out the reply. offerId: it's Start on one of his offer cards. */
   async function ask(question: string, offerId?: string) {
     setState('thinking')
     const id = savedTurns.length
+    chatTurn.current = id
     const askedAt = Date.now()
     setTurns((t) => [...t, { id, question, answer: '', ok: true, done: false }])
     let result: ChatResult
@@ -355,7 +435,9 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
     if (result.dropped) result = await catchUp(id, question, askedAt, result.message)
     const answer = result.message
     setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer, ok: result.ok, done: true } : x)))
-    setState('idle')
+    if (chatTurn.current === id) chatTurn.current = -1
+    // A message that queued behind this one still has its reply coming.
+    if (steering.current === 0) setState('idle')
   }
 
   /**
@@ -422,12 +504,16 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
         },
         // Your words as Whisper hears them, shown while you're still talking.
         // Carrying on past where he thought you'd finished, they update the bubble he was answering.
-        onHearing: (sofar, joined) => {
+        onHearing: (sofar, joined, stable) => {
           if (!talking.current) return
+          shownHeard.current = sofar
           if (canJoin(savedTurns, talkTurn.current, joined)) setTurns((t) => joinHeard(t, talkTurn.current, sofar))
-          else setHeard(sofar)
+          else { setHeard(sofar); setHeardStable(stable) }
         },
-        onHeard: (question, joined) => {
+        onHeard: (final, joined, same) => {
+          // Words that already say the same thing stay exactly as shown: no rewrite at the end.
+          const question = settledQuestion(shownHeard.current, final, same)
+          shownHeard.current = ''
           setHeard('')
           if (canJoin(savedTurns, talkTurn.current, joined)) {
             setTurns((t) => joinHeard(t, talkTurn.current, question))
@@ -503,6 +589,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
     setTalkingOn(false)
     setDozing(false)
     setHeard('')
+    setHeardStable(null)
     line.current?.close()
     line.current = null
     // The demo loop and ask() reset the state themselves; the voice line doesn't.
@@ -612,6 +699,7 @@ export function JarvisPanel({ live, page = false, tasks = [], offers = [] }: Pro
       tapToStart={tapToStart}
       onTapStart={tapStart}
       heard={heard}
+      heardStable={heardStable}
       notice={notice}
       onTalk={talkNow}
       onPause={pauseTalk}
@@ -693,6 +781,8 @@ interface SheetProps {
   onTapStart: () => void
   /** What's being heard right now, while listening. */
   heard: string
+  /** How many of its leading words are settled; null when Jarvis doesn't say. */
+  heardStable: number | null
   /** Why Talk ended by itself, if it did. */
   notice: string
   onTalk: () => void
@@ -717,11 +807,32 @@ interface SheetProps {
 }
 
 /**
+ * Your words while you're still talking: the settled ones solid, the tail
+ * that may still change lighter. Each word is its own span keyed by its
+ * place, so a word that arrives fades in left to right once (CSS
+ * `chat__word`) and words already shown never replay, even when Jarvis
+ * rewrites one of the lighter ones.
+ */
+function HeardBubble({ text, stable }: { text: string; stable: number | null }) {
+  const words = heardWords(text, stable)
+  return (
+    <p className="chat__q chat__q--heard">
+      {words.map((w, index) => (
+        <Fragment key={index}>
+          {index > 0 ? ' ' : null}
+          <span className={w.settled ? 'chat__word' : 'chat__word chat__tentative'}>{w.word}</span>
+        </Fragment>
+      ))}
+    </p>
+  )
+}
+
+/**
  * The chat itself: a fixed-size native dialog, so focus and Esc come from
  * the browser. One line along the bottom: the box, then Send and Talk, or
  * Stop talking in their place while talking. Close is the × at the top right.
  */
-function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, stalled, onFlagged, onAnswer, onClose }: SheetProps) {
+function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, tasks, tapToStart, onTapStart, heard, heardStable, notice, onTalk, onPause, dozing, onStopTalk, muted, onMute, workLabel, stalled, onFlagged, onAnswer, onClose }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
   useScrollLock()
   const list = useRef<HTMLOListElement>(null)
@@ -828,11 +939,13 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
           return (
           <li key={t.id} className="chat__turn">
             <p className={open ? 'chat__q chat__q--open' : 'chat__q'}>{t.question}</p>
+            {/* What he sent while this was being answered, above the reply it steered. */}
+            {(t.followUps ?? []).map((f, n) => <p key={n} className="chat__q">{f}</p>)}
             {(t.approvals ?? []).map((a) => (
               <ApprovalCard key={a.id} approval={a} talking={talking} onAnswer={onAnswer} />
             ))}
             {/* Who's answering (Dylan, 2026-11-16): orange Claude, blue Ornith when Claude's plan is out of room. */}
-            {t.model && (t.answer || typing) ? <ModelChip model={t.model} /> : null}
+            {t.model && (t.answer || typing) ? <ModelChip model={t.model} writer={t.writer} /> : null}
             {t.answer ? (
               <div className={t.ok ? 'chat__a' : 'chat__a chat__a--error'}>
                 {/* Rich text (headings, lists, tables, dividers) since 2026-11-16; plain replies read as before. */}
@@ -850,7 +963,7 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
           </li>
           )
         })}
-        {heard ? <li className="chat__turn"><p className="chat__q chat__q--heard">{heard}</p></li> : null}
+        {heard ? <li className="chat__turn"><HeardBubble text={heard} stable={heardStable} /></li> : null}
       </ol>
       {/* A pop-up over the chat, not a form inside it, so the chat never moves (Dylan, 2026-11-16). */}
       {wrongTurn ? <WrongDialog turn={wrongTurn} onFlagged={onFlagged} onClose={() => setWrongOpen(null)} /> : null}
@@ -888,13 +1001,14 @@ function ChatSheet({ turns, state, orbRef, text, onText, onSend, talking, page, 
             onChange={(e) => onText(e.target.value)}
             placeholder="Message Jarvis"
             autoComplete="off"
-            disabled={busy}
+            disabled={talking}
           />
           {talking ? (
             <button type="button" className="btn btn--primary" onClick={onStopTalk}>Stop talking</button>
           ) : (
             <>
-              <button type="submit" className="btn btn--primary" disabled={busy || !text.trim()}>Send</button>
+              {/* Sending while he answers steers the reply (Dylan, 2026-11-21), so Send stays on. */}
+              <button type="submit" className="btn btn--primary" disabled={!text.trim()}>Send</button>
               <button type="button" className="btn" disabled={state !== 'idle'} onClick={onTalk}>Talk</button>
             </>
           )}

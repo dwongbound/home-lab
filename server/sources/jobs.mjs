@@ -76,6 +76,10 @@ function parseMessenger(raw) {
 /**
  * The work Dylan sent off to run in the background (a change to Jarvis's
  * code, say), still going or waiting its turn. Finished ones aren't listed.
+ * `model` is the raw name of the model doing it (as on chat turns), or null
+ * when plain code is; `step` is one line on where it's at ("Running tests").
+ * `stoppable` is true only when Jarvis says this one can be stopped safely
+ * right now, so an older Jarvis (no flag) never offers Stop.
  */
 function parseRunning(list) {
   if (!Array.isArray(list)) return []
@@ -86,7 +90,27 @@ function parseRunning(list) {
     if (id === null || label === null) continue
     let state = 'running'
     if (raw.state === 'queued') state = 'queued'
-    out.push({ id, label, state, startedAt: time(raw.started_at) })
+    out.push({ id, label, state, startedAt: time(raw.started_at), model: text(raw.model), step: text(raw.step), stoppable: raw.stoppable === true })
+  }
+  return out.slice(0, MAX_LIST)
+}
+
+const ENDINGS = new Set(['live', 'failed', 'nothing', 'stopped'])
+
+/**
+ * Background work that finished today, newest first: `live` = it's in use,
+ * `failed` = it didn't make it, `nothing` = there was nothing to change,
+ * `stopped` = Dylan stopped it part way.
+ * Empty on a Jarvis that doesn't list them.
+ */
+function parseFinished(list) {
+  if (!Array.isArray(list)) return []
+  const out = []
+  for (const raw of list) {
+    const id = text(raw?.id)
+    const label = text(raw?.label)
+    if (id === null || label === null || !ENDINGS.has(raw.state)) continue
+    out.push({ id, label, state: raw.state, finishedAt: time(raw.finished_at), model: text(raw.model) })
   }
   return out.slice(0, MAX_LIST)
 }
@@ -105,5 +129,11 @@ export function parseJobs(body) {
     lookout: parseLookout(body.lookout),
     messenger: parseMessenger(body.messenger),
     running: parseRunning(body.running),
+    finished: parseFinished(body.finished),
   }
+}
+
+/** A job id as Jarvis writes them: letters, digits, dot, dash, underscore, colon. */
+export function isJobId(value) {
+  return typeof value === 'string' && /^[\w.:-]{1,64}$/.test(value)
 }

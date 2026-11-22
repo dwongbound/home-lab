@@ -116,6 +116,11 @@ test('Schedule has the requests chart; Services has every service, the model car
   await page.goto('/#services')
   await expect(page.getByRole('link', { name: 'Open Home Assistant' })).toHaveAttribute('href', 'http://192.168.68.94:8123')
   await expect(page.getByRole('button', { name: 'Unload local model' })).toBeVisible()
+  // The graphics card pie: who holds its memory, by name, and what's free.
+  const card = page.getByRole('region', { name: 'Graphics card' })
+  await expect(card).toContainText('in use')
+  for (const name of ['Ornith', 'Parakeet', 'Kokoro', 'Everything else', 'Free']) await expect(card.getByText(name, { exact: true })).toBeVisible()
+  await expect(card.locator('.gpu__ring circle')).toHaveCount(5)
   const loaded = page.getByRole('region', { name: 'In GPU memory' })
   await expect(loaded).toContainText('ornith-1.5:9b')
   await expect(loaded).toContainText('answers when Claude can’t be reached')
@@ -126,6 +131,11 @@ test('Schedule has the requests chart; Services has every service, the model car
     await expect(jobs.getByText(name, { exact: true })).toBeVisible()
   }
   await expect(jobs).toContainText('pings sent today')
+  // Work sent to the background leads: who's doing it, the step it's on, and what finished today.
+  const working = jobs.getByRole('list', { name: 'Working on now' })
+  await expect(working.getByRole('listitem').first()).toContainText('Jarvis (CO)')
+  await expect(working.getByRole('listitem').first()).toContainText('Running tests')
+  await expect(jobs.getByRole('list', { name: 'Finished today' })).toContainText('Shorter morning greeting')
   // The terminal replaced the "Restarting Jarvis" note.
   await expect(page.locator('iframe[title="Terminal on jarvis"]')).toBeVisible()
   await expect(page.getByText('Restarting Jarvis')).toHaveCount(0)
@@ -186,6 +196,9 @@ test('unloading the local model blocks the dialog until it finishes, then loadin
   await expect(page.getByText('Unloaded', { exact: true })).toBeVisible()
   // Nothing is left in GPU memory, and the list says how it comes back.
   await expect(page.getByRole('region', { name: 'In GPU memory' })).toContainText('No model is loaded')
+  // The pie drops the local model's slice; the speech models stay.
+  await expect(page.getByRole('region', { name: 'Graphics card' }).getByText('Ornith', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Graphics card' }).getByText('Parakeet', { exact: true })).toBeVisible()
 
   // Put it back so the next test starts from the same state.
   await page.getByRole('button', { name: 'Load local model' }).click()
@@ -600,7 +613,7 @@ test('swiping sideways changes tab, and not inside a text box', async ({ page },
   await expect(page.getByRole('heading', { level: 1, name: /Dylan/ })).toBeVisible()
 })
 
-test('while the first snapshot is on its way, a full-page "Jarvis is thinking" loader shows, still with reduced motion', async ({ browser }) => {
+test('while the first snapshot is on its way, a full-page "Jarvis is thinking" loader shows, still with reduced motion, and leaves smoothly when the page is ready', async ({ browser }) => {
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     const context = await browser.newContext({ reducedMotion })
     const page = await context.newPage()
@@ -614,9 +627,18 @@ test('while the first snapshot is on its way, a full-page "Jarvis is thinking" l
     const moving = await page.evaluate(() => document.getAnimations().filter((a) => (a.effect as KeyframeEffect | null)?.target instanceof Element && ((a.effect as KeyframeEffect).target as Element).closest('.thinking')).length)
     if (reducedMotion === 'reduce') expect(moving).toBe(0)
     else expect(moving).toBeGreaterThan(3)
+    // Watch for the loader leaving: with motion it lingers over the page as it lifts away; without, it never does.
+    await page.evaluate(() => {
+      const seen = window as unknown as { sawLeaving?: boolean }
+      new MutationObserver(() => { if (document.querySelector('.thinking[data-leaving]')) seen.sawLeaving = true }).observe(document.body, { subtree: true, childList: true, attributes: true })
+    })
     release()
     await expect(page.getByRole('heading', { name: 'Ask Jarvis' })).toBeVisible()
     await expect(loader).toHaveCount(0)
+    // Gone for good soon after, and never in the way of a tap meanwhile.
+    await expect(page.locator('.thinking')).toHaveCount(0)
+    const sawLeaving = await page.evaluate(() => (window as unknown as { sawLeaving?: boolean }).sawLeaving === true)
+    expect(sawLeaving).toBe(reducedMotion === 'no-preference')
     await context.close()
   }
 })
@@ -882,6 +904,9 @@ test('/talk is voice only, edge to edge and already talking: no typing, no Close
   await expect(tasks.getByRole('listitem')).toHaveCount(2)
   await expect(tasks.getByText('Making drive times mention parking')).toBeVisible()
   await expect(tasks.getByText('Up next')).toBeVisible()
+  // The running one says who's doing it, with the chat chip, and where it's at.
+  await expect(tasks.getByRole('listitem').first()).toContainText('Jarvis (CO)')
+  await expect(tasks.getByRole('listitem').first()).toContainText('Running tests')
   const tasksBox = (await tasks.boundingBox())!
   expect(tasksBox.x).toBeGreaterThanOrEqual(orbBox.x + orbBox.width)
   expect(tasksBox.x + tasksBox.width).toBeLessThanOrEqual(viewport.width)
@@ -1186,6 +1211,25 @@ test('a faint line at the bottom says which build this is and links its commit',
   await expect(footer.getByRole('link')).toHaveAttribute('href', /^https:\/\/github\.com\/dwongbound\/home-lab\/commit\/[0-9a-f]{7,40}$/)
 })
 
+test('Playbooks: a step can run one of Jarvis’s own jobs, with only the job to pick', async ({ page }) => {
+  await page.goto('/#playbooks')
+  await page.getByRole('button', { name: 'New playbook' }).click()
+  const editor = page.getByRole('dialog', { name: 'New playbook' })
+  await editor.getByLabel('Name').fill('Nightly self-improvement')
+  await editor.getByRole('group', { name: 'Add a step' }).getByRole('button', { name: 'Jarvis job' }).click()
+  const step = editor.getByRole('listitem', { name: 'Step 1' })
+  await expect(step).toContainText('Run one of Jarvis’s jobs')
+  await expect(step.getByLabel('Job')).toHaveValue('nightly')
+  await editor.getByRole('button', { name: 'Save' }).click()
+  const row = page.getByRole('list', { name: 'Playbooks' }).getByRole('listitem').filter({ hasText: 'Nightly self-improvement' })
+  await expect(row).toContainText('Run: The nightly self-improvement pass')
+  // Tidy up: the other playbook story counts the sample rows.
+  await row.getByRole('button', { name: 'Edit Nightly self-improvement' }).click()
+  await page.getByRole('dialog', { name: 'Edit playbook' }).getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('dialog', { name: 'Delete this playbook?' }).getByRole('button', { name: 'Delete' }).click()
+  await expect(row).toHaveCount(0)
+})
+
 test('Playbooks: write one with a done checklist, switch it off, run it, edit it and delete it', async ({ page }) => {
   await page.goto('/#playbooks')
   const list = page.getByRole('list', { name: 'Playbooks' })
@@ -1195,32 +1239,50 @@ test('Playbooks: write one with a done checklist, switch it off, run it, edit it
   // A playbook with thinking steps says who Jarvis hands them to in its editor, not in the row.
   await expect(list.getByRole('listitem').filter({ hasText: 'Plan my week' })).toContainText('Jarvis: Read next week’s calendar')
 
-  // A new one: Save says what's missing until it has a name and a step.
+  // A new one can start from a sentence: Jarvis fills the form in to look over, and nothing is saved.
   await page.getByRole('button', { name: 'New playbook' }).click()
   const editor = page.getByRole('dialog', { name: 'New playbook' })
   const size = await editor.boundingBox()
+  await editor.getByRole('button', { name: 'Write it for me' }).click()
+  await expect(editor.getByRole('status')).toHaveText('Say what it should do first')
+  await editor.getByLabel('Describe it, and Jarvis fills in the rest').fill('At 11 pm turn everything off')
+  await editor.getByRole('button', { name: 'Write it for me' }).click()
+  await expect(editor.getByRole('status')).toContainText('Jarvis filled it in below')
+  await expect(editor.getByLabel('Name')).toHaveValue('At 11 pm turn')
+  await expect(editor.getByRole('list', { name: 'What Jarvis assumed' })).toContainText('one step for Jarvis')
+  await expect(editor.getByLabel('Time', { exact: true })).toHaveValue('23:00')
+  await expect(editor.getByRole('listitem', { name: 'Step 1' }).getByLabel('What Jarvis should do')).toHaveValue('At 11 pm turn everything off')
+  expect(await editor.boundingBox()).toEqual(size)
+  await editor.getByRole('button', { name: 'Close' }).click()
+  await expect(list.getByRole('listitem').filter({ hasText: 'At 11 pm turn' })).toHaveCount(0)
+
+  // Written by hand: three plain questions, and Save says what's missing until it has a name and a step.
+  await page.getByRole('button', { name: 'New playbook' }).click()
+  await expect(editor.getByRole('heading', { name: /When does it run\?/ })).toBeVisible()
+  await expect(editor.getByRole('heading', { name: /What happens\?/ })).toBeVisible()
+  const addStep = editor.getByRole('group', { name: 'Add a step' })
   await editor.getByRole('button', { name: 'Save' }).click()
   await expect(editor.getByRole('alert')).toHaveText('Give the playbook a name')
   await editor.getByLabel('Name').fill('Movie time')
   await editor.getByLabel('What it’s for').fill('Get the room ready for a film')
-  await editor.getByRole('combobox', { name: 'When', exact: true }).selectOption('time')
+  await editor.getByRole('combobox', { name: 'Start it' }).selectOption('time')
   await editor.getByLabel('Time', { exact: true }).fill('20:00')
   await editor.getByRole('button', { name: 'Sat' }).click()
   await editor.getByRole('button', { name: 'Sun' }).click()
-  await editor.getByLabel('Add a step').selectOption('scene')
-  await editor.getByLabel('Add a step').selectOption('email')
+  await addStep.getByRole('button', { name: 'Scene', exact: true }).click()
+  await addStep.getByRole('button', { name: 'Email', exact: true }).click()
   const email = editor.getByRole('listitem', { name: 'Step 2' })
   // A playbook I wrote doesn't ask before it sends, unless I switch that on.
-  await expect(email.getByRole('switch', { name: 'Ask me first, each time' })).toHaveAttribute('aria-checked', 'false')
+  await expect(email.getByRole('switch', { name: 'Ask me first' })).toHaveAttribute('aria-checked', 'false')
   await editor.getByRole('button', { name: 'Save' }).click()
-  await expect(editor.getByRole('alert')).toHaveText('Step 2: give it one to ten email addresses')
+  await expect(editor.getByRole('alert')).toHaveText('Step 2: give it one to 10 email addresses')
   await editor.getByRole('button', { name: 'Remove step 2' }).click()
-  await editor.getByLabel('Add a step').selectOption('notify')
-  await editor.getByLabel('Notification text').fill('Popcorn is ready')
+  await addStep.getByRole('button', { name: 'Notify me', exact: true }).click()
+  await editor.getByRole('listitem', { name: 'Step 2' }).getByLabel('Message').fill('Popcorn is ready')
   // A step in my own words, and who does it.
-  await editor.getByLabel('Add a step').selectOption('think')
+  await addStep.getByRole('button', { name: 'Ask Jarvis', exact: true }).click()
   await editor.getByRole('button', { name: 'Save' }).click()
-  await expect(editor.getByRole('alert')).toHaveText('Step 3: write what Jarvis should do')
+  await expect(editor.getByRole('alert')).toHaveText('Step 3: What Jarvis should do is missing')
   await editor.getByLabel('What Jarvis should do').fill('Pick a film I have not seen')
   await expect(editor.getByLabel('Who does it')).toHaveValue('auto')
   await editor.getByLabel('Who does it').selectOption('claude')
@@ -1303,25 +1365,22 @@ test('an approval already answered out loud drops its card for good when I tap i
   }
 })
 
-test('Reports: each says when it is deleted, Keep holds one, Delete asks first, and a report opens as a locked-down page', async ({ page }) => {
+test('Reports: each says when it is deleted, Delete asks first, and a report opens inside the page as a locked-down frame with a plain keep dropdown', async ({ page }) => {
   await page.goto('/#services')
   const reports = page.getByRole('region', { name: 'Reports' })
   // The rule and the room used are stated up front.
-  await expect(reports).toContainText('Each report is deleted 30 days after it was made, unless Keep is on.')
+  await expect(reports).toContainText('Each report is kept 2 weeks unless you pick longer for it.')
   await expect(reports).toContainText('of 200 MB')
   const speakers = reports.getByRole('listitem').filter({ hasText: 'Bookshelf speakers under $400' })
   await expect(speakers).toContainText('184 KB')
   await expect(speakers).toContainText(/Deletes [A-Z][a-z]{2} \d{1,2}/)
-  await expect(reports.getByRole('listitem').filter({ hasText: 'Week in review' })).toContainText('Kept until you switch Keep off')
-
-  // Keep holds it past its 30 days; switching it off brings the date back.
-  const keep = speakers.getByRole('switch', { name: 'Keep Bookshelf speakers under $400' })
-  await keep.click()
-  await expect(keep).toHaveAttribute('aria-checked', 'true')
-  await expect(speakers).toContainText('Kept until you switch Keep off')
-  await keep.click()
-  await expect(keep).toHaveAttribute('aria-checked', 'false')
-  await expect(speakers).toContainText(/Deletes [A-Z][a-z]{2} \d{1,2}/)
+  const week = reports.getByRole('listitem').filter({ hasText: 'Week in review' })
+  await expect(week).toContainText('Kept until you change it')
+  // The list has no keep picker: just Share and Delete, as icons big enough to tap.
+  await expect(reports.getByRole('combobox')).toHaveCount(0)
+  const shareBtn = speakers.getByRole('button', { name: 'Share Bookshelf speakers under $400' })
+  expect((await shareBtn.boundingBox())!.width).toBeGreaterThanOrEqual(44)
+  await expect(shareBtn.locator('svg')).toBeVisible()
 
   // Delete asks first, and Close leaves the report alone.
   await speakers.getByRole('button', { name: 'Delete Bookshelf speakers under $400' }).click()
@@ -1331,9 +1390,33 @@ test('Reports: each says when it is deleted, Keep holds one, Delete asks first, 
   await expect(confirm).toBeHidden()
   await expect(speakers).toBeVisible()
 
-  // The report is its own page, served so it can't run scripts or load anything from outside.
+  // A tap opens the report here, in the viewer, not in another tab.
   const link = speakers.getByRole('link', { name: 'Bookshelf speakers under $400' })
   await expect(link).toHaveAttribute('href', '/reports/rep-speakers')
+  await expect(link).not.toHaveAttribute('target', '_blank')
+  await link.click()
+  const viewer = page.getByRole('dialog', { name: 'Bookshelf speakers under $400' })
+  await expect(viewer).toBeVisible()
+  const frame = viewer.locator('iframe')
+  await expect(frame).toHaveAttribute('sandbox', '')
+  await expect(viewer.frameLocator('iframe').getByRole('heading', { name: 'Bookshelf speakers under $400' })).toBeVisible()
+  await expect(page).toHaveURL(/#services$/)
+  // The same dropdown and Share sit at the viewer's bottom left, Close at the right.
+  const keep = viewer.getByRole('combobox', { name: 'How long to keep Bookshelf speakers under $400' })
+  await expect(keep).toHaveValue('14')
+  await expect(keep.locator('option:checked')).toHaveText('Keep 2 weeks')
+  await expect(viewer.getByRole('button', { name: 'Share Bookshelf speakers under $400' })).toBeVisible()
+  // Picking another saves it at once; forever takes the end date away in the list behind.
+  await keep.selectOption('forever')
+  await expect(speakers).toContainText('Kept until you change it')
+  // Back to the usual two weeks (the pretend server is shared by the phone and iPad runs).
+  await keep.selectOption('14')
+  await expect(speakers).toContainText(/Deletes [A-Z][a-z]{2} \d{1,2}/)
+  await expect(keep).toHaveValue('14')
+  await viewer.getByRole('button', { name: 'Close' }).click()
+  await expect(viewer).toBeHidden()
+
+  // The report itself is served so it can't run scripts or load anything from outside.
   const res = await page.request.get('/reports/rep-speakers')
   expect(res.status()).toBe(200)
   expect(res.headers()['content-security-policy']).toContain("default-src 'none'")

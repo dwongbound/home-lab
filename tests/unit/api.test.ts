@@ -1,6 +1,6 @@
 // The API handler: routes, the action guard, one action at a time, and
 // that the Home Assistant token never appears in a response.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createApi } from '../../server/app.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
@@ -57,6 +57,53 @@ describe('POST /api/jarvis/ask', () => {
     expect((await callApi(api, 'POST', '/api/jarvis/ask', ACTION_HEADER, 'not json')).statusCode).toBe(400)
   })
 
+  it('tells Jarvis when the asker closes the app before the reply is done, and not when the reply finished first', async () => {
+    const left: unknown[] = []
+    let finish = () => {}
+    const source = {
+      ...createMockSource(),
+      chat: async (_text: string, _caller: unknown, onEvent: (e: unknown) => void) => {
+        onEvent({ type: 'turn', id: 41 })
+        await new Promise<void>((resolve) => { finish = resolve })
+        onEvent({ type: 'done', ok: true })
+      },
+      chatLeft: async (...args: unknown[]) => { left.push(args) },
+    }
+    // A response that can be closed from the client's side, like a phone going away.
+    const listeners: Record<string, () => void> = {}
+    const res = { destroyed: false, writableEnded: false, writeHead() {}, write() {}, end() { this.writableEnded = true }, on(event: string, fn: () => void) { listeners[event] = fn } }
+    const req = { method: 'POST', url: '/api/jarvis/chat', headers: { ...ACTION_HEADER, 'tailscale-user-login': 'd@example.com' }, async *[Symbol.asyncIterator]() { yield '{"text":"hi"}' } }
+    const handled = createApi(source)(req as never, res as never)
+    await vi.waitFor(() => expect(listeners.close).toBeTypeOf('function'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    res.destroyed = true
+    listeners.close()
+    expect(left).toEqual([[41, { login: 'd@example.com' }]])
+    finish()
+    await handled
+    // The socket closing after a finished reply is the normal end, not someone leaving.
+    listeners.close()
+    expect(left).toHaveLength(1)
+  })
+
+  it('pages the history: the newest turns, the ones before a turn, a window around one, and 400 on a bad ask', async () => {
+    const api = createApi(createMockSource())
+    for (const text of ['one', 'two', 'three']) await callApi(api, 'POST', '/api/jarvis/chat', ACTION_HEADER, JSON.stringify({ text }))
+    const ids = (path: string) => {
+      const body = callApi(api, 'GET', path).then((res) => res.json())
+      return body.then((page: { turns: { id: number }[]; hasMore: boolean; hasNewer: boolean }) => ({ ids: page.turns.map((t) => t.id), hasMore: page.hasMore, hasNewer: page.hasNewer }))
+    }
+    expect(await ids('/api/jarvis/history')).toEqual({ ids: [1, 2, 3, 4, 5, 6], hasMore: false, hasNewer: false })
+    expect(await ids('/api/jarvis/history?limit=2')).toEqual({ ids: [5, 6], hasMore: true, hasNewer: false })
+    expect(await ids('/api/jarvis/history?limit=2&before=5')).toEqual({ ids: [3, 4], hasMore: true, hasNewer: false })
+    expect(await ids('/api/jarvis/history?limit=2&before=3')).toEqual({ ids: [1, 2], hasMore: false, hasNewer: false })
+    expect(await ids('/api/jarvis/history?limit=2&around=3')).toEqual({ ids: [2, 3], hasMore: true, hasNewer: true })
+    expect(await ids('/api/jarvis/history?limit=2&around=99')).toEqual({ ids: [5, 6], hasMore: true, hasNewer: false })
+    for (const bad of ['limit=0', 'limit=101', 'before=abc', 'around=-1', 'before=2&around=3']) {
+      expect((await callApi(api, 'GET', `/api/jarvis/history?${bad}`)).statusCode).toBe(400)
+    }
+  }, 20_000)
+
   it("passes the caller's Tailscale login to the source", async () => {
     let seen: unknown = null
     const source = { ...createMockSource(), ask: async (text: string, caller: unknown) => { seen = { text, caller }; return { ok: true, message: 'hello' } } }
@@ -101,6 +148,100 @@ describe('Jarvis memory', () => {
     await callApi(api, 'GET', '/api/jarvis/memory/search?q=a', login)
     await callApi(api, 'POST', '/api/jarvis/memory', { ...ACTION_HEADER, ...login }, '{"op":"forget","id":"f1"}')
     expect(seen).toEqual([{ login: 'dylan@example.com' }, { login: 'dylan@example.com' }, { login: 'dylan@example.com' }])
+  })
+})
+
+describe('Sleep from the Watch', () => {
+  it('gives the last nights or one night, and refuses a bad ask', async () => {
+    const api = createApi(createMockSource())
+    const week = (await callApi(api, 'GET', '/api/jarvis/health/sleep')).json().nights
+    expect(week).toHaveLength(7)
+    expect(week[0]).toMatchObject({ score: 78, scoreBand: 'good', scoreSource: 'jarvis' })
+    expect(week[0].stages.length).toBeGreaterThan(0)
+    expect((await callApi(api, 'GET', '/api/jarvis/health/sleep?days=99')).json().nights).toHaveLength(30)
+    const one = (await callApi(api, 'GET', '/api/jarvis/health/sleep?night=2026-11-17')).json().nights
+    expect(one.map((night: { night: string }) => night.night)).toEqual(['2026-11-17'])
+    expect((await callApi(api, 'GET', '/api/jarvis/health/sleep?night=monday')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/health/sleep?days=some')).statusCode).toBe(400)
+  })
+
+  it('stores a night from the app, needs the header, and says what is wrong with a bad one', async () => {
+    const api = createApi(createMockSource())
+    const night = { night: '2026-11-17', stages: [{ stage: 'deep', start: '2026-11-17T01:00:00-08:00', end: '2026-11-17T02:00:00-08:00' }], hrvMs: 61 }
+    expect((await callApi(api, 'POST', '/api/jarvis/health/sleep', {}, JSON.stringify(night))).statusCode).toBe(403)
+    const saved = await callApi(api, 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, JSON.stringify(night))
+    expect(saved.statusCode).toBe(200)
+    expect(saved.json()).toMatchObject({ ok: true, message: 'Saved', night: { night: '2026-11-17', vitals: { hrvMs: 61 } } })
+    const back = (await callApi(api, 'GET', '/api/jarvis/health/sleep?night=2026-11-17')).json().nights
+    expect(back[0].vitals.hrvMs).toBe(61)
+    const bad = await callApi(api, 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, JSON.stringify({ ...night, hrvMs: 900 }))
+    expect(bad.statusCode).toBe(400)
+    expect(bad.json()).toEqual({ ok: false, message: 'hrvMs must be between 1 and 300' })
+    expect((await callApi(api, 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, 'not json')).statusCode).toBe(400)
+  })
+
+  it('passes on Jarvis refusing a night as a 400, and his being away as a 502', async () => {
+    const night = { night: '2026-11-17', stages: [{ stage: 'deep', start: '2026-11-17T01:00:00-08:00', end: '2026-11-17T02:00:00-08:00' }] }
+    const refusing = { ...createMockSource(), saveSleepNight: async () => ({ ok: false, refused: true, message: 'stages overlap' }) }
+    const refused = await callApi(createApi(refusing), 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, JSON.stringify(night))
+    expect(refused.statusCode).toBe(400)
+    expect(refused.json()).toEqual({ ok: false, message: 'stages overlap', night: null })
+    const away = { ...createMockSource(), saveSleepNight: async () => ({ ok: false, message: 'Jarvis is not answering' }) }
+    expect((await callApi(createApi(away), 'POST', '/api/jarvis/health/sleep', { 'x-home-lab': '1' }, JSON.stringify(night))).statusCode).toBe(502)
+  })
+})
+
+describe('Diet screen (meal log)', () => {
+  it('gives a day and a week (sample data), and refuses a date that isn\'t one', async () => {
+    const api = createApi(createMockSource())
+    const day = (await callApi(api, 'GET', '/api/jarvis/nutrition/day?date=2026-11-17')).json().day
+    expect(day.date).toBe('2026-11-17')
+    expect(day.items.length).toBeGreaterThan(0)
+    expect(day.items[0]).toHaveProperty('hasPhoto')
+    const today = (await callApi(api, 'GET', '/api/jarvis/nutrition/day')).json().day
+    expect(today.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    const week = (await callApi(api, 'GET', '/api/jarvis/nutrition/week?start=2026-11-15')).json().week
+    expect(week.start).toBe('2026-11-15')
+    expect(week.days).toHaveLength(7)
+    expect(week.days[0]).toMatchObject({ protein: expect.any(Number), proteinGoal: 140 })
+    const run = (await callApi(api, 'GET', '/api/jarvis/nutrition/days?end=2026-11-17&count=3')).json()
+    expect(run.days.map((d: { date: string }) => d.date)).toEqual(['2026-11-17', '2026-11-16', '2026-11-15'])
+    expect(run.earliest).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days')).json().days).toHaveLength(7)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days?count=99')).json().days).toHaveLength(14)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days?count=lots')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days?end=tuesday')).statusCode).toBe(400)
+
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/day?date=yesterday')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/week?start=11/15')).statusCode).toBe(400)
+  })
+
+  it('serves a meal photo or its thumbnail, 404 when the meal has none', async () => {
+    const api = createApi(createMockSource())
+    const photo = await callApi(api, 'GET', '/api/jarvis/nutrition/photo/m1?size=thumb')
+    expect(photo.statusCode).toBe(200)
+    expect(photo.headers['content-type']).toBe('image/png')
+    expect(photo.headers['cache-control']).toBe('private, max-age=86400')
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/photo/m2')).statusCode).toBe(200)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/photo/m3')).statusCode).toBe(404)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/photo/m1?size=huge')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/photo/..%2Fsecret')).statusCode).toBe(400)
+  })
+
+  it("passes the date and the caller's login on to the source", async () => {
+    const seen: unknown[] = []
+    const source = {
+      ...createMockSource(),
+      nutritionDay: async (date: string, caller: unknown) => { seen.push([date, caller]); return null },
+      nutritionWeek: async (start: string, caller: unknown) => { seen.push([start, caller]); return null },
+      nutritionDays: async () => null,
+    }
+    const api = createApi(source)
+    const login = { 'tailscale-user-login': 'dylan@example.com' }
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/day?date=2026-11-17', login)).json()).toEqual({ day: null })
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/week', login)).json()).toEqual({ week: null })
+    expect((await callApi(api, 'GET', '/api/jarvis/nutrition/days', login)).json()).toEqual({ days: null, earliest: null })
+    expect(seen).toEqual([['2026-11-17', { login: 'dylan@example.com' }], ['', { login: 'dylan@example.com' }]])
   })
 })
 
@@ -291,5 +432,26 @@ describe('POST /api/money/picks', () => {
     const api = createApi(createMockSource())
     expect((await callApi(api, 'POST', '/api/money/picks', ACTION_HEADER, 'nope')).statusCode).toBe(400)
     expect((await callApi(api, 'POST', '/api/money/picks', ACTION_HEADER, '{"op":"pick"}')).statusCode).toBe(400)
+  })
+})
+
+describe('POST /api/jarvis/jobs/stop', () => {
+  it('stops a running job once, and says gone the second time', async () => {
+    const api = createApi(createMockSource())
+    const stop = (headers: Record<string, string>, body: unknown) => callApi(api, 'POST', '/api/jarvis/jobs/stop', headers, JSON.stringify(body))
+    expect((await stop({}, { id: 'r1' })).statusCode).toBe(403)
+    expect((await stop(ACTION_HEADER, { id: '../approve' })).statusCode).toBe(400)
+    expect((await stop(ACTION_HEADER, {})).statusCode).toBe(400)
+    const done = await stop(ACTION_HEADER, { id: 'r1' })
+    expect(done.statusCode).toBe(200)
+    expect(done.json()).toEqual({ ok: true, message: 'Stopped' })
+    // It leaves the running list and shows under what finished today.
+    const jobs = (await callApi(api, 'GET', '/api/snapshot')).json().jobs
+    expect(jobs.running.map((task: { id: string }) => task.id)).toEqual(['r2'])
+    expect(jobs.finished[0]).toMatchObject({ id: 'r1', state: 'stopped' })
+    const again = await stop(ACTION_HEADER, { id: 'r1' })
+    expect(again.statusCode).toBe(410)
+    expect(again.json()).toEqual({ ok: false, gone: true, message: 'That one already finished' })
+    expect((await stop(ACTION_HEADER, { id: 'nope' })).statusCode).toBe(410)
   })
 })

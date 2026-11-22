@@ -2,7 +2,9 @@ import { useEffect } from 'react'
 import { useSnapshot } from '../api/client'
 import { Backdrop } from '../components/Backdrop'
 import { JarvisPanel } from '../components/JarvisPanel'
+import { ReportViewer } from '../components/ReportViewer'
 import { ThinkingLoader } from '../components/ThinkingLoader'
+import { useLoaderExit } from '../useLoaderExit'
 import { readSky } from '../lib/prefs'
 import { useNow } from '../useNow'
 import { useWakeLock } from '../useWakeLock'
@@ -32,7 +34,9 @@ export function TalkPage() {
   // Safari drops the microphone when the screen locks, so keep it on here.
   useWakeLock(true)
 
-  let body: React.ReactNode = <section className="state state--loading"><ThinkingLoader /></section>
+  // Until the snapshot arrives the loader shows, then leaves smoothly as the sheet appears.
+  const loader = useLoaderExit(!data)
+  let body: React.ReactNode = null
   // The snapshot only says whether there's a real Jarvis to talk to (live)
   // or the demo (sample data).
   // It also lists the work he's sent to the background, beside the orb.
@@ -42,6 +46,8 @@ export function TalkPage() {
     <>
       <Backdrop now={now} override={readSky()} />
       <div className="shell" data-view="talk">{body}</div>
+      <ReportViewer />
+      <ThinkingLoader phase={loader} />
     </>
   )
 }

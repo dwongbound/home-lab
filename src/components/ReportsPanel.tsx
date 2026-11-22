@@ -2,16 +2,20 @@ import { useState } from 'react'
 import { useSWRConfig } from 'swr'
 import { SNAPSHOT_KEY, changeReport } from '../api/client'
 import { ago } from '../lib/format'
+import { openReport } from '../lib/reportViewer'
 import { endText, reportHref, rulesText, sizeText } from '../lib/reports'
 import type { JarvisReport, JarvisReports } from '../types'
 import { ConfirmDialog } from './ConfirmDialog'
-import { Spinner } from './Spinner'
+import { Icon } from './Icon'
+import { ReportShareButton } from './ReportKeep'
 
 // Reports (Dylan, 2026-11-18): the pages Jarvis writes when a long task
-// ends in more than a chat reply can hold. Each row opens the report in its
-// own tab and says how big it is and when Jarvis deletes it. Keep holds a
-// report past its 30 days; Delete removes it now, after a confirm. The line
-// under the title says the rule and how much room all reports take.
+// ends in more than a chat reply can hold. Each row opens the report in the
+// viewer (ReportViewer) and says how big it is and when Jarvis deletes it.
+// The row has two icon buttons, Share and Delete (after a confirm); how long
+// a report is kept is changed inside the open report, not here (Dylan,
+// 2026-11-19). The line under the
+// title says the rule and how much room all reports take.
 
 /** "Made 2 h ago · 184 KB · Deletes Dec 18". */
 function metaLine(report: JarvisReport, now: Date): string {
@@ -21,21 +25,10 @@ function metaLine(report: JarvisReport, now: Date): string {
 /** The panel. Shows a plain note when Jarvis doesn't report his reports yet. */
 export function ReportsPanel({ reports, now }: { reports: JarvisReports | null; now: Date }) {
   const { mutate } = useSWRConfig()
-  // The id of the report whose Keep switch is being saved, so its row can block.
-  const [savingId, setSavingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<JarvisReport | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [note, setNote] = useState('')
-
-  /** Switches Keep on or off for one report. */
-  async function setKept(report: JarvisReport, keep: boolean) {
-    setSavingId(report.id)
-    const result = await changeReport({ op: 'keep', id: report.id, keep })
-    await mutate(SNAPSHOT_KEY)
-    setSavingId(null)
-    setNote(`${report.title}: ${result.message}`)
-  }
 
   /** Deletes the report the confirm dialog is about. */
   async function remove() {
@@ -76,22 +69,18 @@ export function ReportsPanel({ reports, now }: { reports: JarvisReports | null; 
       ) : (
         <ul className="cloud__list reports__list">
           {reports.reports.map((r) => {
-            const busy = savingId === r.id
             return (
-              <li key={r.id} className="reports__item" aria-busy={busy}>
+              <li key={r.id} className="reports__item">
                 <div className="reports__text">
-                  <a className="reports__title" href={reportHref(r.id)} target="_blank" rel="noreferrer">{r.title}</a>
-                  {r.summary ? <p className="loaded__role">{r.summary}</p> : null}
+                  {/* A real link (so it can still be copied), but a tap opens the report here in the viewer. */}
+                  <a className="reports__title" href={reportHref(r.id)} onClick={(e) => { e.preventDefault(); openReport(r.id, r.title) }}>{r.title}</a>
+                  {r.summary ? <p className="loaded__role reports__summary">{r.summary}</p> : null}
                   <p className="cloud__meta loaded__meta">{metaLine(r, now)}</p>
                 </div>
                 <div className="reports__controls">
-                  <button type="button" role="switch" aria-checked={r.kept} aria-label={`Keep ${r.title}`} className="switch reports__keep" disabled={busy} onClick={() => void setKept(r, !r.kept)}>
-                    <span className="switch__track" aria-hidden="true"><span className="switch__knob" /></span>
-                    <span className="reports__keep-word" aria-hidden="true">Keep</span>
-                  </button>
-                  <button type="button" className="btn btn--quiet" aria-label={`Delete ${r.title}`} disabled={busy} onClick={() => { setDeleteError(null); setDeleting(r) }}>Delete</button>
+                  <ReportShareButton id={r.id} title={r.title} />
+                  <button type="button" className="icon-btn" aria-label={`Delete ${r.title}`} onClick={() => { setDeleteError(null); setDeleting(r) }}><Icon name="trash" /></button>
                 </div>
-                {busy ? <div className="reports__block"><Spinner label="Saving…" /></div> : null}
               </li>
             )
           })}

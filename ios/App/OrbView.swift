@@ -249,7 +249,7 @@ struct OrbView: View {
         let shellGlow = a.shellVoice
         a.remember(points: points, center: center, radius: radius)
         let coreRadius = side * 0.2 * look.coreScale * (1 + a.coreVoice * 0.2)
-        a.placeOrbit(center: center, radius: radius)
+        a.placeOrbit(center: center, radius: Orbit.scale(shellRadius: radius, side: side))
         a.lastCoreRadius = coreRadius
 
         drawOrbit(back: true, in: &canvas, center: center, radius: radius, coreRadius: coreRadius, side: side, t: t)

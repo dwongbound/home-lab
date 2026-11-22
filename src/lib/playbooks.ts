@@ -1,10 +1,11 @@
-import type { Playbook, PlaybookDay, PlaybookDraft, PlaybookOptions, PlaybookStep, PlaybookThinker, PlaybookTrigger } from '../types'
+import type { Playbook, PlaybookDay, PlaybookDraft, PlaybookOptions, PlaybookStep, PlaybookTrigger, StepField, StepFieldRule, StepType, StepValue } from '../types'
 
 // Words and starting values for the Playbooks page: how a trigger and a
 // step read in a sentence, what a new playbook or step starts as, and what's
-// still missing before one can be saved. The server checks again
-// (server/sources/playbooks.mjs); this copy is so the page can say what's
-// wrong before anything is sent.
+// still missing before one can be saved. The kinds of step and their fields
+// come from Jarvis (`options.stepTypes`), so nothing here names a kind. The
+// server checks again (server/sources/playbooks.mjs); this copy is so the
+// page can say what's wrong before anything is sent.
 
 export const DAYS: { id: PlaybookDay; label: string }[] = [
   { id: 'mon', label: 'Mon' },
@@ -25,22 +26,8 @@ export const TRIGGER_CHOICES: { type: PlaybookTrigger['type']; label: string }[]
   { type: 'manual', label: 'When I ask, or the job comes up' },
 ]
 
-export const STEP_CHOICES: { type: PlaybookStep['type']; label: string }[] = [
-  { type: 'device', label: 'Control a device' },
-  { type: 'scene', label: 'Run a scene' },
-  { type: 'app', label: 'Open an app on a TV' },
-  { type: 'notify', label: 'Send me a notification' },
-  { type: 'think', label: 'Have Jarvis work something out' },
-  { type: 'email', label: 'Send an email' },
-  { type: 'wait', label: 'Wait' },
-]
-
-// Who does a thinking step, as the editor offers it.
-export const THINKER_CHOICES: { model: PlaybookThinker; label: string }[] = [
-  { model: 'auto', label: 'Jarvis picks' },
-  { model: 'worker', label: 'Ornith (simple, stays on the PC)' },
-  { model: 'claude', label: 'Claude (judgment and writing)' },
-]
+// The page's word for a pick left to Jarvis (who does a thinking step).
+export const AUTO = 'auto'
 
 /** "08:30" as "8:30 AM". */
 export function clockLabel(at: string): string {
@@ -73,49 +60,18 @@ export function triggerLine(trigger: PlaybookTrigger): string {
   return 'When I ask, or the job comes up'
 }
 
-// Jarvis's device commands (Home Assistant service names) in plain words.
-const COMMAND_WORDS: Record<string, string> = {
-  set_temperature: 'Set temperature to',
-  set_hvac_mode: 'Set mode to',
-  volume_set: 'Set volume to',
-  select_source: 'Open',
-  media_play: 'Play',
-  media_pause: 'Pause',
-  media_stop: 'Stop',
-}
+/** One thing a field can be set to: the value that's saved and the words shown for it. */
+export interface StepChoice { id: string; name: string }
 
-// Commands that need a value: a temperature, a mode, a volume from 0 to 1, an app.
-const VALUE_COMMANDS = ['set_temperature', 'set_hvac_mode', 'volume_set', 'select_source']
-
-// Commands whose value is words, not a number.
-const WORD_COMMANDS = ['set_hvac_mode', 'select_source']
-
-/** A command in plain words: "turn_off" reads "Turn off". */
-export function commandLabel(command: string): string {
-  const known = COMMAND_WORDS[command]
-  if (known) return known
-  const words = command.replace(/_/g, ' ')
+/** An id in plain words: "turn_off" reads "Turn off". */
+function plainWords(id: string): string {
+  const words = id.replace(/_/g, ' ')
   return words.charAt(0).toUpperCase() + words.slice(1)
-}
-
-/** Whether a command needs a value typed in (a temperature, a volume). */
-export function commandTakesValue(command: string): boolean {
-  return VALUE_COMMANDS.includes(command)
-}
-
-/** Whether a command's value is words (a mode, an app) rather than a number. */
-export function commandTakesWords(command: string): boolean {
-  return WORD_COMMANDS.includes(command)
 }
 
 /** Every address in a "to" box: one, or several split by commas. */
 export function emailAddresses(to: string): string[] {
   return to.split(',').map((a) => a.trim()).filter((a) => a !== '')
-}
-
-/** The name a step's device, scene or TV goes by; its id when Jarvis no longer lists it. */
-function nameOf(entity: string, rows: { entity: string; name: string }[]): string {
-  return rows.find((r) => r.entity === entity)?.name ?? entity
 }
 
 /** A short piece of typed text for a one-line summary. */
@@ -124,20 +80,172 @@ function clip(words: string, max = 48): string {
   return `${words.slice(0, max - 1).trimEnd()}…`
 }
 
-/** One step, as one line. */
-export function stepLine(step: PlaybookStep, options: PlaybookOptions): string {
-  if (step.type === 'device') {
-    const name = nameOf(step.entity, options.devices)
-    if (step.value === undefined) return `${commandLabel(step.command)}: ${name}`
-    return `${name}: ${commandLabel(step.command).toLowerCase()} ${step.value}`
+/** Jarvis's description of a step's kind; undefined for a kind he didn't describe. */
+export function stepTypeOf(step: PlaybookStep, options: PlaybookOptions): StepType | undefined {
+  return options.stepTypes.find((t) => t.type === step.type)
+}
+
+/** What heads a step in the editor: its kind's label, or the bare kind when Jarvis didn't describe it. */
+export function stepLabel(step: PlaybookStep, options: PlaybookOptions): string {
+  return stepTypeOf(step, options)?.label ?? plainWords(step.type)
+}
+
+/** One of the options lists by name (devices, scenes, apps, jobs, thinkers), as rows with an id. */
+function optionRows(name: string, options: PlaybookOptions): { id: string; name: string; row: Record<string, unknown> }[] {
+  const list = (options as unknown as Record<string, unknown>)[name]
+  if (!Array.isArray(list)) return []
+  const rows = []
+  for (const row of list as Record<string, unknown>[]) {
+    // Devices, scenes and TVs go by `entity`; jobs and thinkers by `id`.
+    const id = typeof row?.entity === 'string' ? row.entity : row?.id
+    if (typeof id === 'string') rows.push({ id, name: typeof row.name === 'string' ? row.name : id, row })
   }
-  if (step.type === 'scene') return `Scene: ${nameOf(step.entity, options.scenes)}`
-  if (step.type === 'app') return `Open ${step.app} on ${nameOf(step.entity, options.apps)}`
-  if (step.type === 'notify') return `Notify me: ${clip(step.text)}`
-  if (step.type === 'think') return `Jarvis: ${clip(step.text)}`
-  if (step.type === 'email') return `Email ${step.to}: ${clip(step.subject)}`
-  if (step.seconds % 60 === 0) return `Wait ${step.seconds / 60} min`
-  return `Wait ${step.seconds} s`
+  return rows
+}
+
+/** What a choice field offers for this step: fixed words, a whole options list, or the picked row's sub-list. */
+export function choicesFor(rule: StepFieldRule, step: PlaybookStep, options: PlaybookOptions): StepChoice[] {
+  if (rule.choices) return rule.choices.map((id) => ({ id, name: plainWords(id) }))
+  if (!rule.choicesFrom) return []
+  const rows = optionRows(rule.choicesFrom, options)
+  if (!rule.dependsOn || !rule.choicesKey) return rows.map(({ id, name }) => ({ id, name }))
+  // The picked device's commands, the picked TV's apps.
+  const picked = rows.find((r) => r.id === step[rule.dependsOn as string])
+  const sub = picked?.row[rule.choicesKey]
+  if (!Array.isArray(sub)) return []
+  return sub.filter((v): v is string => typeof v === 'string').map((id) => ({ id, name: plainWords(id) }))
+}
+
+/** The kind of device a step is about (light, climate), for values only some kinds take. */
+function deviceKind(step: PlaybookStep, options: PlaybookOptions): string {
+  const device = options.devices.find((d) => d.entity === step.entity)
+  return device?.kind ?? ''
+}
+
+/**
+ * The field as it applies to this step right now. A `by_command` field
+ * becomes the rule for the picked command, or null when that command takes
+ * no value (or takes one only for another kind of device).
+ */
+export function activeField(field: StepField, step: PlaybookStep, options: PlaybookOptions): (StepFieldRule & { key: string }) | null {
+  if (field.kind !== 'by_command') return field
+  const picked = step[field.dependsOn ?? '']
+  const rule = typeof picked === 'string' ? field.byCommand?.[picked] : undefined
+  if (!rule) return null
+  if (rule.onlyDomains && !rule.onlyDomains.includes(deviceKind(step, options))) return null
+  return { key: field.key, ...rule }
+}
+
+/** A step's value as it reads in the row: a pick's name, or the typed words cut short. */
+function valueWords(step: PlaybookStep, key: string, byName: boolean, options: PlaybookOptions): string {
+  const value = step[key]
+  if (value === undefined || value === '' || value === AUTO) return ''
+  const field = stepTypeOf(step, options)?.fields.find((f) => f.key === key)
+  const rule = field ? activeField(field, step, options) : null
+  if (rule?.kind === 'choice' && typeof value === 'string') {
+    const name = choicesFor(rule, step, options).find((c) => c.id === value)?.name
+    // "{entity.name}" asks for the name as given; a bare "{command}" reads mid-sentence.
+    if (byName) return name ?? value
+    return value.replace(/_/g, ' ')
+  }
+  return clip(String(value))
+}
+
+/** One step, as one line, from its kind's summary pattern ("{entity.name}: {command} {value}"). */
+export function stepLine(step: PlaybookStep, options: PlaybookOptions): string {
+  const described = stepTypeOf(step, options)
+  if (!described) return plainWords(step.type)
+  const line = described.summary.replace(/\{([a-z0-9_]+)(\.name)?\}/g, (_all, key: string, byName?: string) => valueWords(step, key, byName !== undefined, options))
+  return line.replace(/\s+/g, ' ').trim()
+}
+
+/** The kinds of step the editor can add: all Jarvis describes, but not one whose only pick has nothing to pick from. */
+export function stepChoices(options: PlaybookOptions): StepType[] {
+  return options.stepTypes.filter((t) => {
+    const empty = t.fields.find((f) => f.kind === 'choice' && f.required && !f.dependsOn && choicesFor(f, { type: t.type }, options).length === 0)
+    return empty === undefined
+  })
+}
+
+/** What a field starts as, given the step so far; undefined = left out. */
+function startValue(rule: StepFieldRule, step: PlaybookStep, options: PlaybookOptions): StepValue | undefined {
+  if (rule.kind === 'choice') {
+    // A pick that isn't required is left to Jarvis.
+    if (!rule.required) return AUTO
+    return choicesFor(rule, step, options)[0]?.id ?? ''
+  }
+  if (rule.kind === 'bool') return rule.default === true
+  if (rule.kind === 'number') {
+    // No default = an empty box to fill in.
+    return typeof rule.default === 'number' ? rule.default : undefined
+  }
+  return ''
+}
+
+/** What a step of one kind starts as: the first device, scene or app Jarvis lists, and his defaults. */
+export function blankStep(type: string, options: PlaybookOptions): PlaybookStep {
+  const step: PlaybookStep = { type }
+  const fields = options.stepTypes.find((t) => t.type === type)?.fields ?? []
+  for (const field of fields) {
+    const rule = activeField(field, step, options)
+    if (rule) step[field.key] = startValue(rule, step, options)
+  }
+  return step
+}
+
+/** Whether a field hangs off another one, directly or through the command it depends on. */
+function hangsOff(field: StepField, key: string): boolean {
+  if (field.dependsOn === key) return true
+  return Object.values(field.byCommand ?? {}).some((rule) => rule.dependsOn === key)
+}
+
+/**
+ * A step with one value changed. Fields that hang off it start over, since
+ * another device has other commands and another command takes another value.
+ */
+export function withField(step: PlaybookStep, key: string, value: StepValue | undefined, options: PlaybookOptions): PlaybookStep {
+  const next: PlaybookStep = { ...step, [key]: value }
+  const fields = stepTypeOf(step, options)?.fields ?? []
+  const changed = [key]
+  for (const field of fields) {
+    if (!changed.some((c) => hangsOff(field, c))) continue
+    const rule = activeField(field, next, options)
+    next[field.key] = rule ? startValue(rule, next, options) : undefined
+    changed.push(field.key)
+  }
+  return next
+}
+
+/** What one field still needs, or null when it's fine. */
+function fieldProblem(rule: StepFieldRule, value: StepValue | undefined): string | null {
+  if (rule.kind === 'bool') return null
+  if (rule.kind === 'emails') {
+    const addresses = emailAddresses(typeof value === 'string' ? value : '')
+    const most = rule.maxItems ?? 10
+    if (addresses.length === 0) return rule.required ? `give it one to ${most} email addresses` : null
+    if (addresses.length > most) return `give it one to ${most} email addresses`
+    if (!addresses.every((a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a))) return 'check the email address'
+    return null
+  }
+  const empty = value === undefined || value === '' || (typeof value === 'string' && value.trim() === '')
+  if (empty) return rule.required ? `${rule.label} is missing` : null
+  if (rule.kind === 'number') {
+    const low = rule.min ?? -Infinity
+    const high = rule.max ?? Infinity
+    if (typeof value !== 'number' || value < low || value > high) return `${rule.label} must be between ${low} and ${high}`
+  }
+  return null
+}
+
+/** What one step is still missing, or null when it's complete. A kind Jarvis didn't describe is his to judge. */
+function stepProblem(step: PlaybookStep, options: PlaybookOptions): string | null {
+  const fields = stepTypeOf(step, options)?.fields ?? []
+  for (const field of fields) {
+    const rule = activeField(field, step, options)
+    const problem = rule ? fieldProblem(rule, step[field.key]) : null
+    if (problem) return problem
+  }
+  return null
 }
 
 /** A new, empty playbook: runs only when asked until a trigger is picked. */
@@ -166,53 +274,13 @@ export function blankTrigger(type: PlaybookTrigger['type']): PlaybookTrigger {
   return { type }
 }
 
-/** What a step of one type starts as: the first device, scene or app Jarvis lists. */
-export function blankStep(type: PlaybookStep['type'], options: PlaybookOptions): PlaybookStep {
-  if (type === 'device') {
-    const first = options.devices[0]
-    return { type, entity: first?.entity ?? '', command: first?.commands[0] ?? 'turn_off' }
-  }
-  if (type === 'scene') return { type, entity: options.scenes[0]?.entity ?? '' }
-  if (type === 'app') {
-    const first = options.apps[0]
-    return { type, entity: first?.entity ?? '', app: first?.apps[0] ?? '' }
-  }
-  if (type === 'notify') return { type, text: '' }
-  if (type === 'think') return { type, text: '', model: 'auto' }
-  // A playbook you wrote doesn't ask before sending (Dylan, 2026-11-18).
-  if (type === 'email') return { type, to: '', subject: '', body: '', confirm: false }
-  return { type, seconds: 60 }
-}
-
-/** What one step is still missing, or null when it's complete. */
-function stepProblem(step: PlaybookStep): string | null {
-  if (step.type === 'device') {
-    if (!step.entity) return 'pick a device'
-    if (commandTakesValue(step.command) && (step.value === undefined || step.value === '')) return 'give it a value'
-    return null
-  }
-  if (step.type === 'scene') return step.entity ? null : 'pick a scene'
-  if (step.type === 'app') return step.entity && step.app ? null : 'pick a TV and an app'
-  if (step.type === 'notify') return step.text.trim() ? null : 'write what it should say'
-  if (step.type === 'think') return step.text.trim() ? null : 'write what Jarvis should do'
-  if (step.type === 'email') {
-    const addresses = emailAddresses(step.to)
-    if (addresses.length === 0 || addresses.length > 10) return 'give it one to ten email addresses'
-    if (!addresses.every((a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a))) return 'check the email address'
-    if (!step.subject.trim() || !step.body.trim()) return 'write a subject and a message'
-    return null
-  }
-  if (step.seconds < 1 || step.seconds > 600) return 'wait between 1 and 600 seconds'
-  return null
-}
-
 /** Why a playbook can't be saved yet, in plain words; null when it can. */
-export function playbookProblem(draft: PlaybookDraft): string | null {
+export function playbookProblem(draft: PlaybookDraft, options: PlaybookOptions): string | null {
   if (!draft.name.trim()) return 'Give the playbook a name'
   if (draft.trigger.type === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.trigger.at)) return 'Pick a time'
   if (draft.steps.length === 0) return 'Add at least one step'
   for (let i = 0; i < draft.steps.length; i += 1) {
-    const problem = stepProblem(draft.steps[i])
+    const problem = stepProblem(draft.steps[i], options)
     if (problem) return `Step ${i + 1}: ${problem}`
   }
   return null

@@ -5,7 +5,10 @@
 // It also keeps a tiny bit of state (is the local model loaded?) so the Unload and
 // Load buttons visibly do something in the preview.
 
+import { scoreBand, sleepSummary } from './sleep.mjs'
 import { createPickStore } from '../money-picks.mjs'
+import { HISTORY_DEFAULT, pageOfTurns } from './history.mjs'
+import { DEFAULT_STEP_TYPES, DEFAULT_THINKERS } from './step-types.mjs'
 import { SAMPLE_VOICES, sampleWav } from '../voice.mjs'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -23,6 +26,11 @@ function wave(seed, count, base, spread) {
     out.push(Math.round(v * 10) / 10)
   }
   return out
+}
+
+/** The Pacific-time calendar day of a moment, "2026-11-18". */
+function pacificDay(date) {
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
 }
 
 /**
@@ -82,10 +90,25 @@ function mockJobs(t, minutesAgo) {
     },
     messenger: { sentToday: 2, cap: 5, quiet: null },
     running: [
-      { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: minutesAgo(2) },
-      { id: 'r2', label: 'Saying traffic first', state: 'queued', startedAt: null },
+      { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: minutesAgo(2), model: 'claude-opus-5-5', step: 'Running tests', stoppable: true },
+      { id: 'r2', label: 'Saying traffic first', state: 'queued', startedAt: null, model: null, step: null, stoppable: true },
+    ],
+    finished: [
+      { id: 'f1', label: 'Shorter morning greeting', state: 'live', finishedAt: minutesAgo(50), model: 'claude-opus-5-5' },
     ],
   }
+}
+
+/** The sample jobs with the ones he stopped moved from running to finished. */
+function withStopped(jobs, stopped) {
+  const running = []
+  const finished = []
+  for (const task of jobs.running) {
+    const at = stopped.get(task.id)
+    if (at === undefined) running.push(task)
+    else finished.push({ id: task.id, label: task.label, state: 'stopped', finishedAt: at, model: task.model })
+  }
+  return { ...jobs, running, finished: [...finished, ...jobs.finished] }
 }
 
 function mockDigest(t, minutesAgo) {
@@ -198,6 +221,29 @@ function sampleOffers() {
   ]
 }
 
+/** A made-up night of sleep for `date` (the morning it ended), in the apps' shape. */
+function sampleNight(date) {
+  return {
+    night: date,
+    bedtime: `${date}T00:40:00-08:00`,
+    wake: `${date}T08:00:00-08:00`,
+    minutes: { asleep: 420, inBed: 450, awake: 20, deep: 70, rem: 95, core: 255, unspecified: 0 },
+    interruptions: 1,
+    vitals: { heartRate: { avg: 54, min: 47 }, hrvMs: 48, hrvRmssdMs: null, respiratoryRate: 14.5, spo2: { avg: 96, min: 91 }, wristTempC: null, wristTempDeltaC: null, breathingDisturbances: null },
+    score: 78,
+    scoreSource: 'jarvis',
+    scoreBand: scoreBand(78),
+    scoreParts: { duration: 44, consistency: 18, interruptions: 16 },
+    stages: [
+      { stage: 'core', start: `${date}T00:40:00-08:00`, end: `${date}T02:10:00-08:00` },
+      { stage: 'deep', start: `${date}T02:10:00-08:00`, end: `${date}T03:20:00-08:00` },
+      { stage: 'awake', start: `${date}T03:20:00-08:00`, end: `${date}T03:40:00-08:00` },
+      { stage: 'rem', start: `${date}T03:40:00-08:00`, end: `${date}T05:15:00-08:00` },
+      { stage: 'core', start: `${date}T05:15:00-08:00`, end: `${date}T08:00:00-08:00` },
+    ],
+  }
+}
+
 export function createMockSource({ now = () => new Date() } = {}) {
   const state = {
     modelLoaded: true,
@@ -208,6 +254,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
     // Approvals the pretend Jarvis is waiting on: id -> {approval, answer(ok)}.
     approvals: new Map(),
     nextApproval: 1,
+    // Nights of sleep the pretend app has sent, by date.
+    sleep: new Map(),
     // Pretend things Jarvis remembers (made up: this repo is public).
     facts: sampleFacts(now()),
     // Pretend tasks Jarvis offers (made up), until Start or Hide.
@@ -219,6 +267,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
     nextPlaybookId: 10,
     // Pretend reports (made up), until kept or deleted on the Services page.
     reports: sampleReports(now()),
+    // Background work he stopped: job id -> when.
+    stoppedJobs: new Map(),
     // Devices that asked for pushes.
     pushDevices: [],
     // "That was wrong" flags sent from the chat.
@@ -305,6 +355,37 @@ export function createMockSource({ now = () => new Date() } = {}) {
         models: loaded
           ? [{ name: 'ornith-1.5:9b', role: 'watch', vramGb: 5.7, until: new Date(t.getTime() + 8 * 60_000).toISOString(), parameters: '9.7B', quantization: 'Q4_K_M', contextLength: 8192 }]
           : [],
+        // Like jarvis: the speech models always on the card, the local model when loaded.
+        gpu: {
+          totalMb: 12288,
+          usedMb: loaded ? 10350 : 3520,
+          utilization: loaded ? 34 : 3,
+          users: [
+            ...(loaded ? [{ name: 'Ornith', role: 'Local brain', mb: 6580, kind: 'local' }] : []),
+            { name: 'Parakeet', role: 'Hears you', mb: 2430, kind: 'speech' },
+            { name: 'Kokoro', role: 'Jarvis\'s voice', mb: 560, kind: 'speech' },
+            { name: 'Everything else', role: 'Windows, the desktop and drivers', mb: loaded ? 440 : 190, kind: 'other' },
+          ],
+        },
+        // The whole PC's memory and its two disks, with who holds what.
+        ram: {
+          totalMb: 32768,
+          usedMb: loaded ? 17900 : 14200,
+          scope: 'pc',
+          users: [
+            { name: 'Windows', role: 'The desktop and its apps', mb: 6400 },
+            { name: 'File cache', role: 'Files Linux keeps handy', mb: 3900 },
+            ...(loaded ? [{ name: 'Ollama', role: 'The local model', mb: 3700 }] : []),
+            { name: 'Jarvis', role: 'The agent and his speech models', mb: 2100 },
+            { name: 'Home Assistant', role: 'Smart home', mb: 900 },
+            { name: 'Home page', role: 'This page', mb: 300 },
+            { name: 'Everything else', role: 'Other programs', mb: 600 },
+          ],
+        },
+        disks: [
+          { id: 'c', name: 'C: drive', usedGb: 216, totalGb: 238, users: [{ name: 'Linux disk', gb: 92 }, { name: 'Windows', gb: 61 }, { name: 'Everything else', gb: 63 }] },
+          { id: 'linux', name: 'Linux disk', usedGb: 92, totalGb: 1007, users: [{ name: 'Speech models', gb: 24.5 }, { name: 'Docker', gb: 18.2 }, { name: 'Ollama models', gb: 12.8 }, { name: 'Jarvis data', gb: 6.1 }, { name: 'Everything else', gb: 30.4 }] },
+        ],
         cloud,
         home: {
           devices: state.home.map((d) => ({ ...d })),
@@ -322,13 +403,15 @@ export function createMockSource({ now = () => new Date() } = {}) {
           })),
           sun: { rising: atPacificTime(t, 6, 41), setting: atPacificTime(t, 16, 52) },
         },
-        jobs: mockJobs(t, minutesAgo),
+        jobs: withStopped(mockJobs(t, minutesAgo), state.stoppedJobs),
         moneyPicks: await picks.read(cloud.money.recent),
         offers: { greeting: 'Well, good evening, Dylan! Your 7 PM practice moved to court 2.', offers: state.offers.map((o) => ({ ...o })) },
         notices: currentNotices(t).map((n) => ({ ...n })),
         // Made-up calories for today.
         reports: mockReports(state.reports),
-        nutrition: { date: t.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140 },
+        // The last made-up night and a week of them.
+        sleep: sleepSummary(await this.sleepNights({ night: '', days: 7 })),
+        nutrition: { date: pacificDay(t), eaten: 1180, goal: 1750, left: 570, burned: 420, protein: 96, proteinGoal: 140, fat: 38, fatGoal: 55, carbs: 110, carbsGoal: 175 },
       }
     },
 
@@ -398,6 +481,16 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: true, message: ok ? 'Approved' : 'Denied' }
     },
 
+    /** Stops a piece of sample background work; one that isn't running is already gone. */
+    async stopJob(id) {
+      const running = mockJobs(now(), () => null).running
+      if (state.stoppedJobs.has(id) || !running.some((task) => task.id === id)) {
+        return { ok: false, gone: true, message: 'That one already finished' }
+      }
+      state.stoppedJobs.set(id, now().toISOString())
+      return { ok: true, message: 'Stopped' }
+    },
+
     /** Hide on an offer card: gone for good. */
     async hideOffer(id) {
       state.offers = state.offers.filter((o) => o.id !== id)
@@ -411,11 +504,32 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { ok: true, message: 'Logged as a new meal.' }
     },
 
-    /** Clear on notifications: those ids, or all of them, are gone. */
+    /** Clear on notifications: those ids, or all of them, are gone; kept ones stay. */
     async clearNotices(which) {
       const ids = which.ids ?? []
-      state.notices = currentNotices(now()).filter((n) => which.all !== true && !ids.includes(n.id))
+      state.notices = currentNotices(now()).filter((n) => n.kept === true || (which.all !== true && !ids.includes(n.id)))
       return { ok: true, message: 'Cleared' }
+    },
+
+    /** Keep on a notice ({id}) marks it kept; on a chat message ({turnId}) adds a kept line for it, once. */
+    async keepNotice(what) {
+      const notices = currentNotices(now())
+      let id = what.id
+      if (what.turnId !== undefined) id = `k${what.turnId}`
+      let notice = notices.find((n) => n.id === id)
+      if (!notice && what.turnId === undefined) return { ok: false, message: 'Jarvis can’t find that message' }
+      if (!notice) {
+        notice = { id, kind: 'fyi', title: 'A message you kept', body: '', source: 'kept', created: now().toISOString(), turnId: what.turnId }
+        notices.unshift(notice)
+      }
+      notice.kept = true
+      return { ok: true, message: 'Kept', notice: { ...notice } }
+    },
+
+    /** Letting a kept one go: it leaves the list. */
+    async unkeepNotice(id) {
+      state.notices = currentNotices(now()).filter((n) => n.id !== id)
+      return { ok: true, message: 'Let go' }
     },
 
     /** An app asking for pushes: remembered so a test can see it arrived. */
@@ -479,6 +593,8 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const turn = { role: 'user', text, at }
       if (photos > 0) turn.images = photos
       state.chat.push(turn)
+      // The message's number, as the real Jarvis says first.
+      onEvent({ type: 'turn', id: state.chat.length })
       await delay(700)
       // A question that needs a lookup shows the orb's working sweep first, like the real Jarvis.
       const work = sampleWork(text)
@@ -524,9 +640,13 @@ export function createMockSource({ now = () => new Date() } = {}) {
       onEvent({ type: 'done', ok: true })
     },
 
-    /** The sample conversation so far, oldest first. */
-    async history() {
-      return state.chat.slice(-50)
+    /** The asker closed the app mid-reply; the pretend Jarvis has no phone to push to, so nothing happens. */
+    async chatLeft() {},
+
+    /** One page of the sample conversation, oldest first; each turn numbered in the order it was said. */
+    async history(_caller, page) {
+      const numbered = state.chat.map((turn, index) => ({ ...turn, id: index + 1 }))
+      return pageOfTurns(numbered, page ?? { limit: HISTORY_DEFAULT })
     },
 
     /** The pretend facts, newest first, and a made-up count of saved turns. */
@@ -534,6 +654,68 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const facts = [...state.facts].sort((a, b) => b.learned.localeCompare(a.learned))
       const lastDistill = new Date(now().getTime() - 7 * 3600_000).toISOString()
       return { facts, turns: 1284 + state.chat.length, lastDistill }
+    },
+
+    /** Made-up nights of sleep, newest first: one `night`, or the last `days`; a night that was sent is given back as stored. */
+    async sleepNights(ask) {
+      const dates = []
+      if (ask.night) dates.push(ask.night)
+      for (let i = 0; !ask.night && i < ask.days; i += 1) dates.push(pacificDay(new Date(now().getTime() - i * 86_400_000)))
+      return dates.map((date) => state.sleep.get(date) ?? sampleNight(date))
+    },
+
+    /** Remembers one night as the pretend Jarvis would, with a made-up score. */
+    async saveSleepNight(night) {
+      const stored = { ...sampleNight(night.night), vitals: { ...sampleNight(night.night).vitals, hrvMs: night.hrv_ms ?? null, wristTempC: night.wrist_temp_c ?? null } }
+      state.sleep.set(night.night, stored)
+      return { ok: true, message: 'Saved', night: stored }
+    },
+
+    /** A sample day of food: the same three meals whichever day is asked for. */
+    async nutritionDay(date) {
+      const t = now()
+      const day = date || pacificDay(t)
+      const items = [
+        { id: 'm1', at: atPacificTime(t, 9, 10), name: 'Greek yogurt with berries', portion: '1 bowl', calories: 240, protein: 22, fat: 6, carbs: 26, hasPhoto: true },
+        { id: 'm2', at: atPacificTime(t, 13, 5), name: 'Chicken burrito bowl', portion: '1 bowl', calories: 675, protein: 54, fat: 24, carbs: 67, hasPhoto: true },
+        { id: 'm3', at: atPacificTime(t, 16, 30), name: 'Protein shake', portion: '12 oz', calories: 265, protein: 20, fat: 5, carbs: 8, hasPhoto: false },
+      ]
+      return {
+        date: day,
+        goals: { calories: 1750, protein: 140, fat: 60, carbs: 160 },
+        totals: { calories: 1180, protein: 96, fat: 35, carbs: 101, burned: 420 },
+        items,
+      }
+    },
+
+    /** A sample week: seven days from `start` (or six days back), today part-way there. */
+    async nutritionWeek(start) {
+      const t = now()
+      const eaten = [1690, 1820, 1540, 1760, 2010, 1480, 1180]
+      const first = start ? new Date(`${start}T12:00:00Z`) : new Date(t.getTime() - 6 * 86_400_000)
+      const days = eaten.map((calories, i) => ({ date: pacificDay(new Date(first.getTime() + i * 86_400_000)), calories, goal: 1750, protein: 90 + i * 9, proteinGoal: 140, fat: 40 + i * 3, fatGoal: 55, carbs: 120 + i * 10, carbsGoal: 175 }))
+      return { start: days[0].date, days }
+    },
+
+    /** A one-pixel stand-in picture for the sample meals that have a photo (m1, m2); the rest have none. */
+    async mealPhoto(id) {
+      if (id !== 'm1' && id !== 'm2') return { ok: false, gone: true, message: 'No photo for that meal' }
+      const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+      return { ok: true, type: 'image/png', bytes: Uint8Array.from(atob(pixel), (c) => c.charCodeAt(0)) }
+    },
+
+    /** `count` made-up days ending at `end` (today when ''), newest first; the pretend log starts 30 days back. */
+    async nutritionDays(end, count) {
+      const last = end ? new Date(`${end}T20:00:00Z`) : now()
+      const earliest = pacificDay(new Date(now().getTime() - 30 * 86_400_000))
+      const days = []
+      for (let i = 0; i < count; i += 1) {
+        const day = await this.nutritionDay(pacificDay(new Date(last.getTime() - i * 86_400_000)))
+        // Before the log began there's nothing to show.
+        if (day.date < earliest) day.items = []
+        days.push(day)
+      }
+      return { days, earliest }
     },
 
     /** Finds sample past moments containing the words searched for. */
@@ -569,6 +751,9 @@ export function createMockSource({ now = () => new Date() } = {}) {
           scenes: state.home.filter((d) => d.kind === 'scene').map((d) => ({ entity: d.id, name: d.name })),
           apps: [{ entity: 'media_player.apple_tv', name: 'Apple TV', apps: ['Jarvis', 'Netflix', 'YouTube', 'Music'] }],
           zones: ['home'],
+          jobs: [{ id: 'nightly', name: 'The nightly self-improvement pass' }],
+          thinkers: DEFAULT_THINKERS,
+          stepTypes: DEFAULT_STEP_TYPES,
         },
       }
     },
@@ -589,8 +774,21 @@ export function createMockSource({ now = () => new Date() } = {}) {
         return { ok: true, message: 'Deleted' }
       }
       report.kept = change.keep === true
-      if (report.kept) return { ok: true, message: 'Kept until you switch it off' }
-      return { ok: true, message: 'Back to 30 days' }
+      report.keepDays = change.days ?? REPORT_KEEP_DAYS
+      if (report.kept) return { ok: true, message: 'Keeping it until you change that' }
+      if (report.keepDays === 30) return { ok: true, message: 'Keeping it 1 month' }
+      if (report.keepDays === 90) return { ok: true, message: 'Keeping it 3 months' }
+      return { ok: true, message: 'Keeping it 2 weeks' }
+    },
+
+    /** The kinds of step the pretend Jarvis knows: the built-in list. */
+    async stepTypes() {
+      return DEFAULT_STEP_TYPES
+    },
+
+    /** A pretend draft of a playbook from a few words. */
+    async draftPlaybook(text) {
+      return { ok: true, playbook: sampleDraft(text) }
     },
 
     /** Saves, deletes or pretends to run one playbook, in memory. */
@@ -619,6 +817,32 @@ export function createMockSource({ now = () => new Date() } = {}) {
       playbook.lastRun = { at: now().toISOString(), ok: true, detail, checks }
       return { ok: true, message: detail, checks }
     },
+  }
+}
+
+/**
+ * A pretend draft from a description: named after its first words, at a time
+ * when the words give one ("11 pm"), with one step for Jarvis holding the words.
+ */
+function sampleDraft(text) {
+  const words = text.split(/\s+/).slice(0, 4).join(' ')
+  let trigger = { type: 'manual' }
+  const clock = /\b(\d{1,2})\s*(am|pm)\b/i.exec(text)
+  if (clock) {
+    let hour = Number(clock[1]) % 12
+    if (clock[2].toLowerCase() === 'pm') hour += 12
+    trigger = { type: 'time', at: `${String(hour).padStart(2, '0')}:00`, days: [] }
+  }
+  const { madeBy: _madeBy, ...blank } = blankSample()
+  return {
+    ...blank,
+    name: words.charAt(0).toUpperCase() + words.slice(1),
+    enabled: true,
+    purpose: text.slice(0, 200),
+    trigger,
+    steps: [{ type: 'think', text, model: 'auto' }],
+    done: ['It did what I asked'],
+    edgeCases: ['This is the demo page, so the whole job is one step for Jarvis.'],
   }
 }
 
@@ -702,7 +926,7 @@ function sampleFacts(t) {
   ]
 }
 
-const REPORT_KEEP_DAYS = 30
+const REPORT_KEEP_DAYS = 14
 const DAY_MS = 86_400_000
 
 /** Made-up reports for the sample Reports panel (this repo is public). */
@@ -711,7 +935,7 @@ function sampleReports(t) {
   return [
     { id: 'rep-speakers', title: 'Bookshelf speakers under $400', summary: 'Five pairs compared on sound, size and price, with a pick for a small room.', created: daysAgo(0.1), kept: false, bytes: 184_000 },
     { id: 'rep-week', title: 'Week in review', summary: 'What got done, what slipped, and what is coming up next week.', created: daysAgo(6), kept: true, bytes: 96_500 },
-    { id: 'rep-trip', title: 'Weekend trip options', summary: 'Three places within a four-hour drive, with rough costs and what to do there.', created: daysAgo(27), kept: false, bytes: 412_000 },
+    { id: 'rep-trip', title: 'Weekend trip options', summary: 'Three places within a four-hour drive, with rough costs and what to do there.', created: daysAgo(9), kept: false, bytes: 412_000 },
   ]
 }
 
@@ -720,9 +944,14 @@ function mockReports(reports) {
   const list = [...reports]
     .sort((a, b) => b.created.localeCompare(a.created))
     .map((r) => {
+      // Kept for its own number of days when one was picked, else the usual two weeks; for good has no end.
       let expires = null
-      if (!r.kept) expires = new Date(Date.parse(r.created) + REPORT_KEEP_DAYS * DAY_MS).toISOString()
-      return { ...r, expires }
+      let keepDays = null
+      if (!r.kept) {
+        keepDays = r.keepDays ?? REPORT_KEEP_DAYS
+        expires = new Date(Date.parse(r.created) + keepDays * DAY_MS).toISOString()
+      }
+      return { ...r, keepDays, expires }
     })
   let totalBytes = 0
   for (const r of reports) totalBytes += r.bytes

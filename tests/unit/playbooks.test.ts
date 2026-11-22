@@ -6,9 +6,10 @@ import { createApi } from '../../server/app.mjs'
 import { loadConfig } from '../../server/config.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
-import { cleanPlaybook, fromJarvisPlaybook, parsePlaybookBook, toJarvisPlaybook } from '../../server/sources/playbooks.mjs'
-import { blankPlaybook, blankStep, blankTrigger, clockLabel, daysLabel, draftOf, failedChecks, playbookProblem, stepLine, triggerLine } from '../../src/lib/playbooks'
-import type { Playbook, PlaybookOptions } from '../../src/types'
+import { cleanPlaybook, fromJarvisDraft, fromJarvisPlaybook, parsePlaybookBook, toJarvisPlaybook } from '../../server/sources/playbooks.mjs'
+import { blankPlaybook, blankStep, stepChoices, withField, blankTrigger, clockLabel, daysLabel, draftOf, failedChecks, playbookProblem, stepLine, triggerLine } from '../../src/lib/playbooks'
+import type { Playbook, PlaybookOptions, StepType } from '../../src/types'
+import { DEFAULT_STEP_TYPES, DEFAULT_THINKERS, parseStepTypes } from '../../server/sources/step-types.mjs'
 import { callApi } from './helpers'
 
 const PAGE = { 'x-home-lab': '1' }
@@ -19,6 +20,9 @@ const OPTIONS: PlaybookOptions = {
   scenes: [{ entity: 'scene.movie', name: 'Movie night' }],
   apps: [{ entity: 'media_player.tv', name: 'Apple TV', apps: ['Jarvis', 'Netflix'] }],
   zones: ['home'],
+  jobs: [{ id: 'nightly', name: 'The nightly self-improvement pass' }],
+  thinkers: DEFAULT_THINKERS,
+  stepTypes: DEFAULT_STEP_TYPES as StepType[],
 }
 
 describe('playbook words', () => {
@@ -38,14 +42,18 @@ describe('playbook words', () => {
   })
 
   it('says what each step does, by the device’s name', () => {
-    expect(stepLine({ type: 'device', entity: 'light.lamp', command: 'turn_off' }, OPTIONS)).toBe('Turn off: Lamp')
-    expect(stepLine({ type: 'device', entity: 'climate.t', command: 'set_temperature', value: 66 }, OPTIONS)).toBe('Thermostat: set temperature to 66')
-    expect(stepLine({ type: 'device', entity: 'light.gone', command: 'turn_on' }, OPTIONS)).toBe('Turn on: light.gone')
+    expect(stepLine({ type: 'device', entity: 'light.lamp', command: 'turn_off' }, OPTIONS)).toBe('Lamp: turn off')
+    expect(stepLine({ type: 'device', entity: 'climate.t', command: 'set_temperature', value: 66 }, OPTIONS)).toBe('Thermostat: set temperature 66')
+    expect(stepLine({ type: 'device', entity: 'light.gone', command: 'turn_on' }, OPTIONS)).toBe('light.gone: turn on')
     expect(stepLine({ type: 'scene', entity: 'scene.movie' }, OPTIONS)).toBe('Scene: Movie night')
     expect(stepLine({ type: 'app', entity: 'media_player.tv', app: 'Jarvis' }, OPTIONS)).toBe('Open Jarvis on Apple TV')
     expect(stepLine({ type: 'email', to: 'a@b.co', subject: 'Goodnight', body: 'x', confirm: true }, OPTIONS)).toBe('Email a@b.co: Goodnight')
-    expect(stepLine({ type: 'wait', seconds: 120 }, OPTIONS)).toBe('Wait 2 min')
     expect(stepLine({ type: 'wait', seconds: 45 }, OPTIONS)).toBe('Wait 45 s')
+    expect(stepLine({ type: 'job', job: 'nightly' }, OPTIONS)).toBe('Run: The nightly self-improvement pass')
+    expect(stepLine({ type: 'job', job: 'gone' }, OPTIONS)).toBe('Run: gone')
+    expect(stepLine({ type: 'think', text: 'Plan dinner', model: 'auto', confirm: false }, OPTIONS)).toBe('Jarvis: Plan dinner')
+    // A kind Jarvis didn't describe still gets a line.
+    expect(stepLine({ type: 'feed_cat' }, OPTIONS)).toBe('Feed cat')
   })
 
   it('starts new triggers and steps sensibly, without asking first in a playbook you wrote', () => {
@@ -55,20 +63,21 @@ describe('playbook words', () => {
     expect(blankStep('app', OPTIONS)).toEqual({ type: 'app', entity: 'media_player.tv', app: 'Jarvis' })
     // A playbook you wrote doesn't ask before sending; a thinking step lets Jarvis pick who does it.
     expect(blankStep('email', OPTIONS)).toMatchObject({ confirm: false })
-    expect(blankStep('think', OPTIONS)).toEqual({ type: 'think', text: '', model: 'auto' })
+    expect(blankStep('think', OPTIONS)).toEqual({ type: 'think', text: '', model: 'auto', confirm: false })
+    expect(blankStep('wait', OPTIONS)).toEqual({ type: 'wait', seconds: 60 })
   })
 
   it('says what a playbook is missing before it can be saved', () => {
     const draft = blankPlaybook()
-    expect(playbookProblem(draft)).toBe('Give the playbook a name')
+    expect(playbookProblem(draft, OPTIONS)).toBe('Give the playbook a name')
     draft.name = 'Bedtime'
-    expect(playbookProblem(draft)).toBe('Add at least one step')
+    expect(playbookProblem(draft, OPTIONS)).toBe('Add at least one step')
     draft.steps = [{ type: 'device', entity: 'light.lamp', command: 'turn_off' }, { type: 'email', to: 'nobody', subject: 's', body: 'b', confirm: true }]
-    expect(playbookProblem(draft)).toBe('Step 2: check the email address')
+    expect(playbookProblem(draft, OPTIONS)).toBe('Step 2: check the email address')
     draft.steps[1] = { type: 'device', entity: 'climate.t', command: 'set_temperature' }
-    expect(playbookProblem(draft)).toBe('Step 2: give it a value')
+    expect(playbookProblem(draft, OPTIONS)).toBe('Step 2: Temperature (°F) is missing')
     draft.steps[1] = { type: 'notify', text: 'Night' }
-    expect(playbookProblem(draft)).toBeNull()
+    expect(playbookProblem(draft, OPTIONS)).toBeNull()
   })
 })
 
@@ -77,7 +86,7 @@ describe('checking a playbook before Jarvis gets it', () => {
     name: '  Bedtime  ',
     trigger: { type: 'time', at: '22:30', days: ['sun', 'mon', 'nope'] },
     steps: [
-      { type: 'device', entity: 'light.lamp', command: 'turn_off', extra: 'dropped' },
+      { type: 'device', entity: 'light.lamp', command: 'turn_off', extra: ' kept ', nested: { no: 1 } },
       { type: 'email', to: 'a@b.co', subject: 'Night', body: 'Going to bed' },
       { type: 'wait', seconds: 99999 },
     ],
@@ -93,7 +102,8 @@ describe('checking a playbook before Jarvis gets it', () => {
       trigger: { type: 'time', at: '22:30', days: ['mon', 'sun'] },
       inputs: [],
       steps: [
-        { type: 'device', entity: 'light.lamp', command: 'turn_off' },
+        // A plain value Jarvis didn't describe rides along for him to judge; anything nested is dropped.
+        { type: 'device', entity: 'light.lamp', command: 'turn_off', extra: 'kept' },
         { type: 'email', to: 'a@b.co', subject: 'Night', body: 'Going to bed', confirm: false },
         { type: 'wait', seconds: 600 },
       ],
@@ -118,7 +128,7 @@ describe('checking a playbook before Jarvis gets it', () => {
       edgeCases: ['The TV ignores the first off'],
       standard: 'Quiet',
       badVersion: 'Lights left on',
-      steps: [{ type: 'think', text: 'Check the doors', model: 'worker' }, { type: 'think', text: 'Say goodnight', model: 'gpt' }],
+      steps: [{ type: 'think', text: 'Check the doors', model: 'worker', confirm: false }, { type: 'think', text: 'Say goodnight', model: 'auto', confirm: false }],
     })
     expect(playbook).toMatchObject({
       purpose: 'Shut the place down',
@@ -135,7 +145,7 @@ describe('checking a playbook before Jarvis gets it', () => {
     const out = toJarvisPlaybook(playbook!)
     expect(out).toMatchObject({ when_to_use: 'When I say goodnight', edge_cases: ['The TV ignores the first off'], bad_version: 'Lights left on', made_by: 'dylan' })
     expect(out).not.toHaveProperty('whenToUse')
-    expect(out.steps).toEqual([{ type: 'think', text: 'Check the doors', model: 'worker' }, { type: 'think', text: 'Say goodnight' }])
+    expect(out.steps).toEqual([{ type: 'think', text: 'Check the doors', model: 'worker', confirm: false }, { type: 'think', text: 'Say goodnight', confirm: false }])
   })
 
   it('says what is wrong in plain words', () => {
@@ -178,7 +188,7 @@ describe('checking a playbook before Jarvis gets it', () => {
       trigger: { type: 'arrive', zone: 'home', minAway: 20 },
       inputs: [],
       // Fixed steps lose Jarvis's "code" tag; an older "ask" step reads as a thinking step.
-      steps: [{ type: 'scene', entity: 'scene.movie' }, { type: 'think', text: 'Say hi', model: 'auto' }, { type: 'think', text: 'Plan dinner', model: 'claude' }],
+      steps: [{ type: 'scene', entity: 'scene.movie' }, { type: 'think', text: 'Say hi', model: 'auto', confirm: false }, { type: 'think', text: 'Plan dinner', model: 'claude', confirm: false }],
       decisions: [],
       done: ['The TV is on'],
       edgeCases: ['TV asleep'],
@@ -199,7 +209,7 @@ describe('checking a playbook before Jarvis gets it', () => {
   it('keeps only the well-formed parts of Jarvis’s answer', () => {
     const book = parsePlaybookBook({
       playbooks: [{ id: 'r1', name: 'Bedtime', trigger: { type: 'time', at: '22:00' }, steps: [] }, { nope: true }],
-      options: { devices: [{ entity: 'light.lamp', name: 'Lamp', kind: 'light', commands: ['turn_on', 7] }, { name: 'no entity' }], apps: [{ entity: 'media_player.tv' }], zones: ['home', 3] },
+      options: { devices: [{ entity: 'light.lamp', name: 'Lamp', kind: 'light', commands: ['turn_on', 7] }, { name: 'no entity' }], apps: [{ entity: 'media_player.tv' }], zones: ['home', 3], jobs: [{ id: 'nightly', name: 'The nightly pass' }, { name: 'no id' }] },
     })
     expect(book.playbooks).toHaveLength(1)
     expect(book.playbooks[0].trigger).toEqual({ type: 'time', at: '22:00', days: [] })
@@ -208,8 +218,11 @@ describe('checking a playbook before Jarvis gets it', () => {
       scenes: [],
       apps: [{ entity: 'media_player.tv', name: 'media_player.tv', apps: [] }],
       zones: ['home'],
+      jobs: [{ id: 'nightly', name: 'The nightly pass' }],
+      thinkers: DEFAULT_THINKERS,
+      stepTypes: DEFAULT_STEP_TYPES,
     })
-    expect(parsePlaybookBook(null)).toEqual({ playbooks: [], options: { devices: [], scenes: [], apps: [], zones: [] } })
+    expect(parsePlaybookBook(null)).toEqual({ playbooks: [], options: { devices: [], scenes: [], apps: [], zones: [], jobs: [], thinkers: DEFAULT_THINKERS, stepTypes: DEFAULT_STEP_TYPES } })
   })
 })
 
@@ -230,6 +243,13 @@ describe('/api/jarvis/playbooks (sample data)', () => {
     expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, JSON.stringify({ op: 'save', playbook: { ...playbook, steps: [] } }))).json().message).toBe('Add at least one step')
     expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, '{"op":"explode","id":"r1"}')).statusCode).toBe(400)
     expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, '{"op":"run"}')).statusCode).toBe(400)
+    // A draft from a description comes back to look over and isn't saved.
+    expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, '{"op":"draft","text":" "}')).statusCode).toBe(400)
+    const drafted = (await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, JSON.stringify({ op: 'draft', text: 'At 11 pm turn everything off' }))).json()
+    expect(drafted.ok).toBe(true)
+    expect(drafted.playbook.trigger).toEqual({ type: 'time', at: '23:00', days: [] })
+    expect(drafted.playbook.id).toBeUndefined()
+    expect(await names()).not.toContain(drafted.playbook.name)
 
     expect((await callApi(api, 'POST', '/api/jarvis/playbooks', PAGE, JSON.stringify({ op: 'save', playbook }))).json()).toEqual({ ok: true, message: 'Saved' })
     expect(await names()).toContain('Lights out')
@@ -299,5 +319,85 @@ describe('playbooks from the real Jarvis', () => {
 
     const down = liveApi(() => { throw new Error('connect ECONNREFUSED') })
     expect((await callApi(down.api, 'POST', '/api/jarvis/playbooks', LOGIN, '{"op":"delete","id":"r1"}')).json().message).toBe('Jarvis is not answering')
+  })
+
+  it('reads a playbook Jarvis drafted as an editor draft: no id, author or last run', () => {
+    const draft = fromJarvisDraft({ name: 'Lights out', trigger: { type: 'arrive', zone: 'home', min_away: 20 }, steps: [{ type: 'notify', text: 'Home' }], made_by: 'jarvis', done: ['Told me'] })
+    expect(draft).toMatchObject({ name: 'Lights out', trigger: { type: 'arrive', zone: 'home', minAway: 20 }, done: ['Told me'] })
+    expect(draft).not.toHaveProperty('id')
+    expect(draft).not.toHaveProperty('madeBy')
+    expect(fromJarvisDraft(null)).toBeNull()
+    expect(fromJarvisDraft({ steps: [] })).toBeNull()
+  })
+})
+
+describe('a step that runs one of Jarvis’s own jobs', () => {
+  const nightly = { name: 'Nightly self-improvement', trigger: { type: 'time', at: '03:30', days: [] }, steps: [{ type: 'job', job: 'nightly', model: 'code' }] }
+
+  it('reads Jarvis’s step, and sends it back unchanged in meaning', () => {
+    const fromJarvis = fromJarvisPlaybook({ id: 'nightly', ...nightly })!
+    expect(fromJarvis.steps).toEqual([{ type: 'job', job: 'nightly' }])
+    const { playbook } = cleanPlaybook({ ...fromJarvis, enabled: false })
+    expect(playbook!.steps).toEqual([{ type: 'job', job: 'nightly' }])
+    expect(playbook!.enabled).toBe(false)
+    expect(toJarvisPlaybook(playbook!).steps).toEqual([{ type: 'job', job: 'nightly' }])
+  })
+
+  it('refuses a job step with no job', () => {
+    expect(cleanPlaybook({ ...nightly, steps: [{ type: 'job' }] }).problem).toBe('Step 1 is missing something')
+  })
+
+  it('offers the job step only when Jarvis lists jobs', () => {
+    expect(stepChoices(OPTIONS).map((c) => c.type)).toContain('job')
+    expect(stepChoices({ ...OPTIONS, jobs: [] }).map((c) => c.type)).not.toContain('job')
+    expect(blankStep('job', OPTIONS)).toEqual({ type: 'job', job: 'nightly' })
+    expect(playbookProblem({ ...blankPlaybook(), name: 'N', steps: [{ type: 'job', job: '' }] }, OPTIONS)).toBe('Step 1: Job is missing')
+  })
+})
+
+describe('step kinds as Jarvis describes them', () => {
+  const feedCat = {
+    type: 'feed_cat', label: 'Feed the cat', short: 'Cat', runs: 'code', summary: 'Feed {who.name} {grams} g',
+    fields: [
+      { key: 'who', label: 'Cat', kind: 'choice', required: true, choices: ['miso', 'tofu'] },
+      { key: 'grams', label: 'Grams', kind: 'number', required: true, min: 5, max: 80, default: 30 },
+      { key: 'broken', kind: 'hologram' },
+    ],
+  }
+
+  it('reads his list, dropping what is broken, and falls back to the built-in list for an older Jarvis', () => {
+    const types = parseStepTypes([feedCat, { type: 'Bad Name', fields: [] }, 'junk'])!
+    expect(types).toHaveLength(1)
+    expect(types[0]).toMatchObject({ type: 'feed_cat', short: 'Cat', runs: 'code' })
+    expect(types[0].fields.map((f: { key: string }) => f.key)).toEqual(['who', 'grams'])
+    expect(parseStepTypes(undefined)).toBeNull()
+    expect(parsePlaybookBook({ playbooks: [], options: { step_types: [feedCat] } }).options.stepTypes).toEqual(types)
+    expect(parsePlaybookBook({ playbooks: [] }).options.stepTypes).toBe(DEFAULT_STEP_TYPES)
+  })
+
+  it('a kind the page has never heard of can be added, summed up, checked and saved', () => {
+    const stepTypes = parseStepTypes([feedCat])! as StepType[]
+    const options = { ...OPTIONS, stepTypes }
+    expect(stepChoices(options).map((c) => c.short)).toEqual(['Cat'])
+    const step = blankStep('feed_cat', options)
+    expect(step).toEqual({ type: 'feed_cat', who: 'miso', grams: 30 })
+    expect(stepLine(step, options)).toBe('Feed Miso 30 g')
+    expect(playbookProblem({ ...blankPlaybook(), name: 'Cat', steps: [{ ...step, grams: 500 }] }, options)).toBe('Step 1: Grams must be between 5 and 80')
+    const saved = cleanPlaybook({ name: 'Cat', trigger: { type: 'manual' }, steps: [step] }, stepTypes)
+    expect(saved.playbook!.steps).toEqual([step])
+    expect(cleanPlaybook({ name: 'Cat', trigger: { type: 'manual' }, steps: [{ type: 'feed_cat', who: 'miso' }] }, stepTypes).problem).toBe('Step 1 is missing something')
+  })
+
+  it('a device’s command and value follow the device picked', () => {
+    const lamp = blankStep('device', OPTIONS)
+    const thermostat = withField(lamp, 'entity', 'climate.t', OPTIONS)
+    // Another device: its first command, and the value that command needs.
+    expect(thermostat).toMatchObject({ entity: 'climate.t', command: 'set_temperature' })
+    expect(playbookProblem({ ...blankPlaybook(), name: 'T', steps: [thermostat] }, OPTIONS)).toBe('Step 1: Temperature (°F) is missing')
+    const mode = withField(thermostat, 'command', 'set_hvac_mode', OPTIONS)
+    expect(mode.value).toBe('off')
+    expect(stepLine(mode, OPTIONS)).toBe('Thermostat: set hvac mode off')
+    // Brightness is offered for a light's turn_on, and never required.
+    expect(playbookProblem({ ...blankPlaybook(), name: 'L', steps: [lamp] }, OPTIONS)).toBeNull()
   })
 })

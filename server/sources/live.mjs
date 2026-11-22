@@ -12,15 +12,22 @@ import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createDigestReader } from './digest.mjs'
 import { createHomeReader } from './home.mjs'
+import { buildGpu, ollamaRows, parseJarvisGpu, parseSmi } from './gpu.mjs'
+import { parseSystem } from './system.mjs'
+import { HISTORY_DEFAULT, emptyHistory, historyQuery, parseHistory } from './history.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
-import { parseNotices } from './notices.mjs'
-import { parseNutrition } from './nutrition.mjs'
-import { parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
+import { parseNotice, parseNotices } from './notices.mjs'
+import { parseSleepNight, parseSleepNights, sleepSummary } from './sleep.mjs'
+import { parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWeek, photoType } from './nutrition.mjs'
+import { fromJarvisDraft, parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
+import { DEFAULT_STEP_TYPES } from './step-types.mjs'
 import { parseReport, parseReports } from './reports.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
+/** How a message sent mid-reply was taken: into the reply, as a stop, or as the answer to a waiting approval. */
+const STEER_KINDS = ['steered', 'stopped', 'approval']
 const realExecFile = promisify(execFileCallback)
 // Making a voice sample can take a few seconds when the GPU is busy.
 const SAMPLE_TIMEOUT_MS = 15_000
@@ -28,6 +35,8 @@ const PROBE_TIMEOUT_MS = 2500
 // Running a playbook by hand waits for its steps (a TV waking, a pause between
 // steps, Jarvis thinking one through) and for him to check his done list.
 const PLAYBOOK_RUN_TIMEOUT_MS = 180_000
+// Drafting a playbook is one model call on Jarvis's side.
+const PLAYBOOK_DRAFT_TIMEOUT_MS = 45000
 // Jarvis can take a while: Claude thinking, or the local model loading first.
 const ASK_TIMEOUT_MS = 180_000
 // A chat reply can wait on an approval for up to 10 minutes, so its stream gets longer.
@@ -66,6 +75,14 @@ function toApprovalBy(by) {
 }
 // A report can be up to 1 MB, so it gets longer than a probe.
 const REPORT_TIMEOUT_MS = 10_000
+// Stopping a job waits for its processes to end and its leftovers to be cleared.
+const STOP_TIMEOUT_MS = 30_000
+
+/** A short line Jarvis said, or null when he said nothing usable. */
+function saidText(value) {
+  if (typeof value !== 'string' || value.trim() === '') return null
+  return value.trim().slice(0, 200)
+}
 const HISTORY_POINTS = 24
 const GB = 1024 ** 3
 
@@ -94,6 +111,18 @@ function valueOrNull(result) {
  * Creates the live source.
  * `deps` lets tests swap in fake `fetch`, `execFile` and `statfs`.
  */
+/** The status codes Jarvis's address gives while he is down or coming back up after a restart. */
+const RESTARTING = [502, 503, 504]
+
+/** How long the chat waits before its one retry when Jarvis is restarting. */
+const RESTART_WAIT_MS = 2500
+
+/** What to tell the page when Jarvis answers with an error code: plain words while he restarts, the code otherwise. */
+export function jarvisSaid(status) {
+  if (RESTARTING.includes(status)) return 'Jarvis is restarting. Try again in a moment.'
+  return `Jarvis answered ${status}`
+}
+
 /** A Jarvis schedule kind ("reminder", "pickups"...) as a short label for the page. */
 export function jarvisKindLabel(kind) {
   if (kind === 'reminder') return 'Jarvis reminder'
@@ -107,6 +136,8 @@ export function createLiveSource(config, deps = {}) {
   const fetchFn = deps.fetch ?? globalThis.fetch
   const execFile = deps.execFile ?? realExecFile
   const statfsFn = deps.statfs ?? statfs
+  // Tests pass 0 so the chat's retry across a restart doesn't hold them up.
+  const restartWaitMs = deps.restartWaitMs ?? RESTART_WAIT_MS
   const digest = createDigestReader(config, { fetch: fetchFn })
   const home = createHomeReader(config, { fetch: fetchFn })
   // Categories picked on the Money page, kept in a file on the PC.
@@ -116,6 +147,8 @@ export function createLiveSource(config, deps = {}) {
   // samples in memory; one sample is taken per snapshot request.
   const history = { ram: [], gpu: [], cpu: [], disk: [] }
   let previousCpuTimes = os.cpus().map((cpu) => cpu.times)
+  // The kinds of playbook step, as Jarvis last described them.
+  let knownStepTypes = DEFAULT_STEP_TYPES
 
   /** Adds a sample to a sparkline's history, dropping the oldest. */
   function remember(key, value) {
@@ -150,10 +183,18 @@ export function createLiveSource(config, deps = {}) {
   /** GPU use from nvidia-smi, which WSL exposes for the RTX 3060. */
   async function readGpu() {
     const { stdout } = await execFile(config.nvidiaSmi, [
-      '--query-gpu=memory.used,memory.total', '--format=csv,noheader,nounits',
+      '--query-gpu=memory.used,memory.total,utilization.gpu', '--format=csv,noheader,nounits',
     ], { timeout: PROBE_TIMEOUT_MS })
-    const [usedMb, totalMb] = stdout.trim().split(',').map((s) => Number(s.trim()))
-    return { usedGb: usedMb / 1024, totalGb: totalMb / 1024 }
+    const smi = parseSmi(stdout)
+    if (smi === null) throw new Error('nvidia-smi gave no numbers')
+    return { ...smi, usedGb: smi.usedMb / 1024, totalGb: smi.totalMb / 1024 }
+  }
+
+  /** Jarvis's own models on the card (GET /gpu); none on an older Jarvis or when he's down. */
+  async function readJarvisGpu() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/gpu`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return []
+    return parseJarvisGpu(await res.json())
   }
 
   /** Free and total space on the Windows C: drive, seen from WSL. */
@@ -351,6 +392,20 @@ export function createLiveSource(config, deps = {}) {
     return parseNutrition(await res.json())
   }
 
+  /** The latest night of sleep and a week's trend (GET /health/sleep?days=7); null on an older Jarvis or before any night. */
+  async function readJarvisSleep() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/health/sleep?days=7`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return sleepSummary(parseSleepNights(await res.json()))
+  }
+
+  /** Who is using the PC's memory and disks (GET /system); null on an older Jarvis. */
+  async function readJarvisSystem() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/system`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseSystem(await res.json())
+  }
+
   /** POSTs JSON to Jarvis as the caller; `done` is what to say when it works, `missing` when an older Jarvis answers 404. */
   async function postToJarvis(path, body, caller, done, missing) {
     if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
@@ -362,11 +417,19 @@ export function createLiveSource(config, deps = {}) {
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       })
       if (res.status === 404) return { ok: false, message: missing }
-      if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+      if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
       return { ok: true, message: done }
     } catch {
       return { ok: false, message: 'Jarvis is not answering' }
     }
+  }
+
+  /** What to say after a report's keep time changed: "Keeping it 1 month". */
+  function keepMessage(change) {
+    if (change.days === 30) return 'Keeping it 1 month'
+    if (change.days === 90) return 'Keeping it 3 months'
+    if (change.keep === true) return 'Keeping it until you change that'
+    return 'Keeping it 2 weeks'
   }
 
   const haHeaders = {}
@@ -392,8 +455,11 @@ export function createLiveSource(config, deps = {}) {
         readJarvisNotices(),
         readJarvisNutrition(),
         readJarvisReports(),
+        readJarvisGpu(),
+        readJarvisSleep(),
+        readJarvisSystem(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports, speechModels, sleep, system] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -436,6 +502,9 @@ export function createLiveSource(config, deps = {}) {
           loadSeconds: null,
         },
         models: describeModels(models),
+        gpu: buildGpu(gpu, [...ollamaRows(models, config.ollamaWatchModel), ...(speechModels ?? [])]),
+        ram: system?.ram ?? null,
+        disks: system?.disks ?? null,
         cloud,
         home: homeState,
         jobs,
@@ -443,6 +512,7 @@ export function createLiveSource(config, deps = {}) {
         offers,
         notices,
         nutrition,
+        sleep,
         reports,
       }
     },
@@ -506,7 +576,7 @@ export function createLiveSource(config, deps = {}) {
         return { ok: false, message: 'Jarvis is not answering' }
       }
       if (res.status === 401) return { ok: false, message: `Jarvis doesn't know ${caller.login}` }
-      if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+      if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
       const body = await res.json().catch(() => ({}))
       return { ok: true, message: String(body.reply ?? '') }
     },
@@ -526,20 +596,32 @@ export function createLiveSource(config, deps = {}) {
       if (caller.offerId) message.offer_id = caller.offerId
       // Photos go along as base64, the way Claude takes them.
       if (caller.images) message.images = caller.images.map((image) => ({ media_type: image.type, data: image.data }))
-      let res
-      try {
-        res = await fetchFn(`${config.jarvisApiUrl}/chat/stream`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
-          body: JSON.stringify(message),
-          signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
-        })
-      } catch {
+      /** Sends the message to Jarvis; null when he can't be reached at all. */
+      const send = async () => {
+        try {
+          return await fetchFn(`${config.jarvisApiUrl}/chat/stream`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+            body: JSON.stringify(message),
+            signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+          })
+        } catch {
+          return null
+        }
+      }
+      let res = await send()
+      // He restarts for a few seconds after each change to himself. The message
+      // never reached him, so it's safe to wait a moment and send it once more.
+      if (!res || RESTARTING.includes(res.status)) {
+        await new Promise((resolve) => setTimeout(resolve, restartWaitMs))
+        res = await send()
+      }
+      if (!res) {
         onEvent({ type: 'error', message: 'Jarvis is not answering' })
         return
       }
       if (res.status === 401) return onEvent({ type: 'error', message: `Jarvis doesn't know ${caller.login}` })
-      if (!res.ok || !res.body) return onEvent({ type: 'error', message: `Jarvis answered ${res.status}` })
+      if (!res.ok || !res.body) return onEvent({ type: 'error', message: jarvisSaid(res.status) })
       let ended = false
       try {
         for await (const event of readJsonLines(res.body)) {
@@ -557,12 +639,43 @@ export function createLiveSource(config, deps = {}) {
           } else if (event.type === 'model' && typeof event.model === 'string') {
             // Who is answering: Claude, or the local model while Claude's plan is out of room.
             onEvent({ type: 'model', model: event.model })
+          } else if (event.type === 'turn' && Number.isInteger(event.id) && event.id > 0) {
+            // His number for the message just sent, so the apps can find its reply in the history later.
+            onEvent({ type: 'turn', id: event.id })
+          } else if (event.type === 'steered' && STEER_KINDS.includes(event.as)) {
+            // Sent while he was still answering (Dylan, 2026-11-21): taken into that reply, which
+            // keeps coming on the first message's stream; "stopped" = it only said stop; "approval" = it answered one.
+            const into = Number.isInteger(event.into) && event.into > 0 ? event.into : null
+            onEvent({ type: 'steered', into, as: event.as })
+          } else if (event.type === 'queued' && Number.isInteger(event.after) && event.after > 0) {
+            // Too late to steer: this message gets its own reply on this stream once the running one ends.
+            onEvent({ type: 'queued', after: event.after })
           }
         }
       } catch {
         // The connection dropped mid-reply; say so below.
       }
       if (!ended) onEvent({ type: 'error', message: 'Jarvis stopped answering partway' })
+    },
+
+    /**
+     * Tells Jarvis the one who asked has closed the app before the reply was
+     * done (POST /chat/left), so he pushes the reply to the phone when it's
+     * ready. turnId is null when Jarvis hadn't numbered the message yet.
+     * Best effort: a miss only costs the push, the reply is saved either way.
+     */
+    async chatLeft(turnId, caller = {}) {
+      if (!caller.login) return
+      try {
+        await fetchFn(`${config.jarvisApiUrl}/chat/left`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify(turnId ? { turn_id: turnId } : {}),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+      } catch {
+        // Jarvis didn't hear it; nothing to tell anyone.
+      }
     },
 
     /** Approves or denies one of Jarvis's waiting requests (POST /approve). */
@@ -576,8 +689,31 @@ export function createLiveSource(config, deps = {}) {
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
         if (res.status === 404) return goneApproval(await res.json().catch(() => null))
-        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
         return { ok: true, message: ok ? 'Approved' : 'Denied' }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
+     * Stops one piece of background work (POST /jobs/{id}/stop). Jarvis
+     * cancels it and cleans up; 404 or 410 means it had already finished.
+     */
+    async stopJob(id, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to stop a job' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/jobs/${encodeURIComponent(id)}/stop`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(STOP_TIMEOUT_MS),
+        })
+        const said = await res.json().catch(() => null)
+        if (res.status === 404 || res.status === 410) {
+          return { ok: false, gone: true, message: saidText(said?.message) ?? 'That one already finished' }
+        }
+        if (!res.ok) return { ok: false, message: saidText(said?.message) ?? jarvisSaid(res.status) }
+        return { ok: true, message: saidText(said?.detail) ?? 'Stopped' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }
@@ -593,7 +729,7 @@ export function createLiveSource(config, deps = {}) {
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
         // Already gone counts as hidden.
-        if (!res.ok && res.status !== 404) return { ok: false, message: `Jarvis answered ${res.status}` }
+        if (!res.ok && res.status !== 404) return { ok: false, message: jarvisSaid(res.status) }
         return { ok: true, message: 'Hidden' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
@@ -610,7 +746,7 @@ export function createLiveSource(config, deps = {}) {
           body: JSON.stringify({ key, choice }),
           signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
         })
-        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
         const body = await res.json()
         return { ok: true, message: typeof body?.reply === 'string' ? body.reply : 'Done' }
       } catch {
@@ -621,6 +757,40 @@ export function createLiveSource(config, deps = {}) {
     /** Clear on notifications (POST /notices/clear with {ids} or {all: true}). */
     async clearNotices(which, caller = {}) {
       return postToJarvis('/notices/clear', which, caller, 'Cleared', 'Jarvis can’t keep notifications yet')
+    },
+
+    /**
+     * Keep on a chat message ({turnId}) or a notice ({id}): POST /notices/keep with
+     * turn_id or notice_id. The answer carries the kept notice when Jarvis sends one.
+     */
+    async keepNotice(what, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
+      let body = { notice_id: what.id }
+      if (what.turnId !== undefined) body = { turn_id: what.turnId }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/notices/keep`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        // 404 with a JSON answer = no such message; without one, a Jarvis too old to keep things.
+        const answer = await res.json().catch(() => null)
+        if (res.status === 404 && answer?.ok === false) return { ok: false, message: 'Jarvis can’t find that message' }
+        if (res.status === 404) return { ok: false, message: 'Jarvis can’t keep messages yet' }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
+        const result = { ok: true, message: 'Kept' }
+        const notice = parseNotice(answer?.notice)
+        if (notice !== null) result.notice = notice
+        return result
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /** Letting a kept one go (POST /notices/unkeep with {id}). */
+    async unkeepNotice(id, caller = {}) {
+      return postToJarvis('/notices/unkeep', { id }, caller, 'Let go', 'Jarvis can’t keep messages yet')
     },
 
     /** An app's push token (POST /push/register), so Jarvis can notify that device. */
@@ -639,7 +809,7 @@ export function createLiveSource(config, deps = {}) {
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
         if (res.status === 404) return { ok: false, message: 'Jarvis can’t track sleep yet' }
-        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
         return { ok: true, message: asleep ? 'Good night' : 'Good morning' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
@@ -657,7 +827,7 @@ export function createLiveSource(config, deps = {}) {
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
         if (res.status === 404) return { ok: false, message: 'This Jarvis can’t take corrections yet' }
-        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
         return { ok: true, message: 'Thanks. Jarvis will work on it tonight.' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
@@ -681,32 +851,23 @@ export function createLiveSource(config, deps = {}) {
       }
     },
 
-    /** The web chat's recent turns from Jarvis (GET /chat/history), oldest first; empty if unreachable. */
-    async history(caller) {
-      if (!caller.login) return []
+    /**
+     * One page of the web chat from Jarvis (GET /chat/history), oldest first:
+     * the newest turns, or the ones before or around a turn id. Empty if unreachable.
+     */
+    async history(caller, page) {
+      if (!caller.login) return emptyHistory()
       try {
-        const res = await fetchFn(`${config.jarvisApiUrl}/chat/history?limit=50`, {
+        // No page asked for: the newest turns, as before paging existed.
+        const query = historyQuery(page ?? { limit: HISTORY_DEFAULT })
+        const res = await fetchFn(`${config.jarvisApiUrl}/chat/history?${query}`, {
           headers: { 'tailscale-user-login': caller.login },
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
-        if (!res.ok) return []
-        const body = await res.json()
-        const list = Array.isArray(body) ? body : body?.turns
-        if (!Array.isArray(list)) return []
-        return list
-          .filter((t) => typeof t?.text === 'string')
-          .map((t) => {
-            const turn = { role: t.role === 'user' ? 'user' : 'jarvis', text: t.text, at: String(t.at ?? '') }
-            // Older Jarvis lines don't say who wrote them; the chip only shows when one does.
-            if (typeof t.model === 'string' && t.model) turn.model = t.model
-            // How many photos went with it (the bytes aren't in the history).
-            if (Number.isInteger(t.images) && t.images > 0) turn.images = t.images
-            // His number for the turn, so a notice's turnId can find the message it previews.
-            if (Number.isInteger(t.id) && t.id > 0) turn.id = t.id
-            return turn
-          })
+        if (!res.ok) return emptyHistory()
+        return parseHistory(await res.json())
       } catch {
-        return []
+        return emptyHistory()
       }
     },
 
@@ -731,6 +892,111 @@ export function createLiveSource(config, deps = {}) {
         }
       } catch {
         return null
+      }
+    },
+
+    /** Nights of sleep with their score, newest first (Jarvis GET /health/sleep), as the caller: one `night`, or the last `days`. Null when he can't be asked. */
+    async sleepNights(ask, caller = {}) {
+      if (!caller.login) return null
+      try {
+        const query = ask.night ? `?night=${encodeURIComponent(ask.night)}` : `?days=${ask.days}`
+        const res = await fetchFn(`${config.jarvisApiUrl}/health/sleep${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        return parseSleepNights(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /** Stores one night of sleep (Jarvis POST /health/sleep), as the caller; `refused` when he says the night itself is wrong. */
+    async saveSleepNight(night, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to tell Jarvis' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/health/sleep`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'tailscale-user-login': caller.login },
+          body: JSON.stringify(night),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+        })
+        if (res.status === 404) return { ok: false, message: 'Jarvis can’t take sleep details yet' }
+        const answer = await res.json().catch(() => null)
+        if (res.status === 400) {
+          const why = typeof answer?.error === 'string' ? answer.error.slice(0, 200) : 'Jarvis refused that night'
+          return { ok: false, refused: true, message: why }
+        }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
+        return { ok: true, message: 'Saved', night: parseSleepNight(answer?.detail) }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /** One day of the meal log, items and all (Jarvis GET /nutrition/day), as the caller; null when he can't be asked. `date` '' = today. */
+    async nutritionDay(date, caller = {}) {
+      if (!caller.login) return null
+      try {
+        const query = date ? `?date=${encodeURIComponent(date)}` : ''
+        const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/day${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        return parseNutritionDay(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /** Seven days of calories against the goal (Jarvis GET /nutrition/week), as the caller; null when he can't be asked. `start` '' = this week. */
+    async nutritionWeek(start, caller = {}) {
+      if (!caller.login) return null
+      try {
+        const query = start ? `?start=${encodeURIComponent(start)}` : ''
+        const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/week${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        return parseNutritionWeek(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /** `count` days of the meal log ending at `end` ('' = today), newest first (Jarvis GET /nutrition/days), as the caller; null when he can't be asked. */
+    async nutritionDays(end, count, caller = {}) {
+      if (!caller.login) return null
+      try {
+        let query = `?count=${count}`
+        if (end) query += `&end=${encodeURIComponent(end)}`
+        const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/days${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+        })
+        if (!res.ok) return null
+        return parseNutritionDays(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /** One meal's photo, or its thumbnail (Jarvis GET /nutrition/photo/{id}, ?size=thumb), as the caller. `gone` when that meal has none. */
+    async mealPhoto(id, thumb, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to see meal photos' }
+      try {
+        const query = thumb ? '?size=thumb' : ''
+        const res = await fetchFn(`${config.jarvisApiUrl}/nutrition/photo/${encodeURIComponent(id)}${query}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+        })
+        if (res.status === 404) return { ok: false, gone: true, message: 'No photo for that meal' }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
+        return { ok: true, type: photoType(res.headers.get('content-type')), bytes: new Uint8Array(await res.arrayBuffer()) }
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
       }
     },
 
@@ -765,7 +1031,7 @@ export function createLiveSource(config, deps = {}) {
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
         const body = await res.json().catch(() => ({}))
-        if (!res.ok) return { ok: false, message: body?.message ?? `Jarvis answered ${res.status}` }
+        if (!res.ok) return { ok: false, message: body?.message ?? jarvisSaid(res.status) }
         return { ok: true, message: body?.message ?? 'Done' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
@@ -803,6 +1069,7 @@ export function createLiveSource(config, deps = {}) {
       if (change.op === 'keep') {
         path = `/reports/${id}/keep`
         body = { keep: change.keep }
+        if (change.days !== undefined) body = { days: change.days }
       }
       try {
         const res = await fetchFn(`${config.jarvisApiUrl}${path}`, {
@@ -813,16 +1080,20 @@ export function createLiveSource(config, deps = {}) {
         })
         const answer = await res.json().catch(() => ({}))
         if (res.status === 404) return { ok: false, message: 'That report is already gone' }
-        if (!res.ok) return { ok: false, message: answer?.error ?? `Jarvis answered ${res.status}` }
+        if (!res.ok) return { ok: false, message: answer?.error ?? jarvisSaid(res.status) }
         if (change.op === 'delete') return { ok: true, message: 'Deleted' }
         const report = parseReport(answer?.report)
-        let message = 'Kept until you switch it off'
-        if (!change.keep) message = 'Back to 30 days'
+        const message = keepMessage(change)
         if (report === null) return { ok: true, message }
         return { ok: true, message, report }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }
+    },
+
+    /** The kinds of step Jarvis last described, or the built-in list before he has. */
+    async stepTypes() {
+      return knownStepTypes
     },
 
     /**
@@ -837,7 +1108,10 @@ export function createLiveSource(config, deps = {}) {
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
         if (!res.ok) return null
-        return parsePlaybookBook(await res.json())
+        const book = parsePlaybookBook(await res.json())
+        // Remembered so a save can be checked and worded the way Jarvis last described steps.
+        knownStepTypes = book.options.stepTypes
+        return book
       } catch {
         return null
       }
@@ -855,7 +1129,7 @@ export function createLiveSource(config, deps = {}) {
       let body = {}
       let done = 'Saved'
       let wait = PROBE_TIMEOUT_MS * 2
-      if (change.op === 'save') body = { playbook: toJarvisPlaybook(change.playbook) }
+      if (change.op === 'save') body = { playbook: toJarvisPlaybook(change.playbook, knownStepTypes) }
       if (change.op === 'delete') {
         path = `/playbooks/${encodeURIComponent(change.id)}/delete`
         done = 'Deleted'
@@ -876,9 +1150,34 @@ export function createLiveSource(config, deps = {}) {
         if (res.status === 404 && change.op === 'save') return { ok: false, message: 'Jarvis can’t run playbooks yet' }
         const said = answer?.detail ?? answer?.message ?? answer?.error
         const result = { ok: res.ok && answer?.ok !== false, message: typeof said === 'string' && said ? said : done }
-        if (!result.ok && !said) result.message = `Jarvis answered ${res.status}`
+        if (!result.ok && !said) result.message = jarvisSaid(res.status)
         if (change.op === 'run' && Array.isArray(answer?.checks)) result.checks = parseChecks(answer.checks)
         return result
+      } catch {
+        return { ok: false, message: 'Jarvis is not answering' }
+      }
+    },
+
+    /**
+     * Has Jarvis write a playbook from a few plain words (POST
+     * /playbooks/draft). He thinks it through, so it gets a long wait. Nothing
+     * is saved: the draft goes back to the editor to look over.
+     */
+    async draftPlaybook(text, caller = {}) {
+      if (!caller.login) return { ok: false, message: 'Open this page through Tailscale to write playbooks' }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/playbooks/draft`, {
+          method: 'POST',
+          headers: { 'tailscale-user-login': caller.login, 'content-type': 'application/json' },
+          body: JSON.stringify({ text }),
+          signal: AbortSignal.timeout(PLAYBOOK_DRAFT_TIMEOUT_MS),
+        })
+        const answer = await res.json().catch(() => ({}))
+        if (res.status === 404) return { ok: false, message: 'Jarvis can’t draft playbooks yet. Fill it in below.' }
+        const playbook = fromJarvisDraft(answer?.playbook, knownStepTypes)
+        if (res.ok && answer?.ok !== false && playbook !== null) return { ok: true, playbook }
+        const said = answer?.message ?? answer?.detail ?? answer?.error
+        return { ok: false, message: typeof said === 'string' && said ? said : 'Jarvis couldn’t write that one. Fill it in below.' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
       }
@@ -928,7 +1227,7 @@ export function createLiveSource(config, deps = {}) {
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
         const body = await res.json().catch(() => ({}))
-        if (!res.ok) return { ok: false, message: body?.message ?? `Jarvis answered ${res.status}` }
+        if (!res.ok) return { ok: false, message: body?.message ?? jarvisSaid(res.status) }
         return { ok: true, message: body?.message ?? 'Saved' }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }
@@ -951,7 +1250,7 @@ export function createLiveSource(config, deps = {}) {
           headers: { 'tailscale-user-login': caller.login },
           signal: AbortSignal.timeout(SAMPLE_TIMEOUT_MS),
         })
-        if (!res.ok) return { ok: false, message: `Jarvis answered ${res.status}` }
+        if (!res.ok) return { ok: false, message: jarvisSaid(res.status) }
         return { ok: true, audio: new Uint8Array(await res.arrayBuffer()) }
       } catch {
         return { ok: false, message: 'Jarvis is not answering' }

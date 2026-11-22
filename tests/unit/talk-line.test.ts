@@ -113,19 +113,19 @@ describe('the voice line', () => {
     const line = await opening
     const say = (event: object) => socket!.onmessage!({ data: JSON.stringify(event) })
     say({ type: 'partial', text: 'turn the' })
-    say({ type: 'partial', text: 'turn the big light' })
+    say({ type: 'partial', text: 'turn the big light', stable: 2 })
     say({ type: 'transcript', text: 'Turn the big light off.' })
     // Who's answering: the chip over the reply follows this.
     say({ type: 'model', model: 'ornith' })
     say({ type: 'reply', text: 'Done.' })
     expect(on.onModel).toHaveBeenCalledWith('ornith')
-    expect(on.onHearing.mock.calls).toEqual([['turn the', false], ['turn the big light', false]])
-    expect(on.onHeard).toHaveBeenCalledWith('Turn the big light off.', false)
+    expect(on.onHearing.mock.calls).toEqual([['turn the', false, null], ['turn the big light', false, 2]])
+    expect(on.onHeard).toHaveBeenCalledWith('Turn the big light off.', false, false)
     // Carrying on after he thought you were done: the words come back joined onto the same question.
     say({ type: 'partial', text: 'Turn the big light off. And the', joined: true })
-    say({ type: 'transcript', text: 'Turn the big light off. And the fan.', joined: true })
-    expect(on.onHearing).toHaveBeenLastCalledWith('Turn the big light off. And the', true)
-    expect(on.onHeard).toHaveBeenLastCalledWith('Turn the big light off. And the fan.', true)
+    say({ type: 'transcript', text: 'Turn the big light off. And the fan.', joined: true, same: true })
+    expect(on.onHearing).toHaveBeenLastCalledWith('Turn the big light off. And the', true, null)
+    expect(on.onHeard).toHaveBeenLastCalledWith('Turn the big light off. And the fan.', true, true)
     expect(on.onReply).toHaveBeenCalledWith('Done.')
     // A slow lookup: the orb's working sweep starts with what he's doing, then stops.
     say({ type: 'working', label: 'Checking traffic to Disneyland.' })

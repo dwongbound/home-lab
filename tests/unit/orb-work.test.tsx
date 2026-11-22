@@ -6,7 +6,7 @@ import type { RunningTask } from '../../src/types'
 
 afterEach(cleanup)
 
-const job: RunningTask = { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: null }
+const job: RunningTask = { id: 'r1', label: 'Making drive times mention parking', state: 'running', startedAt: null, model: null, step: null, stoppable: false }
 
 describe('the orb\'s work dots', () => {
   it('has nothing to tap when no work is running', () => {

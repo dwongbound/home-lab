@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { DAYS, STEP_CHOICES, THINKER_CHOICES, TRIGGER_CHOICES, blankStep, blankTrigger, commandLabel, commandTakesValue, commandTakesWords, playbookProblem } from '../lib/playbooks'
-import type { PlaybookDay, PlaybookDraft, PlaybookOptions, PlaybookStep, PlaybookThinker, PlaybookTrigger } from '../types'
+import { draftPlaybook } from '../api/client'
+import { AUTO, DAYS, TRIGGER_CHOICES, activeField, blankStep, blankTrigger, choicesFor, playbookProblem, stepChoices, stepLabel, stepTypeOf, withField } from '../lib/playbooks'
+import type { PlaybookDay, PlaybookDraft, PlaybookOptions, PlaybookStep, PlaybookTrigger, StepFieldRule, StepValue } from '../types'
 import { useScrollLock } from '../useScrollLock'
 import { Spinner } from './Spinner'
 
-// The pop-up where a playbook is written: its name and purpose, when it
-// runs, its steps in order, the checklist that says it's done, and (folded
-// away under "More for Jarvis") what it needs, the rules behind its
+// The pop-up where a playbook is written. It reads top to bottom as three
+// plain questions (Dylan, 2026-11-19: the first one was too hard to follow):
+// 1 when does it run, 2 what happens, 3 how Jarvis knows it worked. A new
+// playbook starts with a "Describe it" box: a sentence or two, and Jarvis
+// fills the whole form in to look over (nothing is saved until Save). Steps
+// are added from a row of buttons. Folded away under "More for Jarvis" are what it needs, the rules behind its
 // decisions, what has gone wrong before and the standard to hit. Native <dialog> at a fixed size; the steps scroll inside
 // it. Nothing is saved until Save, and while Jarvis is saving the whole
 // box is blocked with a labelled spinner.
@@ -30,7 +34,13 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
   const [draft, setDraft] = useState<PlaybookDraft>(start)
   // Shown only after a Save that couldn't go, so the box doesn't nag while it's being filled in.
   const [problem, setProblem] = useState<string | null>(null)
+  const [wish, setWish] = useState('')
+  const [drafting, setDrafting] = useState(false)
+  const [draftNote, setDraftNote] = useState<string | null>(null)
+  const [assumed, setAssumed] = useState<string[]>([])
   useScrollLock()
+  // Jarvis writing a draft blocks the box just as saving does.
+  const blocked = busy || drafting
 
   // Open as a modal on mount. jsdom (the unit test DOM) has no showModal.
   useEffect(() => {
@@ -59,9 +69,30 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
     })
   }
 
+  /** Has Jarvis fill the form in from the description. */
+  async function writeDraft() {
+    if (wish.trim() === '') {
+      setDraftNote('Say what it should do first')
+      return
+    }
+    setDrafting(true)
+    setDraftNote(null)
+    const result = await draftPlaybook(wish.trim())
+    setDrafting(false)
+    if (!result.ok) {
+      setDraftNote(result.message)
+      return
+    }
+    setDraft(result.playbook)
+    setProblem(null)
+    setDraftNote('Jarvis filled it in below. Check it over, change anything, then Save.')
+    // What he assumed (a lamp that isn't listed, say) is said up front, not left folded away.
+    setAssumed(result.playbook.edgeCases)
+  }
+
   /** Checks the playbook and hands it up, or says what's missing. */
   function save() {
-    const missing = playbookProblem(draft)
+    const missing = playbookProblem(draft, options)
     setProblem(missing)
     if (missing === null) onSave({ ...draft, name: draft.name.trim() })
   }
@@ -72,14 +103,29 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
       className="dialog dialog--detail dialog--playbook glass"
       tabIndex={-1}
       aria-labelledby="playbook-title"
-      aria-busy={busy}
-      // Esc fires "cancel"; ignored while Jarvis is saving.
-      onCancel={(e) => { e.preventDefault(); if (!busy) onClose() }}
+      aria-busy={blocked}
+      // Esc fires "cancel"; ignored while Jarvis is saving or writing.
+      onCancel={(e) => { e.preventDefault(); if (!blocked) onClose() }}
     >
       <header className="detail__head">
         <h2 id="playbook-title" className="dialog__title">{start.id ? 'Edit playbook' : 'New playbook'}</h2>
       </header>
       <div className="detail__body playbook__form">
+        {start.id ? null : (
+          <div className="playbook__describe">
+            <label className="field">
+              <span className="field__label">Describe it, and Jarvis fills in the rest</span>
+              <textarea className="field__box field__box--tall" value={wish} maxLength={1000} placeholder="At 11 on weeknights, turn off the lights and tell me tomorrow’s first meeting" onChange={(e) => setWish(e.target.value)} />
+            </label>
+            <button type="button" className="btn btn--primary playbook__add" onClick={() => void writeDraft()} disabled={blocked}>Write it for me</button>
+            {draftNote ? <p className="playbook__hint" role="status">{draftNote}</p> : <p className="playbook__hint">Or fill it in yourself below.</p>}
+            {assumed.length > 0 ? (
+              <ul className="playbook__assumed" aria-label="What Jarvis assumed">
+                {assumed.map((line) => <li key={line}>{line}</li>)}
+              </ul>
+            ) : null}
+          </div>
+        )}
         <label className="field">
           <span className="field__label">Name</span>
           <input className="field__box" value={draft.name} maxLength={60} placeholder="Bedtime" autoComplete="off" onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
@@ -90,22 +136,23 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
           <input className="field__box" value={draft.purpose} maxLength={200} placeholder="Shut the place down for the night" autoComplete="off" onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} />
         </label>
 
+        <h3 className="playbook__heading"><span className="playbook__num">1</span>When does it run?</h3>
         <label className="field">
-          <span className="field__label">When</span>
+          <span className="field__label">Start it</span>
           <select className="field__box" value={draft.trigger.type} onChange={(e) => setDraft({ ...draft, trigger: blankTrigger(e.target.value as PlaybookTrigger['type']) })}>
             {TRIGGER_CHOICES.map((c) => <option key={c.type} value={c.type}>{c.label}</option>)}
           </select>
         </label>
         <TriggerFields trigger={draft.trigger} onChange={(trigger) => setDraft({ ...draft, trigger })} />
 
-        <h3 className="playbook__heading">Then</h3>
-        {draft.steps.length === 0 ? <p className="playbook__hint">No steps yet. Add the first one below.</p> : null}
+        <h3 className="playbook__heading"><span className="playbook__num">2</span>What happens?</h3>
+        {draft.steps.length === 0 ? <p className="playbook__hint">Nothing yet. Tap a button below to add the first step; they run top to bottom.</p> : null}
         <ol className="playbook__steps">
           {draft.steps.map((step, i) => (
             <li key={i} className="playbook__step" aria-label={`Step ${i + 1}`}>
               <div className="playbook__stephead">
                 <span className="playbook__num">{i + 1}</span>
-                <span className="playbook__kind">{STEP_CHOICES.find((c) => c.type === step.type)?.label}</span>
+                <span className="playbook__kind">{stepLabel(step, options)}</span>
                 <button type="button" className="btn btn--quiet playbook__mini" aria-label={`Move step ${i + 1} up`} disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
                 <button type="button" className="btn btn--quiet playbook__mini" aria-label={`Move step ${i + 1} down`} disabled={i === draft.steps.length - 1} onClick={() => moveStep(i, 1)}>↓</button>
                 <button type="button" className="btn btn--quiet playbook__mini" aria-label={`Remove step ${i + 1}`} onClick={() => setDraft({ ...draft, steps: draft.steps.filter((_, j) => j !== i) })}>✕</button>
@@ -114,27 +161,21 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
             </li>
           ))}
         </ol>
-        <label className="field">
-          <span className="field__label">Add a step</span>
-          {/* Picking a kind adds the step and the box goes back to its prompt. */}
-          <select
-            className="field__box"
-            value=""
-            onChange={(e) => {
-              const type = e.target.value as PlaybookStep['type']
-              if (type) setDraft({ ...draft, steps: [...draft.steps, blankStep(type, options)] })
-            }}
-          >
-            <option value="">Choose what happens…</option>
-            {STEP_CHOICES.map((c) => <option key={c.type} value={c.type}>{c.label}</option>)}
-          </select>
-        </label>
-        <h3 className="playbook__heading">Done when</h3>
-        <p className="playbook__hint">Jarvis checks each of these after every run, and tells you if one didn’t hold.</p>
+        <div className="field">
+          <span className="field__label" id="playbook-add">Add a step</span>
+          {/* One tap adds that kind of step at the end. */}
+          <div className="playbook__chips" role="group" aria-labelledby="playbook-add">
+            {stepChoices(options).map((c) => (
+              <button key={c.type} type="button" className="segmented__opt" title={c.label} onClick={() => setDraft({ ...draft, steps: [...draft.steps, blankStep(c.type, options)] })}>{c.short}</button>
+            ))}
+          </div>
+        </div>
+        <h3 className="playbook__heading"><span className="playbook__num">3</span>How does Jarvis know it worked? <span className="playbook__optional">Optional</span></h3>
+        <p className="playbook__hint">He checks each of these after every run, and tells you if one didn’t hold.</p>
         <LineList label="Done item" placeholder="Every light is off" add="Add a check" lines={draft.done} onChange={(done) => setDraft({ ...draft, done })} />
 
         <details className="playbook__more">
-          <summary>More for Jarvis</summary>
+          <summary>More for Jarvis <span className="playbook__optional">Optional, for jobs that need judgment</span></summary>
           <label className="field">
             <span className="field__label">When he should use it without being told</span>
             <textarea className="field__box field__box--tall" value={draft.whenToUse} maxLength={500} placeholder="When I ask what my week looks like" onChange={(e) => setDraft({ ...draft, whenToUse: e.target.value })} />
@@ -157,11 +198,12 @@ export function PlaybookEditor({ start, options, busy, error, onSave, onDelete, 
         {problem || error ? <p className="dialog__error" role="alert">{problem ?? error}</p> : null}
       </div>
       <div className="dialog__actions">
-        {onDelete ? <button type="button" className="btn btn--quiet playbook__delete" onClick={onDelete} disabled={busy}>Delete</button> : null}
-        <button type="button" className="btn btn--quiet" onClick={onClose} disabled={busy}>Close</button>
-        <button type="button" className="btn btn--primary" onClick={save} disabled={busy}>Save</button>
+        {onDelete ? <button type="button" className="btn btn--quiet playbook__delete" onClick={onDelete} disabled={blocked}>Delete</button> : null}
+        <button type="button" className="btn btn--quiet" onClick={onClose} disabled={blocked}>Close</button>
+        <button type="button" className="btn btn--primary" onClick={save} disabled={blocked}>Save</button>
       </div>
       {busy ? <div className="dialog__block"><Spinner label="Saving…" /></div> : null}
+      {drafting ? <div className="dialog__block"><Spinner label="Jarvis is writing it…" /></div> : null}
     </dialog>
   )
 }
@@ -205,110 +247,66 @@ function TriggerFields({ trigger, onChange }: { trigger: PlaybookTrigger; onChan
   return null
 }
 
-/** The boxes one step needs, by its kind. */
+/** The boxes one step needs, drawn from Jarvis's description of its kind. */
 function StepFields({ step, options, onChange }: { step: PlaybookStep; options: PlaybookOptions; onChange: (a: PlaybookStep) => void }) {
-  if (step.type === 'device') {
-    const device = options.devices.find((d) => d.entity === step.entity)
-    const commands = device?.commands ?? [step.command]
-    return (
-      <div className="playbook__fields">
-        <select className="field__box" aria-label="Device" value={step.entity} onChange={(e) => {
-          const next = options.devices.find((d) => d.entity === e.target.value)
-          onChange({ type: 'device', entity: e.target.value, command: next?.commands[0] ?? 'turn_off' })
-        }}>
-          {device ? null : <option value={step.entity}>{step.entity || 'Pick a device'}</option>}
-          {options.devices.map((d) => <option key={d.entity} value={d.entity}>{d.name}</option>)}
-        </select>
-        <select className="field__box" aria-label="What to do" value={step.command} onChange={(e) => onChange({ type: 'device', entity: step.entity, command: e.target.value })}>
-          {commands.map((c) => <option key={c} value={c}>{commandLabel(c)}</option>)}
-        </select>
-        {commandTakesValue(step.command) ? (
-          <input className="field__box" aria-label="Value" value={step.value ?? ''} placeholder={valueHint(step.command)} onChange={(e) => onChange({ ...step, value: valueOf(step.command, e.target.value) })} />
-        ) : null}
-      </div>
+  const described = stepTypeOf(step, options)
+  if (!described) return <p className="playbook__hint">Jarvis runs this step as it is. There’s nothing to fill in here.</p>
+  const boxes = []
+  for (const field of described.fields) {
+    const rule = activeField(field, step, options)
+    if (rule === null) continue
+    boxes.push(
+      <FieldBox key={field.key} rule={rule} value={step[field.key]} choices={rule.kind === 'choice' ? choicesFor(rule, step, options) : []} onChange={(value) => onChange(withField(step, field.key, value, options))} />,
     )
   }
-  if (step.type === 'scene') {
+  return <div className="playbook__fields">{boxes}</div>
+}
+
+/** A typed number, or nothing when the box is empty or isn't a number yet. */
+function typedNumber(typed: string): number | undefined {
+  if (typed.trim() === '') return undefined
+  const number = Number(typed)
+  return Number.isFinite(number) ? number : undefined
+}
+
+/** One box of a step: a dropdown, a switch, a number or words, by the field's kind. */
+function FieldBox({ rule, value, choices, onChange }: { rule: StepFieldRule; value: StepValue | undefined; choices: { id: string; name: string }[]; onChange: (value: StepValue | undefined) => void }) {
+  const words = typeof value === 'string' ? value : ''
+  if (rule.kind === 'bool') {
     return (
-      <select className="field__box" aria-label="Scene" value={step.entity} onChange={(e) => onChange({ type: 'scene', entity: e.target.value })}>
-        {options.scenes.some((s) => s.entity === step.entity) ? null : <option value={step.entity}>{step.entity || 'Pick a scene'}</option>}
-        {options.scenes.map((s) => <option key={s.entity} value={s.entity}>{s.name}</option>)}
+      <button type="button" role="switch" aria-checked={value === true} className="switch playbook__confirm playbook__wide" onClick={() => onChange(value !== true)}>
+        <span className="switch__track" aria-hidden="true"><span className="switch__knob" /></span>
+        <span>{rule.label}</span>
+      </button>
+    )
+  }
+  // A pick with nothing listed to pick from (a TV that names no apps) takes typed words.
+  if (rule.kind === 'choice' && (choices.length > 0 || !rule.required || !rule.dependsOn)) {
+    const listed = choices.some((c) => c.id === words)
+    return (
+      <select className="field__box" aria-label={rule.label} value={words} onChange={(e) => onChange(e.target.value)}>
+        {rule.required ? null : <option value={AUTO}>Jarvis picks</option>}
+        {listed || words === AUTO ? null : <option value={words}>{words || `Pick: ${rule.label}`}</option>}
+        {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
     )
   }
-  if (step.type === 'app') {
-    const screen = options.apps.find((a) => a.entity === step.entity)
-    const apps = screen?.apps ?? [step.app]
+  if (rule.kind === 'number') {
+    // The label sits beside the box, since a number alone doesn't say what it counts.
     return (
-      <div className="playbook__fields">
-        <select className="field__box" aria-label="TV" value={step.entity} onChange={(e) => {
-          const next = options.apps.find((a) => a.entity === e.target.value)
-          onChange({ type: 'app', entity: e.target.value, app: next?.apps[0] ?? '' })
-        }}>
-          {screen ? null : <option value={step.entity}>{step.entity || 'Pick a TV'}</option>}
-          {options.apps.map((a) => <option key={a.entity} value={a.entity}>{a.name}</option>)}
-        </select>
-        <select className="field__box" aria-label="App" value={step.app} onChange={(e) => onChange({ ...step, app: e.target.value })}>
-          {apps.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-      </div>
+      <label className="playbook__number playbook__wide">
+        <input className="field__box" type="number" min={rule.min} max={rule.max} step={rule.step} inputMode="decimal" aria-label={rule.label} value={typeof value === 'number' ? value : ''} onChange={(e) => onChange(typedNumber(e.target.value))} />
+        <span className="playbook__hint">{rule.label}</span>
+      </label>
     )
   }
-  if (step.type === 'notify') {
-    return <input className="field__box" aria-label="Notification text" value={step.text} maxLength={300} placeholder="Time to head out" onChange={(e) => onChange({ ...step, text: e.target.value })} />
+  if (rule.kind === 'longtext') {
+    return <textarea className="field__box field__box--tall playbook__wide" aria-label={rule.label} value={words} maxLength={rule.max} placeholder={rule.placeholder ?? rule.label} onChange={(e) => onChange(e.target.value)} />
   }
-  if (step.type === 'think') {
-    return (
-      <>
-        <textarea className="field__box field__box--tall" aria-label="What Jarvis should do" value={step.text} maxLength={2000} placeholder="Tell me tomorrow’s first meeting and the weather" onChange={(e) => onChange({ ...step, text: e.target.value })} />
-        <select className="field__box" aria-label="Who does it" value={step.model} onChange={(e) => onChange({ ...step, model: e.target.value as PlaybookThinker })}>
-          {THINKER_CHOICES.map((c) => <option key={c.model} value={c.model}>{c.label}</option>)}
-        </select>
-      </>
-    )
+  if (rule.kind === 'emails') {
+    return <input className="field__box playbook__wide" type="text" inputMode="email" aria-label={rule.label} value={words} placeholder="someone@example.com, another@example.com" autoComplete="off" onChange={(e) => onChange(e.target.value)} />
   }
-  if (step.type === 'email') {
-    return (
-      <>
-        <input className="field__box" type="text" inputMode="email" aria-label="To" value={step.to} placeholder="someone@example.com, another@example.com" autoComplete="off" onChange={(e) => onChange({ ...step, to: e.target.value })} />
-        <input className="field__box" aria-label="Subject" value={step.subject} maxLength={200} placeholder="Subject" onChange={(e) => onChange({ ...step, subject: e.target.value })} />
-        <textarea className="field__box field__box--tall" aria-label="Message" value={step.body} maxLength={5000} placeholder="Message" onChange={(e) => onChange({ ...step, body: e.target.value })} />
-        <ConfirmSwitch on={step.confirm} onChange={(confirm) => onChange({ ...step, confirm })} />
-      </>
-    )
-  }
-  return (
-    <label className="playbook__fields playbook__fields--inline">
-      <input className="field__box" type="number" min={1} max={600} inputMode="numeric" aria-label="Seconds to wait" value={step.seconds} onChange={(e) => onChange({ type: 'wait', seconds: Number(e.target.value) || 0 })} />
-      <span className="playbook__hint">seconds</span>
-    </label>
-  )
-}
-
-/** What to show in an empty value box, by command. */
-function valueHint(command: string): string {
-  if (command === 'set_hvac_mode') return 'heat'
-  if (command === 'select_source') return 'Netflix'
-  if (command === 'volume_set') return '0.3'
-  return '68'
-}
-
-/** A typed value for a device command: a number for volumes and temperatures, words for a mode or an app. */
-function valueOf(command: string, typed: string): number | string | undefined {
-  if (typed.trim() === '') return undefined
-  if (commandTakesWords(command)) return typed
-  const number = Number(typed)
-  return Number.isFinite(number) ? number : typed
-}
-
-/** "Ask me first": whether Jarvis checks with you before this step runs. */
-function ConfirmSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} className="switch playbook__confirm" onClick={() => onChange(!on)}>
-      <span className="switch__track" aria-hidden="true"><span className="switch__knob" /></span>
-      <span>Ask me first, each time</span>
-    </button>
-  )
+  return <input className="field__box playbook__wide" aria-label={rule.label} value={words} maxLength={rule.max} placeholder={rule.placeholder ?? rule.label} onChange={(e) => onChange(e.target.value)} />
 }
 
 /** A list of one-line items (done checks, edge cases) with a box each, ✕ to drop one and a button to add one. */

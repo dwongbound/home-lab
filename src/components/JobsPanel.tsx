@@ -1,7 +1,10 @@
-import type { JarvisJob, JarvisJobs } from '../types'
-import { ago } from '../lib/format'
+import type { FinishedTask, JarvisJob, JarvisJobs, RunningTask } from '../types'
+import { ago, runningWords } from '../lib/format'
+import { chipFor } from '../lib/model'
 
-// "What Jarvis is doing": the three jobs that think (Lookout, Messenger,
+// "What Jarvis is doing": first the work Dylan sent to the background
+// (a change to Jarvis's code, say), each with who's doing it as the chat chip
+// and the step it's on, and what finished today (Dylan, 2026-11-19); then the three jobs that think (Lookout, Messenger,
 // Nightly) with when each last ran, what it found and when it runs next,
 // then what Lookout is keeping an eye on and what it chose not to send,
 // and finally the quiet housekeeping in one short list.
@@ -47,6 +50,35 @@ function toolLabel(name: string): string {
   return name.replaceAll('_', ' ')
 }
 
+/** How a finished piece of work ended, in a word or two. */
+const ENDINGS: Record<FinishedTask['state'], string> = {
+  live: 'Live',
+  failed: 'Didn’t make it',
+  nothing: 'Nothing to change',
+  stopped: 'Stopped',
+}
+
+/** The chat chip for the model on a piece of work ("Jarvis (CO)"), or nothing when no model did it. */
+function WorkChip({ model }: { model: string | null }) {
+  if (model === null) return null
+  const chip = chipFor(model)
+  return <span className="chat__model jobs__chip" data-model={chip.tone}>{chip.label}</span>
+}
+
+/** One piece of background work still going: its name, who's on it, the step and how long it has run. */
+function RunningRow({ task, now }: { task: RunningTask; now: Date }) {
+  const where = [task.step, runningWords(task, now.getTime())].filter(Boolean).join(' · ')
+  return (
+    <li className="loaded__item jobs__item">
+      <p className="money__line">
+        <span className="loaded__name">{task.label}</span>
+        <WorkChip model={task.model} />
+      </p>
+      <p className="loaded__role">{where}</p>
+    </li>
+  )
+}
+
 /** One of the three main jobs. */
 function MainJob({ job, now }: { job: JarvisJob; now: Date }) {
   const about = [modelLabel(job.model), job.schedule].filter(Boolean).join(' · ')
@@ -90,6 +122,29 @@ export function JobsPanel({ jobs, now }: { jobs: JarvisJobs | null; now: Date })
           <p className="panel__sub">{sub}</p>
         </div>
       </header>
+      {jobs.running.length > 0 && (
+        <>
+          <h3 className="jobs__heading">Working on now</h3>
+          <ul className="cloud__list loaded__list" aria-label="Working on now">
+            {jobs.running.map((task) => <RunningRow key={task.id} task={task} now={now} />)}
+          </ul>
+        </>
+      )}
+      {jobs.finished.length > 0 && (
+        <>
+          <h3 className="jobs__heading">Finished today</h3>
+          <ul className="jobs__plain" aria-label="Finished today">
+            {jobs.finished.map((task) => (
+              <li key={task.id}>
+                {task.label}
+                <span className="jobs__why"> {[ENDINGS[task.state], task.finishedAt ? ago(task.finishedAt, now) : null].filter(Boolean).join(' · ')}</span>
+                {task.model ? <> <WorkChip model={task.model} /></> : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {jobs.running.length + jobs.finished.length > 0 ? <h3 className="jobs__heading">On a schedule</h3> : null}
       <ul className="cloud__list loaded__list">
         {main.map((job) => <MainJob key={job.id} job={job} now={now} />)}
       </ul>

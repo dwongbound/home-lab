@@ -57,6 +57,11 @@ public enum Orbit {
     public static func dotScale(count: Int) -> Double {
         count <= 8 ? 1 : max(0.55, (8.0 / Double(count)).squareRoot())
     }
+    /// The widest orbit, in shell radii (see `path`).
+    public static let widest = 1.28
+    /// How far from the centre a dot may sit, as a share of the orb's
+    /// side, so its glow stays inside the frame instead of being cut off.
+    public static let reach = 0.44
     /// How long a tapped dot holds everything still before it all moves on.
     /// A minute (Dylan, 2026-11-20: "it shouldnt auto close until 1 minute
     /// later"); a tap elsewhere still closes it at once.
@@ -78,6 +83,13 @@ public enum Orbit {
         return orange + blue + yellow
     }
 
+    /// The radius (points) the orbits are measured in: the shell's, shrunk
+    /// when the widest orbit would carry a dot past `reach` of the orb's
+    /// side (the working shell is big enough to push dots off the edge).
+    public static func scale(shellRadius: Double, side: Double) -> Double {
+        min(shellRadius, side * reach / widest)
+    }
+
     /// Each dot's own orbit, the same on every device and every launch (a
     /// fixed hash of its id, so it doesn't jump between snapshots).
     public static func path(for id: String) -> OrbitPath {
@@ -86,7 +98,7 @@ public enum Orbit {
         func unit(_ shift: UInt64) -> Double { Double((h >> shift) & 0xFFFF) / 65_535 }
         let direction: Double = (h & 1) == 0 ? 1 : -1
         return OrbitPath(
-            radius: 1.12 + 0.16 * unit(4),
+            radius: 1.12 + (widest - 1.12) * unit(4),
             tilt: 0.35 + 0.75 * unit(20),
             yaw: -0.9 + 1.8 * unit(36),
             speed: direction * (0.22 + 0.22 * unit(48)),
