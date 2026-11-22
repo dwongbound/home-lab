@@ -40,7 +40,9 @@ struct KioskTalkOrb: View {
                 // The inner orb, off any dot, starts and stops Talk.
                 onCoreTap: tap,
                 // A kept (yellow) dot's label can let it go.
-                onLetGo: { notice in Task { await app.letGo(notice) } }
+                onLetGo: { notice in Task { await app.letGo(notice) } },
+                // Dismiss on an orange dot's label clears it everywhere.
+                onDismiss: { notice in Task { await app.clearNotices([notice.id]) } }
             )
             // A little bigger while a call is on.
             .scaleEffect(callOpen ? 1.08 : 1)

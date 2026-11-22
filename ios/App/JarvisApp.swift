@@ -274,6 +274,13 @@ struct RootView: View {
         .sheet(isPresented: $app.showSettings) {
             SettingsView()
         }
+        // A Dismiss that didn't reach Jarvis (the notice came back), when
+        // the notices drawer, which says it itself, isn't open.
+        .alert("Notice", isPresented: Binding(get: { app.noticeProblem != nil && !app.showNotices }, set: { if !$0 { app.noticeProblem = nil } })) {
+            Button("Close", role: .cancel) {}
+        } message: {
+            Text(app.noticeProblem ?? "")
+        }
         // The snapshot (Today, and the orb's dots) refreshes every 15 s,
         // whichever page is showing, and every 5 s while an orange dot is up
         // so a notice read on another device fades here soon after.

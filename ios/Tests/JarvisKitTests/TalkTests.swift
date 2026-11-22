@@ -435,3 +435,32 @@ final class StopJobTests: XCTestCase {
         XCTAssertTrue(new.canStop)
     }
 }
+
+
+final class DismissCardTests: XCTestCase {
+    /// An orange dot's label offers Dismiss (Done for a reminder); that's
+    /// the button that must clear it, not just close the label.
+    func testOrangeDotCardOffersDismiss() {
+        let notice = Notice(id: "n1", kind: .heads, title: "PS5 Pro back in stock", source: "lookout", created: "2026-11-21T10:00:00Z")
+        let actions = NoticeAction.card(kind: .notice, notice: notice, canOpen: true, canDismiss: true)
+        XCTAssertEqual(actions.first, .dismiss)
+        let reminder = Notice(id: "n2", kind: .heads, title: "Buy the gift", source: "reminder", created: "2026-11-21T10:00:00Z")
+        XCTAssertTrue(NoticeAction.card(kind: .notice, notice: reminder, canOpen: false, canDismiss: true).contains(.done))
+        // Kept: the label's Dismiss lets it go (Kept page's Dismiss).
+        XCTAssertEqual(NoticeAction.card(kind: .kept, notice: notice, canOpen: false, canDismiss: true).first, .unkeep)
+        XCTAssertEqual(NoticeAction.unkeep.label, "Dismiss")
+    }
+
+    /// Cleared here: hidden at once and kept hidden while the snapshot
+    /// still lists it; back if the server didn't take it.
+    func testPendingClearsHideUntilRestored() {
+        var clears = PendingClears()
+        let a = Notice(id: "a", kind: .fyi, title: "A", source: "job", created: "2026-11-21T10:00:00Z")
+        let b = Notice(id: "b", kind: .fyi, title: "B", source: "job", created: "2026-11-21T10:00:00Z")
+        clears.hide(["a"])
+        XCTAssertEqual(clears.visible([a, b]).map(\.id), ["b"])
+        XCTAssertEqual(clears.visible([a, b]).map(\.id), ["b"], "a refresh still listing it doesn't bring it back")
+        clears.restore(["a"])
+        XCTAssertEqual(clears.visible([a, b]).map(\.id), ["a", "b"])
+    }
+}

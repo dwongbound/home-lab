@@ -49,6 +49,10 @@ struct OrbView: View {
     var onLetGo: ((Notice) -> Void)? = nil
     /// Keep a notice as a yellow dot for good (it stays until Unkeep).
     var onKeepNotice: ((Notice) -> Void)? = nil
+    /// An orange dot's label "Dismiss" (or a reminder's "Done"): clears the
+    /// notice everywhere (Dylan, 2026-11-21: "if i click dismiss on a
+    /// notification after clicking an orange dot it should go away").
+    var onDismiss: ((Notice) -> Void)? = nil
     /// The dot whose label is open, if any.
     @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -125,6 +129,11 @@ struct OrbView: View {
                 } : nil, onKeepForGood: onKeepNotice.map { keep in
                     {
                         if let notice = item.notice { keep(notice) }
+                        opened = nil
+                    }
+                }, onDismiss: onDismiss.map { clear in
+                    {
+                        if let notice = item.notice { clear(notice) }
                         opened = nil
                     }
                 }) { close() }
@@ -718,6 +727,8 @@ struct OrbitCallout: View {
     var onLetGo: (() -> Void)? = nil
     /// "Keep": the dot stays, yellow, until Unkeep.
     var onKeepForGood: (() -> Void)? = nil
+    /// "Dismiss" / "Done": clears the notice (and closes the label).
+    var onDismiss: (() -> Void)? = nil
     let onClose: () -> Void
 
     /// The screen's width less the usual margins, capped for reading on an
@@ -817,7 +828,9 @@ struct OrbitCallout: View {
         case .open, .seeInChat, .seeMore: onOpen?()
         case .unkeep: onLetGo?()
         case .keep: onKeepForGood?()
-        case .dismiss, .done: onClose()
+        // Dismiss clears it everywhere; until build 84 it only closed the
+        // label, so the dot stayed lit.
+        case .dismiss, .done: (onDismiss ?? onClose)()
         }
     }
 
