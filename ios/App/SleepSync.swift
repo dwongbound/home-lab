@@ -44,6 +44,8 @@ final class SleepSync: ObservableObject {
     private let store = HKHealthStore()
     private var observing = false
     private var syncing = false
+    /// Waiting for the phone to unlock before reading Health.
+    private var unlockWatch: NSObjectProtocol?
 
     /// The Allow card: what it says under its line when asking failed.
     @Published var askProblem: String?
@@ -147,6 +149,15 @@ final class SleepSync: ObservableObject {
         // Jarvis was away lately: leave him a while (SleepWire.backoff).
         if let retryAt = defaults.object(forKey: Self.retryAtKey) as? Date, retryAt > now { return }
         guard Self.available, enabled, asked, SleepUpload.live, !syncing else { return }
+        // Health can't be read while the phone is locked, and a wake from
+        // Health often comes then (the watch syncs at dawn), which used to
+        // read nothing and wait for the next time he opened the app. Now
+        // it waits for the unlock instead, if the app is still awake then;
+        // Jarvis's quiet morning push and opening the app cover the rest.
+        guard UIApplication.shared.isProtectedDataAvailable else {
+            waitForUnlock()
+            return
+        }
         syncing = true
         defer { syncing = false }
         let nights = SleepNights.recent(SentNights.backfill, now: now)
@@ -180,6 +191,21 @@ final class SleepSync: ObservableObject {
             defaults.removeObject(forKey: Self.retryAtKey)
         }
         UserDefaults.standard.set(sent.stored, forKey: Self.sentKey)
+    }
+
+    /// Runs catchUp once when the phone is next unlocked.
+    private func waitForUnlock() {
+        guard unlockWatch == nil else { return }
+        unlockWatch = NotificationCenter.default.addObserver(
+            forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if let watch = self.unlockWatch { NotificationCenter.default.removeObserver(watch) }
+                self.unlockWatch = nil
+                await self.catchUp()
+            }
+        }
     }
 
     // MARK: Reading

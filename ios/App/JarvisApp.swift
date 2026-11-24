@@ -42,7 +42,10 @@ struct JarvisApp: App {
         // Money hides again the moment the app leaves the screen.
         .onChange(of: scenePhase) { _, phase in
             // Back in front: any night of sleep Jarvis doesn't have yet.
-            if phase == .active { Task { await SleepSync.shared.catchUp() } }
+            if phase == .active {
+                Task { await SleepSync.shared.catchUp() }
+                Task { await ActivitySync.shared.refresh() }
+            }
             guard phase == .background else { return }
             app.lockMoney()
             // Paused (dozing) and leaving the app: hang up, so the mic goes

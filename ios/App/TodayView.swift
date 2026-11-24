@@ -100,6 +100,8 @@ struct TodayView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The one-time "send your sleep" card (App/SleepSync.swift).
     @ObservedObject private var sleepSync = SleepSync.shared
+    /// The iPhone's Activity card reads from Health here (App/ActivitySync.swift).
+    @ObservedObject private var activitySync = ActivitySync.shared
 
     /// Loader, couldn't-reach, or the page (JarvisKit HomeScreen).
     private var screen: HomeScreen {
@@ -290,7 +292,11 @@ struct TodayView: View {
             if SleepSlide.shows(snapshot) {
                 sleepCard(SleepSlide.card(snapshot))
             }
-            if SleepSlide.showsYou(snapshot), let health = snapshot.health {
+            // On the iPhone: rings, a week of steps, heart and weight read
+            // from Health on the phone (ActivityCard). Elsewhere, Jarvis's steps.
+            if ActivitySync.available {
+                ActivityCard(sync: activitySync, fallbackSteps: snapshot.health?.yesterday?.steps)
+            } else if SleepSlide.showsYou(snapshot), let health = snapshot.health {
                 healthCard(health, withSleep: !SleepSlide.shows(snapshot))
             }
             // The PC: GPU, memory, disk and processor (Dylan, 2026-11-21).

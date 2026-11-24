@@ -29,6 +29,20 @@ final class OrientationLock: NSObject, UIApplicationDelegate {
         return true
     }
 
+    /// A quiet push (content-available, no alert) from Jarvis: in the
+    /// morning he sends `{"sleep": true}` until last night arrives, so the
+    /// night goes as soon as the watch has synced and the phone is
+    /// unlocked, without opening the app (Dylan, 2026-11-22: "ideally id
+    /// want to see them as soon or as early as i can after i wake up").
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let wantsSleep = userInfo["sleep"] as? Bool == true
+        Task { @MainActor in
+            if wantsSleep { await SleepSync.shared.catchUp() }
+            completionHandler(wantsSleep ? .newData : .noData)
+        }
+    }
+
     /// APNs gave this device a token (PushCenter sends it on).
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         MainActor.assumeIsolated { PushCenter.shared.gotToken(deviceToken) }
