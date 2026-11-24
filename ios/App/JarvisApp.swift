@@ -45,6 +45,10 @@ struct JarvisApp: App {
             if phase == .active {
                 Task { await SleepSync.shared.catchUp() }
                 Task { await ActivitySync.shared.refresh() }
+                // Fresh push token on every return, not only at launch, so
+                // Jarvis always has this device's current one (Dylan,
+                // 2026-11-24: "notificstions must always work").
+                Task { await PushCenter.shared.askIfNeeded() }
             }
             guard phase == .background else { return }
             app.lockMoney()
