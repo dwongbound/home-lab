@@ -42,6 +42,23 @@ final class TVBoardTests: XCTestCase {
         XCTAssertEqual(next?.countdown(now: at(15)), "in 5 h")
     }
 
+    func testAfterGivesWhatFollowsTheEventOnNow() {
+        let events = [
+            CalendarEvent(id: "a", title: "Lunch with Sam", start: iso(at(12)), end: iso(at(13)), location: "Tender Greens"),
+            CalendarEvent(id: "b", title: "Rehearsal", start: iso(at(20)), end: iso(at(22))),
+            CalendarEvent(id: "c", title: "Dentist", start: iso(at(9, day: 18)), end: nil),
+        ]
+        let after = NowNext.after(events: events, agenda: [], now: at(12, 18), calendar: la)
+        XCTAssertEqual(after?.title, "Rehearsal")
+        XCTAssertEqual(after?.when(timeZone: la.timeZone), "8:00 PM")
+        // Nothing on now: the pick itself is the next one, so no "after".
+        XCTAssertNil(NowNext.after(events: events, agenda: [], now: at(15), calendar: la))
+        // On now in the evening with nothing else today: tomorrow's first.
+        let late = NowNext.after(events: events, agenda: [], now: at(21), calendar: la)
+        XCTAssertEqual(late?.kind, .tomorrow)
+        XCTAssertEqual(late?.when(timeZone: la.timeZone), "Tomorrow 9:00 AM")
+    }
+
     func testTomorrowShowsOnlyInTheEveningWhenTodayIsDone() {
         let events = [CalendarEvent(id: "c", title: "Dentist", start: iso(at(9, day: 18)), end: nil)]
         XCTAssertNil(NowNext.pick(events: events, agenda: [], now: at(15), calendar: la))

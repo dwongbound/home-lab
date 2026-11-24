@@ -29,8 +29,8 @@ struct KioskView: View {
                 Group {
                     if wide {
                         HStack(alignment: .center, spacing: 48) {
-                            lead(orb: min(area.size.height * 0.34, 300))
-                                .frame(maxWidth: .infinity)
+                            pinnedLead(orb: min(area.size.height * 0.34, 300))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                             rotating(count: 2)
                                 .frame(maxWidth: .infinity)
                         }
@@ -70,8 +70,49 @@ struct KioskView: View {
 
     // MARK: Lead column
 
+    /// Landscape's left column with the orb held still (Dylan, 2026-11-24:
+    /// "the orb on the left during kiosk moves sometimes. that shouldnt be
+    /// the case"). In a plain stack the orb rode up and down whenever the
+    /// hero card or the weather line changed height, since the stack was
+    /// centred as a whole. Here the orb sits at the column's centre and the
+    /// clock and hero each get their own half, so nothing they do moves it.
+    private func pinnedLead(orb size: CGFloat) -> some View {
+        ZStack {
+            KioskTalkOrb(talk: talk, app: app, size: size, work: today.snapshot?.jobs?.running ?? [])
+                .frame(width: size, height: size)
+                .zIndex(1)
+            VStack(spacing: 0) {
+                // The clock's half: hugs the orb from above.
+                clockBlock
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 22)
+                // The orb's own room (drawn by the ZStack above).
+                Color.clear.frame(height: size)
+                // The hero's half: hangs under the orb, cut off rather than
+                // pushing the orb if it ever grows taller than its half.
+                heroCard
+                    .animation(.smooth(duration: 0.6), value: hero)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 22)
+                    .clipped()
+            }
+        }
+    }
+
     /// The clock and greeting, the live orb, and the hero card.
     private func lead(orb size: CGFloat) -> some View {
+        VStack(spacing: 22) {
+            clockBlock
+            // Tap to talk, tap again to stop (KioskTalkOrb).
+            KioskTalkOrb(talk: talk, app: app, size: size, work: today.snapshot?.jobs?.running ?? [])
+                .zIndex(1)
+            heroCard
+                .animation(.smooth(duration: 0.6), value: hero)
+        }
+    }
+
+    /// The time, the date and the weather line.
+    private var clockBlock: some View {
         VStack(spacing: 22) {
             TimelineView(.everyMinute) { context in
                 VStack(spacing: 4) {
@@ -96,11 +137,6 @@ struct KioskView: View {
                     }
                 }
             }
-            // Tap to talk, tap again to stop (KioskTalkOrb).
-            KioskTalkOrb(talk: talk, app: app, size: size, work: today.snapshot?.jobs?.running ?? [])
-                .zIndex(1)
-            heroCard
-                .animation(.smooth(duration: 0.6), value: hero)
         }
     }
 

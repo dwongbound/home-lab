@@ -165,7 +165,7 @@ struct AlwaysOnView: View {
     @State private var cardScroll: Double = 0
     /// The most a card's rows may take before they scroll: less when the
     /// Now/Next card is above.
-    @State private var rowsMax: CGFloat = 274
+    @State private var rowsMax: CGFloat = 334
     @FocusState private var typing: Bool
     /// Guest-friendly (on by default): people walking in see this screen,
     /// so it leaves out sleep, steps, Jarvis's suggestions and the private
@@ -599,7 +599,7 @@ struct AlwaysOnView: View {
                     }
                     greeting(snapshot, showBody: false)
                     if let hero {
-                        NowNextCard(item: hero, now: now, palette: palette)
+                        NowNextStrip(item: hero, after: TVBoard.after(snapshot, now: now, guest: guest), now: now, palette: palette)
                             .transition(.opacity.combined(with: .scale(scale: 0.97)))
                     }
                     if !cards.isEmpty {
@@ -634,10 +634,13 @@ struct AlwaysOnView: View {
                         // With three or more cards the height holds still so
                         // nothing below jumps; with fewer, the card takes
                         // its own height and the column centres itself.
-                        .frame(height: cards.count >= 3 ? (hero == nil ? 470 : 400) : nil, alignment: .top)
+                        // The slim Now/Next strip leaves the cards nearly
+                        // their full room (Dylan, 2026-11-24: Sleep and
+                        // other cards were cut off at their edges).
+                        .frame(height: cards.count >= 3 ? (hero == nil ? 500 : 460) : nil, alignment: .top)
                         .onPreferenceChange(ScrollCycleKey.self) { cardScroll = $0 }
-                        .onAppear { rowsMax = hero == nil ? 344 : 274 }
-                        .onChange(of: hero == nil) { _, none in rowsMax = none ? 344 : 274 }
+                        .onAppear { rowsMax = hero == nil ? 374 : 334 }
+                        .onChange(of: hero == nil) { _, none in rowsMax = none ? 374 : 334 }
                         if cards.count > 1 {
                             CardDots(count: cards.count, active: active, seconds: TVBoard.turnSeconds, palette: palette)
                                 // Brighter for a moment after up or down.
