@@ -35,8 +35,14 @@ public enum TalkEvent: Equatable, Sendable {
     case model(String)
     /// He finished this reply.
     case done
-    /// Dylan talked over him: drop the rest of his voice.
+    /// Dylan talked over him: drop the rest of his voice, including any
+    /// held by a pause.
     case stop
+    /// He heard a little voice while speaking (about 96 ms): hold his voice
+    /// at the exact spot, queue whatever arrives, and send no idle.
+    case pause
+    /// It was an echo or a cough: carry on from the exact spot, then the queue.
+    case resume
     /// He said goodbye (Dylan said "talk to you later"): his goodbye has
     /// played and he's hanging up for good, not dozing. Even "Hey Jarvis"
     /// won't wake him; only a tap on Talk starts a new call.
@@ -90,6 +96,10 @@ public enum TalkEvent: Equatable, Sendable {
             return .done
         case "stop":
             return .stop
+        case "pause":
+            return .pause
+        case "resume":
+            return .resume
         case "bye":
             return .bye
         case "approval":
@@ -317,6 +327,8 @@ public struct PlaybackTracker: Equatable, Sendable {
     /// "idle" already went out for a reply cut short (stop, pause): its
     /// late "done" mustn't send a second one.
     public private(set) var cutShort = false
+    /// When Jarvis's "pause" held the voice; nil while it plays.
+    public private(set) var pausedAt: Date?
 
     public init() {}
 
@@ -325,8 +337,24 @@ public struct PlaybackTracker: Equatable, Sendable {
     public mutating func scheduled(seconds: TimeInterval, now: Date) {
         cutShort = false
         queued += 1
-        let start = max(now, expectedEnd ?? now)
+        // While paused the clock stands still at the pause, so resume can
+        // move the whole queue on by however long the pause lasted.
+        let clock = pausedAt ?? now
+        let start = max(clock, expectedEnd ?? clock)
         expectedEnd = start.addingTimeInterval(seconds)
+    }
+
+    /// Jarvis's "pause": the voice holds where it is.
+    public mutating func pause(now: Date) {
+        if pausedAt == nil { pausedAt = now }
+    }
+
+    /// Jarvis's "resume": the held audio plays on, so its expected end moves
+    /// later by the length of the pause.
+    public mutating func resume(now: Date) {
+        guard let pausedAt else { return }
+        if let expectedEnd { self.expectedEnd = expectedEnd.addingTimeInterval(max(0, now.timeIntervalSince(pausedAt))) }
+        self.pausedAt = nil
     }
 
     /// One buffer reported played.
@@ -346,6 +374,7 @@ public struct PlaybackTracker: Equatable, Sendable {
     public mutating func engineRestarted() {
         queued = 0
         expectedEnd = nil
+        pausedAt = nil
     }
 
     /// His voice was cut off (Jarvis's "stop" for a barge-in, Pause, the
@@ -365,7 +394,8 @@ public struct PlaybackTracker: Equatable, Sendable {
     /// and either every buffer reported played or the clock says it ended.
     /// Calling it with a true answer clears the reply, so it can't fire twice.
     public mutating func takeIdle(now: Date) -> Bool {
-        guard replyDone else { return false }
+        // Never idle while his voice is held: the speaker isn't done.
+        guard replyDone, pausedAt == nil else { return false }
         let clockSaysEnded = expectedEnd.map { now >= $0.addingTimeInterval(Self.grace) } ?? true
         guard queued <= 0 || clockSaysEnded else { return false }
         self = PlaybackTracker()
@@ -374,7 +404,7 @@ public struct PlaybackTracker: Equatable, Sendable {
 
     /// When to look again if idle isn't due yet (the backstop's timer).
     public func nextCheck(now: Date) -> Date? {
-        guard replyDone, let expectedEnd else { return nil }
+        guard replyDone, pausedAt == nil, let expectedEnd else { return nil }
         let due = expectedEnd.addingTimeInterval(Self.grace)
         return due > now ? due : nil
     }

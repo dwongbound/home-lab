@@ -12,6 +12,8 @@ final class TalkTests: XCTestCase {
         XCTAssertEqual(TalkEvent.parse(#"{"type":"reply","text":"Clear, 61."}"#), .reply("Clear, 61."))
         XCTAssertEqual(TalkEvent.parse(#"{"type":"working","label":"Searching the web."}"#), .working("Searching the web."))
         XCTAssertEqual(TalkEvent.parse(#"{"type":"stop"}"#), .stop)
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"pause"}"#), .pause)
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"resume"}"#), .resume)
         XCTAssertEqual(
             TalkEvent.parse(#"{"type":"approval","id":"a1","tool":"send_email","summary":"Email Matt","expires":"x"}"#),
             .approval(Approval(id: "a1", tool: "send_email", summary: "Email Matt", expires: "x"))
@@ -169,6 +171,33 @@ final class PlaybackTrackerTests: XCTestCase {
         p.done()
         XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(10)), "the late done is spent")
         XCTAssertNil(p.nextCheck(now: t0))
+    }
+
+    /// Jarvis's "pause" holds idle back, even past the clock, and "resume"
+    /// moves the expected end on by the pause; audio arriving while held
+    /// queues behind the spot.
+    func testPauseHoldsIdleAndResumeShiftsTheEnd() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 2, now: t0)
+        p.pause(now: t0.addingTimeInterval(1))
+        p.scheduled(seconds: 1, now: t0.addingTimeInterval(5))
+        p.done()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(30)), "held: never idle")
+        XCTAssertNil(p.nextCheck(now: t0.addingTimeInterval(30)))
+        p.resume(now: t0.addingTimeInterval(11))
+        XCTAssertEqual(p.expectedEnd, t0.addingTimeInterval(13), "3 s of audio from 0, plus a 10 s pause")
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(12)))
+        p.played(); p.played()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(13)))
+    }
+
+    /// A barge-in during a pause drops the held voice: idle once, nothing held.
+    func testStopDuringPauseClearsIt() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 2, now: t0)
+        p.pause(now: t0.addingTimeInterval(1))
+        XCTAssertTrue(p.interrupted())
+        XCTAssertNil(p.pausedAt)
     }
 
     /// Stopping with nothing playing and nothing owed sends nothing.

@@ -77,6 +77,8 @@ final class TalkLine: @unchecked Sendable {
     /// Bumped on every "stop", so sentences dropped then don't count down later.
     private var generation = 0
     private var muted = false
+    /// Jarvis's "pause" is holding his voice (he may be being interrupted).
+    private var held = false
     private var closed = false
     private(set) var canDoze = false
     private var observers: [NSObjectProtocol] = []
@@ -315,7 +317,8 @@ final class TalkLine: @unchecked Sendable {
                 self.maybeIdle()
             }
         }
-        if !voice.isPlaying { voice.play() }
+        // While held, the new sentence waits in the queue behind the spot.
+        if !voice.isPlaying, !held { voice.play() }
     }
 
     /// Tells Jarvis the speaker's quiet, once his whole reply has played:
@@ -341,6 +344,7 @@ final class TalkLine: @unchecked Sendable {
     /// Drops whatever of his voice is still queued (Dylan talked over him).
     private func silence() {
         generation += 1
+        held = false
         // A reply cut off still ends: tell Jarvis the speaker is quiet,
         // once (he'd otherwise wait out his 3 s watchdog).
         if playback.interrupted() {
@@ -437,6 +441,19 @@ final class TalkLine: @unchecked Sendable {
             maybeIdle()
         case .stop:
             silence()
+        case .pause:
+            // AVAudioPlayerNode.pause keeps the exact spot and the queue.
+            talkLog("pause")
+            held = true
+            playback.pause(now: Date())
+            voice.pause()
+        case .resume:
+            guard held else { break }
+            talkLog("resume")
+            held = false
+            playback.resume(now: Date())
+            voice.play()
+            maybeIdle()
         case .bye:
             // He's said goodbye and is closing the line: hang up quietly
             // (no "line dropped" message), mic and audio off, no reconnect.
@@ -518,7 +535,9 @@ final class TalkLine: @unchecked Sendable {
         guard !closed else { return }
         talkLog("audio route changed, rewiring")
         // Buffers in flight won't report played after this; go by the clock.
+        // A held voice went with the engine, so nothing is held now.
         playback.engineRestarted()
+        held = false
         engine.stop()
         connectNodes()
         do {
@@ -578,6 +597,7 @@ final class TalkLine: @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0)
         voice.removeTap(onBus: 0)
         playback.engineRestarted()
+        held = false
         engine.stop()
         if rebuild {
             engine = AVAudioEngine()
