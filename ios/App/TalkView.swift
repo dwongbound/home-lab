@@ -275,7 +275,8 @@ final class TalkModel: ObservableObject {
             // now, while he's still on Talk, so Chat already shows them
             // when he swipes over (ChatMerge keeps every row it had).
             Task { await app.chat.load(app: app) }
-        case .stop:
+        case .stop, .pause, .resume:
+            // The line handles his voice; nothing changes on screen.
             break
         case .bye:
             // Goodbye: the call is over until Dylan taps Talk.
