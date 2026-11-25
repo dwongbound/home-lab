@@ -288,6 +288,8 @@ final class AppModel: ObservableObject {
 
     /// The report showing in the app's reader, if any.
     @Published var report: ReportPage?
+    /// A web link from chat or a notice, open in the in-app Safari view.
+    @Published var webPage: WebPage?
     /// What a Keep or Delete is waiting on ("Deleting the report…"), shown
     /// as a labelled, blocking wait.
     @Published private(set) var reportBusy: String?

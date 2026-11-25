@@ -811,11 +811,22 @@ struct PadKioskAndNotices: ViewModifier {
             }
             // A link to one of Jarvis's reports (chat's "Open the report")
             // opens in the reader; every other link opens as it always has.
+            // A web link opens in Safari inside the app, so Chat is right
+            // there when it's closed; anything else (mail, phone) as always.
             .environment(\.openURL, OpenURLAction { url in
-                guard let id = Reports.id(in: url, base: app.client.base) else { return .systemAction }
-                Task { await app.openReport(id: id) }
+                if let id = Reports.id(in: url, base: app.client.base) {
+                    Task { await app.openReport(id: id) }
+                    return .handled
+                }
+                guard WebPage.opensInApp(url) else { return .systemAction }
+                app.webPage = WebPage(url: url)
                 return .handled
             })
+            .background {
+                Color.clear.sheet(item: $app.webPage) { page in
+                    SafariView(url: page.url).ignoresSafeArea()
+                }
+            }
             .simultaneousGesture(TapGesture().onEnded { app.noteActivity() })
             .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { _ in app.noteActivity() })
             .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in app.noteActivity() }

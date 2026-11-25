@@ -870,8 +870,9 @@ struct JarvisBubble: View {
             }
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 // Rich text, like the page (App/RichTextView.swift).
+                // No text selection here: it made links untappable, and
+                // Copy is on the long-press menu.
                 RichTextView(text: item.text)
-                    .textSelection(.enabled)
                 if item.finished && !ModelWording.isNotice(item.model ?? "") {
                     Button(action: onWrong) {
                         Text("…")
@@ -1010,9 +1011,26 @@ final class MarkdownCache: @unchecked Sendable {
         #if DEBUG
         PerfCount.bump("markdown")
         #endif
-        let value = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        var value = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        Self.linkBareAddresses(&value)
         cache.setObject(Box(value), forKey: text as NSString)
         return value
+    }
+
+    /// Bare "https://…" addresses become tappable links, underlined, like
+    /// the ones written as [words](address).
+    static func linkBareAddresses(_ value: inout AttributedString) {
+        let plain = String(value.characters)
+        for range in RichText.bareLinks(in: plain) {
+            let start = plain.distance(from: plain.startIndex, to: range.lowerBound)
+            let length = plain.distance(from: range.lowerBound, to: range.upperBound)
+            let lower = value.characters.index(value.startIndex, offsetBy: start)
+            let upper = value.characters.index(lower, offsetBy: length)
+            // Already a link (written as markdown): leave it be.
+            if value[lower..<upper].runs.contains(where: { $0.link != nil }) { continue }
+            value[lower..<upper].link = URL(string: String(plain[range]))
+            value[lower..<upper].underlineStyle = .single
+        }
     }
 }
 

@@ -5,7 +5,8 @@
 // by JarvisKit RichText, once per text (cached), never on a redraw; a reply
 // still streaming is parsed afresh as it grows, and half-written markup just
 // reads as plain words until it closes. Links to Jarvis's reports open in
-// the app's reader (the openURL handler in RootView); others as always.
+// the app's reader and web links in an in-app Safari view (the openURL
+// handler in RootView). Bare addresses link too.
 import SwiftUI
 import JarvisKit
 
@@ -41,6 +42,8 @@ struct RichTextView: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+        // Links in the app's blue.
+        .tint(Theme.glacier)
     }
 
     /// One line's spans as styled text.
@@ -65,6 +68,8 @@ struct RichTextView: View {
             case .link(let words, let href):
                 var piece = AttributedString(words)
                 piece.link = URL(string: href)
+                // Underlined, so a link reads as one without colour alone.
+                piece.underlineStyle = .single
                 out += piece
             }
         }

@@ -30,7 +30,11 @@ struct NoticeDetail: View {
                         Text(MarkdownCache.shared.attributed(full?.body ?? notice.body))
                             .font(.body)
                             .foregroundStyle(Theme.frost)
-                            .textSelection(.enabled)
+                            // Long-press to copy; text selection would make
+                            // its links untappable.
+                            .contextMenu {
+                                Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = full?.body ?? notice.body }
+                            }
                     }
                     Text(meta)
                         .font(.footnote)

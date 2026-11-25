@@ -132,6 +132,52 @@ public enum RichText {
             last = m.range.location + m.range.length
         }
         if last < ns.length { out.append(.text(ns.substring(from: last))) }
+        // Bare web addresses in the plain words become links too (Dylan,
+        // 2026-11-25: "links should be clickable in chat on the app").
+        return out.flatMap { span -> [Span] in
+            guard case .text(let words) = span else { return [span] }
+            return autolinked(words)
+        }
+    }
+
+    /// Plain words with every bare "https://…" address as a link.
+    static func autolinked(_ words: String) -> [Span] {
+        var out: [Span] = []
+        var last = words.startIndex
+        for range in bareLinks(in: words) {
+            if range.lowerBound > last { out.append(.text(String(words[last..<range.lowerBound]))) }
+            let address = String(words[range])
+            out.append(.link(address, href: address))
+            last = range.upperBound
+        }
+        if last < words.endIndex { out.append(.text(String(words[last...]))) }
+        return out.isEmpty ? [.text(words)] : out
+    }
+
+    nonisolated(unsafe) private static let bare = regex(#"https?://[^\s<>"'`]+"#)
+
+    /// Where the bare web addresses are in some words. Punctuation that ends
+    /// a sentence is left out ("see https://x.com." links x.com), and so is
+    /// a closing bracket the address didn't open.
+    public static func bareLinks(in words: String) -> [Range<String.Index>] {
+        let ns = words as NSString
+        var out: [Range<String.Index>] = []
+        for m in bare.matches(in: words, range: NSRange(location: 0, length: ns.length)) {
+            guard var range = Range(m.range, in: words) else { continue }
+            while range.upperBound > range.lowerBound {
+                let last = words[words.index(before: range.upperBound)]
+                let candidate = words[range]
+                let unopened = (last == ")" && !candidate.contains("(")) || (last == "]" && !candidate.contains("["))
+                if ".,;:!?*_".contains(last) || unopened {
+                    range = range.lowerBound..<words.index(before: range.upperBound)
+                } else {
+                    break
+                }
+            }
+            // Just the scheme left ("https://"): not an address.
+            if words[range].hasSuffix("//") { continue }
+            out.append(range)
+        }
         return out
     }
 }

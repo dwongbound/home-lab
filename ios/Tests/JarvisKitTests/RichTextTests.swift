@@ -49,4 +49,17 @@ final class RichTextTests: XCTestCase {
         XCTAssertEqual(RichText.parse("Code:\n```\nlet x"), [.paragraph([.text("Code:")]), .code("let x")])
         XCTAssertEqual(RichText.parse("| a | b |"), [.paragraph([.text("| a | b |")])])
     }
+
+    /// Bare web addresses link, without the full stop or bracket after them.
+    func testBareAddressesBecomeLinks() {
+        XCTAssertEqual(RichText.spans("See https://bose.com/x. Or (https://a.io/b) now"), [
+            .text("See "), .link("https://bose.com/x", href: "https://bose.com/x"),
+            .text(". Or ("), .link("https://a.io/b", href: "https://a.io/b"), .text(") now"),
+        ])
+        XCTAssertEqual(RichText.spans("**Bold** https://x.com/a_b"), [
+            .bold("Bold"), .text(" "), .link("https://x.com/a_b", href: "https://x.com/a_b"),
+        ])
+        XCTAssertEqual(RichText.spans("no link here, only https://"), [.text("no link here, only https://")])
+        XCTAssertEqual(RichText.spans("[Bose](https://bose.com)"), [.link("Bose", href: "https://bose.com")])
+    }
 }
