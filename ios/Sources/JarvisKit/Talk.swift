@@ -135,9 +135,10 @@ public enum TalkMessage {
     /// Mute tapped: "I'm finished talking", so he answers what he has heard at once.
     public static let endTurn = #"{"type":"end_turn"}"#
 
-    /// For Jarvis's log, so a crackle report can be matched to the phone's audio.
+    /// For Jarvis's log, so a crackle report can be matched to the phone's
+    /// audio. pause: true says this app holds his voice on "pause"/"resume".
     public static func client(micRate: Double, audioRate: Double) -> String {
-        let object: [String: Any] = ["type": "client", "mic_rate": micRate, "audio_rate": audioRate, "agent": "Jarvis iOS"]
+        let object: [String: Any] = ["type": "client", "mic_rate": micRate, "audio_rate": audioRate, "agent": "Jarvis iOS", "pause": true]
         let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
         return String(decoding: data, as: UTF8.self)
     }
