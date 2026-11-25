@@ -2,7 +2,7 @@
 // that it refuses plainly when there's no microphone, and which of
 // Jarvis's events reach which handler.
 import { describe, expect, it, vi } from 'vitest'
-import { BYE_MESSAGE, canTalkUnprompted, makeResampler, openTalkLine, pcm16ToFloat, softenEdges, talkUrl } from '../../src/lib/talk'
+import { BYE_MESSAGE, canTalkUnprompted, makeResampler, openTalkLine, pcm16ToFloat, remainingAfter, softenEdges, talkUrl } from '../../src/lib/talk'
 
 describe('the voice line', () => {
   it('uses wss on the https page and ws on plain http', () => {
@@ -221,5 +221,24 @@ describe('starting Talk with no tap (/talk)', () => {
     stub('throws', 'running')
     expect(await canTalkUnprompted()).toBe(false)
     vi.unstubAllGlobals()
+  })
+})
+
+describe('remainingAfter', () => {
+  // Pausing mid-reply keeps only what hasn't been heard, from the exact spot.
+  it('drops finished sentences, keeps the current one from where it paused and the rest whole', () => {
+    const queued = [
+      { buffer: 'a', startAt: 0, duration: 1 },
+      { buffer: 'b', startAt: 1, duration: 2 },
+      { buffer: 'c', startAt: 3, duration: 1 },
+    ]
+    expect(remainingAfter(queued, 1.5)).toEqual([
+      { buffer: 'b', offset: 0.5 },
+      { buffer: 'c', offset: 0 },
+    ])
+  })
+
+  it('keeps nothing once everything has played', () => {
+    expect(remainingAfter([{ buffer: 'a', startAt: 0, duration: 1 }], 1)).toEqual([])
   })
 })
