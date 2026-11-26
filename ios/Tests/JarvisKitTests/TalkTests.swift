@@ -37,6 +37,15 @@ final class TalkTests: XCTestCase {
         XCTAssertFalse(TalkAudio.heardYouOut(before: .listening, after: .speaking))
     }
 
+    /// An approval waiting on Dylan shows listening once its question has played.
+    func testShownWhileApprovalWaits() {
+        XCTAssertEqual(TalkState.speaking.shown(approvalWaiting: true, voicePlaying: false), .listening)
+        XCTAssertEqual(TalkState.speaking.shown(approvalWaiting: true, voicePlaying: true), .speaking)
+        XCTAssertEqual(TalkState.speaking.shown(approvalWaiting: false, voicePlaying: false), .speaking)
+        XCTAssertEqual(TalkState.thinking.shown(approvalWaiting: true, voicePlaying: false), .thinking)
+        XCTAssertEqual(TalkState.dozing.shown(approvalWaiting: true, voicePlaying: false), .dozing)
+    }
+
     /// 16-bit audio survives the trip to floats and back.
     func testPCMRoundTrip() {
         let floats: [Float] = [0, 0.5, -0.5, 1, -1]

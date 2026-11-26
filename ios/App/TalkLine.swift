@@ -20,6 +20,8 @@ struct TalkHandlers {
     /// True when the microphone stopped and couldn't be brought back (the
     /// screen says "Mic paused. Tap to resume."); false once it's back.
     var onMicStuck: @MainActor (Bool) -> Void = { _ in }
+    /// True when his voice starts playing, false once it has all played.
+    var onVoice: @MainActor (Bool) -> Void = { _ in }
 }
 
 /// Runs `body` on the main thread, after anything already sent there, so
@@ -306,12 +308,14 @@ final class TalkLine: @unchecked Sendable {
             buffer.floatChannelData?[0].update(from: source.baseAddress!, count: floats.count)
         }
         queued += 1
+        if queued == 1 { onMain { self.handlers.onVoice(true) } }
         let mine = generation
         voice.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             guard let self else { return }
             self.queue.async {
                 guard mine == self.generation else { return }
                 self.queued -= 1
+                if self.queued <= 0 { onMain { self.handlers.onVoice(false) } }
                 self.maybeIdle()
             }
         }
@@ -330,6 +334,7 @@ final class TalkLine: @unchecked Sendable {
     private func silence() {
         generation += 1
         queued = 0
+        onMain { self.handlers.onVoice(false) }
         replyDone = false
         voice.stop()
         voice.play()
