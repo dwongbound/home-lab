@@ -46,7 +46,7 @@ import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
 import { parseHistoryPage } from './sources/history.mjs'
 import { isJobId } from './sources/jobs.mjs'
-import { isNodeId } from './sources/memory-graph.mjs'
+import { nodeIdFromPath } from './sources/memory-graph.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
 
 // The most a "describe it" box may send Jarvis to turn into a playbook.
@@ -251,7 +251,7 @@ export function createApi(source) {
 
   /** One thing in his memory opened up: 400 on a bad id, 404 when he no longer has it. */
   async function handleMemoryNode(req, res, id) {
-    if (!isNodeId(id)) {
+    if (id === null) {
       return sendJson(res, 400, { ok: false, message: "That isn't one of Jarvis's memories" })
     }
     const login = req.headers['tailscale-user-login'] ?? ''
@@ -683,7 +683,7 @@ export function createApi(source) {
         return await handleMemoryGraph(req, res)
       }
       if (req.method === 'GET' && pathname.startsWith('/api/jarvis/memory/node/')) {
-        return await handleMemoryNode(req, res, decodeURIComponent(pathname.slice('/api/jarvis/memory/node/'.length)))
+        return await handleMemoryNode(req, res, nodeIdFromPath(pathname.slice('/api/jarvis/memory/node/'.length)))
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/memory/search') {
         const query = new URL(req.url ?? '/', 'http://localhost').searchParams.get('q') ?? ''

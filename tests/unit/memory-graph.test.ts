@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isNodeId, parseGraph, parseNode } from '../../server/sources/memory-graph.mjs'
+import { isNodeId, nodeIdFromPath, parseGraph, parseNode } from '../../server/sources/memory-graph.mjs'
 import { createApi } from '../../server/app.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
 import { callApi } from './helpers'
@@ -11,7 +11,7 @@ describe('parseGraph', () => {
         { id: 'p1', type: 'person', name: ' Sam ', group: 'People', facts: 4, links: 2, updated: '2026-11-26T10:00:00Z' },
         { id: 'x1', type: 'spaceship', name: 'Trip', facts: -2, links: 'many' },
         { id: 'p1', type: 'person', name: 'Sam again' },
-        { id: 'bad id!', name: 'Nope' },
+        { id: ' padded ', name: 'Nope' },
         { id: 'p2', name: '' },
       ],
       links: [{ from: 'p1', to: 'x1', kind: 'going on' }, { from: 'p1', to: 'missing' }, { from: 'p1', to: 'p1' }],
@@ -51,8 +51,13 @@ describe('parseNode', () => {
     expect(parseNode({ id: 'p1' })).toBeNull()
     expect(parseNode({ name: 'Sam' })).toBeNull()
     expect(isNodeId('people.sam-1')).toBe(true)
-    expect(isNodeId('../etc')).toBe(false)
+    expect(isNodeId('loops/book the table')).toBe(true)
+    expect(isNodeId(' padded')).toBe(false)
+    expect(isNodeId('line\nbreak')).toBe(false)
     expect(isNodeId('')).toBe(false)
+    expect(nodeIdFromPath('people%2Fsam%20lee')).toBe('people/sam lee')
+    expect(nodeIdFromPath('people/sam')).toBe('people/sam')
+    expect(nodeIdFromPath('%E0%A4%A')).toBeNull()
   })
 })
 
@@ -72,22 +77,22 @@ describe('memory web API', () => {
 
   it('refuses a bad id and says when a node is gone', async () => {
     const api = createApi(createMockSource())
-    expect((await callApi(api, 'GET', '/api/jarvis/memory/node/bad%20id!')).statusCode).toBe(400)
+    expect((await callApi(api, 'GET', '/api/jarvis/memory/node/%E0%A4%A')).statusCode).toBe(400)
     const gone = await callApi(api, 'GET', '/api/jarvis/memory/node/n-nothing')
     expect(gone.statusCode).toBe(404)
     expect(gone.json().gone).toBe(true)
   })
 
-  it("passes the caller's login on", async () => {
+  it("passes the caller's login on, and an id with a slash and a space whole", async () => {
     const seen: unknown[] = []
     const api = createApi({
       ...createMockSource(),
       memoryGraph: async (caller: unknown) => { seen.push(caller); return null },
-      memoryNode: async (_id: string, caller: unknown) => { seen.push(caller); return { node: null, gone: false } },
+      memoryNode: async (id: string, caller: unknown) => { seen.push(id, caller); return { node: null, gone: false } },
     })
     const login = { 'tailscale-user-login': 'me@example.com' }
     await callApi(api, 'GET', '/api/jarvis/memory/graph', login)
-    await callApi(api, 'GET', '/api/jarvis/memory/node/p1', login)
-    expect(seen).toEqual([{ login: 'me@example.com' }, { login: 'me@example.com' }])
+    await callApi(api, 'GET', '/api/jarvis/memory/node/people%2Fsam%20lee', login)
+    expect(seen).toEqual([{ login: 'me@example.com' }, 'people/sam lee', { login: 'me@example.com' }])
   })
 })
