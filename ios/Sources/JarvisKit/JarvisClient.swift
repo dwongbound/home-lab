@@ -491,7 +491,7 @@ public struct JarvisClient: Sendable {
 
     /// Sends a request; a network failure reads as "can't reach", a non-2xx
     /// answer as the server's own message when it gives one.
-    private func send(_ request: URLRequest) async throws -> Data {
+    func send(_ request: URLRequest) async throws -> Data {
         let data: Data
         let response: URLResponse
         do {

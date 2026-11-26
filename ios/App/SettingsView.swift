@@ -1,5 +1,5 @@
-// Settings: which address the app talks to, and whether it's reachable.
-// Voice, Memory and notifications arrive with later milestones.
+// Settings: which address the app talks to, and whether it's reachable;
+// Jarvis's voice and his memory (2026-11-26, moved from the web page).
 import SwiftUI
 
 struct SettingsView: View {
@@ -41,6 +41,12 @@ struct SettingsView: View {
                 } footer: {
                     Text("Reached through Tailscale. Tailscale signs you in, so there's no password. Turn on VPN On Demand in the Tailscale app so it reconnects by itself.")
                 }
+                Section {
+                    NavigationLink("Memory") { MemoryView() }
+                } footer: {
+                    Text("What Jarvis remembers, as a web you can drag around. Tap a bubble for its facts.")
+                }
+                VoiceSection()
                 if UIDevice.current.userInterfaceIdiom == .phone {
                     Section {
                         Group {
