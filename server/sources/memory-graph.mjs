@@ -8,12 +8,26 @@ const MAX_NODES = 2000
 const MAX_LINKS = 8000
 const MAX_FACTS = 200
 const MAX_NODE_LINKS = 200
-const ID = /^[\w.:-]{1,64}$/
+// Jarvis's ids are paths in his own words ("people/sam", "loops/book the table"), so they may hold
+// slashes and spaces; anything printable goes, since an id is only ever sent on percent-encoded.
+const ID = /^[^\u0000-\u001f\u007f]{1,120}$/
 const TYPES = ['person', 'place', 'project', 'routine', 'preference', 'plan', 'loop']
 
-/** True for an id Jarvis could have given a node or a fact (safe to put in a URL). */
+/** True for an id Jarvis could have given a node or a fact: some printable text with no stray space at either end. */
 export function isNodeId(value) {
-  return typeof value === 'string' && ID.test(value)
+  return typeof value === 'string' && ID.test(value) && value.trim() === value
+}
+
+/** The node id from the end of a request path, percent-decoded; null when it can't be decoded or isn't an id. */
+export function nodeIdFromPath(rest) {
+  let id = null
+  try {
+    id = decodeURIComponent(rest)
+  } catch {
+    return null
+  }
+  if (!isNodeId(id)) return null
+  return id
 }
 
 /** A trimmed string no longer than max, or '' when it isn't one. */
