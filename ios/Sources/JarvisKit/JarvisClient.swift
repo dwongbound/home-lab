@@ -446,6 +446,11 @@ public struct JarvisClient: Sendable {
         try await post("api/jarvis/notices/clear", ["all": true])
     }
 
+    /// Runs one home control command ("toggle", "power") on a device.
+    public func homeControl(entity: String, command: String) async throws {
+        try await post("api/home/control", ["entity": entity, "command": command])
+    }
+
     /// The request registering this device for push notifications.
     public func pushRegisterRequest(token: String, platform: String, environment: String, bundle: String, name: String) -> URLRequest {
         request("api/jarvis/push/register", method: "POST", json: [

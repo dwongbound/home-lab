@@ -47,11 +47,15 @@ Home; swiping and the tab bar follow that order.
 ## Apple Watch and Apple TV (started 2026-11-16)
 
 - **Watch** (`Watch/`, target `JarvisWatch`, ships inside the iPhone app):
-  tap Ask and dictate, see his answer with the model chip, Approve/Deny
-  what's waiting. Tailscale doesn't run on watchOS, so every request goes
-  through the iPhone app over WatchConnectivity (`App/WatchBridge.swift`,
-  messages in `JarvisKit/WatchRelay.swift`). The phone must be nearby; the
-  app needn't be open.
+  three pages (2026-11-26). Home: the phone's orb and dots, the status
+  line, Talk (Mute, End), and hold the orb to talk. Actions: switch lights,
+  switches, fans and TVs. Info: diet rings, sleep ring, PC bars, notices.
+  Tailscale doesn't run on watchOS, so every request goes through the
+  iPhone app over WatchConnectivity (`App/WatchBridge.swift`, messages in
+  `JarvisKit/WatchRelay.swift`, board in `JarvisKit/WatchBoard.swift`).
+  Talk is relayed by `App/WatchTalkRelay.swift` (phone holds the voice
+  line) and `Watch/WatchTalk.swift` (mic silent while Jarvis speaks: no
+  echo cancelling on the Watch). The phone must be nearby.
 - **Apple TV** (`TV/`, target `JarvisTV`): the always-on display. Big orb,
   clock, greeting, agenda, home, background work; refreshes every 15 s and
   keeps the TV awake. Needs Tailscale's Apple TV app signed in.

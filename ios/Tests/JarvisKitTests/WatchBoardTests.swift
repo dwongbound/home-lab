@@ -25,6 +25,21 @@ final class WatchBoardTests: XCTestCase {
         XCTAssertEqual(reply, .board(board))
     }
 
+    func testInfoAndDevicesRoundTrip() throws {
+        let json = #"{"generatedAt":"x","services":[],"notices":[{"id":"k","kind":"fyi","title":"Kept","source":"kept","created":"","kept":true}],"sleep":{"last":{"night":"2026-11-25","score":82,"minutes":{"asleep":431}},"trend":[{"night":"2026-11-25","score":82},{"night":"2026-11-24"}]},"ram":{"totalMb":18432,"usedMb":9216,"users":[]},"disks":[{"id":"c","name":"C:","usedGb":400,"totalGb":476,"users":[]}],"home":{"devices":[{"id":"light.desk","name":"Desk","kind":"light","state":"on"},{"id":"media.tv","name":"TV","kind":"media","state":"off"},{"id":"climate.hall","name":"Hall","kind":"climate","state":"heat"}]}}"#
+        let board = WatchBoard(snapshot: try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8)))
+        XCTAssertEqual(board.kept, 1)
+        XCTAssertEqual(board.orbit.map(\.kind), [.kept])
+        XCTAssertEqual(board.sleepScore, 82)
+        XCTAssertEqual(board.sleepTrend, [82, 0])
+        XCTAssertEqual(board.pc.map(\.name), ["Memory", "C:"])
+        XCTAssertEqual(board.pc.first?.usedGb, 9)
+        XCTAssertEqual(board.devices.map(\.command), ["toggle", "power"])
+        XCTAssertEqual(WatchBoard(message: board.message), board)
+        let flip = WatchRequest.control(entity: "light.desk", command: "toggle")
+        XCTAssertEqual(WatchRequest(message: flip.message), flip)
+    }
+
     func testComplicationWordsAndStaleness() {
         let now = Date()
         let board = WatchBoard(notices: [WatchNotice(Notice(id: "n", kind: .need, title: "x", source: "approval", created: ""))], tasks: [("t", nil)], nextTitle: "Volleyball", nextAt: iso(now.addingTimeInterval(1800)))

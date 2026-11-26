@@ -143,8 +143,8 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
-  # Apple Watch: ask by voice, see the answer, approve or deny. Talks to
-  # Jarvis through the iPhone app (App/WatchBridge.swift).
+  # Apple Watch: talk to Jarvis, see diet, sleep and the PC, switch things
+  # at home. Everything goes through the iPhone app (App/WatchBridge.swift).
   JarvisWatch:
     type: application
     platform: watchOS
@@ -176,6 +176,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.dwongbound.jarvis
+        NSMicrophoneUsageDescription: Jarvis listens while you hold the orb or tap Talk.
 
   # Apple Watch complications: Ask Jarvis, Needs you, Next up.
   JarvisWatchComplications:

@@ -137,8 +137,9 @@ public enum TalkMessage {
 
     /// For Jarvis's log, so a crackle report can be matched to the phone's
     /// audio. pause: true says this app holds his voice on "pause"/"resume".
-    public static func client(micRate: Double, audioRate: Double) -> String {
-        let object: [String: Any] = ["type": "client", "mic_rate": micRate, "audio_rate": audioRate, "agent": "Jarvis iOS", "pause": true]
+    /// The Watch has no echo cancelling, so it says pause: false.
+    public static func client(micRate: Double, audioRate: Double, agent: String = "Jarvis iOS", pause: Bool = true) -> String {
+        let object: [String: Any] = ["type": "client", "mic_rate": micRate, "audio_rate": audioRate, "agent": agent, "pause": pause]
         let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
         return String(decoding: data, as: UTF8.self)
     }
