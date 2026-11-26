@@ -109,6 +109,9 @@ targets:
         # Talk: the microphone, and background audio so a call keeps going
         # with the screen locked.
         NSHealthShareUsageDescription: Jarvis reads your sleep from Apple Health so he can track how you slept, and your activity, heart and weight to show them in the app. Sleep is sent only to your own Jarvis; the rest stays on this phone.
+        # Required by App Store review whenever HealthKit is entitled, even
+        # though Jarvis never writes to Health.
+        NSHealthUpdateUsageDescription: Jarvis never writes to Apple Health. It only reads it to show you your sleep and activity.
         NSMicrophoneUsageDescription: Jarvis listens while you talk to him on the Talk tab.
         UIBackgroundModes:
           - audio
