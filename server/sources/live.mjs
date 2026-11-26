@@ -14,6 +14,7 @@ import { createDigestReader } from './digest.mjs'
 import { createHomeReader } from './home.mjs'
 import { buildGpu, ollamaRows, parseJarvisGpu, parseSmi } from './gpu.mjs'
 import { parseSystem } from './system.mjs'
+import { parseClaudeUsage } from './claude-usage.mjs'
 import { HISTORY_DEFAULT, emptyHistory, historyQuery, parseHistory } from './history.mjs'
 import { parseJobs } from './jobs.mjs'
 import { parseOffers } from './offers.mjs'
@@ -400,6 +401,13 @@ export function createLiveSource(config, deps = {}) {
     return sleepSummary(parseSleepNights(await res.json()))
   }
 
+  /** What Jarvis's background jobs have spent on Claude (GET /claude/usage); null on an older Jarvis. */
+  async function readJarvisClaudeUsage() {
+    const res = await fetchFn(`${config.jarvisApiUrl}/claude/usage`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseClaudeUsage(await res.json())
+  }
+
   /** Who is using the PC's memory and disks (GET /system); null on an older Jarvis. */
   async function readJarvisSystem() {
     const res = await fetchFn(`${config.jarvisApiUrl}/system`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
@@ -459,8 +467,9 @@ export function createLiveSource(config, deps = {}) {
         readJarvisGpu(),
         readJarvisSleep(),
         readJarvisSystem(),
+        readJarvisClaudeUsage(),
       ])
-      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports, speechModels, sleep, system] = results.map(valueOrNull)
+      const [gpu, disk, ha, ollama, jarvisHttp, unitResult, cloud, homeState, jarvisToday, jobs, offers, notices, nutrition, reports, speechModels, sleep, system, claudeUsage] = results.map(valueOrNull)
       const unitState = unitResult ?? 'unknown'
 
       const ramUsedGb = (os.totalmem() - os.freemem()) / GB
@@ -506,6 +515,7 @@ export function createLiveSource(config, deps = {}) {
         gpu: buildGpu(gpu, [...ollamaRows(models, config.ollamaWatchModel), ...(speechModels ?? [])]),
         ram: system?.ram ?? null,
         disks: system?.disks ?? null,
+        claudeUsage,
         cloud,
         home: homeState,
         jobs,
