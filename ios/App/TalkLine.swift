@@ -456,7 +456,9 @@ final class TalkLine: @unchecked Sendable {
                     self.listen()
                 }
             case .failure(let error):
-                talkLog("line dropped: \(error)")
+                // The close code and reason too, for matching with Jarvis's log.
+                let reason = self.socket.closeReason.map { String(decoding: $0.prefix(120), as: UTF8.self) } ?? ""
+                talkLog("line dropped: \(error.localizedDescription) (code \((error as NSError).code), close \(self.socket.closeCode.rawValue) \(reason), engine \(self.engine.isRunning ? "running" : "stopped"))")
                 self.shutDown(message: "The line to Jarvis dropped. Tap Talk to call again.")
             }
         }
