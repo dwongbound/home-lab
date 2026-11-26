@@ -389,8 +389,18 @@ export function createMockSource({ now = () => new Date() } = {}) {
         // What his background jobs spent on Claude: today against the budget, and the last week.
         claudeUsage: {
           dailyUsd: 6, spentUsd: 2.41, level: 'ok',
-          today: [{ kind: 'judge', usd: 1.2, calls: 14 }, { kind: 'lookout', usd: 0.86, calls: 31 }, { kind: 'memory', usd: 0.35, calls: 6 }],
-          days: [3.1, 4.76, 2.2, 5.4, 1.9, 3.3, 2.41].map((usd, i) => ({ date: new Date(t.getTime() - (6 - i) * 86_400_000).toISOString().slice(0, 10), usd })),
+          limits: [
+            { name: 'session', usedPct: 6, resetsAt: new Date(t.getTime() + 3 * 3_600_000).toISOString() },
+            { name: 'weekly', usedPct: 36, resetsAt: new Date(t.getTime() + 4 * 86_400_000).toISOString() },
+          ],
+          today: [
+            { kind: 'chat', usd: 1.9, tokens: 2_400_000, calls: 22 },
+            { kind: 'judge', usd: 1.2, tokens: 900_000, calls: 14 },
+            { kind: 'lookout', usd: 0.86, tokens: 1_300_000, calls: 31 },
+            { kind: 'memory', usd: 0.35, tokens: 410_000, calls: 6 },
+          ],
+          // About 1.2 million tokens for each dollar, so the bars look alike either way.
+          days: [3.1, 4.76, 2.2, 5.4, 1.9, 3.3, 4.31].map((usd, i) => ({ date: new Date(t.getTime() - (6 - i) * 86_400_000).toISOString().slice(0, 10), usd, tokens: Math.round(usd * 1_200_000) })),
         },
         cloud,
         home: {

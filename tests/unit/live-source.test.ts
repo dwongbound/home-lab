@@ -588,7 +588,7 @@ describe('live chat with Jarvis', () => {
 
   it("puts Jarvis's Claude spending in the snapshot, null on an older Jarvis", async () => {
     const snapshot = await liveWith({}).source.snapshot()
-    expect(snapshot.claudeUsage).toEqual({ dailyUsd: 6, spentUsd: 2.41, level: 'ok', today: [{ kind: 'judge', usd: 1.2, calls: 14 }], days: [{ date: '2026-11-25', usd: 4.76 }] })
+    expect(snapshot.claudeUsage).toEqual({ dailyUsd: 6, spentUsd: 2.41, level: 'ok', limits: null, today: [{ kind: 'judge', usd: 1.2, tokens: null, calls: 14 }], days: [{ date: '2026-11-25', usd: 4.76, tokens: null }] })
     expect((await liveWith({ jarvisStatusCode: 404 }).source.snapshot()).claudeUsage).toBeNull()
   })
 

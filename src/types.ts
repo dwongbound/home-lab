@@ -471,16 +471,20 @@ export interface GpuUse {
 }
 
 /**
- * Jarvis's own Claude spending in dollars at API prices (background jobs only, not chat or Talk).
- * `level`: "slow" = close to the daily budget and holding back, "held" = background work stopped for today.
- * `today` is by kind of job, biggest first; `days` is the last seven, oldest first.
+ * How much Claude Jarvis is using. `limits` = how much of the plan's 5-hour session and weekly
+ * allowance is used and when each resets (null until he has seen one). `today` is use by kind,
+ * biggest first: his background jobs plus "chat" and "talk" turns; `days` is the last seven,
+ * oldest first. `tokens` is null when Jarvis doesn't count them; dollars are at API prices.
+ * The budget (`dailyUsd`, `spentUsd`, `level`) covers background jobs only:
+ * "slow" = close to it and holding back, "held" = background work stopped for today.
  */
 export interface ClaudeUsage {
   dailyUsd: number
   spentUsd: number
   level: 'ok' | 'slow' | 'held'
-  today: { kind: string; usd: number; calls: number }[]
-  days: { date: string; usd: number }[]
+  limits: { name: 'session' | 'weekly'; usedPct: number; resetsAt: string | null }[] | null
+  today: { kind: string; usd: number; tokens: number | null; calls: number }[]
+  days: { date: string; usd: number; tokens: number | null }[]
 }
 
 /** One holder of the PC's memory: a program, a group of them, or the unnamed rest. */
