@@ -1,24 +1,16 @@
-// Reports: Jarvis's list cleaned for the page, the words that say how long
-// each is kept, the locked-down page a report is served as, and Keep/Delete.
+// Reports: Jarvis's list cleaned for the apps, the locked-down page a report is served as, and Keep/Delete.
 import { describe, expect, it, vi } from 'vitest'
 import { createApi } from '../../server/app.mjs'
 import { loadConfig } from '../../server/config.mjs'
 import { createLiveSource } from '../../server/sources/live.mjs'
 import { createMockSource } from '../../server/sources/mock.mjs'
 import { REPORT_CSP, isReportId, parseReports } from '../../server/sources/reports.mjs'
-import { reportIdFromHref } from '../../src/lib/reportViewer'
-import { KEEP_CHOICES, endText, keepChange, keepLabel, reportHref, rulesText, sizeText } from '../../src/lib/reports'
-import type { JarvisReport } from '../../src/types'
 import { callApi } from './helpers'
 
 const ACTION_HEADER = { 'x-home-lab': '1' }
 const config = loadConfig({ DATA_SOURCE: 'live', HA_TOKEN: 'token' })
-const now = new Date('2026-11-18T22:00:00Z')
-
-/** One report as the page holds it. */
-function report(over: Partial<JarvisReport> = {}): JarvisReport {
-  return { id: 'ab12', title: 'Speakers', summary: '', created: '2026-11-18T20:00:00Z', expires: '2026-12-18T20:00:00Z', kept: false, keepDays: 30, bytes: 184_000, ...over }
-}
+/** The fields these tests read from a report row. */
+type JarvisReport = { id: string; keepDays: number | null }
 
 describe('parseReports', () => {
   it('maps Jarvis’s snake_case list and drops rows that aren’t reports', () => {
@@ -57,57 +49,6 @@ describe('parseReports', () => {
     expect(isReportId('../secrets')).toBe(false)
     expect(isReportId('')).toBe(false)
     expect(isReportId(7)).toBe(false)
-  })
-})
-
-describe('report words', () => {
-  it('says sizes in plain units', () => {
-    expect(sizeText(850)).toBe('850 bytes')
-    expect(sizeText(184_000)).toBe('184 KB')
-    expect(sizeText(1_240_000)).toBe('1.2 MB')
-  })
-
-  it('says when a report is deleted, or that it’s kept', () => {
-    expect(endText(report(), now)).toBe('Deletes Dec 18')
-    expect(endText(report({ expires: '2026-11-19T06:00:00Z' }), now)).toBe('Deletes today')
-    expect(endText(report({ expires: '2026-11-20T06:00:00Z' }), now)).toBe('Deletes tomorrow')
-    expect(endText(report({ kept: true, expires: null }), now)).toBe('Kept until you change it')
-  })
-
-  it('states the rule and the room used in one line', () => {
-    const rules = { reports: [report()], totalBytes: 692_500, keepDays: 14, maxBytes: 200_000_000 }
-    expect(rulesText(rules)).toBe('Each report is kept 2 weeks unless you pick longer for it. Using 693 KB of 200 MB.')
-    expect(rulesText({ ...rules, reports: [] })).toBe('Each report is kept 2 weeks unless you pick longer for it.')
-  })
-
-  it('words the keep button and turns a choice into the change to send', () => {
-    expect(KEEP_CHOICES.map(keepLabel)).toEqual(['Keep 2 weeks', 'Keep 1 month', 'Keep 3 months', 'Keep forever'])
-    expect(keepLabel(45)).toBe('Keep 45 days')
-    expect(keepChange('ab12', 30)).toEqual({ op: 'keep', id: 'ab12', days: 30 })
-    expect(keepChange('ab12', null)).toEqual({ op: 'keep', id: 'ab12', keep: true })
-  })
-
-  it('links a report to its own page', () => {
-    expect(reportHref('ab12')).toBe('/reports/ab12')
-  })
-})
-
-describe('report links', () => {
-  const page = 'https://jarvis.snakebird-ph.ts.net'
-
-  it('recognises a link to one of Jarvis’s reports, so it opens in the viewer', () => {
-    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/reports/95430f3fbe7f29d3', page)).toBe('95430f3fbe7f29d3')
-    expect(reportIdFromHref('/reports/rep-week', page)).toBe('rep-week')
-    // The tailnet address also counts when the page is open somewhere else (dev, or 127.0.0.1).
-    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/reports/95430f3fbe7f29d3', 'http://localhost:5180')).toBe('95430f3fbe7f29d3')
-  })
-
-  it('leaves every other link alone', () => {
-    expect(reportIdFromHref('https://example.com/reports/95430f3fbe7f29d3', page)).toBeNull()
-    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/reports/', page)).toBeNull()
-    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/reports/a/b', page)).toBeNull()
-    expect(reportIdFromHref('https://jarvis.snakebird-ph.ts.net/#services', page)).toBeNull()
-    expect(reportIdFromHref('http://[bad', page)).toBeNull()
   })
 })
 

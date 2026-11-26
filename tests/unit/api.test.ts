@@ -28,12 +28,27 @@ describe('GET /api/snapshot', () => {
     await callApi(api, 'GET', '/api/snapshot')
     expect(build).toHaveBeenCalledTimes(2)
   })
+})
 
-  it('passes non-API paths to the next handler', async () => {
-    const api = createApi(createMockSource())
-    let passed = false
-    await api({ method: 'GET', url: '/assets/app.js', headers: {} }, {}, () => { passed = true })
-    expect(passed).toBe(true)
+describe('GET / (the metrics page)', () => {
+  it('shows services, the machine and running jobs, with names escaped', async () => {
+    const source = createMockSource()
+    const snap = await source.snapshot()
+    snap.services[0].name = '<b>HA</b>'
+    vi.spyOn(source, 'snapshot').mockResolvedValue(snap)
+    const res = await callApi(createApi(source), 'GET', '/')
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('text/html')
+    expect(res.body).toContain('&#60;b&#62;HA&#60;/b&#62;')
+    expect(res.body).not.toContain('<b>HA')
+    expect(res.body).toContain('Graphics card')
+    expect(res.body).toContain('C: drive')
+    expect(res.body).toContain(snap.jobs.running[0].label)
+    expect(res.body).not.toContain('<script')
+  })
+
+  it('answers 404 for any other page path', async () => {
+    expect((await callApi(createApi(createMockSource()), 'GET', '/talk')).statusCode).toBe(404)
   })
 })
 

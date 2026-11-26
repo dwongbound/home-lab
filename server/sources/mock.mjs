@@ -1,6 +1,6 @@
 // Mock source: believable numbers for jarvis, so the page can be built and
 // reviewed before anything on the PC is wired up. It returns the same
-// Snapshot shape as the live source (see src/types.ts).
+// Snapshot shape as the live source.
 //
 // It also keeps a tiny bit of state (is the local model loaded?) so the Unload and
 // Load buttons visibly do something in the preview.

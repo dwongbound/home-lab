@@ -48,6 +48,7 @@ import { parseHistoryPage } from './sources/history.mjs'
 import { isJobId } from './sources/jobs.mjs'
 import { nodeIdFromPath } from './sources/memory-graph.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
+import { metricsPage } from './metrics-page.mjs'
 
 // The most a "describe it" box may send Jarvis to turn into a playbook.
 const DRAFT_TEXT_MAX = 1000
@@ -118,8 +119,8 @@ export function parseChatImages(raw) {
 }
 
 /**
- * Builds the request handler around a data source. Requests outside /api/
- * go to `next` (the static file server), or 404 when there's no `next`.
+ * Builds the request handler around a data source: the API, /reports/<id>
+ * and the metrics page at /. Anything else is a 404.
  */
 export function createApi(source) {
   // Only one action at a time: loading the model twice at once would just
@@ -660,7 +661,7 @@ export function createApi(source) {
     return sendJson(res, result.ok ? 200 : 400, result)
   }
 
-  return async function api(req, res, next) {
+  return async function api(req, res) {
     const { pathname } = new URL(req.url ?? '/', 'http://localhost')
     const reportMatch = pathname.match(REPORT_PATH)
     if (req.method === 'GET' && reportMatch) {
@@ -671,14 +672,18 @@ export function createApi(source) {
         return sendJson(res, 500, { error: message })
       }
     }
-    if (!pathname.startsWith('/api/')) {
-      if (next) return next()
+    if (!pathname.startsWith('/api/') && pathname !== '/') {
       return sendJson(res, 404, { error: 'Not found' })
     }
 
     // Anything that changes state (an action, a cleared notice) makes the next snapshot fresh.
     if (req.method !== 'GET') shared = null
     try {
+      // The bare URL: the backend's health for a person, from the same snapshot.
+      if (req.method === 'GET' && pathname === '/') {
+        res.setHeader('content-type', 'text/html; charset=utf-8')
+        return res.end(metricsPage(await sharedSnapshot()))
+      }
       if (req.method === 'GET' && pathname === '/api/snapshot') {
         return sendJson(res, 200, await sharedSnapshot())
       }

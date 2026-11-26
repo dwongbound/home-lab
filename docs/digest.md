@@ -33,7 +33,7 @@ the token on the PC can read only that repo.
 
 ## The file
 
-`digest.json`, matching `CloudDigest` in `src/types.ts`:
+`digest.json`, in the shape `server/sources/digest.mjs` reads:
 
 ```json
 {
@@ -70,7 +70,7 @@ the token on the PC can read only that repo.
 - `deploys` are the latest production deploys of tapworship.com and vardafreeflyers.com.
 - `pullRequests` are his open PRs on worship-scheduler, vff-app and home-lab.
 - `money` comes from Dylan's **Copilot** connector (shape: `MoneyDigest` in
-  `src/types.ts`), in US dollars. `kind` is `cash`, `credit`, `investment`,
+  `server/sources/digest.mjs`), in US dollars. `kind` is `cash`, `credit`, `investment`,
   `loan` or `other`; a credit or loan `balance` is what's owed, as a positive
   number. `netWorth` and the budgets may be `null` if Copilot doesn't say.
   `categories` is this month's top six by spend; `recent` up to 40

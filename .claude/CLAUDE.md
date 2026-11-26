@@ -7,11 +7,8 @@
   then fast-forwards `main` to `dev` (Dylan, 2026-11-09: no clicks to reach main).
   Open a PR as a **draft** to hold it; mark it ready when it should merge.
 - Tests with every change, passing before merge, on any machine (not just CI).
-  Unit tests for small pieces; Playwright end-to-end for user stories on
-  **desktop and phone**.
-- **The web pages are frozen (Dylan, 2026-11-26): no new page UI.** The native apps in `ios/` are the product now; the pages get removed once the apps can do everything they do. The server and its `/api`, `/reports/<id>` and the Talk WebSocket stay and keep growing, because the apps reach Jarvis through them. Fixes to a broken page are still fine.
+- **The React web page is gone (Dylan, 2026-11-26).** The native apps in `ios/` are the product. The server and its `/api`, `/reports/<id>`, `/shell/` and the Talk WebSocket stay and keep growing, because the apps reach Jarvis through them. `/` is one plain server-rendered metrics page (`server/metrics-page.mjs`): no scripts, no framework, keep it that way.
 - A config change updates `.env.example` and the README in the same PR.
-- UI changes start as a clickable mockup (the `build:preview` page works for this).
 - **Commit messages:** a succinct one-line subject, blank line, then one bullet
   per change naming the key files or areas. No prose paragraphs.
 
@@ -24,19 +21,6 @@
 - No dead code: nothing declared that isn't used (`noUnusedLocals` is on).
 - One request per refresh: if two things are always fetched together they
   belong in the one snapshot.
-
-## UI rules
-
-- Dismiss buttons read **Close**.
-- Anything waiting on the network shows a blocking indicator with a label.
-- Motion degrades to the plain page; animations only inside the
-  no-preference media block. Glass falls back to solid without backdrop-filter.
-- Page changes fade the new page in (useHashView + useReveal; swipes slide) and
-  move the sliding pill light (TopNav). Never fade glass or animate its ancestors (a panel may slide itself with `translate` on page changes and swipes, Dylan 2026-11-10); don't replay animations
-  inside glass on every visit (frame rate halves).
-- Logs newest first. Fixed-size dialogs. 44 px touch targets on phones.
-- Keep the page light: jarvis has 16 GB and Gemma uses most of it. No UI
-  framework, chart or icon library without a good reason.
 
 ## Secrets and privacy
 

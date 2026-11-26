@@ -11,7 +11,7 @@
 // The file looks like:
 //   { "picks": [{ "id", "category", "merchant", "date", "amount", "pickedAt" }],
 //     "remindAt": "2026-11-11T04:00:00.000Z" | null }
-// Same rule as needsCategory in src/lib/money.ts: these mean "not sorted yet".
+// These categories mean "not sorted yet".
 const UNSORTED = new Set(['', 'other', 'uncategorized', 'uncategorised'])
 const MAX_PICKS = 500
 const MAX_TEXT = 120
