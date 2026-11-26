@@ -66,6 +66,8 @@ final class TalkModel: ObservableObject {
     /// True once Talk has been started from this tab, so it only auto-starts once.
     var started = false
     private var line: TalkLine?
+    /// True while his voice is playing on the speaker.
+    private var voicePlaying = false
 
     /// Opens the line (Talk). Throws nothing: problems land in `problem`.
     func start(app: AppModel) async {
@@ -73,12 +75,14 @@ final class TalkModel: ObservableObject {
         started = true
         problem = nil
         notice = nil
+        voicePlaying = false
         phase = .connecting
         let handlers = TalkHandlers(
             onEvent: { [weak self] event in self?.apply(event, app: app) },
             onLevel: { [weak self] level, tone in self?.hear(level: level, tone: tone) },
             onClosed: { [weak self] message in self?.closed(message) },
-            onMicStuck: { [weak self] stuck in self?.micStuck = stuck }
+            onMicStuck: { [weak self] stuck in self?.micStuck = stuck },
+            onVoice: { [weak self] playing in self?.voice(playing: playing) }
         )
         let line = TalkLine(request: app.client.talkRequest, handlers: handlers)
         do {
@@ -293,6 +297,7 @@ final class TalkModel: ObservableObject {
             // One that's already over (answered on another screen) never shows.
             if !app.settled.isSettled(approval.id), !approvals.contains(where: { $0.approval.id == approval.id }) {
                 approvals.append((approval, nil, exchange))
+                waitOnDylan()
             }
         case .approvalDone(let id, let ok, let by, let later):
             settle(id, ok: ok, later: later, by: by)
@@ -309,6 +314,27 @@ final class TalkModel: ObservableObject {
     private func hear(level new: Float, tone newTone: Float) {
         level = new
         if newTone > 0 { tone = newTone }
+    }
+
+    /// His voice started or finished playing.
+    private func voice(playing: Bool) {
+        voicePlaying = playing
+        if playing, phase == .on(.listening), !pendingApprovals.isEmpty {
+            // Speaking again while an approval waits (no new state from him).
+            phase = .on(.speaking)
+        } else {
+            waitOnDylan()
+        }
+    }
+
+    /// While an approval waits on Dylan and its question has played, he's
+    /// listening for a yes or no, not speaking (TalkState.shown).
+    private func waitOnDylan() {
+        guard case .on(let state) = phase else { return }
+        let shown = state.shown(approvalWaiting: !pendingApprovals.isEmpty, voicePlaying: voicePlaying)
+        guard shown != state else { return }
+        phase = .on(shown)
+        level = 0; tone = 0
     }
 
     /// Turns the island orb a step about once a second while the call is

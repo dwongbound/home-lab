@@ -592,6 +592,31 @@ export interface JarvisMemory {
   lastDistill: string | null
 }
 
+/** What kind of thing a memory node is; the apps draw each differently. */
+export type MemoryNodeType = 'person' | 'place' | 'project' | 'routine' | 'preference' | 'plan' | 'loop' | 'other'
+
+/** One bubble in the memory web: a thing Jarvis knows, with how much he knows and how connected it is (counts, no text). */
+export interface MemoryGraphNode { id: string; type: MemoryNodeType; name: string; group: string; facts: number; links: number; updated: string | null }
+
+/** A line between two bubbles; `kind` says how they connect ("girlfriend of", "at"). */
+export interface MemoryGraphLink { from: string; to: string; kind: string }
+
+/** Jarvis's whole memory as a web. */
+export interface MemoryGraph { nodes: MemoryGraphNode[]; links: MemoryGraphLink[] }
+
+/** One bubble opened up: what he knows about it, what it connects to, and open things tied to it. */
+export interface MemoryNode {
+  id: string
+  type: MemoryNodeType
+  name: string
+  /** Other names he knows it by. */
+  aliases: string[]
+  group: string
+  facts: { id: string; text: string; source: string; updated: string | null; confidence: number | null }[]
+  links: { id: string; name: string; type: MemoryNodeType; kind: string }[]
+  loops: { text: string; due: string | null }[]
+}
+
 /** One past moment a memory search found. */
 export interface MemoryHit { chat: string; role: 'user' | 'jarvis'; text: string; at: string }
 
@@ -792,6 +817,10 @@ export interface DataSource {
   setSleep(asleep: boolean, from: string, caller?: { login?: string }): Promise<ActionResult>
   /** What Jarvis remembers, or null when he can't be asked. */
   memory(caller?: { login?: string }): Promise<JarvisMemory | null>
+  /** His memory as a web of things and links, or null when he can't be asked (or is an older Jarvis). */
+  memoryGraph(caller?: { login?: string }): Promise<MemoryGraph | null>
+  /** One thing in his memory opened up; `gone` when he no longer has it. */
+  memoryNode(id: string, caller?: { login?: string }): Promise<{ node: MemoryNode | null; gone: boolean }>
   /** One day of the meal log with what he ate; '' = today. Null when Jarvis can't be asked. */
   nutritionDay(date: string, caller?: { login?: string }): Promise<NutritionDay | null>
   /** Seven days of calories against the goal, from `start`; '' = this week. Null when Jarvis can't be asked. */

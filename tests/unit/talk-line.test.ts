@@ -2,7 +2,7 @@
 // that it refuses plainly when there's no microphone, and which of
 // Jarvis's events reach which handler.
 import { describe, expect, it, vi } from 'vitest'
-import { BYE_MESSAGE, canTalkUnprompted, makeResampler, openTalkLine, pcm16ToFloat, softenEdges, talkUrl } from '../../src/lib/talk'
+import { BYE_MESSAGE, canTalkUnprompted, makeResampler, openTalkLine, pcm16ToFloat, remainingAfter, softenEdges, talkUrl } from '../../src/lib/talk'
 
 describe('the voice line', () => {
   it('uses wss on the https page and ws on plain http', () => {
@@ -184,6 +184,14 @@ describe('the voice line', () => {
     await vi.waitFor(() => expect(track.stop).toHaveBeenCalled())
     expect(fresh.stop).not.toHaveBeenCalled()
     expect(on.onClosed).not.toHaveBeenCalled()
+    // Talking over his "Hmm." filler stops the sound but interrupts nothing; cutting into a reply does.
+    const cutsBefore = on.onInterrupted.mock.calls.length
+    say({ type: 'transcript', text: 'What about tomorrow' })
+    say({ type: 'stop' })
+    expect(on.onInterrupted).toHaveBeenCalledTimes(cutsBefore)
+    say({ type: 'reply', text: 'Tomorrow is' })
+    say({ type: 'stop' })
+    expect(on.onInterrupted).toHaveBeenCalledTimes(cutsBefore + 1)
     // "Goodbye": the call ends for good. Mic off, speaker stopped, and a
     // plain note rather than "the line dropped", even when the socket closes after.
     say({ type: 'bye' })
@@ -221,5 +229,24 @@ describe('starting Talk with no tap (/talk)', () => {
     stub('throws', 'running')
     expect(await canTalkUnprompted()).toBe(false)
     vi.unstubAllGlobals()
+  })
+})
+
+describe('remainingAfter', () => {
+  // Pausing mid-reply keeps only what hasn't been heard, from the exact spot.
+  it('drops finished sentences, keeps the current one from where it paused and the rest whole', () => {
+    const queued = [
+      { buffer: 'a', startAt: 0, duration: 1 },
+      { buffer: 'b', startAt: 1, duration: 2 },
+      { buffer: 'c', startAt: 3, duration: 1 },
+    ]
+    expect(remainingAfter(queued, 1.5)).toEqual([
+      { buffer: 'b', offset: 0.5 },
+      { buffer: 'c', offset: 0 },
+    ])
+  })
+
+  it('keeps nothing once everything has played', () => {
+    expect(remainingAfter([{ buffer: 'a', startAt: 0, duration: 1 }], 1)).toEqual([])
   })
 })

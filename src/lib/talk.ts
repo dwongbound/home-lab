@@ -76,6 +76,26 @@ interface TalkEvent {
   wake_word?: boolean
 }
 
+/** One scheduled sentence of his voice: what it is and when it starts on the audio clock. */
+export interface Scheduled<B> { buffer: B; startAt: number; duration: number }
+
+/**
+ * What's left of his queued voice when it's paused at `pausedAt` (Jarvis's
+ * `pause` event: you started talking over him and he's checking it's really
+ * you). Each sentence not yet finished comes back with how far into it to
+ * pick up, so `resume` carries on mid-word instead of starting the sentence again.
+ */
+export function remainingAfter<B>(queued: Scheduled<B>[], pausedAt: number): { buffer: B; offset: number }[] {
+  const left: { buffer: B; offset: number }[] = []
+  for (const item of queued) {
+    const endsAt = item.startAt + item.duration
+    if (endsAt <= pausedAt) continue
+    const offset = Math.max(0, pausedAt - item.startAt)
+    left.push({ buffer: item.buffer, offset })
+  }
+  return left
+}
+
 /** Who settled an approval, as one of the three the page knows. */
 function approvalBy(by: string | undefined): ApprovalBy {
   if (by === 'page' || by === 'voice') return by
@@ -214,9 +234,10 @@ export function heardYouOut(before: TalkState, after: TalkState): boolean {
 }
 
 /** The "got it" sound's two notes (Hz), how long each lasts, and how loud (0..1). */
-const GOT_IT_NOTES = [660, 990]
+const GOT_IT_NOTES = [523, 784]
 const GOT_IT_NOTE_S = 0.07
-const GOT_IT_VOLUME = 0.07
+// Quieter and lower than it was (0.07 at 660/990 Hz): Dylan, 2026-11-25, "more subtle after i talk".
+const GOT_IT_VOLUME = 0.04
 
 /**
  * Plays a very short, quiet two-note rise through the same path as his
@@ -232,7 +253,8 @@ function playGotIt(ctx: AudioContext, out: AudioNode) {
     tone.frequency.value = hz
     const level = ctx.createGain()
     level.gain.setValueAtTime(0, at)
-    level.gain.linearRampToValueAtTime(GOT_IT_VOLUME, at + 0.012)
+    // A slower rise than a click-free minimum, so it lands as a soft tap rather than a ping.
+    level.gain.linearRampToValueAtTime(GOT_IT_VOLUME, at + 0.025)
     level.gain.exponentialRampToValueAtTime(0.0001, at + GOT_IT_NOTE_S + 0.05)
     tone.connect(level).connect(out)
     tone.start(at)
@@ -432,10 +454,18 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   let restarting = false
   let state: TalkState = 'listening'
   let playing: AudioBufferSourceNode[] = []
+  // When each queued sentence starts, so a pause can pick up where it stopped.
+  let scheduled: Scheduled<AudioBuffer>[] = []
+  // Set while Jarvis has paused his voice to check whether you're really talking over him:
+  // what's left to play (sentences that arrive meanwhile join it) until `resume` or `stop`.
+  let paused: { buffer: AudioBuffer; offset: number }[] | null = null
   let playAt = 0
   // True once a sentence of this reply has been scheduled, so running dry later uses the longer cushion.
   let midReply = false
   let replyDone = false
+  // Whether any of his reply's words have arrived since your last turn. A "stop" before that
+  // only cut off a "Hmm." filler (Jarvis build 144), so nothing was interrupted.
+  let replyStarted = false
   let closed = false
   let frame = 0
   const samples = new Float32Array(512)
@@ -449,7 +479,7 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
 
   /** Tells Jarvis the speaker is quiet, once his whole reply has played. */
   function maybeIdle() {
-    if (!replyDone || playing.length > 0) return
+    if (!replyDone || playing.length > 0 || paused !== null) return
     replyDone = false
     midReply = false
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'idle' }))
@@ -462,6 +492,16 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
     softenEdges(floats, rate)
     const buffer = ctx.createBuffer(1, floats.length, rate)
     buffer.copyToChannel(floats, 0)
+    // Paused: keep it for when he carries on.
+    if (paused !== null) {
+      paused.push({ buffer, offset: 0 })
+      return
+    }
+    schedule(buffer, 0)
+  }
+
+  /** Plays one sentence (from `offset` seconds into it) right after the one before it. */
+  function schedule(buffer: AudioBuffer, offset: number) {
     const source = ctx.createBufferSource()
     source.buffer = buffer
     source.connect(voice)
@@ -478,20 +518,46 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       return
     }
     midReply = true
-    source.start(playAt)
-    playAt += buffer.duration
+    const length = buffer.duration - offset
+    source.start(playAt, offset)
+    scheduled.push({ buffer, startAt: playAt - offset, duration: buffer.duration })
+    playAt += length
     playing.push(source)
     source.onended = () => {
       playing = playing.filter((s) => s !== source)
+      scheduled = scheduled.filter((item) => item.buffer !== buffer)
       maybeIdle()
     }
   }
 
+  /** Stops his voice at once but remembers where (Jarvis's `pause`: you may be talking over him). */
+  function pause() {
+    if (paused !== null) return
+    paused = remainingAfter(scheduled, ctx.currentTime)
+    stopSources()
+  }
+
+  /** Carries on from where `pause` stopped (it was a cough or his own echo, not you). */
+  function resume() {
+    if (paused === null) return
+    const left = paused
+    paused = null
+    for (const item of left) schedule(item.buffer, item.offset)
+    maybeIdle()
+  }
+
   /** Drops whatever of his voice is still queued (you talked over him). */
   function silence() {
+    paused = null
+    replyDone = false
+    stopSources()
+  }
+
+  /** Stops every queued sentence of his voice without telling Jarvis anything. */
+  function stopSources() {
     const queued = playing
     playing = []
-    replyDone = false
+    scheduled = []
     midReply = false
     playAt = 0
     for (const s of queued) {
@@ -512,18 +578,31 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       state = event.state
       on.onState(event.state)
     } else if (event.type === 'partial' && event.text) on.onHearing(event.text, event.joined === true, stableCount(event.stable))
-    else if (event.type === 'transcript' && event.text) on.onHeard(event.text, event.joined === true, event.same === true)
-    else if (event.type === 'reply' && event.text) on.onReply(event.text)
+    else if (event.type === 'transcript' && event.text) {
+      replyStarted = false
+      on.onHeard(event.text, event.joined === true, event.same === true)
+    } else if (event.type === 'reply' && event.text) {
+      replyStarted = true
+      on.onReply(event.text)
+    }
     else if (event.type === 'working') on.onWorking(event.label ?? '')
     else if (event.type === 'working_done') on.onWorking(null)
     else if (event.type === 'model' && typeof event.model === 'string') on.onModel(event.model)
     else if (event.type === 'done') {
+      replyStarted = false
       replyDone = true
       on.onDone()
       maybeIdle()
+    } else if (event.type === 'pause') {
+      // You may be talking over him: quiet at once, keep the place (Dylan, 2026-11-25, natural interrupting).
+      pause()
+    } else if (event.type === 'resume') {
+      resume()
     } else if (event.type === 'stop') {
       silence()
-      on.onInterrupted()
+      // Talking over a filler isn't cutting a reply short: the turn stays open for his answer.
+      if (replyStarted) on.onInterrupted()
+      replyStarted = false
     } else if (event.type === 'bye') {
       // "Goodbye", "talk to you later" (Dylan, 2026-11-17): the call is over,
       // not paused. His sign-off has already played (he sends this after our

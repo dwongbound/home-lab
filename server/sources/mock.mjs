@@ -656,6 +656,34 @@ export function createMockSource({ now = () => new Date() } = {}) {
       return { facts, turns: 1284 + state.chat.length, lastDistill }
     },
 
+    /** The sample memory as a web: a few made-up things and how they connect. */
+    async memoryGraph() {
+      const nodes = SAMPLE_NODES.map((node) => ({
+        id: node.id, type: node.type, name: node.name, group: node.group,
+        facts: node.facts.length, links: SAMPLE_LINKS.filter((link) => link.from === node.id || link.to === node.id).length,
+        updated: new Date(now().getTime() - DAY_MS).toISOString(),
+      }))
+      return { nodes, links: SAMPLE_LINKS.map((link) => ({ ...link })) }
+    },
+
+    /** One sample thing opened up; `gone` when there's no such id. */
+    async memoryNode(id) {
+      const found = SAMPLE_NODES.find((node) => node.id === id)
+      if (!found) return { node: null, gone: true }
+      const updated = new Date(now().getTime() - DAY_MS).toISOString()
+      const facts = found.facts.map((text, index) => ({ id: `${id}-f${index + 1}`, text, source: 'chat', updated, confidence: 0.9 }))
+      const links = []
+      for (const link of SAMPLE_LINKS) {
+        // A link shows from both of its ends.
+        let otherId = null
+        if (link.from === id) otherId = link.to
+        if (link.to === id) otherId = link.from
+        const other = SAMPLE_NODES.find((node) => node.id === otherId)
+        if (other) links.push({ id: other.id, name: other.name, type: other.type, kind: link.kind })
+      }
+      return { node: { id, type: found.type, name: found.name, aliases: [], group: found.group, facts, links, loops: [] }, gone: false }
+    },
+
     /** Made-up nights of sleep, newest first: one `night`, or the last `days`; a night that was sent is given back as stored. */
     async sleepNights(ask) {
       const dates = []
@@ -913,6 +941,21 @@ function samplePlaybooks(t) {
     },
   ]
 }
+
+/** Made-up things for the sample memory web (this repo is public, so nothing real). */
+const SAMPLE_NODES = [
+  { id: 'n-you', type: 'person', name: 'You', group: 'People', facts: ['Prefers short answers out loud, details in text.'] },
+  { id: 'n-volleyball', type: 'routine', name: 'Tuesday volleyball', group: 'Routines', facts: ['Plays on Tuesday nights.', 'A rain warning before 6 pm is useful.'] },
+  { id: 'n-lamp', type: 'preference', name: 'The big light', group: 'Home', facts: ['Calls the living room lamp "the big light".'] },
+  { id: 'n-park', type: 'place', name: 'The park courts', group: 'Places', facts: ['Outdoor courts, so weather matters.'] },
+]
+
+/** How the sample things connect. */
+const SAMPLE_LINKS = [
+  { from: 'n-you', to: 'n-volleyball', kind: 'does' },
+  { from: 'n-volleyball', to: 'n-park', kind: 'at' },
+  { from: 'n-you', to: 'n-lamp', kind: 'prefers' },
+]
 
 /** Made-up facts for the sample memory, learned over the last few days. */
 function sampleFacts(t) {

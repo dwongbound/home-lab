@@ -12,6 +12,13 @@ import Foundation
 /// Jarvis's side of the line.
 public enum TalkState: String, Equatable, Sendable {
     case listening, thinking, speaking, dozing
+
+    /// The state the screen shows. Jarvis stays "speaking" while an approval
+    /// he asked waits on Dylan, but once the question has played he's
+    /// waiting for a yes or no, so it shows listening.
+    public func shown(approvalWaiting: Bool, voicePlaying: Bool) -> TalkState {
+        self == .speaking && approvalWaiting && !voicePlaying ? .listening : self
+    }
 }
 
 /// One JSON event from the voice line.

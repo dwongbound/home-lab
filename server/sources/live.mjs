@@ -23,6 +23,7 @@ import { parseNutrition, parseNutritionDay, parseNutritionDays, parseNutritionWe
 import { fromJarvisDraft, parseChecks, parsePlaybookBook, toJarvisPlaybook } from './playbooks.mjs'
 import { DEFAULT_STEP_TYPES } from './step-types.mjs'
 import { parseReport, parseReports } from './reports.mjs'
+import { parseGraph, parseNode } from './memory-graph.mjs'
 import { createPickStore } from '../money-picks.mjs'
 import { createPickFile } from '../money-picks-file.mjs'
 
@@ -892,6 +893,37 @@ export function createLiveSource(config, deps = {}) {
         }
       } catch {
         return null
+      }
+    },
+
+    /** Jarvis's memory as a web of things and links (GET /memory/graph), as the caller. Null with no login, on an older Jarvis, or when he doesn't answer. */
+    async memoryGraph(caller = {}) {
+      if (!caller.login) return null
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/memory/graph`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (!res.ok) return null
+        return parseGraph(await res.json())
+      } catch {
+        return null
+      }
+    },
+
+    /** One thing in his memory opened up (GET /memory/node/{id}), as the caller: `{node}`, with `gone: true` when he no longer has it. */
+    async memoryNode(id, caller = {}) {
+      if (!caller.login) return { node: null, gone: false }
+      try {
+        const res = await fetchFn(`${config.jarvisApiUrl}/memory/node/${encodeURIComponent(id)}`, {
+          headers: { 'tailscale-user-login': caller.login },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        })
+        if (res.status === 404) return { node: null, gone: true }
+        if (!res.ok) return { node: null, gone: false }
+        return { node: parseNode(await res.json()), gone: false }
+      } catch {
+        return { node: null, gone: false }
       }
     },
 
