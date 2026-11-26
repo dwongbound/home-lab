@@ -43,8 +43,9 @@ struct SettingsView: View {
                 }
                 Section {
                     NavigationLink("Memory") { MemoryView() }
+                    NavigationLink("Claude") { ClaudeView(today: app.today) }
                 } footer: {
-                    Text("What Jarvis remembers, as a web you can drag around. Tap a bubble for its facts.")
+                    Text("What Jarvis remembers, as a web you can drag around. Claude: his plan usage, jobs and project threads.")
                 }
                 VoiceSection()
                 if UIDevice.current.userInterfaceIdiom == .phone {

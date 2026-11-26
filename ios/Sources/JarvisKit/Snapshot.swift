@@ -40,8 +40,12 @@ public struct Snapshot: Decodable, Sendable {
     public var disks: [DiskReading]?
     /// Jarvis's local model in Ollama, and whether it's loaded now.
     public var localModel: LocalModel?
+    /// Jarvis's Claude limits, tokens and spend; nil from an older Jarvis.
+    public var claudeUsage: ClaudeUsage?
+    /// Claude project threads from the cloud digest.
+    public var threads: [ClaudeThread] = []
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu, ram, disks, localModel = "model" }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu, ram, disks, claudeUsage, localModel = "model" }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -54,8 +58,9 @@ public struct Snapshot: Decodable, Sendable {
         let money: Money?
         let health: Health?
         let calendar: [CalendarEvent]?
+        let threads: [ClaudeThread]?
 
-        enum CodingKeys: String, CodingKey { case money, health, calendar }
+        enum CodingKeys: String, CodingKey { case money, health, calendar, threads }
 
         /// Any section that won't decode is left out.
         init(from decoder: Decoder) throws {
@@ -63,6 +68,7 @@ public struct Snapshot: Decodable, Sendable {
             money = try? c.decodeIfPresent(Money.self, forKey: .money)
             health = try? c.decodeIfPresent(Health.self, forKey: .health)
             calendar = try? c.decodeIfPresent([CalendarEvent].self, forKey: .calendar)
+            threads = ((try? c.decodeIfPresent([LenientRow<ClaudeThread>].self, forKey: .threads)) ?? nil)?.compactMap(\.value)
         }
     }
 
@@ -90,6 +96,8 @@ public struct Snapshot: Decodable, Sendable {
         ram = (try? c.decodeIfPresent(RamReading.self, forKey: .ram)) ?? nil
         disks = ((try? c.decodeIfPresent([LenientRow<DiskReading>].self, forKey: .disks)) ?? nil)?.compactMap(\.value)
         localModel = (try? c.decodeIfPresent(LocalModel.self, forKey: .localModel)) ?? nil
+        claudeUsage = (try? c.decodeIfPresent(ClaudeUsage.self, forKey: .claudeUsage)) ?? nil
+        threads = cloud?.threads ?? []
     }
 
     /// Who's using the graphics card right now; nil without a GPU reading.
@@ -464,6 +472,8 @@ public struct JobRecord: Decodable, Identifiable, Sendable {
     public let lastResult: String?
     /// The model doing it (same raw names as chat turns); nil for plain code.
     public let model: String?
+    /// When it runs next (ISO), when Jarvis says.
+    public var nextRun: String? = nil
 
     public init(id: String, name: String, status: String, lastRun: String?, lastResult: String?, model: String? = nil) {
         self.id = id; self.name = name; self.status = status; self.lastRun = lastRun; self.lastResult = lastResult; self.model = model
