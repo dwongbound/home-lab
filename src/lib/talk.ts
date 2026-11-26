@@ -234,9 +234,10 @@ export function heardYouOut(before: TalkState, after: TalkState): boolean {
 }
 
 /** The "got it" sound's two notes (Hz), how long each lasts, and how loud (0..1). */
-const GOT_IT_NOTES = [660, 990]
+const GOT_IT_NOTES = [523, 784]
 const GOT_IT_NOTE_S = 0.07
-const GOT_IT_VOLUME = 0.07
+// Quieter and lower than it was (0.07 at 660/990 Hz): Dylan, 2026-11-25, "more subtle after i talk".
+const GOT_IT_VOLUME = 0.04
 
 /**
  * Plays a very short, quiet two-note rise through the same path as his
@@ -252,7 +253,8 @@ function playGotIt(ctx: AudioContext, out: AudioNode) {
     tone.frequency.value = hz
     const level = ctx.createGain()
     level.gain.setValueAtTime(0, at)
-    level.gain.linearRampToValueAtTime(GOT_IT_VOLUME, at + 0.012)
+    // A slower rise than a click-free minimum, so it lands as a soft tap rather than a ping.
+    level.gain.linearRampToValueAtTime(GOT_IT_VOLUME, at + 0.025)
     level.gain.exponentialRampToValueAtTime(0.0001, at + GOT_IT_NOTE_S + 0.05)
     tone.connect(level).connect(out)
     tone.start(at)
