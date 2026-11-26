@@ -41,6 +41,9 @@ struct JarvisApp: App {
         }
         // Money hides again the moment the app leaves the screen.
         .onChange(of: scenePhase) { _, phase in
+            // In the Talk log, so a dropped line can be matched to the app
+            // going to the background or coming back.
+            talkLog("app \(phase)")
             // Back in front: any night of sleep Jarvis doesn't have yet.
             if phase == .active {
                 Task { await SleepSync.shared.catchUp() }

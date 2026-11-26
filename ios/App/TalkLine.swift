@@ -30,12 +30,59 @@ private func onMain(_ body: @escaping @MainActor () -> Void) {
     }
 }
 
-/// A line in the Xcode console for debug builds, so a dead microphone can
-/// be traced on the phone; silent in release builds.
+/// One line about the Talk line: the Xcode console in debug builds, and in
+/// every build the phone's own talk-log.txt, so a dropped line can be traced
+/// afterwards (Dylan, 2026-11-25: "the line to jarvis just dropped").
 func talkLog(_ message: @autoclosure () -> String) {
+    let line = message()
     #if DEBUG
-    print("[talk] \(message())")
+    print("[talk] \(line)")
     #endif
+    TalkFileLog.shared.add(line)
+}
+
+/// The last few hundred Talk lines in Documents/talk-log.txt, read off the
+/// phone from the Mac. Lines collect in memory and are written at most every
+/// 3 s, so a burst (a failing mic frame each 20 ms) costs nothing; a line
+/// repeated back to back is counted rather than written again. No words
+/// Dylan or Jarvis said go in it, only what the line did.
+final class TalkFileLog: @unchecked Sendable {
+    static let shared = TalkFileLog()
+    private let queue = DispatchQueue(label: "talk.filelog", qos: .utility)
+    private var pending: [String] = []
+    private var last = ""
+    private var repeats = 0
+    private var flushDue = false
+    private let stamp = ISO8601DateFormatter()
+
+    /// Queues one line for the file.
+    func add(_ line: String) {
+        let now = Date()
+        queue.async {
+            if line == self.last {
+                self.repeats += 1
+                return
+            }
+            if self.repeats > 0 { self.pending.append("  (\(self.repeats) more like that)") }
+            self.repeats = 0
+            self.last = line
+            self.pending.append("\(self.stamp.string(from: now)) \(line)")
+            guard !self.flushDue else { return }
+            self.flushDue = true
+            self.queue.asyncAfter(deadline: .now() + 3) { self.flush() }
+        }
+    }
+
+    /// Writes what's pending, keeping the newest 400 lines.
+    private func flush() {
+        flushDue = false
+        guard !pending.isEmpty, let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let url = dir.appendingPathComponent("talk-log.txt")
+        var lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        lines.append(contentsOf: pending)
+        pending = []
+        try? lines.suffix(400).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
 }
 
 /// Why opening the line failed, worded for the screen.
@@ -422,10 +469,10 @@ final class TalkLine: @unchecked Sendable {
             play(data)
         case .string(let text):
             guard let event = TalkEvent.parse(text) else {
-                talkLog("unread event: \(text.prefix(200))")
+                talkLog("unread event (\(text.count) characters)")
                 return
             }
-            if case .transcript(let words, _, _) = event { talkLog("heard: \(words)") }
+            if case .transcript(let words, _, _) = event { talkLog("heard \(words.split(separator: " ").count) words") }
             apply(event)
             onMain { self.handlers.onEvent(event) }
         @unknown default:
