@@ -126,6 +126,9 @@ final class TalkLine: @unchecked Sendable {
     private var muted = false
     /// Jarvis's "pause" is holding his voice (he may be being interrupted).
     private var held = false
+    /// Some of this turn's reply text has arrived. A "stop" before any
+    /// (Dylan talking over a filler like "Hmm.") only clears the audio.
+    private var replyStarted = false
     private var closed = false
     private(set) var canDoze = false
     private var observers: [NSObjectProtocol] = []
@@ -402,6 +405,17 @@ final class TalkLine: @unchecked Sendable {
         startVoice()
     }
 
+    /// Jarvis stopped a filler ("Hmm.", "One sec") that Dylan talked over:
+    /// drop its audio and nothing else. No idle goes out (the real reply is
+    /// still to come and gets its own, once), and nothing changes on screen.
+    private func dropFiller() {
+        generation += 1
+        held = false
+        playback.reset()
+        voice.stop()
+        startVoice()
+    }
+
     /// Starts his voice player, but only while the engine runs: play() on a
     /// player whose engine has stopped (a call, a route change, the app
     /// going to the background mid-reply) throws an Objective-C exception
@@ -501,10 +515,20 @@ final class TalkLine: @unchecked Sendable {
             if TalkAudio.heardYouOut(before: state, after: next) { playGotIt() }
             state = next
         case .done:
+            replyStarted = false
             playback.done()
             maybeIdle()
         case .stop:
-            silence()
+            if replyStarted {
+                silence()
+            } else {
+                dropFiller()
+            }
+        case .reply:
+            replyStarted = true
+        case .transcript:
+            // A new turn: its reply hasn't begun.
+            replyStarted = false
         case .pause:
             // AVAudioPlayerNode.pause keeps the exact spot and the queue.
             talkLog("pause")
