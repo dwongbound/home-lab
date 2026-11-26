@@ -318,7 +318,7 @@ final class TalkLine: @unchecked Sendable {
             }
         }
         // While held, the new sentence waits in the queue behind the spot.
-        if !voice.isPlaying, !held { voice.play() }
+        if !voice.isPlaying, !held { startVoice() }
     }
 
     /// Tells Jarvis the speaker's quiet, once his whole reply has played:
@@ -352,6 +352,18 @@ final class TalkLine: @unchecked Sendable {
             send(text: TalkMessage.idle)
         }
         voice.stop()
+        startVoice()
+    }
+
+    /// Starts his voice player, but only while the engine runs: play() on a
+    /// player whose engine has stopped (a call, a route change, the app
+    /// going to the background mid-reply) throws an Objective-C exception
+    /// that kills the app. A stopped engine is the watchdog's to restart.
+    private func startVoice() {
+        guard audioStarted, engine.isRunning else {
+            talkLog("voice not started: engine stopped")
+            return
+        }
         voice.play()
     }
 
@@ -446,13 +458,13 @@ final class TalkLine: @unchecked Sendable {
             talkLog("pause")
             held = true
             playback.pause(now: Date())
-            voice.pause()
+            if audioStarted, engine.isRunning { voice.pause() }
         case .resume:
             guard held else { break }
             talkLog("resume")
             held = false
             playback.resume(now: Date())
-            voice.play()
+            startVoice()
             maybeIdle()
         case .bye:
             // He's said goodbye and is closing the line: hang up quietly
