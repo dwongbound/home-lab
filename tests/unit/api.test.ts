@@ -17,6 +17,18 @@ describe('GET /api/snapshot', () => {
     expect(res.json().host.name).toBe('jarvis')
   })
 
+  it('shares one build between callers until something changes', async () => {
+    const source = createMockSource()
+    const build = vi.spyOn(source, 'snapshot')
+    const api = createApi(source)
+    await Promise.all([callApi(api, 'GET', '/api/snapshot'), callApi(api, 'GET', '/api/snapshot')])
+    await callApi(api, 'GET', '/api/snapshot')
+    expect(build).toHaveBeenCalledTimes(1)
+    await callApi(api, 'POST', '/api/actions/ollama-unload', ACTION_HEADER)
+    await callApi(api, 'GET', '/api/snapshot')
+    expect(build).toHaveBeenCalledTimes(2)
+  })
+
   it('passes non-API paths to the next handler', async () => {
     const api = createApi(createMockSource())
     let passed = false
