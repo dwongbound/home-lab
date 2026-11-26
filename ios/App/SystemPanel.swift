@@ -79,6 +79,9 @@ private struct SystemDrawerBody: View {
             ForEach(snapshot.systemGauges) { gauge in
                 section(gauge, snapshot: snapshot)
             }
+            if let model = snapshot.localModel {
+                LocalModelRow(model: model, today: today)
+            }
             Text("The lines are the last \(historyCount(snapshot)) readings, a few minutes' worth.")
                 .font(.caption).foregroundStyle(Theme.frostFaint)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,5 +167,73 @@ private struct SystemDrawerBody: View {
             Text("\(Int(busy.rounded()))% busy").font(.caption).monospacedDigit().foregroundStyle(Theme.frostDim)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Jarvis's local model: how much of the graphics card it holds, and Load
+/// or Unload after a confirm (the web page's model card, 2026-11-26).
+private struct LocalModelRow: View {
+    let model: LocalModel
+    @ObservedObject var today: TodayModel
+    @EnvironmentObject private var app: AppModel
+    @State private var asking = false
+    @State private var busy = false
+    @State private var problem: String?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SystemRingFill(fraction: model.loaded ? min(1, (model.vramGb ?? 0) / 12) : 0)
+                .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Local model").font(.headline).foregroundStyle(Theme.frost)
+                Text(model.loaded ? "\(model.name) · \(SystemGauge.number(model.vramGb ?? 0)) GB" : "\(model.name) · unloaded")
+                    .font(.caption).foregroundStyle(Theme.frostDim)
+                if let problem { Text(problem).font(.caption).foregroundStyle(Theme.rose) }
+            }
+            Spacer()
+            if busy {
+                ProgressView().accessibilityLabel(model.loaded ? "Unloading" : "Loading")
+            } else {
+                Button(model.loaded ? "Unload" : "Load") { asking = true }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+            }
+        }
+        .padding(16)
+        .glassPanel()
+        .confirmationDialog(model.loaded ? "Unload the local model?" : "Load the local model?", isPresented: $asking, titleVisibility: .visible) {
+            Button(model.loaded ? "Unload" : "Load") { Task { await run() } }
+        } message: {
+            Text(model.loaded ? "Frees its graphics memory. Jarvis loads it again when he needs it." : "Takes up to a minute and uses about 6 GB of graphics memory.")
+        }
+    }
+
+    /// Runs it, then refreshes so the ring shows the result.
+    private func run() async {
+        busy = true
+        problem = nil
+        do {
+            _ = try await app.client.setLocalModel(loaded: !model.loaded)
+            Haptics.play(.runOK)
+        } catch {
+            problem = error.localizedDescription
+            Haptics.play(.runFailed)
+        }
+        await today.load(app: app)
+        busy = false
+    }
+}
+
+/// A plain ring filled to `fraction`, in the graphics card's colour.
+private struct SystemRingFill: View {
+    let fraction: Double
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.10), lineWidth: 6)
+            Circle().trim(from: 0, to: fraction)
+                .stroke(SystemStyle.tint(.gpu), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
     }
 }

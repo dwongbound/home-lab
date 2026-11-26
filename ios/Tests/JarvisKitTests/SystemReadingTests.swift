@@ -128,4 +128,11 @@ final class SystemReadingTests: XCTestCase {
         let s = try XCTUnwrap(DemoSnapshot.build(now: Date(), sparse: false))
         XCTAssertNotNil(SystemChecked.words(generatedAt: s.generatedAt), "generatedAt: \(s.generatedAt)")
     }
+
+    func testLocalModelFromTheSnapshot() throws {
+        let json = #"{"generatedAt":"x","services":[],"model":{"name":"ornith-1.5:9b","loaded":true,"vramGb":6.5}}"#
+        let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(snapshot.localModel?.loaded, true)
+        XCTAssertEqual(snapshot.localModel?.vramGb, 6.5)
+    }
 }

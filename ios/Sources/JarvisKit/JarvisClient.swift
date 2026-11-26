@@ -446,6 +446,13 @@ public struct JarvisClient: Sendable {
         try await post("api/jarvis/notices/clear", ["all": true])
     }
 
+    /// Loads or unloads the local model; answers the server's words for it.
+    public func setLocalModel(loaded: Bool) async throws -> String {
+        let data = try await send(request("api/actions/" + (loaded ? "ollama-load" : "ollama-unload"), method: "POST", json: [:]))
+        struct Answer: Decodable { let message: String? }
+        return (try? JSONDecoder().decode(Answer.self, from: data))?.message ?? (loaded ? "Loaded" : "Unloaded")
+    }
+
     /// Runs one home control command ("toggle", "power") on a device.
     public func homeControl(entity: String, command: String) async throws {
         try await post("api/home/control", ["entity": entity, "command": command])

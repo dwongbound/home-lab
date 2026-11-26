@@ -38,8 +38,10 @@ public struct Snapshot: Decodable, Sendable {
     public var ram: RamReading?
     /// The disks and their biggest folders (newer servers).
     public var disks: [DiskReading]?
+    /// Jarvis's local model in Ollama, and whether it's loaded now.
+    public var localModel: LocalModel?
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu, ram, disks }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu, ram, disks, localModel = "model" }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -87,6 +89,7 @@ public struct Snapshot: Decodable, Sendable {
         gpu = (try? c.decodeIfPresent(GpuReading.self, forKey: .gpu)) ?? nil
         ram = (try? c.decodeIfPresent(RamReading.self, forKey: .ram)) ?? nil
         disks = ((try? c.decodeIfPresent([LenientRow<DiskReading>].self, forKey: .disks)) ?? nil)?.compactMap(\.value)
+        localModel = (try? c.decodeIfPresent(LocalModel.self, forKey: .localModel)) ?? nil
     }
 
     /// Who's using the graphics card right now; nil without a GPU reading.
@@ -551,6 +554,13 @@ public struct Health: Decodable, Sendable {
             case asleepMin = "asleep_min", deepMin = "deep_min", remMin = "rem_min"
         }
     }
+}
+
+/// The snapshot's `model`: Jarvis's local model and whether it holds GPU memory.
+public struct LocalModel: Decodable, Equatable, Sendable {
+    public let name: String
+    public let loaded: Bool
+    public let vramGb: Double?
 }
 
 /// Today's food numbers from Jarvis's meal log (numbers only, never meals).
