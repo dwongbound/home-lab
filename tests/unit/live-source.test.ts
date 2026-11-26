@@ -69,6 +69,10 @@ function liveWith({ ollamaModels = [], jarvisAnswers = true, jarvisStatusCode = 
       if (url.includes('/photo/9')) return Response.json({ error: 'no photo' }, { status: 404 })
       return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg; charset=binary' } })
     }
+    if (url === `${config.jarvisApiUrl}/claude/usage`) {
+      if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
+      return Response.json({ daily_usd: 6, spent_usd: 2.41, level: 'ok', today: [{ kind: 'judge', usd: 1.2, calls: 14 }], days: [{ date: '2026-11-25', usd: 4.76 }] }, { status: jarvisStatusCode })
+    }
     if (url === `${config.jarvisApiUrl}/system`) {
       if (!jarvisAnswers) throw new Error('connect ECONNREFUSED')
       return Response.json({ ram: { total_mb: 32000, used_mb: 9000, scope: 'pc', users: [{ name: 'Jarvis', role: 'The agent', mb: 2100 }] }, disks: [{ id: 'c', name: 'C: drive', used_gb: 200, total_gb: 238, users: [] }] }, { status: jarvisStatusCode })
@@ -580,6 +584,12 @@ describe('live chat with Jarvis', () => {
     const older = await liveWith({ jarvisStatusCode: 404 }).source.snapshot()
     expect(older.ram).toBeNull()
     expect(older.disks).toBeNull()
+  })
+
+  it("puts Jarvis's Claude spending in the snapshot, null on an older Jarvis", async () => {
+    const snapshot = await liveWith({}).source.snapshot()
+    expect(snapshot.claudeUsage).toEqual({ dailyUsd: 6, spentUsd: 2.41, level: 'ok', today: [{ kind: 'judge', usd: 1.2, calls: 14 }], days: [{ date: '2026-11-25', usd: 4.76 }] })
+    expect((await liveWith({ jarvisStatusCode: 404 }).source.snapshot()).claudeUsage).toBeNull()
   })
 
   it("warms Jarvis's chat engine as the caller, and skips it without a login", async () => {

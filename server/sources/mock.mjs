@@ -386,6 +386,12 @@ export function createMockSource({ now = () => new Date() } = {}) {
           { id: 'c', name: 'C: drive', usedGb: 216, totalGb: 238, users: [{ name: 'Linux disk', gb: 92 }, { name: 'Windows', gb: 61 }, { name: 'Everything else', gb: 63 }] },
           { id: 'linux', name: 'Linux disk', usedGb: 92, totalGb: 1007, users: [{ name: 'Speech models', gb: 24.5 }, { name: 'Docker', gb: 18.2 }, { name: 'Ollama models', gb: 12.8 }, { name: 'Jarvis data', gb: 6.1 }, { name: 'Everything else', gb: 30.4 }] },
         ],
+        // What his background jobs spent on Claude: today against the budget, and the last week.
+        claudeUsage: {
+          dailyUsd: 6, spentUsd: 2.41, level: 'ok',
+          today: [{ kind: 'judge', usd: 1.2, calls: 14 }, { kind: 'lookout', usd: 0.86, calls: 31 }, { kind: 'memory', usd: 0.35, calls: 6 }],
+          days: [3.1, 4.76, 2.2, 5.4, 1.9, 3.3, 2.41].map((usd, i) => ({ date: new Date(t.getTime() - (6 - i) * 86_400_000).toISOString().slice(0, 10), usd })),
+        },
         cloud,
         home: {
           devices: state.home.map((d) => ({ ...d })),

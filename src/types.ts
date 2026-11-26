@@ -187,6 +187,8 @@ export interface Snapshot {
   ram: RamUse | null
   /** The PC's disks and their biggest folders (Jarvis GET /system); null on an older Jarvis. */
   disks: DiskUse[] | null
+  /** What Jarvis's background jobs have spent on Claude (Jarvis GET /claude/usage); null on an older Jarvis. */
+  claudeUsage: ClaudeUsage | null
   /** null until the digest is set up (no token) or before its first read. */
   cloud: CloudDigest | null
   /** null without a Home Assistant token, or when it doesn't answer. */
@@ -466,6 +468,19 @@ export interface GpuUse {
   /** How busy the card is, 0 to 100; null when the driver doesn't say. */
   utilization: number | null
   users: GpuUser[]
+}
+
+/**
+ * Jarvis's own Claude spending in dollars at API prices (background jobs only, not chat or Talk).
+ * `level`: "slow" = close to the daily budget and holding back, "held" = background work stopped for today.
+ * `today` is by kind of job, biggest first; `days` is the last seven, oldest first.
+ */
+export interface ClaudeUsage {
+  dailyUsd: number
+  spentUsd: number
+  level: 'ok' | 'slow' | 'held'
+  today: { kind: string; usd: number; calls: number }[]
+  days: { date: string; usd: number }[]
 }
 
 /** One holder of the PC's memory: a program, a group of them, or the unnamed rest. */
