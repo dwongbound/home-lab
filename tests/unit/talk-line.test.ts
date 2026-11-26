@@ -184,6 +184,14 @@ describe('the voice line', () => {
     await vi.waitFor(() => expect(track.stop).toHaveBeenCalled())
     expect(fresh.stop).not.toHaveBeenCalled()
     expect(on.onClosed).not.toHaveBeenCalled()
+    // Talking over his "Hmm." filler stops the sound but interrupts nothing; cutting into a reply does.
+    const cutsBefore = on.onInterrupted.mock.calls.length
+    say({ type: 'transcript', text: 'What about tomorrow' })
+    say({ type: 'stop' })
+    expect(on.onInterrupted).toHaveBeenCalledTimes(cutsBefore)
+    say({ type: 'reply', text: 'Tomorrow is' })
+    say({ type: 'stop' })
+    expect(on.onInterrupted).toHaveBeenCalledTimes(cutsBefore + 1)
     // "Goodbye": the call ends for good. Mic off, speaker stopped, and a
     // plain note rather than "the line dropped", even when the socket closes after.
     say({ type: 'bye' })
