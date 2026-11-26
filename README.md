@@ -1,234 +1,70 @@
 # home-lab
 
-A glassy admin page for **jarvis**, the home lab PC: how much memory, GPU
-and disk it's using, whether Home Assistant, Ollama and the
-Jarvis agent are running, what ran today, a chat (and hands-free voice)
-with Jarvis, and a button to unload the local model before gaming.
+The server on **jarvis**, the home lab PC, that the native Jarvis apps
+(iPhone, iPad, Apple TV, Watch, in `ios/`) talk to. It gathers the PC's
+health, Home Assistant, Ollama and the Jarvis agent into one snapshot,
+passes chat, Talk and every other app request through to Jarvis, serves
+Jarvis's reports, and guards a terminal.
 
-It runs on the PC itself as one small Node process and is reached in a
-browser on the PC, a phone or the Mac.
+The bare URL, `https://jarvis.snakebird-ph.ts.net/`, is a plain page with
+the backend's health: services up or down, graphics card, memory, disks
+and running jobs. It has no scripts and reloads every 15 seconds. The old
+React web page was retired on 2026-11-26, once the apps could do what it
+did.
 
-**Stack:** React 19 · TypeScript · Vite 6 · SWR · plain CSS (no UI
-framework) · a framework-free Node server (`node:http`) · Vitest (unit) ·
-Playwright (end-to-end, desktop and phone)
-
-![The overview at dusk, on sample data](docs/overview-desktop.png)
-
-> **Status:** the page runs on **sample data** today. The live source that
-> reads the real PC is written and unit-tested with fakes, but hasn't been
-> switched on on jarvis yet. See [Going live](#going-live).
-
----
-
-## Contents
-
-- [Quick start](#quick-start)
-- [What's on the page](#whats-on-the-page)
-- [How it fits together](#how-it-fits-together)
-- [The data layer](#the-data-layer)
-- [Environment variables](#environment-variables)
-- [Running it on jarvis](#running-it-on-jarvis)
-- [Reaching it from your phone or Mac](#reaching-it-from-your-phone-or-mac)
-- [Going live](#going-live)
-- [Testing](#testing)
-- [Design](#design)
-- [Project layout](#project-layout)
-- [Working on it](#working-on-it)
-- [Privacy](#privacy)
-
----
+It runs on the PC as one small Node process with no dependencies
+(`node:http` only). Tests are Vitest.
 
 ## Quick start
 
 Needs Node 20.12 or later (`node -v`).
 
 ```bash
-npm install
-
-# Dev server with hot reload, sample data:
-npm run dev
-# → http://localhost:5180
-
-# Production build + server, the way it runs on jarvis:
-npm run build
-npm start
-# → http://127.0.0.1:4180
+npm install          # only the test tools
+npm start            # → http://127.0.0.1:4180, sample data
+npm test
 ```
 
 Nothing else is needed for sample data: no `.env`, no token, no PC.
 
-## What's on the page
+## Endpoints
 
-Eight pages, picked from the pill bar at the top. Each is a plain link to a
-`#hash`, so the back button, bookmarks and the keyboard all work.
+Every route is listed in `CLAUDE.md` with its shape. In short:
 
-| Page | What it shows |
-| --- | --- |
-| **Overview** (`#overview`) | A greeting that follows the clock and a line saying how many things need you. Four cards: memory (of 16 GB), GPU memory (of the RTX 3060's 12 GB), processor, and free space on C:, each with a sparkline. **Ask Jarvis**: the orb, a box and **Talk** (below). A bar chart of Jarvis requests this week with today lit in blue. Today's runs (the 9 am fantasy pickup run and friends). Recent activity, newest first. Services. The local model card. |
-| **Home** (`#home`) | The thermostat first (room temperature, − and + for the target, mode buttons), then every light, switch, fan, speaker or TV, scene and script in Home Assistant, each with the controls that suit it: on/off, brightness, play/pause, volume, or Run. The weather and the next sunrise or sunset. New devices appear as they're added to Home Assistant; a speaker's own settings switches, locks, alarms and garage doors don't. Controlling needs the page opened through Tailscale. |
-| **Claude** (`#claude`) | Your Claude project threads grouped as waiting on you, working, ready for review and finished, each linking to the thread, plus the latest deploys and open PRs. From the [cloud digest](#cloud-digest). |
-| **Money** (`#money`) | Net worth, cash and card balances, this month's spending against last month and the budget, spending by category, every account, recent transactions and anything worth a look. From your Copilot connector by way of the [cloud digest](#cloud-digest). Amounts are hidden on every visit until you tap **Show amounts**. Purchases still in **Other** (or with no category) get a yellow outline and "!", and **Worth a look** counts them. Tap one to pick its category (Copilot's own, or type another): Copilot's connector is read-only, so picks are saved on the PC (`MONEY_PICKS_FILE`) in **Ready for Copilot**, grouped by category, to apply in the Copilot app in one sitting and mark **Done**. The first pick sets a reminder for tomorrow at 8 PM (move it to tonight or in 3 days); when it comes, the banner says how many are waiting. Picks clear by themselves once Copilot shows the purchase sorted. Recent sits on the right, as tall as the left column, scrolling inside. Accounts are grouped with subtotals, and $0 ones wait behind **Show empty accounts**. |
-| **Services** (`#services`) | Every service with its status, response time and a link to open it; the local model card (always about `OLLAMA_MODEL`); **In GPU memory**, listing each model Ollama has loaded with its job (`OLLAMA_WATCH_MODEL` = Jarvis's local brain: background watch and offline backup), GPU memory, size and when it unloads; and a terminal on jarvis (tmux through ttyd, only your Tailscale login gets in; see [The terminal](#the-terminal)), e.g. for `sudo systemctl restart jarvis`. **Reports** lists the pages Jarvis writes at the end of a long task: each opens inside the page in a viewer (so does a link to a report in a chat reply) and says its size and when it is deleted. A report is kept 2 weeks; open one and the **Keep 2 weeks** dropdown at its bottom left keeps it for 1 month, 3 months or forever instead. The share icon (in the list and in the open report) hands the report as one HTML file to the share sheet, or downloads it. The bin icon deletes it now (after a confirm), and the line under the title says how much room all reports take (200 MB at most). A banner on every page warns when C: is down to 7 GB free. |
-| **Schedule** (`#schedule`) | Today's runs on jarvis next to your calendar for the day, then email that needs you and recent activity. Calendar and email come from the [cloud digest](#cloud-digest). |
-| **Kiosk mode** (button top right) | For the iPad on the wall: goes full screen (where the browser allows it; a Home Screen web app already is), keeps the screen on, and moves through Overview, Home, Claude, Money, Services and Schedule every 20 seconds. A touch pauses it for a minute, and it stays put while a pop-up or the chat is open. Money there shows only recent purchases, amounts showing: no net worth, balances, accounts, monthly totals or money coming in. Services leaves the terminal out. **Close** (top right) leaves it; it's remembered across reloads. |
-| **Playbooks** (`#playbooks`) | Jobs Jarvis knows how to do. A new one can start from a sentence: type what you want under **Describe it**, tap **Write it for me**, and Jarvis fills the form in for you to check and save. Each playbook has a name, what it's for, **when** it runs (at a time on chosen days, when you get home or leave, when you go to sleep or wake up, or only when you ask or tap **Run**) and up to 20 steps in order: control a device, run a scene, open an app on a TV, send yourself a notification, have Jarvis do something in words (he picks who does it, or you choose his local model or Claude), send an email, or wait. A **Done when** checklist says what a good run looks like; Jarvis checks himself against it after each run and the row shows anything he missed. **More for Jarvis** holds when to use it, what it needs, if/then decisions, edge cases, the standard to hit and what a bad version looks like. Each row has an on/off switch, **Run** (now, whatever its trigger) and **Edit**; **New playbook** opens the same pop-up empty. Playbooks you write run without asking. Jarvis keeps and runs them; the page only reads and changes the list. |
-| **Settings** (`#preferences`) | The sky behind the page (follow the clock, or pin dawn, day, dusk or night; saved in that browser only), keep the screen on, and where the data is coming from. **Voice**: how Jarvis sounds when he talks back (Kokoro's English voices, British or American, each with **Play**; speed 0.7–1.4×; an optional blend with a second voice; **Hear it** and **Save**, which Jarvis uses from his next sentence). Then **Memory** at the bottom: the facts Jarvis keeps in mind in every conversation (learned from chats each night at 3:30 am, or told to him here), each with **Forget**, a box to tell him something to remember, and a search over past conversations, the same one he runs before answering. His private `memory.md` is never shown or changed. |
+- `GET /`: the metrics page (`server/metrics-page.mjs`).
+- `GET /api/snapshot`: everything the apps show at a glance, as one JSON
+  object, built once and shared by every caller for 3 seconds.
+- `/api/jarvis/*`, `/api/home/control`, `/api/actions/*`, `/api/money/picks`,
+  `/api/digest/refresh`: what the apps do.
+- `GET /reports/<id>`: one of Jarvis's reports as a locked-down page.
+- `/api/jarvis/talk`: Talk's WebSocket, proxied to Jarvis (`server/talk.mjs`).
+- `/shell/`: the terminal (below).
 
-### The local model button
-
-Gemma was dropped on 2026-11-11. Jarvis's only local model is now
-`ornith-1.5:9b` (about 6 GB of the GPU's 12): its background watch and its
-offline backup brain when Claude can't be reached. Jarvis asks Ollama to
-keep it only 10 idle minutes. **Unload local model** asks first, in a
-dialog with **Close** and **Unload**. While Ollama works, the dialog is
-blocked: both buttons are disabled, Esc does nothing and a spinner says
-what's happening. When it's done the dialog closes and a toast says
-"Local model unloaded". **Load local model** brings it back for 10 idle
-minutes (`OLLAMA_KEEP_ALIVE`).
-
-Only one action runs at a time: the server answers `409` to a second one.
 
 ### The terminal
 
-A real terminal on jarvis, as `dwong`, in a frame on Services (or full
-screen with the arrow button). It's `tmux new -A -s main`, so it's the same
+A real terminal on jarvis, as `dwong`, at `/shell/`. It's `tmux new -A -s main`, so it's the same
 session every time, and a long command keeps going if your phone locks.
 
-ttyd has no login of its own, so the page's server is the lock
+ttyd has no login of its own, so this server is the lock
 (`server/shell.mjs`). `/shell/` and its WebSocket get through only when:
 
 1. `SHELL_USERS` is set (empty, the default, means the shell is off),
 2. the `Tailscale-User-Login` header that `tailscale serve` adds is one of
    those logins, and
-3. any `Origin` is this page itself, so another website open in your
+3. any `Origin` is this server itself, so another website open in your
    browser can't use your login to reach the terminal.
 
 ttyd listens on 127.0.0.1 only and runs as a user service
-(`deploy/ttyd.service`; setup steps are at the top of that file). It isn't
-proxied in `npm run dev`; use `npm start` to try it.
-
-**The Talk page** is the same chat on its own, as the whole screen (edge
-to edge, not a pop-up: no card, corners or margin) with no tabs or panels: `https://jarvis.snakebird-ph.ts.net/talk` (or `#talk` on a
-build served from a folder, like the preview). It is voice only, with no
-box to type in and no Close, and it starts listening as soon as it opens.
-Where the browser wants a tap first (iPhone and iPad Safari only open the
-microphone and play sound after one), the status reads "Tap anywhere to
-start" and the whole screen is the button. After that one big button reads
-**Pause** while talking, which also stops him mid-sentence, and **Talk** to
-pick back up. Paused, he still listens on the PC for "Hey Jarvis" (and only
-that: nothing goes to Whisper or his brain), which picks back up too. He
-pauses himself when you're done, say "no, that's all" after "anything
-else?". Mute stops the microphone completely, wake word included. It keeps the screen on while open, because Safari drops the
-microphone when the screen locks. Add it to the home screen from Safari
-(Share, Add to Home Screen) and the icon, named Talk, opens straight into
-it: the server sends /talk with its own head (`server/talk-head.mjs`), naming
-`talk.webmanifest` (its own `id`, `start_url` and `scope` `./talk`), so iOS
-sees a second app beside the dashboard rather than the same one.
-It goes through the same Tailscale login as the rest of the page, and
-it's a different address from Jarvis's own voice page at `:8443/talk`.
-If his voice pops or crackles on a phone, open `/talk?direct=1` once: that
-browser then plays it straight from the audio engine instead of through a
-hidden audio element (`?direct=0` goes back). The audio engine also runs at
-the microphone's own rate, since iPhones crackle when the two differ.
-
-### Ask Jarvis
-
-Type a question and the chat opens: a fixed-size sheet with Jarvis's orb,
-which spins while he thinks and pulses as the reply types out (streamed
-from Jarvis's `/chat/stream`, so it is the same Jarvis with the same
-memory, tools and Home Assistant access as the app and Siri). The
-conversation lives on the PC, so a reload or another device picks it up.
-Typed answers stay text; Jarvis speaks only in Talk. The sheet is one line
-along the bottom (the box, Send and Talk, or Stop talking while talking) and
-an × in the top right to close it.
-
-**Talk** is hands-free and fills the width of the screen: the page opens a WebSocket to `/api/jarvis/talk`,
-which `server/talk.mjs` carries to Jarvis's own voice pipeline
-(`/talk/ws?chat=web`: Whisper on the GPU, Jarvis, then his voice). The
-microphone goes as 16 kHz 16-bit audio in 20 ms frames (resampled in an
-audio worklet, `src/lib/talk.ts`) and keeps going while he speaks, so
-talking over him stops him. The orb follows your voice while he listens
-and his while he speaks, and spoken turns land in the same chat as typed
-ones. Your words show up as you say them (Jarvis sends a `partial` event
-with the turn so far about every 0.7 s, then the final `transcript`). Chat
-text is monospace with a blinking cursor after his latest reply. With
-sample data (and in the preview) Talk plays a demo instead.
-
-The page holds no Jarvis password. Jarvis decides who may ask: the server
-passes on the `Tailscale-User-Login` header that `tailscale serve` adds,
-and Jarvis checks it against `JARVIS_TAILSCALE_USERS`. So Ask Jarvis only
-works when the page is opened through Tailscale (see [Reaching it](#reaching-it-from-your-phone-or-mac));
-opened at `http://127.0.0.1` it says so instead of answering. The Talk
-WebSocket also needs that login, and an `Origin` of this page, so another
-website open in the same browser can't open the microphone line. It isn't
-proxied in `npm run dev`; use `npm start` to try it.
-
-### Tap anything for more
-
-Money rows (transactions, accounts, categories), Today rows on the
-Overview, and the Jarvis, calendar and email rows on Schedule are links.
-Each opens a fixed-size pop-up with more detail and, where the digest has
-them, **Open in Calendar** or **Open in Gmail**. The pop-up lives in the
-address (`#money/t/<id>`, `#schedule/e/<id>`), so it can be bookmarked,
-and **Close**, Esc or Back dismiss it.
-
-### The iPad as an always-on display
-
-Open the page in Safari, then Share › **Add to Home Screen**: it opens full
-screen like an app. In **Settings › Keep this screen on**, turn the switch
-on and the screen stays awake while the page is showing (the Screen Wake
-Lock API, Safari 16.4 and up; the choice is saved in that browser). If the
-browser can't, the page says so; set the iPad's Auto-Lock to Never instead.
-Layouts are checked at desktop, iPad Pro 11 landscape and phone sizes, with
-44 px touch targets on touch screens. On an iPad-sized screen (or a desktop
-window at least 1000 × 600) the Overview fills exactly one screen and never
-scrolls; a busy Today scrolls inside its panel, with "+N more today" linking
-to Schedule. On touch screens, swipe left or right to change tab: the page follows your finger, glides on to the next tab, or springs back from a short swipe.
-
-Safari (every browser on iPad and iPhone) leaves the frosted blur out of
-view-transition snapshots, so there tabs change without one: the page swaps
-at once and the panels slide in from the side (moved, never faded), keeping
-the glass frosted the whole time. Chrome keeps the crossfade.
-
-### States every page handles
-
-- **First load:** a full-page loader, Jarvis's own orb turning over "Jarvis is thinking...", until the first
-  snapshot arrives. Then it leaves smoothly: the words fade, the orb lifts and shrinks away, and the panels fade in
-  underneath. With reduced motion it's a still orb that's simply replaced by the page.
-- **Server unreachable:** a panel saying what's wrong and how to fix it,
-  with **Try again**.
-- **A refresh fails after data has loaded:** the page keeps the last
-  numbers and says when they're from.
-- **A service reports nothing:** its card says "Not reporting" and lists
-  are replaced with a sentence saying what will appear there.
+(`deploy/ttyd.service`; setup steps are at the top of that file).
 
 ## How it fits together
 
-```
- Browser (PC, phone, Mac)                     jarvis (WSL Ubuntu)
- ┌───────────────────────────┐   GET /api/snapshot every 15 s
- │ React page (src/)         │ ─────────────────────────────────▶ ┌──────────────────────────┐
- │  useSnapshot()  ── SWR    │                                    │ server/index.mjs         │
- │  runAction()              │ ◀───────────────────────────────── │  static files from dist/ │
- └───────────────────────────┘   one JSON Snapshot                │  server/app.mjs  (API)   │
-                                                                  │    └ a data source:      │
-                                                                  │       mock.mjs | live.mjs│
-                                                                  └──────────┬───────────────┘
-                                                                             │ (live only, in parallel,
-                                                                             │  2.5 s timeout each)
-                     nvidia-smi · statfs /mnt/c · os.* · systemctl is-active jarvis
-                     Home Assistant /api/ (with the token) · Ollama /api/ps
-                     Jarvis 127.0.0.1:8765/health
-```
-
-- **One call per refresh.** Everything the page shows comes back from
-  `GET /api/snapshot` as one object, so there's no chain of requests
-  waiting on each other. SWR shares that one request between every
-  component that needs it and refetches every 15 seconds and when the tab
-  regains focus.
-- **Dev and prod run the same API code.** `npm run dev` mounts
-  `server/app.mjs` into Vite as middleware; `npm start` mounts it into
-  `server/index.mjs`. There's no second fake API to keep in step.
+- **One call per refresh.** Everything an app shows at a glance comes back
+  from `GET /api/snapshot` as one object. In live mode it runs about 17
+  probes in parallel (nvidia-smi, disks, systemctl, Home Assistant, Ollama,
+  Jarvis), each with a 2.5 s timeout, and callers within 3 seconds share one
+  build.
 - **Secrets stay on the server.** The Home Assistant token is read from
   the environment by `server/config.mjs`, sent only to Home Assistant, and
   never included in a response. A unit test checks this.
@@ -237,7 +73,7 @@ the glass frosted the whole time. Chrome keeps the crossfade.
   `run`, `target` (a temperature) or `mode` (a known HVAC mode), for
   thermostats, lights, switches, fans, media players, scenes and scripts
   only, and makes the one Home Assistant service call it stands for
-  (`server/sources/home.mjs`). The page can never name a service, and
+  (`server/sources/home.mjs`). An app can never name a service, and
   locks, alarms and covers are out of reach. Like Ask Jarvis it needs the
   Tailscale login that `tailscale serve` adds. When on/off goes through but
   Home Assistant reports nothing changed (a device asleep or disconnected,
@@ -255,8 +91,8 @@ the glass frosted the whole time. Chrome keeps the crossfade.
 
 ## The data layer
 
-The page and the server agree on one shape, `Snapshot`, defined in
-[`src/types.ts`](src/types.ts). Both sources produce it:
+The apps and the server agree on one shape, the snapshot (its Swift side is
+in `ios/Sources/JarvisKit`). Both sources produce it:
 
 | Source | File | When | What it does |
 | --- | --- | --- | --- |
@@ -274,7 +110,7 @@ interface DataSource {
 
 ### What the live source reads
 
-| On the page | Where it comes from |
+| In the snapshot or API | Where it comes from |
 | --- | --- |
 | Memory | `os.totalmem()` / `os.freemem()` (this is WSL's memory, capped at 10 GB in `.wslconfig`) |
 | GPU memory | `nvidia-smi --query-gpu=memory.used,memory.total` (WSL's copy at `/usr/lib/wsl/lib/nvidia-smi`) |
@@ -290,7 +126,6 @@ interface DataSource {
 | Calories today | `GET $JARVIS_API_URL/nutrition/today` (in the snapshot as `nutrition`: `{date, eaten, goal, left, burned, protein, proteinGoal}`, numbers only, never meal names; `left` is worked out as goal minus eaten). Feeds the Apple Watch's Calories left complication. Null on an older Jarvis. |
 | Meal log (the apps' Diet screen) | `GET $JARVIS_API_URL/nutrition/day?date=YYYY-MM-DD` and `/nutrition/week?start=YYYY-MM-DD`, passed through as `GET /api/jarvis/nutrition/day?date=` (`{day: {date, goals, totals, items}}`) and `/api/jarvis/nutrition/week?start=` (`{week: {start, days}}`; each day has `calories`, `goal`, `protein`, `proteinGoal`). The endless food list asks for a run of days with `GET /api/jarvis/nutrition/days?end=YYYY-MM-DD&count=7` → `$JARVIS_API_URL/nutrition/days` (`{days: [...], earliest}`: the same day objects, newest first, up to 14, and the earliest day with anything logged). A meal with `hasPhoto` has its picture at `GET /api/jarvis/nutrition/photo/<id>` (full) and `?size=thumb` (about 320 px) → `$JARVIS_API_URL/nutrition/photo/<id>`; 404 when it has none, cached privately for a day. No date means today / this week; anything that isn't a day is a 400. These carry meal names, so they're never in the snapshot and need the caller's Tailscale login. Null on an older Jarvis. |
 | Notifications | `GET $JARVIS_API_URL/notices` (in the snapshot as `notices`: unread `{id, kind, title, body, source, created, approval_id?, turn_id?}`, `kind` = `need`, `heads` or `fyi`; `turn_id` is the chat history turn holding the full message, passed to the apps as `turnId` so a tap opens the chat at it) feeds the dots on the orb and the shared list in the iPhone, iPad and Apple TV apps. Clear sends `POST /api/jarvis/notices/clear` `{ids}` or `{all: true}` → `$JARVIS_API_URL/notices/clear`, so a notice cleared on one device is gone from all. Keep on a notice or on any chat message sends `POST /api/jarvis/notices/keep` `{id}` or `{turnId}` → `$JARVIS_API_URL/notices/keep` (`notice_id` / `turn_id`); a kept one carries `kept: true` (and `source: kept` when it was a chat message), shows as a yellow dot, and stays through Clear and Clear all until `POST /api/jarvis/notices/unkeep` `{id}` → `$JARVIS_API_URL/notices/unkeep` lets it go. An app sends its push token with `POST /api/jarvis/push/register` `{token, platform, environment, bundle, name?}` → `$JARVIS_API_URL/push/register`; Jarvis sends the pushes himself. Null on an older Jarvis. |
-| Rich replies | Jarvis's web-chat replies are Markdown (headings, bullet and numbered lists, pipe tables, `---` dividers, fenced code, bold, italic, inline code, links). The page draws them itself (`src/lib/markdown.ts`), so no HTML in a reply is ever rendered. Plain replies look as before. Telegram stays plain text. |
 | Silent line | On the Talk line Jarvis sends `{"type": "no_audio", "seconds": N}` once when an open line has sent no sound for 20 s. The page reopens the microphone; if it can't, it hangs up saying Jarvis stopped hearing you. |
 | Who answered | Jarvis sends `{"type": "model", "model": "claude" \| "ornith"}` before each reply on the chat stream and the Talk line, and `model` on `/chat/history` turns. The chat shows it as a small chip over the reply: "Jarvis (C)" in orange for Claude, "Jarvis (O)" in blue for the local model (he falls back to Ornith when Claude's plan is out of room). |
 | That was wrong | Under each finished chat reply. It opens a short note ("What should he have said?", optional) and sends `POST /api/jarvis/feedback` `{question, answer, note}` → `$JARVIS_API_URL/feedback` (plus `at` and `chat: web`). Jarvis saves the flag; overnight he works out the cause, proposes one fix for an OK, and adds a regression test. On /talk, say "that's wrong" instead. |
@@ -302,26 +137,17 @@ interface DataSource {
 | Today (Jarvis's part) | `GET $JARVIS_API_URL/schedule/today`: Jarvis's reminders, nags and daily runs for today in Pacific time, past ones included and shown as done. An older Jarvis without it (404) just adds nothing. The Overview's Today merges these with today's calendar from the digest (`src/lib/agenda.ts`). A service that needs you isn't a row there: it's an amber banner across the top of every page (`AlertBanner`), linking to Services, with **Close** to hide it until the alerts change. |
 | What Jarvis is doing | `GET $JARVIS_API_URL/jobs`: Jarvis's background jobs (Lookout, Messenger, Nightly and the quiet housekeeping) with model, schedule, last and next run and the last result, plus what Lookout is watching and held back and how many pings went out today. `running` lists the work Dylan sent to the background (`id`, `label`, `state`: running or queued, `started_at`), shown with a spinner beside the orb on /talk until it finishes. Cleaned by `server/sources/jobs.mjs` and shown on Services. An older Jarvis without it (404) shows a short note instead. |
 | Fresh digest on open | `POST $JARVIS_API_URL/digest/refresh` with the caller's `Tailscale-User-Login`, sent when the page opens or comes back after 2 minutes away. Jarvis skips it if a run is going or its last write is recent. The page keeps showing the last digest, with "Updating from Jarvis…" on its panels, and checks every 5 seconds until the new one lands (giving up after 3 minutes). |
-| Requests chart, Recent activity | **Not available yet.** Jarvis doesn't publish these, so the live source returns empty lists and the page shows its empty states. |
 
 Sparkline history is kept in the server's memory (the last 24 samples, one
 per snapshot), so it starts empty after a restart and fills in over a few
 minutes.
 
-### Adding a panel
-
-1. Add the field to `Snapshot` in `src/types.ts`.
-2. Fill it in **both** `mock.mjs` and `live.mjs`.
-3. Build the component in `src/components/` and place it in a view in
-   `src/views/`.
-4. Add a unit test for the source and, if it's interactive, an end-to-end
-   test in `tests/e2e/`.
 
 ## Cloud digest
 
 On jarvis, Jarvis's `home_lab_digest` job writes the digest locally
 (`DIGEST_FILE`, mounted by `docker-compose.yml`) every 15 minutes, and
-again whenever the page is opened (see "Fresh digest on open" above). The
+again when an app asks (see "Fresh digest on open" above). The
 GitHub route below is the alternative for a PC without Jarvis.
 
 Jarvis can't see claude.ai, so its digest has no Claude threads. Claude in
@@ -340,6 +166,7 @@ Setup, the file's shape and the task's prompt are in
 [docs/digest.md](docs/digest.md). Without `DIGEST_TOKEN` the panels say
 they aren't set up yet, and everything else works as before.
 
+
 ## Environment variables
 
 Copy `.env.example` to `.env` (gitignored). The server loads it at startup
@@ -350,7 +177,7 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | --- | --- | --- |
 | `DATA_SOURCE` | `mock` | `live` reads the real PC. |
 | `HOST` | `127.0.0.1` | Interface to listen on. `0.0.0.0` to reach it from other devices. |
-| `PORT` | `4180` | Port for `npm start`. (`npm run dev` uses 5180.) |
+| `PORT` | `4180` | Port for `npm start`. |
 | `HA_URL` | `http://192.168.68.94:8123` | Home Assistant. |
 | `HA_TOKEN` | *(empty)* | Home Assistant long-lived access token. **Secret.** Server-side only. |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama's API. |
@@ -368,31 +195,23 @@ Point `HOME_LAB_ENV_FILE` at another file to use that instead.
 | `SHELL_USERS` | *(empty)* | Tailscale logins allowed to use the terminal on Services, comma-separated. Empty turns the shell off. |
 | `SHELL_URL` | `http://127.0.0.1:7681` | Where ttyd listens (`deploy/ttyd.service`). |
 | `THREADS_FILE` | *(empty)* | Claude threads file whose `threads` replace the digest's. `docker-compose.yml` sets it to `/digest/threads.json`. |
-| `MONEY_PICKS_FILE` | *(empty)* | Where Money page category picks wait until you apply them in Copilot. Empty keeps them in memory (lost on restart). `docker-compose.yml` sets it to `/data/money-picks.json`, mounted read-write from `~/.local/share/home-lab/data`. |
+| `MONEY_PICKS_FILE` | *(empty)* | Where Money category picks wait until you apply them in Copilot. Empty keeps them in memory (lost on restart). `docker-compose.yml` sets it to `/data/money-picks.json`, mounted read-write from `~/.local/share/home-lab/data`. |
 | `DIGEST_FILE` | *(empty)* | Read the digest from this file on the PC instead of GitHub (for a digest Jarvis writes locally). No token needed. `docker-compose.yml` sets it to `/digest/digest.json`, mounted read-only from `~/.local/share/home-lab-digest/out`, where Jarvis's `home_lab_digest` job writes every 15 minutes, 7 am to midnight. |
 | `SKIP_CALENDARS` | `Wong Fam` | Calendars never shown, comma-separated. Wong Fam is shared with family and holds their plans. |
 | `WINDOWS_DRIVE` | `/mnt/c` | Where WSL mounts C:. |
 | `HOME_LAB_ENV_FILE` | `.env` | Which env file to load. |
-| `VITE_DATA` | *(unset)* | Build-time only. `static` builds the serverless preview (below). |
 
-### The serverless preview
-
-`npm run build:preview` writes `dist-preview/`, a copy of the page that
-runs the mock source inside the browser, so it can be opened from any
-static host with no server. The normal build never includes the mock data.
 
 ## Running it on jarvis
 
 The PC runs Ubuntu 24.04 in WSL 2 with systemd on, and Ubuntu is started at
 boot by the "Start Ubuntu (WSL)" task, so a systemd service is enough to
-keep the page up across reboots.
+keep the server up across reboots.
 
 ```bash
 # In Ubuntu on jarvis, as dwong:
 git clone https://github.com/dwongbound/home-lab ~/home-lab
 cd ~/home-lab
-npm ci
-npm run build
 cp .env.example .env        # then edit .env (see "Going live")
 npm start                   # check it, then Ctrl+C
 
@@ -411,7 +230,7 @@ The other way to run it, with nothing installed on Ubuntu but Docker
 ```bash
 cd ~/home-lab
 cp .env.example .env        # then edit .env (see "Going live")
-GIT_SHA=$(git rev-parse --short HEAD) BUILT_AT=$(date -Is) docker compose up -d --build
+docker compose up -d --build
 curl -s http://127.0.0.1:4180/api/snapshot | head -c 300
 ```
 
@@ -421,16 +240,12 @@ and Home Assistant answer at the same addresses as outside the container,
 and mounts `/mnt/c` and WSL's `nvidia-smi` read-only for the disk and GPU
 cards. `restart: unless-stopped` brings it back after a reboot, once
 Docker is up. **Updating:**
-`git pull && GIT_SHA=$(git rev-parse --short HEAD) BUILT_AT=$(date -Is) docker compose up -d --build`.
-The two variables stamp the build into the page: a faint line at the bottom
-of every page shows the commit (linked to GitHub) and when it was deployed.
-The image has no `.git`, so without them the footer says `dev`; `npm run
-build` outside Docker asks git itself.
+`git pull && docker compose up -d --build`.
 
 The unit caps the process at 200 MB (`MemoryMax`), since the local model and
 Jarvis's voice need the RAM more. It typically uses well under 100 MB.
 
-**Updating:** `cd ~/home-lab && git pull && npm ci && npm run build && sudo systemctl restart home-lab`.
+**Updating:** `cd ~/home-lab && git pull && sudo systemctl restart home-lab`.
 
 ## Reaching it from your phone or Mac
 
@@ -438,11 +253,11 @@ By default the server only listens on `127.0.0.1`, which is the PC itself.
 The way to open it from other devices is `tailscale serve`, the same way
 Jarvis is published. It works for both the Docker and the
 systemd setup, and it's what makes Ask Jarvis work, because it tells the
-page (and so Jarvis) who you are. The page has the PC's main address. From Ubuntu:
+server (and so Jarvis) who you are. The server has the PC's main address. From Ubuntu:
 
 ```bash
 TS="/mnt/c/Program Files/Tailscale/tailscale.exe"
-"$TS" serve --bg --https=443 http://127.0.0.1:4180    # this page
+"$TS" serve --bg --https=443 http://127.0.0.1:4180    # this server
 ```
 
 Then open `https://jarvis.snakebird-ph.ts.net` on the phone or Mac with
@@ -451,16 +266,16 @@ Tailscale on.
 
 Two things that don't work on jarvis, so you don't have to find out:
 
-- **Publishing on the same port the page listens on.** WSL's mirrored
+- **Publishing on the same port the server listens on.** WSL's mirrored
   networking shares ports between Ubuntu and Windows, and `serve --http=80`
-  in front of a page on `127.0.0.1:80` never answered (connection refused).
-  Every service here uses two numbers (this page 4180 → 443,
+  in front of a server on `127.0.0.1:80` never answered (connection refused).
+  Every service here uses two numbers (this server 4180 → 443,
   Jarvis 8765 → 8443); keep to that.
 - **Plain `http://jarvis.snakebird-ph.ts.net` on port 80.** Browsers try
   `https://` first on that name, so they land on whatever is on 443. Use
   `https://`.
 
-**Without `tailscale serve`**, for the page only (Ask Jarvis won't work):
+**Without `tailscale serve`**, for the metrics page only (the apps won't work):
 
 1. Set `HOST=0.0.0.0` in `.env` and restart the service.
 2. WSL uses **mirrored networking**, so Windows' Hyper-V firewall has to
@@ -473,7 +288,7 @@ Two things that don't work on jarvis, so you don't have to find out:
 3. Open `http://jarvis.snakebird-ph.ts.net:4180` on the phone or Mac with
    Tailscale on.
 
-There's no login on the page. It relies on Tailscale for who can reach it,
+There's no login on the server. It relies on Tailscale for who can reach it,
 the same way Jarvis does. Don't expose it to the internet, and with
 Ask Jarvis don't use `HOST=0.0.0.0` either: anyone on the home network
 could then send a made-up Tailscale login header and talk to Jarvis.
@@ -487,8 +302,7 @@ could then send a made-up Tailscale login header and talk to Jarvis.
 2. Check the model name with `ollama list` and set `OLLAMA_MODEL` to match.
 3. Set `DATA_SOURCE=live` and restart: `sudo systemctl restart home-lab`
    (Docker sets it for you; `docker compose up -d` again picks up `.env` changes).
-4. Open the page. "Sample data" disappears from the top bar, and Settings →
-   Data says "Reading live from jarvis".
+4. Open the bare URL: the services and machine bars show the real PC.
 5. If a card says "Not reporting" or a service "Not responding", run the
    matching probe by hand (see [What the live source reads](#what-the-live-source-reads)),
    for example `nvidia-smi` or `curl -s http://127.0.0.1:11434/api/ps`.
@@ -497,139 +311,27 @@ could then send a made-up Tailscale login header and talk to Jarvis.
 
 ```bash
 npm run typecheck     # tsc, no emit
-npm run test:unit     # Vitest + jsdom, ~2 s
-npm run test:e2e      # Playwright: builds, starts the real server, tests desktop, phone + iPad
-npm test              # unit, then end-to-end
+npm test              # Vitest
 ```
 
-The first time on a new machine, install the browser for end-to-end tests:
-`npx playwright install chromium`.
-
-**Unit tests** (`tests/unit/`) cover the text helpers, the sky phases and
-sparkline maths, the mock source (including Pacific time across daylight
-saving), the live source with every probe faked (status rules, failures
-that mustn't break the page, the token sent as a bearer header, the Ollama
-call), the API handler (routes, the action header, one action at a time,
-the token never in a response), the page itself (first-load spinner, error
-state, the Unload flow with its blocking indicator, Close, hash routing),
-and a check that every CSS animation sits inside the reduced-motion guard.
-
-**End-to-end tests** (`tests/e2e/`) run each user story on a desktop
-browser, a Pixel 7-sized phone and an iPad Pro 11 in landscape against the production server on sample
-data: the overview, moving between pages with the back button, unloading
-and reloading the local model, Close and Esc, the remembered sky, no animation with
-reduced motion, no sideways scrolling, detail pop-ups and purchases to sort
-on Money, and keeping the screen on.
-
-Everything passes on any machine with Node 20.12+; nothing depends on the
-PC. CI (`.github/workflows/ci.yml`) runs the same commands on every push
-and pull request.
-
-**Auto-merge to main.** When a pull request into `dev` passes, CI's
-`merge` job merges it straight away with a rebase, deletes its branch, and
-moves `main` up to `dev`. A push to `dev` you make yourself (merging a PR
-by hand, say) reaches `main` the same way once its tests pass (`promote`
-job). Nothing needs a click. It only merges the exact commit that passed, so
-a push made while tests run waits for its own run. To hold a PR back, open
-it as a draft (or convert it), and mark it ready when you want it in.
-`main` only ever fast-forwards to `dev`: if someone commits to `main`
-directly, the next promotion fails instead of overwriting it.
-
-## Design
-
-The look follows the reference screenshot: frosted panels over a blurred
-photo, a pill nav, stat cards with sparklines, a bar chart and a "Today"
-timeline. Built with Anthropic's *frontend-design* skill and Vercel's
-*React best practices* skill.
-
-**The one flourish** is the backdrop: a painted view out of a window that
-follows the real time of day on the PC (dawn, day, dusk, night). It's pure
-CSS and one static SVG, so it costs nothing to keep on screen. Everything
-in front of it stays quiet.
-
-### Tokens (`src/styles.css`, `:root`)
-
-| Token | Value | Used for |
-| --- | --- | --- |
-| `--basalt` | `#16212c` | The room: page base, the glass fallback, dark text on light buttons |
-| `--frost` | `#f2efe9` | Text and primary buttons |
-| `--glacier` | `#8ec5ea` | The data accent: today's bar, focus rings, Jarvis |
-| `--ember` | `#e8b06a` | The sun; warnings, "needs attention", the local model's ring |
-| `--moss` | `#93d6ae` | Running, done |
-| `--rose` | `#f0919a` | Failed, not responding |
-
-Type is **Bricolage Grotesque** for headings and numbers and **Figtree**
-for everything else, both bundled with the page (no Google Fonts call), so
-it looks right offline. Numbers use tabular figures so they don't jitter
-on refresh.
-
-Corner radii follow hierarchy: panels 24 px, stat cards 16 px, cards inside
-panels 11 px, pills fully round.
-
-### Conventions
-
-These match TapWorship's:
-
-- A dismiss button reads **Close**, never "Cancel".
-- Anything waiting on a network call shows a **blocking indicator** with a
-  label saying what it's doing.
-- **Motion degrades to the plain page.** The one load sequence and the
-  spinners live inside `@media (prefers-reduced-motion: no-preference)`;
-  without it, everything is simply there. A unit test enforces this.
-- **Changing page is smooth.** The old and new page crossfade in a view
-  transition (`src/useHashView.ts`), which works on flat snapshots, so the
-  glass keeps its blur throughout; the top bar stays live and the light
-  under the pills slides across, darkening the labels it passes. Never
-  animate a glass panel or anything containing one (Chrome drops the blur,
-  Safari leaves patches), and don't replay animations inside glass on
-  every visit: the chart bars grow once per visit, because regrowing them
-  each time halved the frame rate coming back to Overview.
-- Without `backdrop-filter` support, glass falls back to a solid panel.
-- Every log is **newest first**.
-- Phone button rows are full width at 44 px touch height, confirm on the
-  right. Icon-only controls keep a label for screen readers.
-- A dialog has a fixed size and doesn't resize with its contents.
-- Copy is plain and sentence case, and errors say what to do next.
-
-### React notes
-
-From the Vercel skill, the rules that shaped the code:
-
-- `client-swr-dedup`: one SWR hook, one request, shared by every component.
-- `async-parallel`: the live source runs every probe with `Promise.allSettled`.
-- `bundle-conditional`: the mock data is a dynamic import used only by the
-  serverless preview build.
-- `bundle-barrel-imports`: no icon or chart library; icons are a dozen
-  inline paths and the chart is CSS.
-- `rerender-memo`: cards, chart, timeline and lists are `memo`'d, since the
-  page re-renders on every 15-second refresh.
-- `rendering-svg-precision`: sparkline coordinates are rounded to one decimal.
-- `js-cache-function-results`: `Intl` formatters are built once at module level.
+`tests/unit/helpers.ts` `callApi` drives the handler without opening a port.
 
 ## Project layout
 
 ```
 server/
-  index.mjs            production server: dist/ + the API, node:http only
-  app.mjs              the API handler (also mounted into Vite in dev)
+  index.mjs            the server: API, /shell/ and Talk's WebSocket, node:http only
+  app.mjs              the API handler, /reports/<id> and the metrics page
+  metrics-page.mjs     the page at /
   config.mjs           env vars and .env loading
   sources/mock.mjs     sample data source
   sources/live.mjs     real PC source
-src/
-  main.tsx             entry: fonts, styles, <App />
-  App.tsx              page shell and the loading / error / ready states
-  types.ts             Snapshot and DataSource, shared by page and server
-  api/client.ts        useSnapshot() and runAction(): the page's only door to data
-  views/               Overview, Services, Schedule, Playbooks, Settings
-  components/          cards, chart, timeline, lists, dialog, nav, backdrop
-  lib/                 format, sky, sparkline, prefs (small pure helpers)
-  styles.css           all styles; tokens at the top
-tests/
-  unit/                Vitest
-  e2e/                 Playwright (desktop, phone, iPad)
-deploy/home-lab.service  systemd unit for jarvis
+tests/unit/            Vitest
+ios/                   the Jarvis apps
+deploy/                systemd units for jarvis
 Dockerfile, docker-compose.yml  the Docker setup
 ```
+
 
 ## Working on it
 
@@ -654,7 +356,7 @@ Dockerfile, docker-compose.yml  the Docker setup
 
 ## Privacy
 
-The page only reads what's listed under
+The server only reads what's listed under
 [What the live source reads](#what-the-live-source-reads). It never opens
 Jarvis's private memory file (`~/jarvis/data/memory.md`) or Open WebUI's
 database (`/srv/open-webui/data/webui.db`), and no change should make it.

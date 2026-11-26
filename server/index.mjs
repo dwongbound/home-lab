@@ -1,80 +1,22 @@
-// Production server: serves the built page from dist/ plus the API.
-// Plain node:http with no framework, because jarvis has 16 GB of RAM and
-// the local model and voice want the rest.
+// Production server: the API the Jarvis apps use, the reports, the terminal
+// and Talk's WebSocket. Plain node:http with no framework, because jarvis
+// needs its memory for the local model and voice.
 import http from 'node:http'
-import { readFile, stat } from 'node:fs/promises'
-import { extname, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { loadConfig, loadEnvFile } from './config.mjs'
 import { createApi, createSource } from './app.mjs'
 import { createShellProxy, isShellPath } from './shell.mjs'
 import { createTalkProxy, isTalkPath } from './talk.mjs'
-import { isTalkPagePath, talkHead } from './talk-head.mjs'
 
 loadEnvFile()
 const config = loadConfig()
 const api = createApi(createSource(config))
 const shell = createShellProxy(config)
 const talk = createTalkProxy(config)
-const distDir = resolve(fileURLToPath(new URL('../dist/', import.meta.url)))
-const indexHtml = resolve(distDir, 'index.html')
 
-const CONTENT_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript',
-  '.css': 'text/css',
-  '.svg': 'image/svg+xml',
-  '.woff2': 'font/woff2',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.webmanifest': 'application/manifest+json',
-}
-
-/**
- * Maps a URL to a file in dist/. Anything that isn't a real file falls
- * back to index.html, and anything that resolves outside dist/ is refused.
- */
-async function resolveFile(urlPath) {
-  const wanted = resolve(distDir, '.' + decodeURIComponent(urlPath))
-  const insideDist = wanted === distDir || wanted.startsWith(distDir + sep)
-  if (!insideDist) return null
-  try {
-    const info = await stat(wanted)
-    if (info.isFile()) return wanted
-  } catch {
-    // Not a file: fall through to the page.
-  }
-  return indexHtml
-}
-
-/** Serves one file from dist/. Hashed assets are cached forever. */
-async function serveStatic(req, res) {
-  const { pathname } = new URL(req.url ?? '/', 'http://localhost')
-  const file = await resolveFile(pathname)
-  if (file === null) {
-    res.statusCode = 403
-    return res.end()
-  }
-  try {
-    let body = await readFile(file)
-    // /talk is its own home-screen app, so its head says so before any script runs.
-    if (file === indexHtml && isTalkPagePath(pathname)) body = talkHead(body.toString('utf8'))
-    res.setHeader('content-type', CONTENT_TYPES[extname(file)] ?? 'application/octet-stream')
-    if (file.includes(`${sep}assets${sep}`)) {
-      res.setHeader('cache-control', 'public, max-age=31536000, immutable')
-    }
-    res.end(body)
-  } catch {
-    res.statusCode = 404
-    res.end('Not built yet. Run npm run build first.')
-  }
-}
-
-/** Routes a request: the terminal under /shell/, else the API, else the page. */
+/** Routes a request: the terminal under /shell/, else the API (which also draws /). */
 function handle(req, res) {
   if (isShellPath(req.url)) return shell.request(req, res)
-  return api(req, res, () => serveStatic(req, res))
+  return api(req, res)
 }
 
 const server = http.createServer(handle)
@@ -85,5 +27,5 @@ server.on('upgrade', (req, socket, head) => {
   socket.destroy()
 })
 server.listen(config.port, config.host, () => {
-    console.log(`home-lab on http://${config.host}:${config.port} (${config.dataSource} data)`)
-  })
+  console.log(`home-lab on http://${config.host}:${config.port} (${config.dataSource} data)`)
+})

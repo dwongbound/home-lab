@@ -9,7 +9,7 @@ export interface FakeResponse {
 
 /** Calls `handler` with a fake request and resolves with what it wrote. */
 export function callApi(
-  handler: (req: any, res: any, next?: () => void) => Promise<unknown>,
+  handler: (req: any, res: any) => Promise<unknown>,
   method: string,
   url: string,
   headers: Record<string, string> = {},

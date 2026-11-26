@@ -1,7 +1,7 @@
-# systemd unit for the home-lab page on jarvis (WSL Ubuntu, user dwong).
+# systemd unit for the home-lab server on jarvis (WSL Ubuntu, user dwong).
 # Install: see README, "Running it on jarvis".
 [Unit]
-Description=home-lab admin page
+Description=home-lab server for the Jarvis apps
 After=network-online.target docker.service
 Wants=network-online.target
 
@@ -12,7 +12,7 @@ WorkingDirectory=/home/dwong/home-lab
 ExecStart=/usr/bin/env node server/index.mjs
 Restart=on-failure
 RestartSec=5
-# Keep it small: Gemma needs the memory more than this page does.
+# Keep it small: Gemma needs the memory more than this server does.
 MemoryMax=200M
 Environment=NODE_ENV=production
 
