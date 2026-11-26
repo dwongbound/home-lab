@@ -463,6 +463,9 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
   // True once a sentence of this reply has been scheduled, so running dry later uses the longer cushion.
   let midReply = false
   let replyDone = false
+  // Whether any of his reply's words have arrived since your last turn. A "stop" before that
+  // only cut off a "Hmm." filler (Jarvis build 144), so nothing was interrupted.
+  let replyStarted = false
   let closed = false
   let frame = 0
   const samples = new Float32Array(512)
@@ -575,12 +578,18 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       state = event.state
       on.onState(event.state)
     } else if (event.type === 'partial' && event.text) on.onHearing(event.text, event.joined === true, stableCount(event.stable))
-    else if (event.type === 'transcript' && event.text) on.onHeard(event.text, event.joined === true, event.same === true)
-    else if (event.type === 'reply' && event.text) on.onReply(event.text)
+    else if (event.type === 'transcript' && event.text) {
+      replyStarted = false
+      on.onHeard(event.text, event.joined === true, event.same === true)
+    } else if (event.type === 'reply' && event.text) {
+      replyStarted = true
+      on.onReply(event.text)
+    }
     else if (event.type === 'working') on.onWorking(event.label ?? '')
     else if (event.type === 'working_done') on.onWorking(null)
     else if (event.type === 'model' && typeof event.model === 'string') on.onModel(event.model)
     else if (event.type === 'done') {
+      replyStarted = false
       replyDone = true
       on.onDone()
       maybeIdle()
@@ -591,7 +600,9 @@ export async function openTalkLine(url: string, on: TalkHandlers): Promise<TalkL
       resume()
     } else if (event.type === 'stop') {
       silence()
-      on.onInterrupted()
+      // Talking over a filler isn't cutting a reply short: the turn stays open for his answer.
+      if (replyStarted) on.onInterrupted()
+      replyStarted = false
     } else if (event.type === 'bye') {
       // "Goodbye", "talk to you later" (Dylan, 2026-11-17): the call is over,
       // not paused. His sign-off has already played (he sends this after our
