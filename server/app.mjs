@@ -53,6 +53,7 @@ import { REPORT_CSP, isReportId, parseKeepChoice, missingReportPage } from './so
 const ACTIONS = new Set(['ollama-unload', 'ollama-load'])
 const ACTION_PATH = /^\/api\/actions\/([a-z-]+)$/
 // A report's own page, outside /api/ so the link reads plainly in a message.
+const SNAPSHOT_REUSE_MS = 3000
 const REPORT_PATH = /^\/reports\/([^/]+)$/
 const MAX_BODY_BYTES = 8 * 1024
 // A chat message may carry photos (the apps shrink them first), so it gets more room.
@@ -121,6 +122,22 @@ export function createApi(source) {
   // Only one action at a time: loading the model twice at once would just
   // fight over the same GPU memory.
   let actionInFlight = null
+
+  // Every screen (phone, iPad, TV, Watch, kiosk) polls the snapshot, and each
+  // build runs ~17 probes, so callers within a few seconds share one build.
+  let shared = null
+
+  /** The snapshot, shared with any caller in the last SNAPSHOT_REUSE_MS; a failed build isn't kept. */
+  function sharedSnapshot() {
+    if (shared === null || Date.now() - shared.at > SNAPSHOT_REUSE_MS) {
+      const promise = source.snapshot()
+      shared = { at: Date.now(), promise }
+      promise.catch(() => {
+        if (shared?.promise === promise) shared = null
+      })
+    }
+    return shared.promise
+  }
 
   /** Runs one action, refusing if another is still going. */
   async function handleAction(req, res, name) {
@@ -637,9 +654,11 @@ export function createApi(source) {
       return sendJson(res, 404, { error: 'Not found' })
     }
 
+    // Anything that changes state (an action, a cleared notice) makes the next snapshot fresh.
+    if (req.method !== 'GET') shared = null
     try {
       if (req.method === 'GET' && pathname === '/api/snapshot') {
-        return sendJson(res, 200, await source.snapshot())
+        return sendJson(res, 200, await sharedSnapshot())
       }
       const actionMatch = pathname.match(ACTION_PATH)
       if (req.method === 'POST' && actionMatch) {
