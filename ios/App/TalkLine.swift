@@ -384,10 +384,13 @@ final class TalkLine: @unchecked Sendable {
             let length = min(noteLength + tail, total - start)
             for i in 0..<length {
                 let t = Double(i) / rate
-                // Swell over 12 ms, then fade, so no edge clicks.
-                let swell = min(1, t / 0.012)
+                // Swell over 25 ms, then fade, so no edge clicks. About 40%
+                // quieter and softer than before (Dylan, 2026-11-25: "slightly
+                // lower the chime volume or make it more subtle"), matching
+                // the page's playGotIt; it sits under Jarvis's "Hmm." filler.
+                let swell = min(1, t / 0.025)
                 let fade = exp(-t / 0.035)
-                out[start + i] += Float(sin(2 * .pi * hz * t) * swell * fade * 0.07)
+                out[start + i] += Float(sin(2 * .pi * hz * t) * swell * fade * 0.042)
             }
         }
         chime.scheduleBuffer(buffer, completionHandler: nil)
