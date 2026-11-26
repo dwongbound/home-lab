@@ -8,6 +8,8 @@
 //   GET  /api/jarvis/history        the web chat, a page at a time (?limit=&before=&around=)
 //   GET  /api/jarvis/memory         what Jarvis remembers ({memory})
 //   GET  /api/jarvis/memory/search?q=  past conversations matching q ({hits})
+//   GET  /api/jarvis/memory/graph   his memory as a web ({graph: {nodes, links}})
+//   GET  /api/jarvis/memory/node/<id>  one thing opened up ({node})
 //   POST /api/jarvis/memory         {"op": "remember", "text"} | {"op": "forget", "id"}
 //   GET  /api/jarvis/nutrition/day?date=    one day of the meal log, with what was eaten ({day})
 //   GET  /api/jarvis/nutrition/week?start=  seven days of calories against the goal ({week})
@@ -44,6 +46,7 @@ import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
 import { parseHistoryPage } from './sources/history.mjs'
 import { isJobId } from './sources/jobs.mjs'
+import { isNodeId } from './sources/memory-graph.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
 
 // The most a "describe it" box may send Jarvis to turn into a playbook.
@@ -238,6 +241,25 @@ export function createApi(source) {
   async function handleMemory(req, res) {
     const login = req.headers['tailscale-user-login'] ?? ''
     return sendJson(res, 200, { memory: await source.memory({ login }) })
+  }
+
+  /** Jarvis's memory as a web of things and links, for the apps' memory screen. */
+  async function handleMemoryGraph(req, res) {
+    const login = req.headers['tailscale-user-login'] ?? ''
+    return sendJson(res, 200, { graph: await source.memoryGraph({ login }) })
+  }
+
+  /** One thing in his memory opened up: 400 on a bad id, 404 when he no longer has it. */
+  async function handleMemoryNode(req, res, id) {
+    if (!isNodeId(id)) {
+      return sendJson(res, 400, { ok: false, message: "That isn't one of Jarvis's memories" })
+    }
+    const login = req.headers['tailscale-user-login'] ?? ''
+    const found = await source.memoryNode(id, { login })
+    if (found.gone) {
+      return sendJson(res, 404, { ok: false, gone: true, message: 'Jarvis no longer has that memory' })
+    }
+    return sendJson(res, 200, { node: found.node })
   }
 
   /** Searches Jarvis's past conversations. */
@@ -656,6 +678,12 @@ export function createApi(source) {
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/memory') {
         return await handleMemory(req, res)
+      }
+      if (req.method === 'GET' && pathname === '/api/jarvis/memory/graph') {
+        return await handleMemoryGraph(req, res)
+      }
+      if (req.method === 'GET' && pathname.startsWith('/api/jarvis/memory/node/')) {
+        return await handleMemoryNode(req, res, decodeURIComponent(pathname.slice('/api/jarvis/memory/node/'.length)))
       }
       if (req.method === 'GET' && pathname === '/api/jarvis/memory/search') {
         const query = new URL(req.url ?? '/', 'http://localhost').searchParams.get('q') ?? ''

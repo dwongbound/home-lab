@@ -9,6 +9,7 @@
 - Tests with every change, passing before merge, on any machine (not just CI).
   Unit tests for small pieces; Playwright end-to-end for user stories on
   **desktop and phone**.
+- **The web pages are frozen (Dylan, 2026-11-26): no new page UI.** The native apps in `ios/` are the product now; the pages get removed once the apps can do everything they do. The server and its `/api`, `/reports/<id>` and the Talk WebSocket stay and keep growing, because the apps reach Jarvis through them. Fixes to a broken page are still fine.
 - A config change updates `.env.example` and the README in the same PR.
 - UI changes start as a clickable mockup (the `build:preview` page works for this).
 - **Commit messages:** a succinct one-line subject, blank line, then one bullet
