@@ -190,7 +190,7 @@ struct TodayView: View {
             SleepDetailView().environmentObject(app)
         }
         .sheet(isPresented: $showDevices) {
-            if let home = today.snapshot?.home { DevicesSheet(home: home) }
+            if today.snapshot?.home != nil { DevicesSheet(today: today).environmentObject(app) }
         }
         .sheet(item: $shortcut, onDismiss: { if let which = lastOpened { markSeen(which, refetch: true) } }) { which in
             switch which {
