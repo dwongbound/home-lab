@@ -513,81 +513,40 @@ struct TodayView: View {
         }
     }
 
-    /// Net worth, this month against budget, what's over, and Jarvis's notes.
+    /// The month at a glance (Dylan 2026-11-26: no net worth, "show more
+    /// useful metrics that id care about"): a ring of spending against the
+    /// budget with a tick where it should be by today, what's left a day,
+    /// the biggest categories as bars, then what's waiting on a pick.
     private func moneyCard(_ money: Money) -> some View {
-        card("Money", icon: "creditcard.fill", trailing: "Details  ›") {
-            HStack(alignment: .firstTextBaseline) {
-                if let worth = money.netWorth {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(TodayWording.dollars(worth))
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                        Text("Net worth").font(.caption).foregroundStyle(Theme.frostDim)
-                    }
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(TodayWording.dollars(money.cardDebt))
-                        .font(.headline)
-                        .monospacedDigit()
-                    Text("On cards").font(.caption).foregroundStyle(Theme.frostDim)
-                }
-            }
+        let toSort = money.stillToPick(today.snapshot?.moneyPicks ?? []).count
+        return card("Money", icon: "creditcard.fill", trailing: "Details  ›") {
             if let spending = money.spending {
-                spendingBar(spending)
+                MonthSpendHeadline(spending: spending)
             }
-            if !money.overBudget.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(money.overBudget.prefix(3), id: \.name) { category in
-                        HStack {
-                            Circle().fill(Theme.rose).frame(width: 6, height: 6)
-                            Text(category.name).font(.subheadline)
-                            Spacer()
-                            Text("\(TodayWording.dollars(category.spent)) of \(TodayWording.dollars(category.budget ?? 0))")
-                                .font(.subheadline)
-                                .monospacedDigit()
-                                .foregroundStyle(Theme.rose)
-                        }
+            let top = money.topCategories()
+            if !top.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(top, id: \.name) { category in
+                        CategoryBar(category: category, top: top.first?.spent ?? 1)
                     }
+                }
+            }
+            HStack(spacing: 10) {
+                if toSort > 0 {
+                    Label("\(toSort) to sort", systemImage: "tag.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.ember)
+                }
+                if money.cardDebt > 0 {
+                    Label("\(TodayWording.dollars(money.cardDebt)) on cards", systemImage: "creditcard")
+                        .font(.caption)
+                        .foregroundStyle(Theme.frostDim)
                 }
             }
             if let flag = money.flags.first {
                 Label(flag.text, systemImage: "sparkles")
                     .font(.footnote)
                     .foregroundStyle(Theme.frostDim)
-            }
-        }
-    }
-
-    /// "Spent $6,008 of $3,996" with a bar that turns rose past the budget.
-    private func spendingBar(_ spending: Money.Spending) -> some View {
-        let budget = spending.budget ?? 0
-        let fraction = budget > 0 ? spending.thisMonth / budget : 0
-        let over = budget > 0 && spending.thisMonth > budget
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("This month").font(.subheadline)
-                Spacer()
-                Text(budget > 0 ? "\(TodayWording.dollars(spending.thisMonth)) of \(TodayWording.dollars(budget))" : TodayWording.dollars(spending.thisMonth))
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(over ? Theme.rose : Theme.frost)
-            }
-            if budget > 0 {
-                GeometryReader { area in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.08))
-                        Capsule()
-                            .fill(over ? Theme.rose : Theme.glacier)
-                            .frame(width: area.size.width * min(fraction, 1))
-                    }
-                }
-                .frame(height: 6)
-            }
-            if let last = spending.lastMonthToDate {
-                Text("\(TodayWording.dollars(last)) by this point last month")
-                    .font(.caption)
-                    .foregroundStyle(Theme.frostFaint)
             }
         }
     }

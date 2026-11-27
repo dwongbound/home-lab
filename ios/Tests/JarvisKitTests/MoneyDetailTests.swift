@@ -33,4 +33,19 @@ final class MoneyDetailTests: XCTestCase {
         XCTAssertEqual(Money.amount(12.4), "$12.40")
         XCTAssertEqual(Money.amount(-2000), "+$2,000.00")
     }
+
+    /// Pace and per-day room on the 10th of a 30-day month.
+    func testPaceAndLeftPerDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 10))!
+        let json = #"{"thisMonth": 1200, "budget": 3000}"#
+        let spending = try JSONDecoder().decode(Money.Spending.self, from: Data(json.utf8))
+        XCTAssertEqual(spending.pace(now: now, calendar: calendar)!, 1000, accuracy: 0.01)
+        XCTAssertEqual(spending.aheadOfPace(now: now, calendar: calendar)!, 200, accuracy: 0.01)
+        XCTAssertEqual(spending.leftPerDay(now: now, calendar: calendar)!, 1800.0 / 21, accuracy: 0.01)
+        let none = try JSONDecoder().decode(Money.Spending.self, from: Data(#"{"thisMonth": 5}"#.utf8))
+        XCTAssertNil(none.pace(now: now, calendar: calendar))
+    }
 }
+

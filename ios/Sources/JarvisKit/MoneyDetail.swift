@@ -87,3 +87,36 @@ extension JarvisClient {
         _ = try await send(request("api/money/picks", method: "POST", json: ["op": "clear", "ids": ids]))
     }
 }
+
+// What Home's Money card shows instead of net worth (Dylan 2026-11-26:
+// "show more useful metrics that id care about"): the month's spending
+// against budget and against the calendar, and what's left a day.
+extension Money.Spending {
+    /// Where spending "should" be by now if the budget were spread evenly
+    /// over the month; nil without a budget.
+    public func pace(now: Date = Date(), calendar: Calendar = .current) -> Double? {
+        guard let budget, budget > 0, let days = calendar.range(of: .day, in: .month, for: now)?.count else { return nil }
+        let day = calendar.component(.day, from: now)
+        return budget * Double(day) / Double(days)
+    }
+
+    /// Spent minus pace: above zero is ahead of pace (spending too fast).
+    public func aheadOfPace(now: Date = Date(), calendar: Calendar = .current) -> Double? {
+        pace(now: now, calendar: calendar).map { thisMonth - $0 }
+    }
+
+    /// What's left of the budget per remaining day, today included; nil
+    /// without a budget, 0 once it's spent.
+    public func leftPerDay(now: Date = Date(), calendar: Calendar = .current) -> Double? {
+        guard let budget, budget > 0, let days = calendar.range(of: .day, in: .month, for: now)?.count else { return nil }
+        let remaining = days - calendar.component(.day, from: now) + 1
+        return max(0, budget - thisMonth) / Double(max(remaining, 1))
+    }
+}
+
+extension Money {
+    /// The month's biggest categories, most spent first.
+    public func topCategories(_ count: Int = 3) -> [Category] {
+        Array(categories.filter { $0.spent > 0 }.sorted { $0.spent > $1.spent }.prefix(count))
+    }
+}
