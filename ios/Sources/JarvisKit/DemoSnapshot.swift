@@ -76,6 +76,7 @@ public enum DemoSnapshot {
          "jobs":{"running":[{"id":"j1","label":"Changing my code so reminders repeat","state":"running","startedAt":"\(iso(-9))"}],
                  "lookout":{"checks":["calendar","email"],"watching":["Flight prices to Tokyo in March","The PS5 Pro restock at Target"],"heldBack":[{"text":"x","reason":null},{"text":"y","reason":null}]},
                  "messenger":{"sentToday":3,"cap":8,"quiet":"10 PM–7 AM"}},
+         "claudeUsage":{"limits":[{"name":"session","usedPct":34,"resetsAt":"\(iso(140))"},{"name":"weekly","usedPct":61,"resetsAt":"\(iso(4000))"}],"today":[{"kind":"chat","usd":1.84,"calls":23,"tokens":412000},{"kind":"nightly","usd":2.10,"calls":3,"tokens":380000},{"kind":"talk","usd":0.36,"calls":11,"tokens":64000}],"days":[{"date":"2026-11-21","usd":3.2,"tokens":510000},{"date":"2026-11-22","usd":5.8,"tokens":990000},{"date":"2026-11-23","usd":2.1,"tokens":330000},{"date":"2026-11-24","usd":6.4,"tokens":1210000},{"date":"2026-11-25","usd":4.0,"tokens":700000},{"date":"2026-11-26","usd":3.3,"tokens":560000},{"date":"2026-11-27","usd":4.3,"tokens":856000}]},
          "metrics":[{"id":"ram","value":19.6,"total":32,"history":[17.2,17.8,18.1,18.0,18.6,19.2,19.0,19.4,19.9,19.5,19.6,19.6]},
                     {"id":"gpu","value":10.1,"total":12,"history":[6.2,6.4,9.8,10.0,10.1,9.9,10.2,10.1,10.0,10.1,10.1,10.1]},
                     {"id":"cpu","value":18,"total":100,"history":[12,9,22,35,18,14,27,19,16,21,18,18]},

@@ -238,6 +238,7 @@ struct TodayView: View {
             if args.contains("-openDevices") { showDevices = true }
             if args.contains("-openReports") { shortcut = .reports }
             if args.contains("-openPlaybooks") { shortcut = .playbooks }
+            if args.contains("-openClaude") { shortcut = .claude }
         }
         #endif
         .fontDesign(.rounded)
