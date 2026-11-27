@@ -335,14 +335,15 @@ private struct WeekBars: View {
     }
 }
 
-/// Today's and the week's spend, tokens and calls as small tiles; today's
-/// spend has a bar against Jarvis's daily background budget.
+/// Today's and the week's spend, tokens and calls as small tiles. No
+/// "budget" (Dylan, 2026-11-27: "drop it … there's no cap"): the server's
+/// `dailyUsd` isn't a real limit, so it isn't shown.
 private struct CostTiles: View {
     let use: ClaudeUsage
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            tile("Today", ClaudeUsage.dollars(use.todayUSD), note: use.dailyUsd.map { "of \(ClaudeUsage.dollars($0)) budget" }, fill: use.dailyUsd.map { $0 > 0 ? use.todayUSD / $0 : 0 })
+            tile("Today", ClaudeUsage.dollars(use.todayUSD), note: "background jobs", fill: nil)
             tile("This week", ClaudeUsage.dollars(use.weekUSD), note: "\(ClaudeUsage.dollars(use.dailyAverageUSD)) a day", fill: nil)
             tile("Month at this pace", ClaudeUsage.dollars(use.monthPaceUSD), note: "the daily average × 30", fill: nil)
             if let busiest = use.busiestDay {
@@ -362,7 +363,7 @@ private struct CostTiles: View {
         return format.string(from: day)
     }
 
-    /// A tile: name, big number, a note and, for the budget, a thin bar.
+    /// A tile: name, big number, a note and, when given a fill, a thin bar.
     private func tile(_ title: String, _ value: String, note: String?, fill: Double?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption.weight(.semibold)).foregroundStyle(Theme.frostDim)
