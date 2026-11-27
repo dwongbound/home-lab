@@ -96,6 +96,7 @@ struct TodayView: View {
     @State private var showDevices = false
     /// The Sleep screen.
     @State private var showSleep = false
+    @State private var showActivity = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The one-time "send your sleep" card (App/SleepSync.swift).
@@ -188,6 +189,9 @@ struct TodayView: View {
         }
         .sheet(isPresented: $showSleep) {
             SleepDetailView().environmentObject(app)
+        }
+        .sheet(isPresented: $showActivity) {
+            ActivityDetailView(sync: activitySync)
         }
         .sheet(isPresented: $showDevices) {
             if today.snapshot?.home != nil { DevicesSheet(today: today).environmentObject(app) }
@@ -295,7 +299,16 @@ struct TodayView: View {
             // On the iPhone: rings, a week of steps, heart and weight read
             // from Health on the phone (ActivityCard). Elsewhere, Jarvis's steps.
             if ActivitySync.available {
-                ActivityCard(sync: activitySync, fallbackSteps: snapshot.health?.yesterday?.steps)
+                // Once Health is allowed, the whole card opens the Activity screen
+                // (before that its own Show more button must stay tappable).
+                if activitySync.asked {
+                    Button { showActivity = true } label: {
+                        ActivityCard(sync: activitySync, fallbackSteps: snapshot.health?.yesterday?.steps)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    ActivityCard(sync: activitySync, fallbackSteps: snapshot.health?.yesterday?.steps)
+                }
             } else if SleepSlide.showsYou(snapshot), let health = snapshot.health {
                 healthCard(health, withSleep: !SleepSlide.shows(snapshot))
             }

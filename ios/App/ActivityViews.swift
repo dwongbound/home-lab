@@ -13,9 +13,9 @@ struct ActivityCard: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// The rings' colours, Apple's order: Move, Exercise, Stand.
-    private static let move = Color(red: 0.98, green: 0.36, blue: 0.45)
-    private static let exercise = Color(red: 0.62, green: 0.93, blue: 0.29)
-    private static let stand = Color(red: 0.36, green: 0.86, blue: 0.95)
+    static let move = Color(red: 0.98, green: 0.36, blue: 0.45)
+    static let exercise = Color(red: 0.62, green: 0.93, blue: 0.29)
+    static let stand = Color(red: 0.36, green: 0.86, blue: 0.95)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -25,6 +25,9 @@ struct ActivityCard: View {
                     .foregroundStyle(Theme.glacier)
                 Text("Activity").font(.subheadline.weight(.semibold))
                 Spacer()
+                if sync.asked {
+                    Text("Details  ›").font(.caption).foregroundStyle(Theme.frostDim)
+                }
             }
             if !sync.asked {
                 askRow

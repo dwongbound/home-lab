@@ -93,6 +93,98 @@ final class ActivitySync: ObservableObject {
         self.glance = glance
     }
 
+    // MARK: Days (the Activity screen)
+
+    /// The last 14 days for the Activity screen, oldest first; nil until read.
+    @Published private(set) var days: [ActivityDay]?
+
+    /// Reads the last 14 days: rings from the watch, then each day's totals.
+    func loadDays(now: Date = Date()) async {
+        guard Self.available, asked else { days = []; return }
+        let calendar = Calendar.current
+        let keys = ActivityDay.keys(count: 14, now: now)
+        guard let first = keys.first.flatMap({ ActivityDay.date($0) }) else { return }
+        var byKey = Dictionary(uniqueKeysWithValues: keys.map { ($0, ActivityDay(day: $0)) })
+        let kcal = HKUnit.kilocalorie()
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        for summary in await activitySummaries(from: first, to: now) {
+            guard let date = summary.dateComponents(for: calendar).date else { continue }
+            let key = ActivityDay.key(date)
+            guard var day = byKey[key] else { continue }
+            day.moveKcal = summary.activeEnergyBurned.doubleValue(for: kcal)
+            day.moveGoal = summary.activeEnergyBurnedGoal.doubleValue(for: kcal)
+            day.exerciseMin = summary.appleExerciseTime.doubleValue(for: .minute())
+            day.exerciseGoal = summary.appleExerciseTimeGoal.doubleValue(for: .minute())
+            day.standHours = summary.appleStandHours.doubleValue(for: .count())
+            day.standGoal = summary.appleStandHoursGoal.doubleValue(for: .count())
+            byKey[key] = day
+        }
+        func fill(_ id: HKQuantityTypeIdentifier, _ option: HKStatisticsOptions, _ unit: HKUnit, _ set: (inout ActivityDay, Double) -> Void) async {
+            for (date, value) in await dated(id, option, unit: unit, from: first, to: now) {
+                let key = ActivityDay.key(date)
+                if var day = byKey[key] { set(&day, value); byKey[key] = day }
+            }
+        }
+        await fill(.stepCount, .cumulativeSum, .count()) { $0.steps = $1 }
+        await fill(.flightsClimbed, .cumulativeSum, .count()) { $0.flights = $1 }
+        await fill(.restingHeartRate, .discreteAverage, bpm) { $0.restingHR = $1 }
+        await fill(.heartRateVariabilitySDNN, .discreteAverage, .secondUnit(with: .milli)) { $0.hrv = $1 }
+        await fill(.walkingHeartRateAverage, .discreteAverage, bpm) { $0.walkingHR = $1 }
+        // Keep any hours already read for a day.
+        let hours = Dictionary(uniqueKeysWithValues: (days ?? []).map { ($0.day, $0.hourlySteps) })
+        days = keys.compactMap { key in
+            var day = byKey[key]
+            day?.hourlySteps = hours[key] ?? []
+            return day
+        }
+    }
+
+    /// Steps in each hour of one day, read when that day is shown.
+    func loadHours(_ key: String) async {
+        guard let start = ActivityDay.date(key), let end = Calendar.current.date(byAdding: .day, value: 1, to: start),
+              let index = days?.firstIndex(where: { $0.day == key }), days?[index].hourlySteps.isEmpty == true else { return }
+        var hours = Array(repeating: 0.0, count: 24)
+        for (date, value) in await dated(.stepCount, .cumulativeSum, unit: .count(), from: start, to: end, step: DateComponents(hour: 1)) {
+            let hour = Calendar.current.component(.hour, from: date)
+            if hours.indices.contains(hour) { hours[hour] += value }
+        }
+        if let index = days?.firstIndex(where: { $0.day == key }) { days?[index].hourlySteps = hours }
+    }
+
+    /// One value per interval (a day unless said), with the interval's start.
+    private func dated(_ id: HKQuantityTypeIdentifier, _ option: HKStatisticsOptions, unit: HKUnit, from: Date, to: Date, step: DateComponents = DateComponents(day: 1)) async -> [(Date, Double)] {
+        await withCheckedContinuation { continuation in
+            let predicate = HKQuery.predicateForSamples(withStart: from, end: to, options: .strictStartDate)
+            let query = HKStatisticsCollectionQuery(quantityType: HKQuantityType(id), quantitySamplePredicate: predicate, options: option,
+                                                    anchorDate: from, intervalComponents: step)
+            query.initialResultsHandler = { _, results, _ in
+                var values: [(Date, Double)] = []
+                results?.enumerateStatistics(from: from, to: to) { stats, _ in
+                    let quantity = option == .cumulativeSum ? stats.sumQuantity() : stats.averageQuantity()
+                    if let quantity, quantity.is(compatibleWith: unit) { values.append((stats.startDate, quantity.doubleValue(for: unit))) }
+                }
+                continuation.resume(returning: values)
+            }
+            store.execute(query)
+        }
+    }
+
+    /// The watch's ring summaries for each day in the range.
+    private func activitySummaries(from: Date, to: Date) async -> [HKActivitySummary] {
+        await withCheckedContinuation { continuation in
+            let calendar = Calendar.current
+            var start = calendar.dateComponents([.era, .year, .month, .day], from: from)
+            var end = calendar.dateComponents([.era, .year, .month, .day], from: to)
+            start.calendar = calendar
+            end.calendar = calendar
+            let predicate = HKQuery.predicate(forActivitySummariesBetweenStart: start, end: end)
+            let query = HKActivitySummaryQuery(predicate: predicate) { _, summaries, _ in
+                continuation.resume(returning: summaries ?? [])
+            }
+            store.execute(query)
+        }
+    }
+
     // MARK: Reading
 
     /// One value per day from `from` to `to` (days with no data left out).

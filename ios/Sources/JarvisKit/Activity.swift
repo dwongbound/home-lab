@@ -87,3 +87,94 @@ public struct ActivityGlance: Equatable, Sendable {
         return format.string(from: NSNumber(value: value.rounded())) ?? "\(Int(value.rounded()))"
     }
 }
+
+/// One day of activity for the Activity screen (Dylan, 2026-11-26: details
+/// when the card is tapped, by day like Diet and Sleep). Read on the phone
+/// from Health; nothing is sent anywhere.
+public struct ActivityDay: Equatable, Sendable, Identifiable {
+    /// "2026-11-26" on the phone's clock.
+    public let day: String
+    public var moveKcal: Double?
+    public var moveGoal: Double?
+    public var exerciseMin: Double?
+    public var exerciseGoal: Double?
+    public var standHours: Double?
+    public var standGoal: Double?
+    public var steps: Double?
+    public var flights: Double?
+    public var restingHR: Double?
+    public var hrv: Double?
+    public var walkingHR: Double?
+    /// Steps in each hour, 24 of them, once the day is opened; empty before.
+    public var hourlySteps: [Double] = []
+
+    public var id: String { day }
+
+    public init(day: String) { self.day = day }
+
+    /// Move, Exercise and Stand as 0…1 (Exercise 30 min and Stand 12 h by default).
+    public var rings: [Double] {
+        [ActivityGlance.fill(moveKcal, goal: moveGoal) ?? 0,
+         ActivityGlance.fill(exerciseMin, goal: exerciseGoal ?? 30) ?? 0,
+         ActivityGlance.fill(standHours, goal: standGoal ?? 12) ?? 0]
+    }
+
+    /// True when Health had anything for the day.
+    public var recorded: Bool {
+        moveKcal != nil || exerciseMin != nil || standHours != nil || steps != nil
+    }
+
+    /// How many of the three rings closed.
+    public var ringsClosed: Int { rings.filter { $0 >= 1 }.count }
+
+    /// "2026-11-26" for a date on the given calendar.
+    public static func key(_ date: Date, calendar: Calendar = .current) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    /// The start of that day, or nil for a bad key.
+    public static func date(_ key: String, calendar: Calendar = .current) -> Date? {
+        let bits = key.split(separator: "-").compactMap { Int($0) }
+        guard bits.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: bits[0], month: bits[1], day: bits[2]))
+    }
+
+    /// "Today", "Yesterday", else "Tuesday, Nov 24".
+    public static func heading(_ key: String, now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard let date = date(key, calendar: calendar) else { return key }
+        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return "Yesterday" }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.timeZone = calendar.timeZone
+        format.dateFormat = "EEEE, MMM d"
+        return format.string(from: date)
+    }
+
+    /// "Tu" and "24" for the week row.
+    public static func weekday(_ key: String, calendar: Calendar = .current) -> String {
+        guard let date = date(key, calendar: calendar) else { return "" }
+        return ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"][calendar.component(.weekday, from: date) - 1]
+    }
+
+    public static func dayNumber(_ key: String) -> String {
+        guard let last = key.split(separator: "-").last, let n = Int(last) else { return "" }
+        return "\(n)"
+    }
+
+    /// The last `count` day keys ending today, oldest first.
+    public static func keys(count: Int, now: Date = Date(), calendar: Calendar = .current) -> [String] {
+        let today = calendar.startOfDay(for: now)
+        return (0..<count).reversed().compactMap { back in
+            calendar.date(byAdding: .day, value: -back, to: today).map { key($0, calendar: calendar) }
+        }
+    }
+
+    /// Average steps over the recorded days, rounded; nil with none.
+    public static func averageSteps(_ days: [ActivityDay]) -> Double? {
+        let steps = days.compactMap(\.steps)
+        guard !steps.isEmpty else { return nil }
+        return (steps.reduce(0, +) / Double(steps.count)).rounded()
+    }
+}
