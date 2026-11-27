@@ -90,7 +90,7 @@ struct TodayView: View {
     @State private var pageShown = false
     /// When the loader first showed, so a fast answer still lets it be seen.
     @State private var loaderSince = Date()
-    /// Which shortcut's screen is up (Reports, Diet or Playbooks).
+    /// Which shortcut's screen is up (Reports, Playbooks, Claude or Memory).
     @State private var shortcut: Shortcut?
     /// The Home drawer: every device, full names.
     @State private var showDevices = false
@@ -98,6 +98,7 @@ struct TodayView: View {
     @State private var showSleep = false
     @State private var showActivity = false
     @State private var showMoney = false
+    @State private var showDiet = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The one-time "send your sleep" card (App/SleepSync.swift).
@@ -119,9 +120,10 @@ struct TodayView: View {
     /// The tile whose screen was opened last.
     @State private var lastOpened: Shortcut?
 
-    /// The three screens the pinned row opens.
+    /// The screens the top row opens (Dylan, 2026-11-26: Reports,
+    /// Playbooks, Claude and Memory; Diet became a card like Sleep).
     enum Shortcut: String, Identifiable {
-        case reports, diet, playbooks
+        case reports, playbooks, claude, memory
         var id: String { rawValue }
     }
 
@@ -137,7 +139,7 @@ struct TodayView: View {
                 ScrollView {
                     GlassGroup {
                         VStack(alignment: .leading, spacing: 14) {
-                            // Reports, Diet and Playbooks scroll with the page
+                            // The shortcut tiles scroll with the page
                             // (Dylan, 2026-11-20: they were pinned).
                             shortcutRow
                             content
@@ -191,6 +193,9 @@ struct TodayView: View {
         .sheet(isPresented: $showSleep) {
             SleepDetailView().environmentObject(app)
         }
+        .sheet(isPresented: $showDiet) {
+            DietView().environmentObject(app)
+        }
         .sheet(isPresented: $showMoney) {
             MoneyDetailView(today: today).environmentObject(app)
         }
@@ -203,8 +208,9 @@ struct TodayView: View {
         .sheet(item: $shortcut, onDismiss: { if let which = lastOpened { markSeen(which, refetch: true) } }) { which in
             switch which {
             case .reports: ReportsListView().environmentObject(app)
-            case .diet: DietView().environmentObject(app)
             case .playbooks: PlaybooksView().environmentObject(app)
+            case .claude: NavigationStack { ClaudeView(today: today).toolbar { SheetClose { shortcut = nil } } }
+            case .memory: NavigationStack { MemoryView().toolbar { ToolbarItem(placement: .topBarLeading) { SheetCloseButton { shortcut = nil } } } }.environmentObject(app)
             }
         }
         .task {
@@ -227,7 +233,7 @@ struct TodayView: View {
         #if DEBUG
         .onAppear {
             let args = ProcessInfo.processInfo.arguments
-            if args.contains("-openDiet") { shortcut = .diet }
+            if args.contains("-openDiet") { showDiet = true }
             if args.contains("-openSleep") { showSleep = true }
             if args.contains("-openDevices") { showDevices = true }
             if args.contains("-openReports") { shortcut = .reports }
@@ -299,6 +305,13 @@ struct TodayView: View {
             }
             // Sleep has its own card when Jarvis sends the sleep slice; the
             // "You" card keeps steps (and minutes asleep from an older Jarvis).
+            // Today's food, a card like Sleep that opens the Diet screen.
+            if DietSlide.shows(snapshot), let food = snapshot.nutrition {
+                Button { showDiet = true } label: {
+                    card("Diet", icon: "fork.knife", trailing: "Details  ›") { DietHeadline(nutrition: food) }
+                }
+                .buttonStyle(.plain)
+            }
             if SleepSlide.shows(snapshot) {
                 sleepCard(SleepSlide.card(snapshot))
             }
@@ -682,8 +695,9 @@ struct TodayView: View {
         HStack(spacing: 10) {
             let _ = seenTick
             tile(.reports, "Reports", "doc.richtext", isNew: reportIds.map { SeenTracker.hasNew(current: $0, seen: SeenStore.reports) } ?? false)
-            tile(.diet, "Diet", "fork.knife", isNew: SeenTracker.dietHasNew(current: SeenTracker.dietMark(today.snapshot?.nutrition), seen: SeenStore.diet))
             tile(.playbooks, "Playbooks", "list.bullet.rectangle", isNew: playbookIds.map { SeenTracker.hasNew(current: $0, seen: SeenStore.playbooks) } ?? false)
+            tile(.claude, "Claude", "chart.pie.fill", isNew: false)
+            tile(.memory, "Memory", "circle.hexagongrid.fill", isNew: false)
         }
     }
 
@@ -736,7 +750,7 @@ struct TodayView: View {
     private func markSeen(_ which: Shortcut, refetch: Bool) {
         switch which {
         case .reports: if let ids = reportIds { SeenStore.seeReports(ids) }
-        case .diet: SeenStore.seeDiet(SeenTracker.dietMark(today.snapshot?.nutrition))
+        case .claude, .memory: break
         case .playbooks:
             if let ids = playbookIds { SeenStore.seePlaybooks(ids) }
             if refetch {

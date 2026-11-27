@@ -929,6 +929,13 @@ struct AlwaysOnView: View {
                 }
             }
             .environment(\.sleepInk, SleepInk(ink: ink, dim: inkDim, faint: inkDim.opacity(0.75), track: inkDim.opacity(0.18)))
+        case .diet:
+            // Today's food at ten feet: calories left and macros.
+            card(which) {
+                if let food = snapshot.nutrition {
+                    DietHeadline(nutrition: food, scale: 2.0, ink: ink, dim: inkDim).staggered(0)
+                }
+            }
         case .health:
             card(which) {
                 HStack(spacing: 60) {

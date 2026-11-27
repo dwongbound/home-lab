@@ -41,12 +41,6 @@ struct SettingsView: View {
                 } footer: {
                     Text("Reached through Tailscale. Tailscale signs you in, so there's no password. Turn on VPN On Demand in the Tailscale app so it reconnects by itself.")
                 }
-                Section {
-                    NavigationLink("Memory") { MemoryView() }
-                    NavigationLink("Claude") { ClaudeView(today: app.today) }
-                } footer: {
-                    Text("What Jarvis remembers, as a web you can drag around. Claude: his plan usage, jobs and project threads.")
-                }
                 VoiceSection()
                 if UIDevice.current.userInterfaceIdiom == .phone {
                     Section {

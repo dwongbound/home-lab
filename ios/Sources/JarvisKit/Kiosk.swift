@@ -21,6 +21,8 @@ public enum KioskPanel: String, CaseIterable, Sendable {
     case schedule, home, work, health
     /// Last night's sleep (the snapshot's `sleep`).
     case sleep
+    /// Today's food: calories left and macros (Dylan, 2026-11-26).
+    case diet
     /// Jarvis's suggestions (offers), titles only.
     case offers
     /// The PC: GPU, memory, disk and processor rings (Dylan, 2026-11-21).
@@ -68,6 +70,7 @@ public enum KioskPlan {
         if !HomeGlance.lines(snapshot.home).isEmpty { out.append(.home) }
         if !(snapshot.jobs?.running.isEmpty ?? true) { out.append(.work) }
         if SleepSlide.shows(snapshot) { out.append(.sleep) }
+        if DietSlide.shows(snapshot) { out.append(.diet) }
         if SleepSlide.showsYou(snapshot) { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.offers) }
         if !snapshot.systemGauges.isEmpty { out.append(.system) }
@@ -462,5 +465,13 @@ public enum HomeScreen: Equatable, Sendable {
     /// Whether a failed try should turn the loader into "couldn't reach".
     public static func gaveUp(misses: Int, sinceFirstTry: Double) -> Bool {
         misses >= missesBeforeFailed || sinceFirstTry >= failAfterSeconds
+    }
+}
+
+/// Whether today's food has a card (Home, kiosk, TV): today's numbers with a goal.
+public enum DietSlide {
+    public static func shows(_ snapshot: Snapshot?, now: Date = Date()) -> Bool {
+        guard let food = snapshot?.nutrition else { return false }
+        return food.goal > 0 && food.isToday(now: now)
     }
 }

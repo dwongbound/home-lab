@@ -237,6 +237,7 @@ struct KioskView: View {
         case .work: workPanel
         case .health: healthPanel
         case .sleep: sleepPanel
+        case .diet: dietPanel
         case .offers: offersPanel
         case .system: systemPanel
         }
@@ -305,6 +306,16 @@ struct KioskView: View {
         frame("From Jarvis", icon: "sparkles") {
             ForEach((today.snapshot?.offers?.offers ?? []).prefix(3)) { offer in
                 Text(offer.title).font(.title3).lineLimit(2)
+            }
+        }
+    }
+
+    /// Today's food: calories left and macros, sized for across the room.
+    @ViewBuilder
+    private var dietPanel: some View {
+        if let food = today.snapshot?.nutrition {
+            frame("Diet", icon: "fork.knife") {
+                DietHeadline(nutrition: food, scale: 1.5)
             }
         }
     }

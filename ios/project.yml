@@ -218,6 +218,7 @@ targets:
       - path: App/Theme.swift
       - path: App/SleepViews.swift
       - path: App/SystemViews.swift
+      - path: App/DietViews.swift
     dependencies:
       - package: JarvisKit
     settings:

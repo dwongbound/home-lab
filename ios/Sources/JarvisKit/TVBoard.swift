@@ -245,6 +245,8 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Last night's sleep: score, time asleep, stages and the week
     /// (Dylan, 2026-11-20). From the snapshot's `sleep`.
     case sleep
+    /// Today's food: calories left and macros (Dylan, 2026-11-26).
+    case diet
 
     /// The card's title.
     public var title: String {
@@ -260,6 +262,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .lookout: return "Lookout"
         case .health: return "You"
         case .sleep: return "Sleep"
+        case .diet: return "Diet"
         case .suggestions: return "Suggestions"
         case .gpu: return "System"
         }
@@ -279,6 +282,7 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .lookout: return "binoculars.fill"
         case .health: return "heart.fill"
         case .sleep: return "bed.double.fill"
+        case .diet: return "fork.knife"
         case .suggestions: return "lightbulb.fill"
         case .gpu: return "desktopcomputer"
         }
@@ -289,7 +293,7 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Lookout says what Jarvis is watching for Dylan and how often he's
     /// messaged him: private too.
     /// Reports can be about anything of his: private as well.
-    public var isPrivate: Bool { self == .health || self == .sleep || self == .suggestions || self == .lookout }
+    public var isPrivate: Bool { self == .health || self == .sleep || self == .diet || self == .suggestions || self == .lookout }
 }
 
 public enum TVBoard {
@@ -317,6 +321,7 @@ public enum TVBoard {
             out.append(.lookout)
         }
         if SleepSlide.shows(snapshot) { out.append(.sleep) }
+        if DietSlide.shows(snapshot) { out.append(.diet) }
         if SleepSlide.showsYou(snapshot) { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.suggestions) }
         // No reports on the TV (Dylan, 2026-11-21): they're read on the iPhone and iPad.
