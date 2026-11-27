@@ -17,13 +17,25 @@ struct DietHeadline: View {
     /// The calorie colour; the macros use the same colours as their bars.
     private static let calories = Color(red: 0.98, green: 0.36, blue: 0.45)
 
-    /// Each ring's fill (0…1) and colour; a macro with no goal is left out.
+    /// Fat and carbs goals as the Diet screen reads them: Jarvis's, else
+    /// the cut's 55 g and 175 g.
+    private var fatGoal: Double? { nutrition.fatGoal ?? DietGoals.defaultFat }
+    private var carbsGoal: Double? { nutrition.carbsGoal ?? DietGoals.defaultCarbs }
+
+    /// All four rings, always (Dylan, 2026-11-27: it showed calories alone
+    /// when Jarvis sent no fat or carbs goal). Nothing eaten yet is an
+    /// empty track; protein with no goal stays an empty track too.
     private var rings: [(fill: Double, tint: Color)] {
-        var out: [(fill: Double, tint: Color)] = [(nutrition.goal > 0 ? min(1, nutrition.eaten / nutrition.goal) : 0, over ? Theme.rose : Self.calories)]
-        for (value, goal, tint) in [(nutrition.protein, nutrition.proteinGoal, Theme.glacier), (nutrition.fat, nutrition.fatGoal, Theme.ember), (nutrition.carbs, nutrition.carbsGoal, Theme.moss)] {
-            if let value, let goal, goal > 0 { out.append((fill: min(1, value / goal), tint: tint)) }
+        func fill(_ value: Double?, _ goal: Double?) -> Double {
+            guard let goal, goal > 0 else { return 0 }
+            return min(1, (value ?? 0) / goal)
         }
-        return out
+        return [
+            (fill(nutrition.eaten, nutrition.goal), over ? Theme.rose : Self.calories),
+            (fill(nutrition.protein, nutrition.proteinGoal), Theme.glacier),
+            (fill(nutrition.fat, fatGoal), Theme.ember),
+            (fill(nutrition.carbs, carbsGoal), Theme.moss),
+        ]
     }
 
     var body: some View {
@@ -36,7 +48,7 @@ struct DietHeadline: View {
                     let inset = CGFloat(index) * (line + 2 * scale) + line / 2
                     Circle().stroke(ring.tint.opacity(0.2), lineWidth: line).padding(inset)
                     Circle()
-                        .trim(from: 0, to: max(0.001, ring.fill))
+                        .trim(from: 0, to: ring.fill)
                         .stroke(ring.tint, style: StrokeStyle(lineWidth: line, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .padding(inset)
@@ -51,9 +63,9 @@ struct DietHeadline: View {
                         .foregroundStyle(over ? Theme.rose : ink)
                     Text(over ? "kcal over" : "kcal left").font(.system(size: 13 * scale)).foregroundStyle(dim)
                 }
-                macro("Protein", nutrition.protein, nutrition.proteinGoal, Theme.glacier)
-                macro("Fat", nutrition.fat, nutrition.fatGoal, Theme.ember)
-                macro("Carbs", nutrition.carbs, nutrition.carbsGoal, Theme.moss)
+                macro("Protein", nutrition.protein ?? 0, nutrition.proteinGoal, Theme.glacier)
+                macro("Fat", nutrition.fat ?? 0, fatGoal, Theme.ember)
+                macro("Carbs", nutrition.carbs ?? 0, carbsGoal, Theme.moss)
             }
         }
         .accessibilityElement(children: .combine)
