@@ -83,6 +83,9 @@ struct MemoryView: View {
                         context.stroke(path, with: .color(.white.opacity(lit ? 0.6 : 0.18)), lineWidth: lit ? 2 : 1)
                     }
                 }
+                .contentShape(Rectangle())
+                // Double-tap the empty space: in a step, or back out once close.
+                .onTapGesture(count: 2) { setZoom(zoom >= 2 ? fitZoom(side) : zoom * 1.6) }
                 ForEach(graph.nodes) { node in
                     bubble(node)
                         .scaleEffect(dragging == node.id ? 1.25 : 1)
@@ -100,13 +103,15 @@ struct MemoryView: View {
             .frame(width: side * z, height: side * z)
         }
         .defaultScrollAnchor(.center)
+        .modifier(KeepCentreWhileZooming(zoom: zoom))
+        .overlay(alignment: .bottomTrailing) { zoomControls(side) }
         // Pinch to zoom, from a quarter size (the whole web) to 2.5×.
         .simultaneousGesture(
             MagnifyGesture()
                 .onChanged { value in
                     let start = pinchStart ?? zoom
                     pinchStart = start
-                    zoom = min(2.5, max(0.25, start * value.magnification))
+                    zoom = min(Self.zoomRange.upperBound, max(Self.zoomRange.lowerBound, start * value.magnification))
                 }
                 .onEnded { _ in pinchStart = nil }
         )
@@ -115,6 +120,43 @@ struct MemoryView: View {
                 spots = MemoryLayout.place(graph, side: side - 80).mapValues { CGPoint(x: $0.x + 40, y: $0.y + 40) }
             }
         }
+    }
+
+    /// The zoom limits: a quarter size (the whole web) to 2.5×.
+    private static let zoomRange: ClosedRange<CGFloat> = 0.25...2.5
+
+    private func setZoom(_ value: CGFloat) {
+        Haptics.play(.tab)
+        withAnimation(.smooth(duration: 0.3)) {
+            zoom = min(Self.zoomRange.upperBound, max(Self.zoomRange.lowerBound, value))
+        }
+    }
+
+    /// The zoom that fits the whole web on screen.
+    private func fitZoom(_ side: Double) -> CGFloat {
+        let screen = UIScreen.main.bounds
+        return min(1, max(Self.zoomRange.lowerBound, min(screen.width, screen.height - 160) / side))
+    }
+
+    /// − / the zoom (tap: fit the whole web) / +, for when pinching is
+    /// awkward (Dylan, 2026-11-27: "allow me to zoom in and out").
+    private func zoomControls(_ side: Double) -> some View {
+        HStack(spacing: 0) {
+            Button { setZoom(zoom / 1.4) } label: { Image(systemName: "minus").frame(width: 44, height: 44) }
+                .disabled(zoom <= Self.zoomRange.lowerBound)
+                .accessibilityLabel("Zoom out")
+            Button { setZoom(fitZoom(side)) } label: {
+                Text("\(Int((zoom * 100).rounded()))%").font(.footnote.weight(.semibold)).monospacedDigit()
+                    .frame(minWidth: 52, minHeight: 44)
+            }
+            .accessibilityLabel("Fit the whole web")
+            Button { setZoom(zoom * 1.4) } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
+                .disabled(zoom >= Self.zoomRange.upperBound)
+                .accessibilityLabel("Zoom in")
+        }
+        .foregroundStyle(Theme.frost)
+        .background(.ultraThinMaterial, in: Capsule())
+        .padding(16)
     }
 
     /// Moves the dragged bubble under the finger and pulls its direct
@@ -171,6 +213,40 @@ struct MemoryView: View {
         case "plan": return Color(red: 0.96, green: 0.84, blue: 0.43)
         case "loop": return Color(red: 1.0, green: 0.56, blue: 0.20)
         default: return Color(white: 0.66)
+        }
+    }
+}
+
+/// Zooming keeps the middle of what you're looking at in the middle,
+/// instead of the web sliding off towards its top-left corner.
+private struct KeepCentreWhileZooming: ViewModifier {
+    let zoom: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, *) {
+            content.modifier(Anchored(zoom: zoom))
+        } else {
+            content
+        }
+    }
+
+    @available(iOS 18, *)
+    private struct Anchored: ViewModifier {
+        let zoom: CGFloat
+        @State private var position = ScrollPosition()
+        @State private var visible: CGRect = .zero
+
+        func body(content: Content) -> some View {
+            content
+                .scrollPosition($position)
+                .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, rect in visible = rect }
+                .onChange(of: zoom) { old, new in
+                    guard old > 0, visible.width > 0 else { return }
+                    let k = new / old
+                    position.scrollTo(point: CGPoint(
+                        x: max(0, visible.midX * k - visible.width / 2),
+                        y: max(0, visible.midY * k - visible.height / 2)))
+                }
         }
     }
 }
