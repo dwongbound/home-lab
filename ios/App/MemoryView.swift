@@ -14,6 +14,9 @@ struct MemoryView: View {
     @State private var open: OpenNode?
     @State private var query = ""
     @State private var asList = false
+    /// Pinch zoom on the web (Dylan, 2026-11-26), and where the pinch started.
+    @State private var zoom: CGFloat = 1
+    @State private var pinchStart: CGFloat?
 
     /// The bubble whose sheet is open.
     struct OpenNode: Identifiable { let id: String }
@@ -64,30 +67,42 @@ struct MemoryView: View {
     /// drag a bubble to move it.
     private func web(_ graph: MemoryGraph) -> some View {
         let side = max(700, Double(graph.nodes.count).squareRoot() * 110)
+        // Spots are kept unzoomed; drawing scales them, drags scale back.
+        let z = zoom
         return ScrollView([.horizontal, .vertical]) {
             ZStack(alignment: .topLeading) {
                 Canvas { context, _ in
                     for link in graph.links {
                         guard let a = spots[link.from], let b = spots[link.to] else { continue }
                         var path = Path()
-                        path.move(to: a)
-                        path.addLine(to: b)
+                        path.move(to: CGPoint(x: a.x * z, y: a.y * z))
+                        path.addLine(to: CGPoint(x: b.x * z, y: b.y * z))
                         context.stroke(path, with: .color(.white.opacity(0.18)), lineWidth: 1)
                     }
                 }
                 ForEach(graph.nodes) { node in
                     bubble(node)
-                        .position(spots[node.id] ?? CGPoint(x: side / 2, y: side / 2))
+                        .position(spots[node.id].map { CGPoint(x: $0.x * z, y: $0.y * z) } ?? CGPoint(x: side * z / 2, y: side * z / 2))
                         .opacity(matches(node) ? 1 : 0.2)
                         .highPriorityGesture(
-                            DragGesture(minimumDistance: 4).onChanged { spots[node.id] = $0.location }
+                            DragGesture(minimumDistance: 4).onChanged { spots[node.id] = CGPoint(x: $0.location.x / z, y: $0.location.y / z) }
                         )
                         .onTapGesture { open = OpenNode(id: node.id) }
                 }
             }
-            .frame(width: side, height: side)
+            .frame(width: side * z, height: side * z)
         }
         .defaultScrollAnchor(.center)
+        // Pinch to zoom, from a quarter size (the whole web) to 2.5×.
+        .simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { value in
+                    let start = pinchStart ?? zoom
+                    pinchStart = start
+                    zoom = min(2.5, max(0.25, start * value.magnification))
+                }
+                .onEnded { _ in pinchStart = nil }
+        )
         .onAppear {
             if spots.isEmpty {
                 spots = MemoryLayout.place(graph, side: side - 80).mapValues { CGPoint(x: $0.x + 40, y: $0.y + 40) }
