@@ -214,8 +214,8 @@ final class ChatModel: ObservableObject {
             }
             if newerOnServer != page.hasNewer { newerOnServer = page.hasNewer }
             lastPending = page.pending
-            for (afterText, item) in settled {
-                let at = afterText.flatMap { text in fresh.lastIndex(where: { $0.text == text }) }.map { $0 + 1 } ?? fresh.endIndex
+            for (anchor, afterText, item) in settled {
+                let at = ApprovalPlace.index(anchor: anchor, afterText: afterText, turnIds: fresh.map(\.turnId), texts: fresh.map(\.text))
                 fresh.insert(item, at: at)
             }
             let known = Set(fresh.map(\.id))
@@ -349,12 +349,14 @@ final class ChatModel: ObservableObject {
         }
     }
 
-    /// Each settled approval with the text of the line before it.
-    private func settledApprovals() -> [(String?, ChatItem)] {
+    /// Each settled approval with the id of the nearest turn above it (and
+    /// the text of the line just before, for lines with no id yet).
+    private func settledApprovals() -> [(Int?, String?, ChatItem)] {
         items.enumerated().compactMap { index, item in
             guard case .approval = item.kind, item.outcome != nil else { return nil }
+            let anchor = items[..<index].last(where: { $0.turnId != nil })?.turnId
             let before = index > 0 ? items[index - 1].text : nil
-            return (before, item)
+            return (anchor, before, item)
         }
     }
 

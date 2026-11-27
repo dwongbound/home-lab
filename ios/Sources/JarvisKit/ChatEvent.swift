@@ -176,6 +176,26 @@ public struct ChatTurn: Codable, Equatable, Sendable {
 /// moves to just above the reply still coming (under the question being
 /// answered); a queued one waits at the end, marked Queued, and moves into
 /// its own turn when its reply starts. Pure, over the chat's lines.
+/// Where a settled approval's one-line entry goes back after a reload
+/// (history doesn't hold them). Anchored by Jarvis's id of the nearest
+/// turn above it, so it can't drift down among later messages (Dylan
+/// 2026-11-27: a Palm Springs approval showed under his dinner chat).
+public enum ApprovalPlace {
+    /// The insert position in `turnIds` (the chat's lines in order, nil for
+    /// a line with no id): just after the anchor turn; if that turn isn't
+    /// on the page, just before the first newer one; with no anchor, after
+    /// the last line whose text matches, else at the end.
+    public static func index(anchor: Int?, afterText: String?, turnIds: [Int?], texts: [String]) -> Int {
+        if let anchor {
+            if let at = turnIds.lastIndex(where: { $0 == anchor }) { return at + 1 }
+            if let newer = turnIds.firstIndex(where: { ($0 ?? Int.min) > anchor }) { return newer }
+            if turnIds.contains(where: { $0 != nil }) { return turnIds.count }
+        }
+        if let afterText, let at = texts.lastIndex(of: afterText) { return at + 1 }
+        return turnIds.count
+    }
+}
+
 public enum SendFlow {
     public struct Line: Equatable, Sendable {
         public let id: String
