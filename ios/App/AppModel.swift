@@ -268,6 +268,15 @@ final class AppModel: ObservableObject {
         talk.showSettled(id, line: nil)
     }
 
+    /// While Chat is the page on screen and the app is in front, notices
+    /// about messages it's showing are read already: cleared everywhere
+    /// so they never light a dot or raise the count (Dylan 2026-11-27).
+    func clearSeenInChat() {
+        guard tab == .chat, !showNotices, UIApplication.shared.applicationState == .active else { return }
+        let ids = Notices.seenInChat(notices, turnIds: Set(chat.items.compactMap(\.turnId)))
+        if !ids.isEmpty { Task { await clearNotices(ids) } }
+    }
+
     /// Clears notices everywhere (the server clears them for every device);
     /// they fade here at once and come back if the server didn't hear. The
     /// snapshot is fetched again right after, so this device is current.

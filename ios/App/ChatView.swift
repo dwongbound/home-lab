@@ -140,12 +140,20 @@ struct ChatView: View {
         // freeze, 2026-11-20).
         .task { if app.tab == .chat { await chat.ensureLoaded(app: app) } }
         .onChange(of: pageOffScreen) { _, away in
-            if !away { Task { await chat.ensureLoaded(app: app) } }
+            if !away {
+                Task {
+                    await chat.ensureLoaded(app: app)
+                    app.clearSeenInChat()
+                }
+            }
         }
         // Back in the app: a reply that finished while it was away.
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                Task { chat.loaded ? await chat.catchUp(app: app) : await chat.ensureLoaded(app: app) }
+                Task {
+                    chat.loaded ? await chat.catchUp(app: app) : await chat.ensureLoaded(app: app)
+                    app.clearSeenInChat()
+                }
             }
         }
         .sheet(item: $flagging) { item in

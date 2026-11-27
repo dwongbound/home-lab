@@ -44,7 +44,12 @@ final class TodayModel: ObservableObject {
             let chat = app.chat
             if chat.loaded, !chat.isSending, let newest = chat.items.compactMap(\.turnId).max(),
                (snapshot?.notices ?? []).contains(where: { ($0.turnId ?? 0) > newest }) {
-                Task { await chat.load(app: app) }
+                Task {
+                    await chat.load(app: app)
+                    app.clearSeenInChat()
+                }
+            } else {
+                app.clearSeenInChat()
             }
             problem = nil
             app.noteReach(nil)

@@ -85,6 +85,15 @@ public struct Notice: Decodable, Identifiable, Equatable, Sendable {
 }
 
 public enum Notices {
+    /// Notices about chat messages already on the screen he's looking at
+    /// (Dylan 2026-11-27: "if im already texting jarvis and i get a notif,
+    /// it shouldnt increment my notifcations"): unread, about a turn in
+    /// `turnIds`, and not an approval still waiting on him (its card is the
+    /// thing to answer). Kept ones are never touched.
+    public static func seenInChat(_ notices: [Notice], turnIds: Set<Int>) -> [String] {
+        notices.filter { !$0.kept && $0.approvalId == nil && $0.turnId.map(turnIds.contains) == true }.map(\.id)
+    }
+
     /// The most pips drawn round an orb; more still count.
     public static let maxPips = Int.max
 

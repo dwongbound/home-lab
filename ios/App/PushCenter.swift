@@ -145,7 +145,10 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
                 // A reply to the chat he's looking at: it's already on
                 // screen (the app catches up), so no banner or sound.
                 if turnId != nil, app.tab == .chat {
-                    Task { await app.chat.catchUp(app: app) }
+                    Task {
+                        await app.chat.catchUp(app: app)
+                        app.clearSeenInChat()
+                    }
                     done([.list])
                 } else {
                     done([.banner, .list, .sound])
