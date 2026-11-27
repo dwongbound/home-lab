@@ -36,8 +36,11 @@ public struct ClaudeUsage: Decodable, Sendable, Equatable {
     public let limits: [Limit]?
     public let today: [Kind]
     public let days: [Day]
+    /// Jarvis's daily background budget and what he's spent of it today.
+    public let dailyUsd: Double?
+    public let spentUsd: Double?
 
-    enum CodingKeys: String, CodingKey { case limits, today, days }
+    enum CodingKeys: String, CodingKey { case limits, today, days, dailyUsd, spentUsd }
 
     /// Lists that won't decode read as empty, missing limits as nil.
     public init(from decoder: Decoder) throws {
@@ -45,6 +48,8 @@ public struct ClaudeUsage: Decodable, Sendable, Equatable {
         limits = (try? c.decodeIfPresent([Limit].self, forKey: .limits)) ?? nil
         today = ((try? c.decodeIfPresent([Kind].self, forKey: .today)) ?? nil) ?? []
         days = ((try? c.decodeIfPresent([Day].self, forKey: .days)) ?? nil) ?? []
+        dailyUsd = (try? c.decodeIfPresent(Double.self, forKey: .dailyUsd)) ?? nil
+        spentUsd = (try? c.decodeIfPresent(Double.self, forKey: .spentUsd)) ?? nil
     }
 
     /// The session limit, then the weekly one, whichever Jarvis sent.
@@ -60,6 +65,22 @@ public struct ClaudeUsage: Decodable, Sendable, Equatable {
     public var kindsByUse: [Kind] {
         today.sorted { ($0.tokens ?? 0, $0.usd ?? 0) > ($1.tokens ?? 0, $1.usd ?? 0) }
     }
+
+    /// Today's background spend in dollars, all kinds added up.
+    public var todayUSD: Double { spentUsd ?? today.reduce(0) { $0 + ($1.usd ?? 0) } }
+    /// The week's background spend in dollars.
+    public var weekUSD: Double { days.reduce(0) { $0 + ($1.usd ?? 0) } }
+    /// Today's tokens, nil when Jarvis counts none.
+    public var todayTokens: Int? { today.contains { $0.tokens != nil } ? today.reduce(0) { $0 + ($1.tokens ?? 0) } : nil }
+    /// The week's tokens, nil when Jarvis counts none.
+    public var weekTokens: Int? { hasTokens ? days.reduce(0) { $0 + ($1.tokens ?? 0) } : nil }
+    /// Today's Claude calls, nil when Jarvis counts none.
+    public var todayCalls: Int? { today.contains { $0.calls != nil } ? today.reduce(0) { $0 + ($1.calls ?? 0) } : nil }
+    /// The average day's spend this week, over the days in the list.
+    public var dailyAverageUSD: Double { days.isEmpty ? 0 : weekUSD / Double(days.count) }
+
+    /// "$0.42", "$12.30".
+    public static func dollars(_ usd: Double) -> String { String(format: "$%.2f", usd) }
 
     /// "Session", "Weekly".
     public static func limitName(_ name: String) -> String {

@@ -2,12 +2,19 @@
 // rings with reset times, tokens this week as bars and by kind of work;
 // what's running and today's jobs; the Claude project threads. All read
 // from the snapshot the app already loads, so it adds no requests.
+// Dylan 2026-11-26 5:27 PM: "show more information… like total cost" and
+// "make the plots and graphs more interactive": cost tiles, a bar chart you
+// tap or scrub for each day's numbers, tappable rings and kind rows.
 import SwiftUI
 import JarvisKit
 
 struct ClaudeView: View {
     @ObservedObject var today: TodayModel
     @State private var tab = 0
+    /// The bars show dollars instead of tokens.
+    @State private var showCost = false
+    /// Kinds opened to show their calls, tokens and dollars.
+    @State private var opened: Set<String> = []
 
     /// Claude's orange, as on the chat chip.
     static let claude = Color(red: 0xe8 / 255, green: 0x94 / 255, blue: 0x6a / 255)
@@ -54,16 +61,35 @@ struct ClaudeView: View {
                     .padding(.vertical, 8)
                 }
             }
+            Section("Cost") {
+                CostTiles(use: use)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
+            }
+            let tokens = use.hasTokens && !showCost
             Section {
-                WeekBars(days: use.days, tokens: use.hasTokens)
-                    .frame(height: 90)
+                if use.hasTokens {
+                    Picker("Bars show", selection: $showCost) {
+                        Text("Tokens").tag(false)
+                        Text("Cost").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: showCost) { _, _ in Haptics.play(.tab) }
+                }
+                WeekBars(days: use.days, tokens: tokens)
                     .padding(.vertical, 6)
                 ForEach(use.kindsByUse) { kind in
-                    KindRow(kind: kind, top: use.kindsByUse.first, tokens: use.hasTokens)
+                    KindRow(kind: kind, top: use.kindsByUse.first, tokens: tokens, open: opened.contains(kind.kind))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            Haptics.play(.tab)
+                            withAnimation(.snappy) {
+                                if opened.contains(kind.kind) { opened.remove(kind.kind) } else { opened.insert(kind.kind) }
+                            }
+                        }
                 }
                 .fullWidthSeparators()
             } header: {
-                Text(use.hasTokens ? "Tokens this week" : "Spend this week")
+                Text(tokens ? "Tokens this week" : "Spend this week")
             } footer: {
                 Text(use.rings.isEmpty
                      ? "Plan usage shows once Jarvis has made a Claude call since his last restart. Dollars are background jobs only, at API prices."
@@ -169,25 +195,40 @@ struct ClaudeView: View {
     }
 }
 
-/// One plan limit as a ring with its percent, name and reset time.
+/// One plan limit as a ring with its percent, name and reset time; a tap
+/// flips between used and left, and the ring fills in when it first shows.
 private struct LimitRing: View {
     let limit: ClaudeUsage.Limit
     let tint: Color
+    @State private var showLeft = false
+    @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var used: Int { min(max(limit.usedPct, 0), 100) }
 
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
                 Circle().stroke(Color.white.opacity(0.1), lineWidth: 11)
                 Circle()
-                    .trim(from: 0, to: CGFloat(min(max(limit.usedPct, 0), 100)) / 100)
+                    .trim(from: 0, to: shown ? CGFloat(used) / 100 : 0)
                     .stroke(tint, style: StrokeStyle(lineWidth: 11, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 0) {
-                    Text("\(limit.usedPct)%").font(.title3.weight(.semibold)).monospacedDigit()
-                    Text(ClaudeUsage.limitName(limit.name)).font(.caption2).foregroundStyle(Theme.frostDim)
+                    Text("\(showLeft ? 100 - used : used)%").font(.title3.weight(.semibold)).monospacedDigit()
+                        .contentTransition(.numericText())
+                    Text(ClaudeUsage.limitName(limit.name) + (showLeft ? " left" : " used")).font(.caption2).foregroundStyle(Theme.frostDim)
                 }
             }
             .frame(width: 100, height: 100)
+            .contentShape(Circle())
+            .onTapGesture {
+                Haptics.play(.tab)
+                withAnimation(.snappy) { showLeft.toggle() }
+            }
+            .onAppear {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.8)) { shown = true }
+            }
             if let reset = ClaudeUsage.resetWords(limit.resetsAt) {
                 Text(reset).font(.caption).foregroundStyle(Theme.frostDim)
             }
@@ -196,31 +237,137 @@ private struct LimitRing: View {
     }
 }
 
-/// Seven bars, today solid and the rest faded; tokens, or dollars without them.
+/// Seven bars, the picked day solid and the rest faded; tokens, or dollars.
+/// Tap a bar or slide a finger across them to read that day's numbers above;
+/// a dashed line marks the week's average.
 private struct WeekBars: View {
     let days: [ClaudeUsage.Day]
     let tokens: Bool
+    /// The picked day (nil: today, the last one).
+    @State private var picked: String?
 
     private func value(_ day: ClaudeUsage.Day) -> Double {
         tokens ? Double(day.tokens ?? 0) : (day.usd ?? 0)
     }
 
+    private var current: ClaudeUsage.Day? {
+        days.first { $0.date == picked } ?? days.last
+    }
+
+    /// "Today", or "Tue, Nov 25".
+    private static func heading(_ date: String) -> String {
+        if date == ActivityDay.key(Date()) { return "Today" }
+        guard let day = ActivityDay.date(date) else { return date }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US")
+        format.dateFormat = "EEE, MMM d"
+        return format.string(from: day)
+    }
+
+    /// "1.2M tokens · $1.00" for a day.
+    private static func words(_ day: ClaudeUsage.Day) -> String {
+        var parts: [String] = []
+        if let t = day.tokens { parts.append(ClaudeUsage.tokenWords(t) + " tokens") }
+        parts.append(ClaudeUsage.dollars(day.usd ?? 0))
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
         let top = max(days.map(value).max() ?? 0, 1e-9)
-        HStack(alignment: .bottom, spacing: 6) {
-            ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
-                VStack(spacing: 4) {
-                    Spacer(minLength: 0)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(ClaudeView.claude.opacity(index == days.count - 1 ? 1 : 0.5))
-                        .frame(height: max(2, 64 * value(day) / top))
-                    Text(ClaudeUsage.dayLetter(day.date)).font(.caption2).foregroundStyle(Theme.frostFaint)
+        let average = days.isEmpty ? 0 : days.map(value).reduce(0, +) / Double(days.count)
+        VStack(alignment: .leading, spacing: 8) {
+            if let current {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(Self.heading(current.date)).font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text(Self.words(current)).font(.subheadline).foregroundStyle(Theme.frostDim).monospacedDigit()
+                        .contentTransition(.numericText())
                 }
-                .frame(maxWidth: .infinity)
+            }
+            GeometryReader { geo in
+                let width = geo.size.width / CGFloat(max(days.count, 1))
+                ZStack(alignment: .bottomLeading) {
+                    HStack(alignment: .bottom, spacing: 6) {
+                        ForEach(days) { day in
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(ClaudeView.claude.opacity(day.date == current?.date ? 1 : 0.4))
+                                .frame(height: max(2, 64 * value(day) / top))
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    // The week's average as a dashed line across the bars.
+                    if average > 0 {
+                        Path { path in
+                            let y = 64 - 64 * average / top
+                            path.move(to: CGPoint(x: 0, y: y))
+                            path.addLine(to: CGPoint(x: geo.size.width, y: y))
+                        }
+                        .stroke(Theme.frostFaint, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .frame(height: 64)
+                    }
+                }
+                .frame(height: 64, alignment: .bottom)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                    let index = min(max(Int(drag.location.x / width), 0), days.count - 1)
+                    guard days.indices.contains(index), days[index].date != current?.date else { return }
+                    Haptics.play(.tab)
+                    withAnimation(.snappy(duration: 0.2)) { picked = days[index].date }
+                })
+            }
+            .frame(height: 64)
+            HStack(spacing: 6) {
+                ForEach(days) { day in
+                    Text(ClaudeUsage.dayLetter(day.date)).font(.caption2.weight(day.date == current?.date ? .bold : .regular))
+                        .foregroundStyle(day.date == current?.date ? Theme.frost : Theme.frostFaint)
+                        .frame(maxWidth: .infinity)
+                }
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tokens ? "Tokens each day this week" : "Spend each day this week")
+        .accessibilityValue(current.map { Self.heading($0.date) + ", " + Self.words($0) } ?? "")
+        .accessibilityAdjustableAction { direction in
+            guard let at = days.firstIndex(where: { $0.date == current?.date }) else { return }
+            let next = direction == .increment ? at + 1 : at - 1
+            if days.indices.contains(next) { picked = days[next].date }
+        }
+    }
+}
+
+/// Today's and the week's spend, tokens and calls as small tiles; today's
+/// spend has a bar against Jarvis's daily background budget.
+private struct CostTiles: View {
+    let use: ClaudeUsage
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            tile("Today", ClaudeUsage.dollars(use.todayUSD), note: use.dailyUsd.map { "of \(ClaudeUsage.dollars($0)) budget" }, fill: use.dailyUsd.map { $0 > 0 ? use.todayUSD / $0 : 0 })
+            tile("This week", ClaudeUsage.dollars(use.weekUSD), note: "\(ClaudeUsage.dollars(use.dailyAverageUSD)) a day", fill: nil)
+            if let tokens = use.todayTokens { tile("Tokens today", ClaudeUsage.tokenWords(tokens), note: use.weekTokens.map { ClaudeUsage.tokenWords($0) + " this week" }, fill: nil) }
+            if let calls = use.todayCalls { tile("Calls today", "\(calls)", note: "\(use.today.count) kinds of work", fill: nil) }
+        }
+    }
+
+    /// A tile: name, big number, a note and, for the budget, a thin bar.
+    private func tile(_ title: String, _ value: String, note: String?, fill: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(Theme.frostDim)
+            Text(value).font(.system(size: 22, weight: .bold, design: .rounded)).monospacedDigit()
+            if let fill {
+                Capsule().fill(Color.white.opacity(0.1)).frame(height: 5)
+                    .overlay(alignment: .leading) {
+                        GeometryReader { geo in
+                            Capsule().fill(fill > 1 ? Theme.rose : ClaudeView.claude).frame(width: geo.size.width * min(max(fill, 0), 1))
+                        }
+                    }
+            }
+            if let note { Text(note).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(1) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.06)))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -229,6 +376,8 @@ private struct KindRow: View {
     let kind: ClaudeUsage.Kind
     let top: ClaudeUsage.Kind?
     let tokens: Bool
+    /// Opened by a tap: a second line with calls, tokens and dollars.
+    var open = false
 
     private var share: Double {
         if tokens { return Double(kind.tokens ?? 0) / Double(max(top?.tokens ?? 1, 1)) }
@@ -242,18 +391,34 @@ private struct KindRow: View {
         return parts.joined(separator: " · ")
     }
 
+    /// "9 calls · 900K tokens · $0.00".
+    private var details: String {
+        var parts: [String] = []
+        if let calls = kind.calls { parts.append("\(calls) call" + (calls == 1 ? "" : "s")) }
+        if let t = kind.tokens { parts.append(ClaudeUsage.tokenWords(t) + " tokens") }
+        parts.append(ClaudeUsage.dollars(kind.usd ?? 0))
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
-        HStack(spacing: 10) {
-            Text(ClaudeUsage.kindName(kind.kind)).lineLimit(1)
-            Spacer()
-            Capsule().fill(Color.white.opacity(0.1)).frame(width: 60, height: 6)
-                .overlay(alignment: .leading) {
-                    Capsule().fill(ClaudeView.claude).frame(width: 60 * min(max(share, 0), 1), height: 6)
-                }
-            Text(words).font(.subheadline).foregroundStyle(Theme.frostDim).monospacedDigit()
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text(ClaudeUsage.kindName(kind.kind)).lineLimit(1)
+                Spacer()
+                Capsule().fill(Color.white.opacity(0.1)).frame(width: 60, height: 6)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(ClaudeView.claude).frame(width: 60 * min(max(share, 0), 1), height: 6)
+                    }
+                Text(words).font(.subheadline).foregroundStyle(Theme.frostDim).monospacedDigit()
+            }
+            if open {
+                Text(details).font(.caption).foregroundStyle(Theme.frostDim).monospacedDigit()
+                    .transition(.opacity)
+            }
         }
         .frame(minHeight: 44)
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
     }
 }
 

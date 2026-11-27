@@ -19,6 +19,15 @@ final class ClaudeUsageTests: XCTestCase {
         XCTAssertEqual(use.kindsByUse.map(\.kind), ["chat", "lookout"])
         XCTAssertEqual(snapshot.threads.map(\.stateWord), ["Needs you"])
         XCTAssertEqual(snapshot.jobs?.jobs.first?.nextRun, "2026-11-27T11:30:00Z")
+        // Totals: today's spend is Jarvis's own figure; the week adds the days.
+        XCTAssertEqual(use.todayUSD, 1.2, accuracy: 0.001)
+        XCTAssertEqual(use.weekUSD, 3, accuracy: 0.001)
+        XCTAssertEqual(use.dailyAverageUSD, 1.5, accuracy: 0.001)
+        XCTAssertEqual(use.dailyUsd, 6)
+        XCTAssertEqual(use.todayTokens, 1_200_000)
+        XCTAssertEqual(use.weekTokens, 5)
+        XCTAssertEqual(use.todayCalls, 12)
+        XCTAssertEqual(ClaudeUsage.dollars(0.4), "$0.40")
     }
 
     /// An older Jarvis: no limits, no tokens, still decodes.
