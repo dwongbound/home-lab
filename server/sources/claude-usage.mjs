@@ -45,7 +45,8 @@ function parseLimits(raw) {
 /**
  * Jarvis's usage as the apps': `{dailyUsd, spentUsd, level, limits, today, days}`.
  * `today` is use by kind (his background jobs, plus "chat" and "talk" turns), biggest first;
- * `days` is oldest first. The budget (`dailyUsd`, `spentUsd`, `level`) covers background jobs only.
+ * `days` is oldest first. `level` follows the plan limits (slow at 80% of the session or weekly
+ * allowance, held at 95%); `dailyUsd` and `spentUsd` cover background jobs and are information only.
  * Null when the budget or today's spend isn't a number (an older Jarvis).
  */
 export function parseClaudeUsage(raw) {
