@@ -73,6 +73,40 @@ public struct NowNext: Equatable, Sendable {
     /// The pick. Calendar events (they have ends and places) come first;
     /// Jarvis's own jobs on the agenda are left out, they aren't plans.
     public static func pick(events: [CalendarEvent], agenda: [AgendaItem], now: Date, calendar: Calendar = .current) -> NowNext? {
+        let timed = plans(events: events, agenda: agenda)
+        if let on = timed.last(where: { $0.start <= now && ($0.end ?? $0.start.addingTimeInterval(assumedLength)) > now }) {
+            return NowNext(kind: .now, title: on.title, start: on.start, end: on.end, location: on.location)
+        }
+        return upcoming(timed, now: now, calendar: calendar)
+    }
+
+    /// What comes after the event on now (Dylan, 2026-11-24: "mention whats
+    /// next and when (thats probably more important)"): the next one later
+    /// today, or after 6 PM tomorrow's first. Nil when nothing is on now
+    /// (then `pick` already is the next one) or nothing follows.
+    public static func after(events: [CalendarEvent], agenda: [AgendaItem], now: Date, calendar: Calendar = .current) -> NowNext? {
+        guard let current = pick(events: events, agenda: agenda, now: now, calendar: calendar), current.kind == .now else { return nil }
+        let later = plans(events: events, agenda: agenda).filter { $0.start > current.start && $0.title != current.title }
+        return upcoming(later, now: now, calendar: calendar)
+    }
+
+    /// The first of `timed` still to start today, else tomorrow's first from 6 PM.
+    private static func upcoming(_ timed: [NowNext], now: Date, calendar: Calendar) -> NowNext? {
+        if let next = timed.first(where: { $0.start > now && calendar.isDate($0.start, inSameDayAs: now) }) {
+            return next
+        }
+        if calendar.component(.hour, from: now) >= eveningHour,
+           let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
+           let first = timed.first(where: { calendar.isDate($0.start, inSameDayAs: tomorrow) }) {
+            return NowNext(kind: .tomorrow, title: first.title, start: first.start, end: first.end, location: first.location)
+        }
+        return nil
+    }
+
+    /// Calendar events and the agenda's own plans, as one list by start time.
+    /// Calendar events (they have ends and places) come first; Jarvis's own
+    /// jobs on the agenda are left out, they aren't plans.
+    private static func plans(events: [CalendarEvent], agenda: [AgendaItem]) -> [NowNext] {
         var timed: [NowNext] = events.compactMap { event in
             guard event.allDay != true, let start = AgendaTime.parse(event.start) else { return nil }
             let end = event.end.flatMap(AgendaTime.parse)
@@ -85,18 +119,13 @@ public struct NowNext: Equatable, Sendable {
             timed.append(NowNext(kind: .next, title: item.title, start: start, end: nil, location: nil))
         }
         timed.sort { $0.start < $1.start }
-        if let on = timed.last(where: { $0.start <= now && ($0.end ?? $0.start.addingTimeInterval(assumedLength)) > now }) {
-            return NowNext(kind: .now, title: on.title, start: on.start, end: on.end, location: on.location)
-        }
-        if let next = timed.first(where: { $0.start > now && calendar.isDate($0.start, inSameDayAs: now) }) {
-            return next
-        }
-        if calendar.component(.hour, from: now) >= eveningHour,
-           let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
-           let first = timed.first(where: { calendar.isDate($0.start, inSameDayAs: tomorrow) }) {
-            return NowNext(kind: .tomorrow, title: first.title, start: first.start, end: first.end, location: first.location)
-        }
-        return nil
+        return timed
+    }
+
+    /// "7:30 PM", "Tomorrow 9:00 AM": when it starts, for the strip.
+    public func when(timeZone: TimeZone = .current) -> String {
+        let clock = Self.clock(start, timeZone: timeZone)
+        return kind == .tomorrow ? "Tomorrow \(clock)" : clock
     }
 
     /// True for the agenda's Jarvis jobs ("Jarvis: Marketplace scan").
@@ -208,6 +237,16 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Jarvis's message (the greeting's full text), first in the rotation.
     case message
     case today, tasks, home, playing, forecast, jarvis, lookout, health, suggestions
+    /// Every home device, grouped, lit when on (Dylan, 2026-11-20: "make
+    /// sure theres a device slide on apple tv"). Display only.
+    case devices
+    /// Who's using the graphics card, as a pie.
+    case gpu
+    /// Last night's sleep: score, time asleep, stages and the week
+    /// (Dylan, 2026-11-20). From the snapshot's `sleep`.
+    case sleep
+    /// Today's food: calories left and macros (Dylan, 2026-11-26).
+    case diet
 
     /// The card's title.
     public var title: String {
@@ -216,12 +255,16 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .today: return "Today"
         case .tasks: return "Active tasks"
         case .home: return "Home"
+        case .devices: return "Devices"
         case .playing: return "Now playing"
         case .forecast: return "Next hours"
         case .jarvis: return "Jarvis"
         case .lookout: return "Lookout"
         case .health: return "You"
+        case .sleep: return "Sleep"
+        case .diet: return "Diet"
         case .suggestions: return "Suggestions"
+        case .gpu: return "System"
         }
     }
 
@@ -232,12 +275,16 @@ public enum TVCard: String, CaseIterable, Sendable {
         case .today: return "calendar"
         case .tasks: return "gearshape.2.fill"
         case .home: return "house.fill"
+        case .devices: return "lightbulb.2.fill"
         case .playing: return "play.circle.fill"
         case .forecast: return "cloud.sun.fill"
         case .jarvis: return "sparkles"
         case .lookout: return "binoculars.fill"
         case .health: return "heart.fill"
+        case .sleep: return "bed.double.fill"
+        case .diet: return "fork.knife"
         case .suggestions: return "lightbulb.fill"
+        case .gpu: return "desktopcomputer"
         }
     }
 
@@ -245,7 +292,8 @@ public enum TVCard: String, CaseIterable, Sendable {
     /// Jarvis's suggestions, which can quote personal things).
     /// Lookout says what Jarvis is watching for Dylan and how often he's
     /// messaged him: private too.
-    public var isPrivate: Bool { self == .health || self == .suggestions || self == .lookout }
+    /// Reports can be about anything of his: private as well.
+    public var isPrivate: Bool { self == .health || self == .sleep || self == .diet || self == .suggestions || self == .lookout }
 }
 
 public enum TVBoard {
@@ -263,6 +311,7 @@ public enum TVBoard {
         if greeting(snapshot, guest: guest)?.body != nil { out.append(.message) }
         if !TodayTimeline.rows(snapshot.today, events: snapshot.events, now: Date(), guest: guest).isEmpty { out.append(.today) }
         if !HomeGlance.lines(snapshot.home).isEmpty { out.append(.home) }
+        if !(snapshot.home?.devices ?? []).isEmpty { out.append(.devices) }
         if !playing(snapshot.home).isEmpty { out.append(.playing) }
         if (snapshot.home?.forecast?.count ?? 0) >= 3 { out.append(.forecast) }
         // What Jarvis is chasing down, with live timers (Dylan, 2026-11-18).
@@ -271,8 +320,13 @@ public enum TVBoard {
         if let lookout = snapshot.jobs?.lookout, !lookout.watching.isEmpty || (snapshot.jobs?.messenger?.sentToday ?? 0) > 0 || !lookout.checks.isEmpty {
             out.append(.lookout)
         }
-        if snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil { out.append(.health) }
+        if SleepSlide.shows(snapshot) { out.append(.sleep) }
+        if DietSlide.shows(snapshot) { out.append(.diet) }
+        if SleepSlide.showsYou(snapshot) { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.suggestions) }
+        // No reports on the TV (Dylan, 2026-11-21): they're read on the iPhone and iPad.
+        // The PC (rawValue "gpu" kept so `-tvCard gpu` still works).
+        if !snapshot.systemGauges.isEmpty { out.append(.gpu) }
         return guest ? out.filter { !$0.isPrivate } : out
     }
 
@@ -299,6 +353,13 @@ public enum TVBoard {
     public static func hero(_ snapshot: Snapshot, now: Date, guest: Bool) -> NowNext? {
         guard let pick = NowNext.pick(events: snapshot.events, agenda: snapshot.today, now: now) else { return nil }
         return guest ? NowNext(kind: pick.kind, title: pick.title, start: pick.start, end: pick.end, location: nil) : pick
+    }
+
+    /// What follows the event on now, for the strip's Next side; nil when
+    /// nothing is on now (the hero already is the next one).
+    public static func after(_ snapshot: Snapshot, now: Date, guest: Bool) -> NowNext? {
+        guard let next = NowNext.after(events: snapshot.events, agenda: snapshot.today, now: now) else { return nil }
+        return guest ? NowNext(kind: next.kind, title: next.title, start: next.start, end: next.end, location: nil) : next
     }
 
     /// The greeting as the TV shows it: the short headline across the top
@@ -359,6 +420,14 @@ public enum StatusChips {
 /// stars, the dimmed orb and one line if something's on before 10 AM. Any
 /// press on the remote brings the full board back for a minute.
 public enum NightCalm {
+    /// How bright the night view's words are (Dylan, 2026-11-19: the white
+    /// letters and numbers "are too bright" in a dark bedroom): the big
+    /// clock at 40%, the date and the morning line a little lower at 32%.
+    public static let clockOpacity = 0.40
+    public static let secondaryOpacity = 0.32
+    /// The big orb behind the clock: dim and low, so the room stays dark.
+    public static let orbOpacity = 0.16
+
     /// When the calm layout starts (Dylan: "not from midnight, from 2:30 am").
     public static let startHour = 2, startMinute = 30
     /// Minutes before sunrise the full board comes back.

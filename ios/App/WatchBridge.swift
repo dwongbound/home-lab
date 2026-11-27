@@ -39,6 +39,17 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    /// Talk from the Watch: "start", "stop", or JSON for Jarvis (WatchTalkRelay).
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        guard let talk = message["talk"] as? String else { return }
+        WatchTalkRelay.shared.handle(talk, client: client)
+    }
+
+    /// The Watch's microphone during Talk.
+    func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
+        WatchTalkRelay.shared.audio(messageData)
+    }
+
     /// Hands the Watch its board and complication data after each snapshot,
     /// in the background where iOS allows (the latest one wins). No money:
     /// the board carries notices, tasks and what's next only.

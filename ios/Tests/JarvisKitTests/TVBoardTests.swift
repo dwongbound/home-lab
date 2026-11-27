@@ -42,6 +42,23 @@ final class TVBoardTests: XCTestCase {
         XCTAssertEqual(next?.countdown(now: at(15)), "in 5 h")
     }
 
+    func testAfterGivesWhatFollowsTheEventOnNow() {
+        let events = [
+            CalendarEvent(id: "a", title: "Lunch with Sam", start: iso(at(12)), end: iso(at(13)), location: "Tender Greens"),
+            CalendarEvent(id: "b", title: "Rehearsal", start: iso(at(20)), end: iso(at(22))),
+            CalendarEvent(id: "c", title: "Dentist", start: iso(at(9, day: 18)), end: nil),
+        ]
+        let after = NowNext.after(events: events, agenda: [], now: at(12, 18), calendar: la)
+        XCTAssertEqual(after?.title, "Rehearsal")
+        XCTAssertEqual(after?.when(timeZone: la.timeZone), "8:00 PM")
+        // Nothing on now: the pick itself is the next one, so no "after".
+        XCTAssertNil(NowNext.after(events: events, agenda: [], now: at(15), calendar: la))
+        // On now in the evening with nothing else today: tomorrow's first.
+        let late = NowNext.after(events: events, agenda: [], now: at(21), calendar: la)
+        XCTAssertEqual(late?.kind, .tomorrow)
+        XCTAssertEqual(late?.when(timeZone: la.timeZone), "Tomorrow 9:00 AM")
+    }
+
     func testTomorrowShowsOnlyInTheEveningWhenTodayIsDone() {
         let events = [CalendarEvent(id: "c", title: "Dentist", start: iso(at(9, day: 18)), end: nil)]
         XCTAssertNil(NowNext.pick(events: events, agenda: [], now: at(15), calendar: la))
@@ -214,5 +231,20 @@ final class CardSwipeTests: XCTestCase {
         XCTAssertTrue(CardSwipe.autoAdvanceAllowed(lastSwipe: nil, now: now))
         XCTAssertFalse(CardSwipe.autoAdvanceAllowed(lastSwipe: now.addingTimeInterval(-30), now: now))
         XCTAssertTrue(CardSwipe.autoAdvanceAllowed(lastSwipe: now.addingTimeInterval(-61), now: now))
+    }
+
+    /// The Devices card joins the rotation after Home whenever there are
+    /// devices, guests included (it's the house, not Dylan).
+    func testDevicesCardFollowsHomeWhenThereAreDevices() throws {
+        let json = #"{"generatedAt":"x","services":[],"today":[],"home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"heat","detail":"heating","current":68,"target":70},{"id":"l","name":"Bedroom Lamp","kind":"light","state":"on"}]}}"#
+        let s = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+        let cards = TVBoard.cards(s, guest: false)
+        XCTAssertTrue(cards.contains(.devices))
+        if let home = cards.firstIndex(of: .home), let devices = cards.firstIndex(of: .devices) {
+            XCTAssertEqual(devices, home + 1)
+        }
+        XCTAssertTrue(TVBoard.cards(s, guest: true).contains(.devices))
+        let none = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"generatedAt":"x","services":[],"today":[]}"#.utf8))
+        XCTAssertFalse(TVBoard.cards(none, guest: false).contains(.devices))
     }
 }

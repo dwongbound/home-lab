@@ -45,6 +45,14 @@ struct OrbView: View {
     var onCoreTap: (() -> Void)? = nil
     /// "Open in Chat" on a notice's label (nil: no button, as in kiosks).
     var onOpen: ((Notice) -> Void)? = nil
+    /// "Let go" on a kept (yellow) dot's label (nil: no button).
+    var onLetGo: ((Notice) -> Void)? = nil
+    /// Keep a notice as a yellow dot for good (it stays until Unkeep).
+    var onKeepNotice: ((Notice) -> Void)? = nil
+    /// An orange dot's label "Dismiss" (or a reminder's "Done"): clears the
+    /// notice everywhere (Dylan, 2026-11-21: "if i click dismiss on a
+    /// notification after clicking an orange dot it should go away").
+    var onDismiss: ((Notice) -> Void)? = nil
     /// The dot whose label is open, if any.
     @State private var opened: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -55,17 +63,38 @@ struct OrbView: View {
     @AppStorage(OrbTuning.dotsKey) private var dotsRiseMs: Double = OrbTuning.dotsDefault
     @AppStorage(OrbTuning.coreKey) private var coreRiseMs: Double = OrbTuning.coreDefault
 
-    /// Redraws every frame (or once, with Reduce Motion on).
+    /// True while the orb's page isn't the one showing (the Talk page is
+    /// kept alive beside Home and Chat), so it stops drawing 60 frames a
+    /// second nobody sees. Cleared of the 2026-11-19 freeze by the swipe
+    /// test (UITests/SwipeFreezeTests.swift).
+    @Environment(\.orbOffScreen) private var offScreen
+    /// The pages are sliding: the orb holds still until they land.
+    @ObservedObject private var slide = PageSlide.shared
+
+    /// Redraws every frame (or once, with Reduce Motion on, or off screen).
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { context in
+        // On the lighter path (the iPad) the orb redraws at most 60 times a
+        // second, off the main thread: it breathes slowly, so it looks the
+        // same, and a 120 Hz screen's frames no longer wait on it.
+        TimelineView(.animation(minimumInterval: RenderQuality.light ? 1.0 / 60 : nil, paused: reduceMotion || offScreen || slide.moving)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             ZStack {
-                Canvas { canvas, area in
+                // The canvas reaches past the orb's own box on every side,
+                // so the farthest orbit's dots and their glow are never cut
+                // off by its edge (Dylan, 2026-11-19); everything is still
+                // drawn in the orb's own coordinates, so its size, layout and
+                // tap spots don't move.
+                let bleed = size * Self.bleed
+                Canvas(rendersAsynchronously: RenderQuality.light) { canvas, _ in
                     animator.held = opened != nil
                     animator.step(to: OrbLook.of(state), speaking: state == .speaking, level: reduceMotion ? 0 : level, dotsRiseMs: dotsRiseMs, coreRiseMs: coreRiseMs, at: t)
                     animator.advanceOrbit(orbit, at: t, still: reduceMotion || opened != nil)
-                    draw(in: &canvas, area: area, t: t)
+                    canvas.translateBy(x: bleed, y: bleed)
+                    draw(in: &canvas, area: CGSize(width: size, height: size), t: t)
                 }
+                .frame(width: size + bleed * 2, height: size + bleed * 2)
+                .padding(-bleed)
+                .allowsHitTesting(false)
                 .opacity(dim)
                 .accessibilityHidden(true)
                 #if !os(tvOS)
@@ -87,9 +116,24 @@ struct OrbView: View {
                         if let notice = item.notice { answer(notice, ok) }
                         opened = nil
                     }
-                }, onOpen: item.notice?.turnId == nil ? nil : onOpen.map { open in
+                }, onOpen: item.notice == nil ? nil : onOpen.map { open in
                     {
                         if let notice = item.notice { open(notice) }
+                        opened = nil
+                    }
+                }, onKeep: (item.notice.map(Orbit.offersKeep) ?? false) ? { keep() } : nil, onLetGo: item.kind == .kept ? onLetGo.map { letGo in
+                    {
+                        if let notice = item.notice { letGo(notice) }
+                        opened = nil
+                    }
+                } : nil, onKeepForGood: onKeepNotice.map { keep in
+                    {
+                        if let notice = item.notice { keep(notice) }
+                        opened = nil
+                    }
+                }, onDismiss: onDismiss.map { clear in
+                    {
+                        if let notice = item.notice { clear(notice) }
                         opened = nil
                     }
                 }) { close() }
@@ -106,11 +150,13 @@ struct OrbView: View {
             }
         }
         .animation(.smooth(duration: 0.3), value: opened)
-        // A label closes by itself after a few seconds and it all moves on.
+        // A label closes by itself after a few seconds and it all moves on,
+        // leaving the notice as it was (only Close clears it).
         .task(id: opened) {
             guard opened != nil else { return }
             try? await Task.sleep(for: .seconds(Orbit.holdSeconds))
-            if !Task.isCancelled { close() }
+            // Timing out isn't choosing Close: the notice stays unread.
+            if !Task.isCancelled { keep() }
         }
         #if DEBUG
         // Screenshot check: `-openWork` opens the first dot's label.
@@ -122,6 +168,22 @@ struct OrbView: View {
         .onChange(of: orbit.map(\.id)) { _, ids in
             if let opened, !ids.contains(opened) { self.opened = nil }
         }
+        #if DEBUG
+        // `-openNotice` opens the first orange dot's label a few seconds in
+        // (again as the dots arrive: the snapshot lands after launch).
+        .task(id: orbit.map(\.id)) {
+            guard tappable, ProcessInfo.processInfo.arguments.contains("-openNotice") else { return }
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .seconds(1))
+                let args = ProcessInfo.processInfo.arguments
+                let want = args.firstIndex(of: "-openNoticeId").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+                if let id = orbit.first(where: { $0.notice != nil && (want == nil || $0.notice?.id == want) })?.id, animator.item(id) != nil {
+                    opened = id
+                    return
+                }
+            }
+        }
+        #endif
     }
 
     #if !os(tvOS)
@@ -135,7 +197,11 @@ struct OrbView: View {
             .onTapGesture(coordinateSpace: .local) { point in
                 let dots = animator.orbitScreen.map { (id: $0.key, x: Double($0.value.x), y: Double($0.value.y)) }
                 switch OrbHit.resolve(x: point.x, y: point.y, dots: dots, centerX: size / 2, centerY: size / 2, coreRadius: animator.lastCoreRadius, frozen: opened != nil) {
-                case .dot(let id): opened = id
+                case .dot(let id):
+                    #if os(iOS)
+                    Haptics.play(.orbitTap)
+                    #endif
+                    opened = id
                 case .core: onCoreTap?()
                 case .release: close()
                 case .nothing: break
@@ -147,7 +213,7 @@ struct OrbView: View {
             .accessibilityAction { onCoreTap?() }
             .accessibilityActions {
                 ForEach(orbit) { item in
-                    Button(item.kind == .task ? "Jarvis is working: \(item.title)" : "Notice: \(item.title)") { opened = item.id }
+                    Button(item.kind == .task ? "Jarvis is working: \(item.title)" : item.kind == .kept ? "Kept: \(item.title)" : "Notice: \(item.title)") { opened = item.id }
                 }
             }
     }
@@ -156,10 +222,15 @@ struct OrbView: View {
 
     /// Closes the label; the orb eases back into turning. A notice that
     /// was looked at is read (cleared everywhere), unless it needs an answer.
+    /// "Keep": closes the label without reading the notice, so its orange
+    /// dot stays here and on every other device.
+    private func keep() {
+        opened = nil
+    }
+
+    /// Closing never reads or clears the notice (Dylan, 2026-11-20: "it
+    /// shouldnt auto dismiss"): its dot stays lit until he dismisses it.
     private func close() {
-        if let id = opened, let notice = animator.item(id)?.notice, Orbit.readOnView(notice) {
-            onRead?(notice)
-        }
         opened = nil
     }
 
@@ -199,8 +270,27 @@ struct OrbView: View {
     static let workAmber = Color(red: 0xE0 / 255, green: 0xA0 / 255, blue: 0x20 / 255)
 
     /// Blue for a task Jarvis is running; darker on the TV's day sky.
+    /// How far the drawing reaches past the orb's box, as a share of its
+    /// size: room for the farthest orbit (about 1.3 shell radii) plus the
+    /// biggest dot's glow.
+    static let bleed: CGFloat = 0.45
+
     static func taskBlue(onLight: Bool) -> Color {
         onLight ? Color(red: 0.08, green: 0.36, blue: 0.72) : Color(red: 0.42, green: 0.72, blue: 1.0)
+    }
+
+    /// Yellow for something kept to remember; darker on the TV's day sky.
+    static func keptYellow(onLight: Bool) -> Color {
+        onLight ? Color(red: 0.62, green: 0.50, blue: 0.02) : Color(red: 1.0, green: 0.86, blue: 0.30)
+    }
+
+    /// A dot's colour: blue Jarvis working, orange new, yellow kept.
+    static func dotColor(_ kind: OrbitItem.Kind, onLight: Bool) -> Color {
+        switch kind {
+        case .task: return taskBlue(onLight: onLight)
+        case .notice: return noticeOrange(onLight: onLight)
+        case .kept: return keptYellow(onLight: onLight)
+        }
     }
 
     /// Orange for a notice; darker on the TV's day sky.
@@ -211,14 +301,16 @@ struct OrbView: View {
     /// The orbiting dots on the far side (drawn before the orb, smaller,
     /// dimmer, and faint where the core covers them) or the near side.
     private func drawOrbit(back: Bool, in canvas: inout GraphicsContext, center: CGPoint, radius: Double, coreRadius: Double, side: Double, t: Double) {
+        let crowd = Orbit.dotScale(count: animator.orbitDots.count)
         for dot in animator.orbitDots where (dot.z < 0) == back {
             let near = (dot.z + 1) / 2
-            var alpha = dot.alpha * (back ? 0.5 : 1)
+            // Every dot stays lit, even round the back of the orb.
+            var alpha = dot.alpha * (back ? 0.8 : 1)
             let dx = dot.point.x - center.x, dy = dot.point.y - center.y
-            if back && (dx * dx + dy * dy).squareRoot() < coreRadius { alpha *= 0.35 }
+            if back && (dx * dx + dy * dy).squareRoot() < coreRadius { alpha *= 0.6 }
             let isOpen = dot.item.id == opened
-            let color = dot.item.kind == .task ? Self.taskBlue(onLight: onLight) : Self.noticeOrange(onLight: onLight)
-            let core = side * 0.03 * (0.7 + near * 0.4) * (0.8 + dot.item.emphasis * 0.3) * (isOpen ? 1.45 : 1)
+            let color = Self.dotColor(dot.item.kind, onLight: onLight)
+            let core = side * 0.03 * crowd * (0.7 + near * 0.4) * (0.8 + dot.item.emphasis * 0.3) * (isOpen ? 1.45 : 1)
             let pulse = reduceMotion || opened != nil ? 0.5 : 0.5 + 0.5 * sin(t * 2.4 + dot.z * 3)
             let halo = core * (2.6 + pulse)
             canvas.fill(Path(ellipseIn: CGRect(x: dot.point.x - halo / 2, y: dot.point.y - halo / 2, width: halo, height: halo)), with: .radialGradient(
@@ -629,71 +721,164 @@ struct OrbitCallout: View {
     let onAnswer: ((Bool) -> Void)?
     /// Opens the full message in Chat; nil hides the button.
     var onOpen: (() -> Void)? = nil
+    /// Closes without clearing, so the dot stays; nil hides the button.
+    var onKeep: (() -> Void)? = nil
+    /// A kept (yellow) item's "Dismiss" (lets it go); nil hides the button.
+    var onLetGo: (() -> Void)? = nil
+    /// "Keep": the dot stays, yellow, until Unkeep.
+    var onKeepForGood: (() -> Void)? = nil
+    /// "Dismiss" / "Done": clears the notice (and closes the label).
+    var onDismiss: (() -> Void)? = nil
     let onClose: () -> Void
 
+    /// The screen's width less the usual margins, capped for reading on an
+    /// iPad (Dylan, 2026-11-19: the old 300 pt card wrapped a title over four
+    /// lines and its buttons over three).
+    static var width: CGFloat {
+        #if os(iOS)
+        min(UIScreen.main.bounds.width - 32, 440)
+        #else
+        360
+        #endif
+    }
+
+    private var actions: [NoticeAction] {
+        NoticeAction.card(kind: item.kind, notice: item.notice, canOpen: onOpen != nil,
+                          canDismiss: onKeep != nil || item.kind == .notice && onAnswer == nil)
+    }
+
     var body: some View {
-        let color = item.kind == .task ? OrbView.taskBlue(onLight: false) : OrbView.noticeOrange(onLight: false)
-        VStack(alignment: .leading, spacing: 8) {
+        let color = OrbView.dotColor(item.kind, onLight: false)
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
-                Circle().fill(color).frame(width: 10, height: 10).padding(.top, 5)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title)
-                        .font(.subheadline.weight(.semibold))
+                Circle().fill(color).frame(width: 8, height: 8).padding(.top, 6)
+                VStack(alignment: .leading, spacing: 4) {
+                    // Who's doing a task: the chat chip ("Jarvis (CO)").
+                    if item.kind == .task { JobChip(model: item.model) }
+                    Text(Self.plainTitle(item.title))
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(Theme.frost)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     if item.kind == .task {
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             Text(item.detail.isEmpty ? "Running · \(Orbit.elapsed(since: item.startedAt, now: context.date) ?? "now")" : item.detail)
-                                .font(.caption.monospacedDigit())
+                                .font(.footnote.monospacedDigit())
                                 .foregroundStyle(Theme.frostDim)
+                                .lineLimit(1)
                         }
                     } else {
                         if !item.detail.isEmpty {
-                            Text(item.detail).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(3)
+                            Text(item.detail).font(.subheadline).foregroundStyle(Theme.frostDim).lineLimit(3).truncationMode(.tail)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         if let created = item.notice?.created, !Notices.when(created).isEmpty {
-                            Text(Notices.when(created)).font(.caption2).foregroundStyle(Theme.frostFaint)
+                            Text(Notices.when(created)).font(.caption).foregroundStyle(Theme.frostFaint)
                         }
                     }
                 }
-                Spacer(minLength: 0)
-                Button("Close", action: onClose)
-                    .font(.footnote.weight(.semibold))
-                    .frame(minWidth: 44, minHeight: 44)
-                    .tint(Theme.glacier)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // The (x) closes and keeps the dot; where there's nothing to
+                // keep it simply closes.
+                Button(action: onKeep ?? onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(Theme.frostDim)
+                        .frame(width: 44, height: 44)
+                }
+                .padding(.top, -10)
+                .padding(.trailing, -10)
+                .accessibilityLabel("Close")
             }
-            if let notice = item.notice, !notice.isApproval, onOpen != nil || notice.source == "reminder" {
+            if !actions.isEmpty {
+                // One row of equal buttons, one or two words each; the main
+                // one on the right.
                 HStack(spacing: 10) {
-                    if let onOpen {
-                        Button("Open in Chat", action: onOpen).buttonStyle(.bordered)
-                    }
-                    // Closing a reminder's label reads it, which stops the nag.
-                    if notice.source == "reminder" {
-                        Button(notice.clearLabel, action: onClose).buttonStyle(.borderedProminent)
+                    ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
+                        let main = index == actions.count - 1 && actions.count > 1 || actions.count == 1 && action != .open
+                        Button { perform(action) } label: {
+                            Text(action.label)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .foregroundStyle(main ? Theme.basalt : Theme.frost)
+                                .background(Capsule().fill(main ? Theme.glacier : Color.white.opacity(0.10)))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .font(.footnote.weight(.semibold))
-                .padding(.leading, 20)
-            }
-            if let onAnswer, item.notice?.isApproval == true {
-                HStack(spacing: 10) {
-                    Button("Deny") { onAnswer(false) }
-                        .buttonStyle(.bordered)
-                    Button("Approve") { onAnswer(true) }
-                        .buttonStyle(.borderedProminent)
-                }
-                .font(.footnote.weight(.semibold))
-                .padding(.leading, 20)
             }
         }
-        .padding(.leading, 12)
-        .padding(.vertical, 6)
-        .padding(.trailing, 4)
-        .frame(maxWidth: 300)
-        // Solid, so the words under it don't show through.
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(red: 0.13, green: 0.16, blue: 0.21)))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(color.opacity(0.55), lineWidth: 1))
-        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
+        .padding(14)
+        .frame(width: Self.width)
+        // Solid, so the words under it don't show through; a hairline edge.
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(red: 0.13, green: 0.16, blue: 0.21)))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
         .fixedSize(horizontal: false, vertical: true)
     }
+
+    private func perform(_ action: NoticeAction) {
+        switch action {
+        case .approve: onAnswer?(true)
+        case .deny: onAnswer?(false)
+        case .open, .seeInChat, .seeMore: onOpen?()
+        case .unkeep: onLetGo?()
+        case .keep: onKeepForGood?()
+        // Dismiss clears it everywhere; until build 84 it only closed the
+        // label, so the dot stayed lit.
+        case .dismiss, .done: (onDismiss ?? onClose)()
+        }
+    }
+
+    /// The title without a leading emoji; the dot already says what it is.
+    static func plainTitle(_ title: String) -> String {
+        var rest = Substring(title)
+        while let first = rest.first, first.unicodeScalars.first?.properties.isEmojiPresentation == true || first.unicodeScalars.contains(where: { $0.properties.isEmoji && $0.value > 0x238C }) {
+            rest = rest.dropFirst()
+        }
+        let trimmed = rest.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? title : trimmed
+    }
+}
+
+/// Who's doing a job, as the same chip chat replies carry ("Jarvis (CO)").
+struct JobChip: View {
+    let model: String?
+
+    var body: some View {
+        if let chip = ModelWording.jobChip(model) {
+            let tone: Color = chip.tone == .claude ? Theme.ember : chip.tone == .local ? Theme.glacier : Theme.frostDim
+            Text(chip.label)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .foregroundStyle(tone)
+                .background(Capsule().fill(tone.opacity(0.14)))
+                .fixedSize()
+        }
+    }
+}
+
+private struct OrbOffScreenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Set by a page that isn't on screen, so its orb stops animating.
+    var orbOffScreen: Bool {
+        get { self[OrbOffScreenKey.self] }
+        set { self[OrbOffScreenKey.self] = newValue }
+    }
+}
+
+/// Whether the phone's pages are sliding right now (set by the pager in
+/// JarvisApp; never on the TV or Watch). Only the orb watches it, so a slide
+/// starting or ending redraws nothing else.
+final class PageSlide: ObservableObject {
+    static let shared = PageSlide()
+    @Published var moving = false
 }

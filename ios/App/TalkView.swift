@@ -38,6 +38,8 @@ final class TalkModel: ObservableObject {
     private var islandTicker: Task<Void, Never>?
     /// What Whisper is hearing right now, or the last thing it heard.
     @Published private(set) var heard = ""
+    /// How many of `heard`'s leading words are settled (nil: none known).
+    @Published private(set) var heardStable: Int?
     /// His reply so far.
     @Published private(set) var reply = ""
     @Published private(set) var model: String?
@@ -50,6 +52,8 @@ final class TalkModel: ObservableObject {
     @Published private(set) var approvals: [(approval: Approval, outcome: String?, exchange: Int)] = []
     /// The exchange in progress (the one not yet moved into `turns`).
     @Published private(set) var exchange = 0
+    /// True once Jarvis has finished answering the open exchange.
+    private var exchangeDone = false
     @Published private(set) var level: Float = 0
     /// How bright the voice sounds (0..1), for the orb's ripples.
     @Published private(set) var tone: Float = 0
@@ -60,7 +64,7 @@ final class TalkModel: ObservableObject {
     /// A quiet line under the orb ("Goodbye. Tap Talk…"), not an error.
     @Published private(set) var notice: String?
     /// True once Talk has been started from this tab, so it only auto-starts once.
-    private(set) var started = false
+    var started = false
     private var line: TalkLine?
     /// True while his voice is playing on the speaker.
     private var voicePlaying = false
@@ -97,6 +101,7 @@ final class TalkModel: ObservableObject {
     func pause() {
         guard let line else { return }
         if line.canDoze {
+            Haptics.play(.callEnds)
             line.doze()
             phase = .on(.dozing)
             level = 0
@@ -113,6 +118,7 @@ final class TalkModel: ObservableObject {
 
     /// Ends the call.
     func hangUp() {
+        if phase != .off { Haptics.play(.callEnds) }
         line?.close()
         line = nil
         phase = .off
@@ -124,6 +130,7 @@ final class TalkModel: ObservableObject {
     /// Mic off or on; the line stays open either way.
     func toggleMute() {
         muted.toggle()
+        Haptics.play(.mute)
         line?.setMuted(muted)
         if muted { level = 0 }
     }
@@ -202,23 +209,61 @@ final class TalkModel: ObservableObject {
         Task { await activity.end(nil, dismissalPolicy: .immediate) }
     }
 
+    #if DEBUG
+    /// `-fakeHeard`: a scripted run of his live words, a partial about every
+    /// second with a revision on the way (the fade-in check; nothing is
+    /// sent to Jarvis).
+    func playFakeHeard(app: AppModel) async {
+        let steps: [(String, Int)] = [
+            ("Hey", 0), ("Hey Jarvis can you", 1), ("Hey Jarvis can you turn of the", 3),
+            ("Hey Jarvis can you turn off the bedroom", 5), ("Hey Jarvis can you turn off the bedroom lights and", 7),
+            ("Hey Jarvis can you turn off the bedroom lights and remind me about", 9),
+            ("Hey Jarvis can you turn off the bedroom lights and remind me about volleyball tomorrow", 12),
+        ]
+        try? await Task.sleep(for: .seconds(2))
+        for (words, stable) in steps {
+            apply(.partial(words, joined: false, stable: stable), app: app)
+            try? await Task.sleep(for: .seconds(1))
+        }
+    }
+    #endif
+
     /// One event from the line onto the screen.
     private func apply(_ event: TalkEvent, app: AppModel) {
         switch event {
         case .state(let state):
+            // Felt, not only seen: the call connecting, and Jarvis starting to speak.
+            // Heard him: the "got it" moment (iOS may hold it back while the
+            // mic records; see App/Haptics.swift).
+            if state == .thinking, phase == .on(.listening) { Haptics.play(.thinking) }
             phase = .on(state)
             // Listening starts quiet; dozing (paused by him or by Jarvis on
             // "that's all") drops the voice so the orb settles.
             if state == .listening || state == .dozing { level = 0; tone = 0 }
-        case .partial(let words, _), .transcript(let words, _):
-            if reply.isEmpty == false && !isJoining(event) {
-                // A new question: the last exchange moves up into the transcript.
+        case .partial(let words, let joined, _), .transcript(let words, let joined, _):
+            // Same exchange or a new one (JarvisKit HeardPlacement, the
+            // page's canJoin): a joined transcript after an answer starts a
+            // new exchange instead of overwriting the last question.
+            if HeardPlacement.of(openReply: reply, openDone: exchangeDone, joined: joined) == .new {
                 archiveTurn()
                 heard = ""
+                heardStable = nil
                 reply = ""
                 model = nil
+                exchangeDone = false
             }
-            heard = words
+            // Settled words show solid, the rest light; a final that says
+            // the same as what's shown leaves it alone (JarvisKit HeardWords).
+            switch event {
+            case .partial(_, _, let stable):
+                heard = words
+                heardStable = stable
+            case .transcript(_, _, let same):
+                heard = HeardWords.afterFinal(shown: heard, final: words, same: same)
+                heardStable = Int.max
+            default:
+                break
+            }
         case .reply(let words):
             reply += words
         case .model(let name):
@@ -229,14 +274,21 @@ final class TalkModel: ObservableObject {
             working = nil
         case .done:
             working = nil
-            // Spoken turns land in the web chat too, so the Chat tab catches up.
+            exchangeDone = true
+            // Spoken turns land in the web chat too: they're laid into Chat
+            // now, while he's still on Talk, so Chat already shows them
+            // when he swipes over (ChatMerge keeps every row it had).
             Task { await app.chat.load(app: app) }
-        case .stop:
+        case .stop, .pause, .resume:
+            // The line handles his voice; nothing changes on screen.
             break
         case .bye:
             // Goodbye: the call is over until Dylan taps Talk.
+            Haptics.play(.callEnds)
             line = nil
             phase = .off
+            // One quiet merge as the call ends, for the last exchange.
+            Task { await app.chat.load(app: app) }
             level = 0
             working = nil
             problem = nil
@@ -305,14 +357,6 @@ final class TalkModel: ObservableObject {
         if turns.count > 6 { turns.removeFirst(turns.count - 6) }
     }
 
-    /// Whether words carry on the question he's already answering.
-    private func isJoining(_ event: TalkEvent) -> Bool {
-        switch event {
-        case .partial(_, let joined), .transcript(_, let joined): return joined
-        default: return false
-        }
-    }
-
     /// Settles an approval: its card collapses into a one-line entry in the
     /// transcript, after the exchange it was asked in.
     private func settle(_ id: String, ok: Bool, later: Bool, by: String) {
@@ -378,24 +422,42 @@ final class TalkModel: ObservableObject {
 struct TalkView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject var talk: TalkModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Whether the newest line is on screen; false once he scrolls up.
     @State private var following = true
 
     /// Status line, the orb and words in the middle, the buttons at the bottom.
     var body: some View {
+        #if DEBUG
+        let _ = PerfCount.bump("talk")
+        #endif
         ZStack {
+            #if DEBUG
+            Color.clear.task {
+                if ProcessInfo.processInfo.arguments.contains("-fakeHeard") { await talk.playFakeHeard(app: app) }
+            }
+            #endif
             Theme.sky.ignoresSafeArea()
             VStack(spacing: 0) {
-                StatusLine()
+                // Room for the floating buttons (no bar).
+                Color.clear.frame(height: FloatingStatus.room)
                 GeometryReader { area in
                     VStack(spacing: 14) {
                         // The orb stays put; it shrinks a little once
                         // there's a conversation to make room for it.
-                        OrbView(state: mood, size: orbSize(in: area.size), level: Double(talk.level), tone: Double(talk.tone), orbit: Orbit.items(running: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, notices: app.notices), dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } }, onRead: { notice in Task { await app.readNotice(notice) } }, onOpen: { notice in Task { await app.openTurn(notice.turnId, clearing: notice) } })
+                        // One orb the whole time, drawn at one size and only
+                        // scaled: it shrinks a little and rises as the words
+                        // come, without being rebuilt or redrawn at a new
+                        // size (Dylan, 2026-11-20: it "does some flashing").
+                        let full = orbSize(in: area.size)
+                        let scale: CGFloat = hasWords ? Self.talkingScale : 1
+                        OrbView(state: mood, size: full, level: Double(talk.level), tone: Double(talk.tone), orbit: Orbit.items(running: app.today.snapshot?.jobs?.running ?? DemoWork.jobs, notices: app.orbitNotices), dim: talk.phase == .on(.dozing) || talk.phase == .off ? 0.55 : 1, onAnswer: { notice, ok in Task { await app.answerNotice(notice, ok: ok) } }, onOpen: { notice in app.readingNotice = notice }, onLetGo: { notice in Task { await app.letGo(notice) } }, onKeepNotice: { notice in Task { await app.keep(notice) } }, onDismiss: { notice in Task { await app.clearNotices([notice.id]) } })
+                            .scaleEffect(scale, anchor: .top)
+                            .frame(width: full, height: full * scale, alignment: .top)
                             // Above the words below it, so a work callout isn't covered.
                             .zIndex(1)
                             .padding(.top, hasWords ? 8 : 24)
-                            .animation(.smooth(duration: 0.5), value: hasWords)
+                            .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.9), value: hasWords)
                         Text(statusWords)
                             .font(.headline)
                             .foregroundStyle(statusColor)
@@ -409,6 +471,7 @@ struct TalkView: View {
                 controls
             }
         }
+        .floatingStatus(showsStatus: false)
         // Waiting approvals collapse into "Timed out" once their time is up.
         .task {
             while !Task.isCancelled {
@@ -423,9 +486,11 @@ struct TalkView: View {
     /// shorter side (420 pt, 280 while talking).
     private func orbSize(in area: CGSize) -> CGFloat {
         let roomy = min(area.width, area.height) > 600
-        let cap: CGFloat = roomy ? (hasWords ? 280 : 420) : (hasWords ? 200 : 300)
-        return min(area.width - 48, cap)
+        return min(area.width - 48, roomy ? 420 : 300)
     }
+
+    /// How small the orb gets once there are words: a little, not a jump.
+    static let talkingScale: CGFloat = 0.78
 
     /// Anything said yet on this call.
     private var hasWords: Bool {
@@ -539,10 +604,32 @@ struct TalkView: View {
     }
 
     /// One exchange as two bubbles (either may be missing yet).
+    /// What he heard: settled words solid, the tentative tail lighter. Only
+    /// the open exchange has a tail; earlier turns are all settled.
+    private func heardText(_ words: String) -> Text {
+        guard words == talk.heard else { return Text(words) }
+        let parts = HeardWords.split(words, stable: talk.heardStable)
+        if parts.tail.isEmpty { return Text(parts.settled) }
+        let tail = Text(parts.tail).foregroundColor(.white.opacity(HeardWords.tailOpacity))
+        if parts.settled.isEmpty { return tail }
+        return Text(parts.settled + " ") + tail
+    }
+
+    /// The open exchange's words fade in as they come (LiveWords); earlier
+    /// turns are plain text.
+    @ViewBuilder
+    private func heardBubble(_ words: String) -> some View {
+        if words == talk.heard {
+            LiveWords(text: words, stable: talk.heardStable)
+        } else {
+            heardText(words)
+        }
+    }
+
     @ViewBuilder
     private func bubbles(heard: String, reply: String, model: String?) -> some View {
         if !heard.isEmpty {
-            Text(heard)
+            heardBubble(heard)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20).fill(Theme.userBubble))
@@ -560,7 +647,7 @@ struct TalkView: View {
                         .foregroundStyle(chip)
                         .background(Capsule().fill(chip.opacity(0.14)))
                 }
-                Text(reply)
+                RichTextView(text: reply)
                     .foregroundStyle(Theme.frost)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -621,6 +708,9 @@ struct TalkView: View {
 
     /// What the big button does now.
     private func mainAction() {
+        // Played at the tap, before the microphone opens and iOS holds
+        // haptics back; pausing plays its own.
+        if talk.phase == .off || talk.phase == .on(.dozing) { Haptics.play(.callStarts) }
         switch talk.phase {
         case .off: Task { await talk.start(app: app) }
         case .connecting: break

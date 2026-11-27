@@ -22,11 +22,15 @@ final class OrbitTests: XCTestCase {
         XCTAssertEqual(items.map(\.id), ["notice-n"])
     }
 
-    func testOneDotForEveryNoticeAndTask() {
-        let many = (0..<13).map { Notice(id: "\($0)", kind: .fyi, title: "x", source: "job", created: "") }
-        let items = Orbit.items(running: tasks, notices: many)
-        XCTAssertEqual(items.filter { $0.kind == .notice }.count, 13)
-        XCTAssertEqual(items.count, 14)
+    /// One dot per notice and per running job, however many (no cap).
+    func testOneDotForEveryNoticeAndJob() {
+        let notices = (0..<40).map { Notice(id: "\($0)", kind: .fyi, title: "x", source: "job", created: "") }
+        let jobs = (0..<25).map { _ in tasks[0] }
+        let items = Orbit.items(running: jobs, notices: notices)
+        XCTAssertEqual(items.filter { $0.kind == .notice }.count, 40)
+        XCTAssertEqual(items.filter { $0.kind == .task }.count, 25)
+        XCTAssertLessThan(Orbit.dotScale(count: 65), 1)
+        XCTAssertEqual(Orbit.dotScale(count: 5), 1)
     }
 
     func testEveryDotStaysInsideTheOrbsFrame() {

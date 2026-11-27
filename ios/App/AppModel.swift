@@ -7,10 +7,13 @@ import UIKit
 import JarvisKit
 
 /// The tabs along the bottom (a sidebar on iPad).
+/// The pages, left to right (Dylan, 2026-11-18: "change the default tab to
+/// home, make it all the way left and then right of it is talk and then
+/// chat"). The order here is the bar's and the swipe's.
 enum AppTab: Hashable, CaseIterable {
-    case chat
-    case talk
     case today
+    case talk
+    case chat
 
     /// The tab `step` places along (1 = right), stopping at the ends.
     func neighbour(_ step: Int) -> AppTab {
@@ -28,11 +31,26 @@ final class AppModel: ObservableObject {
     @Published var server: String {
         didSet { UserDefaults.standard.set(server, forKey: Self.serverKey) }
     }
-    /// Talk first: opening the app goes straight to the voice line (Dylan, 2026-11-17).
-    @Published var tab: AppTab = .talk
+    /// The tab showing, kept in its own small object (Dylan, 2026-11-20:
+    /// tab slides on the iPad). Every page watches this model, so a tab
+    /// published here redrew all three pages on each change; now only the
+    /// pager, the tab bar and the two pages whose "off screen" flips react.
+    let tabs = TabState()
+    /// Home first: the app opens on Home every launch (Dylan, 2026-11-18).
+    var tab: AppTab {
+        get { tabs.tab }
+        set {
+            guard newValue != tabs.tab else { return }
+            tabs.tab = newValue
+            noteActivity()
+        }
+    }
     @Published var showSettings = false
     /// nil until the first request; then whether the PC answered.
     @Published var reachable: Bool?
+    /// The PC answers but Jarvis is restarting or down (502, 503, 504,
+    /// after the quiet retries); the top line says so.
+    @Published var jarvisRestarting = false
     /// True while the iPad's full-screen kiosk is up (from the Home tab's
     /// Kiosk button, or by itself when idle on charge).
     @Published var padKiosk = false {
@@ -48,7 +66,9 @@ final class AppModel: ObservableObject {
     @Published var focusTurn: Int?
     /// Notices cleared here but not yet gone from the snapshot: hidden at
     /// once so the list doesn't flicker back before the next poll.
-    @Published private(set) var clearedNotices: Set<String> = []
+    @Published private(set) var clearedNotices = PendingClears()
+    /// Said in the drawer when a dismiss didn't go through.
+    @Published var noticeProblem: String?
 
     /// The Settings switch "Kiosk when idle on charge", on by default.
     static let idleKioskKey = "kiosk.padIdle"
@@ -71,7 +91,126 @@ final class AppModel: ObservableObject {
     /// The unread notices, newest first, less any just cleared here and any
     /// approval that's already over.
     var notices: [Notice] {
-        settled.showing(Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.contains($0.id) }))
+        Notices.unread(allNotices)
+    }
+
+    /// Everything from the snapshot: unread and kept, with this device's own
+    /// keeps and let-gos laid over until the next snapshot catches up.
+    private var allNotices: [Notice] {
+        var list = settled.showing(Notices.sorted((today.snapshot?.notices ?? []).filter { !clearedNotices.ids.contains($0.id) }))
+        list.removeAll { $0.kept && letGoHere.contains($0.id) }
+        for notice in keptNoticesHere where !list.contains(where: { $0.id == notice.id }) { list.append(notice) }
+        return list
+    }
+
+    /// Kept to remember (yellow dots): never unread, untouched by Clear.
+    var keptNotices: [Notice] {
+        Notices.kept(allNotices)
+    }
+
+    /// What orbits the orb: the unread (orange) and the kept (yellow).
+    var orbitNotices: [Notice] {
+        notices + keptNotices
+    }
+
+    /// Kept here and not yet in a snapshot.
+    @Published private var keptNoticesHere: [Notice] = []
+    /// Let go here and maybe still in the last snapshot.
+    @Published private var letGoHere: Set<String> = []
+    /// Chat turns kept here (by turn id), until the next history load says so.
+    @Published private(set) var keptTurnsHere: Set<Int> = []
+
+    /// The turns among `items` that are kept, worked out with one pass over
+    /// the notices (not one per message, as isKept would be).
+    func keptTurns(in items: [ChatItem]) -> Set<Int> {
+        var byTurn: [Int: Notice] = [:]
+        for notice in Notices.kept(allNotices) { if let turn = notice.turnId { byTurn[turn] = notice } }
+        var out = Set<Int>()
+        for item in items {
+            guard let turn = item.turnId else { continue }
+            if let notice = byTurn[turn] {
+                if !letGoHere.contains(notice.id) { out.insert(turn) }
+            } else if keptTurnsHere.contains(turn) || item.kept {
+                out.insert(turn)
+            }
+        }
+        return out
+    }
+
+    /// True when a chat turn is kept (by Jarvis's record or just now here).
+    func isKept(turnId: Int?, historyKept: Bool) -> Bool {
+        guard let turnId else { return false }
+        if let notice = Notices.kept(turnId: turnId, in: allNotices) { return !letGoHere.contains(notice.id) }
+        return keptTurnsHere.contains(turnId) || historyKept
+    }
+
+    /// Keeps a chat message as a yellow dot (Dylan, 2026-11-19: "jarvis
+    /// tells me something and i want to keep it so i remember it later").
+    func keep(turnId: Int) async {
+        Haptics.play(.keep)
+        keptTurnsHere.insert(turnId)
+        do {
+            let result = try await client.keep(turnId: turnId)
+            if result.ok {
+                if let notice = result.notice { keptNoticesHere.append(notice) }
+                await today.load(app: self)
+            } else {
+                keptTurnsHere.remove(turnId)
+                chat.problem = result.message.isEmpty ? "Jarvis couldn't keep that." : result.message
+            }
+        } catch {
+            keptTurnsHere.remove(turnId)
+            noteReach(error)
+        }
+    }
+
+    /// Keeps a notice as a yellow dot (from its card on the orb or its full
+    /// view); viewing never clears it, only Unkeep does.
+    func keep(_ notice: Notice) async {
+        if let turnId = notice.turnId { keptTurnsHere.insert(turnId) }
+        do {
+            let result = try await client.keep(noticeId: notice.id)
+            if result.ok {
+                if let kept = result.notice { keptNoticesHere.append(kept) }
+                await today.load(app: self)
+            } else {
+                if let turnId = notice.turnId { keptTurnsHere.remove(turnId) }
+                noticeProblem = result.message.isEmpty ? "Jarvis couldn't keep that." : result.message
+            }
+        } catch {
+            if let turnId = notice.turnId { keptTurnsHere.remove(turnId) }
+            noteReach(error)
+        }
+    }
+
+    /// Lets a kept item go (from its yellow dot, or the message in chat).
+    func letGo(_ notice: Notice) async {
+        letGoHere.insert(notice.id)
+        keptNoticesHere.removeAll { $0.id == notice.id }
+        if let turnId = notice.turnId { keptTurnsHere.remove(turnId) }
+        do {
+            let result = try await client.unkeep(noticeId: notice.id)
+            if result.ok {
+                await today.load(app: self)
+            } else {
+                letGoHere.remove(notice.id)
+                noticeProblem = result.message.isEmpty ? "Jarvis couldn't dismiss that, so it's still kept." : result.message
+            }
+        } catch {
+            letGoHere.remove(notice.id)
+            noteReach(error)
+            noticeProblem = "Couldn't reach Jarvis, so that's still kept. Try again in a moment."
+        }
+    }
+
+    /// Let go of a chat message by its turn: finds its kept item.
+    func letGo(turnId: Int) async {
+        Haptics.play(.keep)
+        if let notice = Notices.kept(turnId: turnId, in: allNotices) {
+            await letGo(notice)
+        } else {
+            keptTurnsHere.remove(turnId)
+        }
     }
 
     /// An approval is over (answered here, out loud, timed out,
@@ -89,7 +228,7 @@ final class AppModel: ObservableObject {
         chat.showSettled(id, line: line)
         talk.showSettled(id, line: line)
         let noticeIds = (today.snapshot?.notices ?? []).filter { $0.approvalId == id }.map(\.id)
-        if !noticeIds.isEmpty { clearedNotices.formUnion(noticeIds) }
+        if !noticeIds.isEmpty { clearedNotices.hide(Array(noticeIds)) }
     }
 
     /// Approve or Deny from any screen. The card settles at once; if Jarvis
@@ -99,6 +238,7 @@ final class AppModel: ObservableObject {
     /// the screen.
     @discardableResult
     func answerApproval(id: String, summary: String, ok: Bool) async -> String? {
+        Haptics.play(ok ? .approve : .deny)
         settleApproval(id, line: ApprovalWording.settledLine(ok: ok, later: false, by: "page", summary: summary))
         do {
             switch try await client.answer(approval: id, ok: ok) {
@@ -128,26 +268,200 @@ final class AppModel: ObservableObject {
         talk.showSettled(id, line: nil)
     }
 
+    /// While Chat is the page on screen and the app is in front, notices
+    /// about messages it's showing are read already: cleared everywhere
+    /// so they never light a dot or raise the count (Dylan 2026-11-27).
+    func clearSeenInChat() {
+        guard tab == .chat, !showNotices, UIApplication.shared.applicationState == .active else { return }
+        let ids = Notices.seenInChat(notices, turnIds: Set(chat.items.compactMap(\.turnId)))
+        if !ids.isEmpty { Task { await clearNotices(ids) } }
+    }
+
     /// Clears notices everywhere (the server clears them for every device);
     /// they fade here at once and come back if the server didn't hear. The
     /// snapshot is fetched again right after, so this device is current.
     func clearNotices(_ ids: [String]) async {
-        clearedNotices.formUnion(ids)
+        clearedNotices.hide(ids)
+        #if DEBUG
+        // `-demoLocalClears`: sample data cleared here only, nothing sent.
+        if ProcessInfo.processInfo.arguments.contains("-demoLocalClears") { return }
+        #endif
         do {
             try await client.clearNotices(ids: ids)
             await today.load(app: self)
         } catch {
-            clearedNotices.subtract(ids)
+            clearedNotices.restore(ids)
+            noticeProblem = "Couldn't reach Jarvis, so that notice is back. Try again in a moment."
+        }
+    }
+
+    /// The report showing in the app's reader, if any.
+    @Published var report: ReportPage?
+    /// A web link from chat or a notice, open in the in-app Safari view.
+    @Published var webPage: WebPage?
+    /// What a Keep or Delete is waiting on ("Deleting the report…"), shown
+    /// as a labelled, blocking wait.
+    @Published private(set) var reportBusy: String?
+    /// Keep switched here, shown at once until the snapshot catches up.
+    @Published private var retentionHere: [String: Retention] = [:]
+    /// Something to say about a report change that didn't happen.
+    @Published var reportMessage: String?
+    /// Reports deleted here, hidden at once.
+    @Published private var deletedHere: Set<String> = []
+
+    /// Jarvis's reports from the snapshot, with this device's own changes
+    /// laid over it; nil from an older Jarvis.
+    var reportShelf: ReportShelf? {
+        guard var shelf = today.snapshot?.reports else { return nil }
+        shelf.reports = shelf.reports
+            .filter { !deletedHere.contains($0.id) }
+            .map { report in retentionHere[report.id].map { report.retained($0) } ?? report }
+        return shelf
+    }
+
+    /// Opens a report in the app's own reader (never Safari). The notice it
+    /// came from is read, so it clears everywhere like any other. A bad id
+    /// opens nothing.
+    func openReport(id: String, title: String? = nil, clearing notice: Notice? = nil) async {
+        guard Reports.isId(id) else { return }
+        if showNotices {
+            // Let the notices sheet finish going before the report comes up.
+            showNotices = false
+            try? await Task.sleep(for: .milliseconds(450))
+        }
+        report = ReportPage(id: id, title: title ?? reportShelf?.reports.first { $0.id == id }?.title)
+        if let notice { await clearNotices([notice.id]) }
+    }
+
+    /// How long a report is kept: 2 weeks, 1 month, 3 months or forever.
+    /// Saves at once; an older server that can't take spans says so.
+    func setRetention(_ id: String, _ retention: Retention) async {
+        reportBusy = "Saving…"
+        defer { reportBusy = nil }
+        do {
+            switch try await client.setRetention(id: id, retention) {
+            case .saved:
+                retentionHere[id] = retention
+                await today.load(app: self)
+            case .notYet:
+                reportMessage = RetentionReply.notYetWords
+            case .failed(let words):
+                reportMessage = words
+            }
+        } catch {
+            noteReach(error)
+            reportMessage = error.localizedDescription
+        }
+    }
+
+    /// The report's page as a .html file named from its title, ready for
+    /// the share sheet (Files, Messages, Mail, AirDrop); nil when it can't
+    /// be fetched.
+    func reportFile(id: String, title: String) async -> URL? {
+        reportBusy = "Getting the report ready…"
+        defer { reportBusy = nil }
+        guard case .page(let html) = await client.report(id: id) else {
+            reportMessage = "The report couldn't be fetched to share. Try again in a moment."
+            return nil
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("share-\(id)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent(Reports.shareFileName(title))
+        do {
+            try Data(html.utf8).write(to: file, options: .atomic)
+            return file
+        } catch {
+            reportMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Deletes a report now. True when it went.
+    @discardableResult
+    func deleteReport(_ id: String) async -> Bool {
+        reportBusy = "Deleting the report…"
+        defer { reportBusy = nil }
+        do {
+            try await client.deleteReport(id: id)
+            deletedHere.insert(id)
+            await today.load(app: self)
+            return true
+        } catch {
+            noteReach(error)
+            return false
         }
     }
 
     /// Opens Chat at the message a notice previews (acting on it, so the
-    /// notice clears everywhere). Without a turn, Chat opens at the bottom.
-    func openTurn(_ turnId: Int?, clearing notice: Notice? = nil) async {
+    /// notice clears everywhere). `about` is the notice itself: when its
+    /// message isn't in the chat any more (or it has none), its own full
+    /// text opens instead (JarvisKit NoticeFocus).
+    /// A notice to clear once Chat has found its message ("Open chat").
+    var clearWhenFound: Notice?
+
+    /// Opens Chat at a notice's message and dismisses the notice only once
+    /// the message is found there; a message that can't be found leaves it.
+    func openTurn(_ turnId: Int?, clearingWhenFound notice: Notice?, about: Notice? = nil) async {
+        clearWhenFound = turnId == nil ? nil : notice
+        await openTurn(turnId, about: about)
+    }
+
+    /// Chat found (or couldn't find) the message it was asked to open.
+    func turnFound(_ found: Bool) async {
+        guard let notice = clearWhenFound else { return }
+        clearWhenFound = nil
+        if found { await clearNotices([notice.id]) }
+    }
+
+    func openTurn(_ turnId: Int?, clearing notice: Notice? = nil, about: Notice? = nil) async {
         showNotices = false
-        tab = .chat
-        focusTurn = turnId
+        if turnId == nil, let about {
+            readingNotice = about
+        } else {
+            focusFallback = about ?? notice
+            tab = .chat
+            focusTurn = turnId
+        }
         if let notice { await clearNotices([notice.id]) }
+    }
+
+    /// Jobs stopped here, hidden until the next snapshot drops them.
+    @Published private(set) var stoppedJobs: Set<String> = []
+
+    /// Stops a running job on Jarvis; it leaves the list only once Jarvis
+    /// says it stopped (or had already finished). Words when it didn't.
+    func stopJob(_ task: RunningTask) async -> String? {
+        do {
+            switch try await client.stopJob(id: task.id) {
+            case .stopped(let words):
+                Haptics.play(.stopped)
+                stoppedJobs.insert(task.id)
+                await today.load(app: self)
+                return words
+            case .gone:
+                Haptics.play(.stopped)
+                stoppedJobs.insert(task.id)
+                await today.load(app: self)
+                return nil
+            case .failed(let words):
+                Haptics.play(.stopFailed)
+                return words
+            }
+        } catch {
+            Haptics.play(.stopFailed)
+            noteReach(error)
+            return (error as? JarvisError)?.errorDescription ?? ErrorWording.unreachable
+        }
+    }
+
+    /// A notice read in full (its whole text, source and time).
+    @Published var readingNotice: Notice?
+    /// The notice to show if its message can't be found in Chat.
+    var focusFallback: Notice?
+
+    /// The notice a push was about, if this device knows it.
+    func notice(id: String?, turnId: Int?) -> Notice? {
+        allNotices.first { ($0.id == id && id != nil) || ($0.turnId == turnId && turnId != nil) }
     }
 
     /// A notice was seen on the orb or in the list: read, so cleared
@@ -169,11 +483,11 @@ final class AppModel: ObservableObject {
     /// Clears every notice.
     func clearAllNotices() async {
         let ids = notices.map(\.id)
-        clearedNotices.formUnion(ids)
+        clearedNotices.hide(ids)
         do {
             try await client.clearAllNotices()
         } catch {
-            clearedNotices.subtract(ids)
+            clearedNotices.restore(ids)
         }
     }
 
@@ -238,11 +552,14 @@ final class AppModel: ObservableObject {
 
     /// Notes whether the last call reached the PC, for the status line.
     func noteReach(_ error: Error?) {
-        if let error = error as? JarvisError, error == .unreachable {
-            reachable = false
-        } else {
-            reachable = true
-        }
+        // Written only on a change: this runs on every refresh, and each
+        // write redraws the whole app.
+        let reached = (error as? JarvisError) != .unreachable
+        if reachable != reached { reachable = reached }
+        // "Couldn't reach Jarvis": felt once, not on every quiet retry.
+        if reached { Haptics.recovered("reach") } else { Haptics.failed("reach") }
+        let restarting = error.map(ConnectionStatus.isJustNotAnswering) ?? false
+        if restarting != jarvisRestarting { jarvisRestarting = restarting }
     }
 
     /// Start on an offer card: switch to Chat and send its text there.
@@ -264,4 +581,13 @@ final class AppModel: ObservableObject {
     func lockMoney() {
         moneyUnlocked = false
     }
+}
+
+/// Which tab is showing (AppModel.tabs).
+final class TabState: ObservableObject {
+    @Published var tab: AppTab = .today
+    /// True while a leftward drag on Chat is showing message times: the
+    /// pager holds still for it (Chat is the last page, so that drag only
+    /// ever rubber-banded the pages).
+    @Published var pagerHeld = false
 }

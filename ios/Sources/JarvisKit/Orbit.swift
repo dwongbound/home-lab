@@ -8,10 +8,10 @@
 // reading a notice clears it. The iPhone, iPad and TV all draw from here.
 import Foundation
 
-/// One dot round the orb: a task Jarvis is running (blue) or an unread
-/// notice (orange).
+/// One dot round the orb: a task Jarvis is running (blue), an unread
+/// notice (orange), or something kept to remember (yellow).
 public struct OrbitItem: Equatable, Identifiable, Sendable {
-    public enum Kind: Equatable, Sendable { case task, notice }
+    public enum Kind: Equatable, Sendable { case task, notice, kept }
     public let id: String
     public let kind: Kind
     public let title: String
@@ -20,6 +20,8 @@ public struct OrbitItem: Equatable, Identifiable, Sendable {
     public let startedAt: String?
     /// The notice behind an orange dot.
     public let notice: Notice?
+    /// A task's model, for its chip ("Jarvis (CO)").
+    public var model: String? = nil
 
     /// How bold the dot is: a notice that needs Dylan is brightest and a
     /// little bigger; an FYI a little dimmer; tasks in between.
@@ -48,25 +50,37 @@ public struct OrbitPath: Equatable, Sendable {
 }
 
 public enum Orbit {
+    /// No cap (Dylan, 2026-11-20: "there isnt a lit orbitting dot for every
+    /// alert / parallel job- there looks like theres a cap"): one dot for
+    /// every unread notice, running job and kept item. Many dots get a
+    /// little smaller (dotScale) so they stay apart.
+    public static func dotScale(count: Int) -> Double {
+        count <= 8 ? 1 : max(0.55, (8.0 / Double(count)).squareRoot())
+    }
     /// The widest orbit, in shell radii (see `path`).
     public static let widest = 1.28
     /// How far from the centre a dot may sit, as a share of the orb's
     /// side, so its glow stays inside the frame instead of being cut off.
     public static let reach = 0.44
     /// How long a tapped dot holds everything still before it all moves on.
-    public static let holdSeconds: Double = 6
+    /// A minute (Dylan, 2026-11-20: "it shouldnt auto close until 1 minute
+    /// later"); a tap elsewhere still closes it at once.
+    public static let holdSeconds: Double = 60
 
     /// The dots: unread notices first (needs, then heads-ups, then FYIs),
-    /// then running tasks: one dot for every one, so the dots match the
-    /// notice count (Dylan, 2026-11-19). At night only the notices that
-    /// need Dylan, so the bedroom stays dark.
+    /// then running tasks. At night only the notices that need Dylan, so the
+    /// bedroom stays dark.
+    /// Kept items (yellow) come after them; a kept item is never orange
+    /// whatever its kind, and none show at night.
     public static func items(running: [RunningTask], notices: [Notice], night: Bool = false) -> [OrbitItem] {
         let orange = notices
+            .filter { !$0.kept }
             .filter { !night || $0.kind == .need }
             .sorted { $0.kind < $1.kind }
             .map { OrbitItem(id: "notice-" + $0.id, kind: .notice, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
-        let blue = night ? [] : running.map { OrbitItem(id: "task-" + $0.id, kind: .task, title: $0.label, detail: $0.state == "queued" ? "Queued" : "", startedAt: $0.startedAt, notice: nil) }
-        return orange + blue
+        let blue = night ? [] : running.map { OrbitItem(id: "task-" + $0.id, kind: .task, title: $0.label, detail: $0.state == "queued" ? "Queued" : ($0.step ?? ""), startedAt: $0.startedAt, notice: nil, model: $0.model) }
+        let yellow = night ? [] : notices.filter(\.kept).map { OrbitItem(id: "kept-" + $0.id, kind: .kept, title: $0.title, detail: $0.body, startedAt: nil, notice: $0) }
+        return orange + blue + yellow
     }
 
     /// The radius (points) the orbits are measured in: the shell's, shrunk
@@ -115,7 +129,14 @@ public enum Orbit {
     /// Seeing a notice reads it, and reading clears it everywhere, except
     /// one that needs Dylan: that stays until he answers it.
     public static func readOnView(_ notice: Notice) -> Bool {
-        notice.kind != .need
+        notice.kind != .need && !notice.kept
+    }
+
+    /// Whether a notice's label offers "Keep" (Dylan, 2026-11-19: "an option
+    /// in the popup to keep the orange dots"): only one that closing would
+    /// clear. A need stays anyway until he answers it.
+    public static func offersKeep(_ notice: Notice) -> Bool {
+        readOnView(notice) && !notice.isApproval
     }
 
     /// How often to refresh: every 5 s while an orange dot is up (so a

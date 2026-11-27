@@ -19,8 +19,14 @@ public enum KioskHero: Equatable, Sendable {
 /// The panels that take turns beside the hero.
 public enum KioskPanel: String, CaseIterable, Sendable {
     case schedule, home, work, health
+    /// Last night's sleep (the snapshot's `sleep`).
+    case sleep
+    /// Today's food: calories left and macros (Dylan, 2026-11-26).
+    case diet
     /// Jarvis's suggestions (offers), titles only.
     case offers
+    /// The PC: GPU, memory, disk and processor rings (Dylan, 2026-11-21).
+    case system
 }
 
 public enum KioskPlan {
@@ -63,8 +69,11 @@ public enum KioskPlan {
         var out: [KioskPanel] = [.schedule]
         if !HomeGlance.lines(snapshot.home).isEmpty { out.append(.home) }
         if !(snapshot.jobs?.running.isEmpty ?? true) { out.append(.work) }
-        if snapshot.health?.sleep?.asleepMin != nil || snapshot.health?.yesterday?.steps != nil { out.append(.health) }
+        if SleepSlide.shows(snapshot) { out.append(.sleep) }
+        if DietSlide.shows(snapshot) { out.append(.diet) }
+        if SleepSlide.showsYou(snapshot) { out.append(.health) }
         if !(snapshot.offers?.offers.isEmpty ?? true) { out.append(.offers) }
+        if !snapshot.systemGauges.isEmpty { out.append(.system) }
         return out
     }
 
@@ -192,5 +201,277 @@ public enum PageSwipe {
     /// True when a drag so far is a page swipe, not a scroll.
     public static func isSideways(width: Double, height: Double) -> Bool {
         abs(width) >= minDistance && abs(width) > abs(height) * ratio
+    }
+}
+
+/// What starts a Talk call (Dylan, 2026-11-20: "we shouldn't call jarvis
+/// by default. A button should be clicked"): only his tap on Talk (or the
+/// kiosk orb), or an entry he chose himself (the Ask Jarvis shortcut, a
+/// Watch tap). Never the page being shown, the app opening or coming back.
+public enum TalkStart {
+    public enum Cause: Sendable { case talkTapped, orbTapped, shortcut, pageShown, appOpened, appReturned }
+
+    public static func starts(_ cause: Cause) -> Bool {
+        switch cause {
+        case .talkTapped, .orbTapped, .shortcut: return true
+        case .pageShown, .appOpened, .appReturned: return false
+        }
+    }
+}
+
+/// When the bottom tab bar is full size (Dylan, 2026-11-19: "the bottom
+/// glass navbar shrinks and just shows the icons unless it's in focus like
+/// I'm using it"). It rests compact; it opens while he's using it.
+public enum TabBarSize {
+    /// How long it stays open after the last touch, tab change or scroll up.
+    public static let holdSeconds: Double = 2
+
+    /// Full size when touched, changed or scrolled up within the last two
+    /// seconds; compact at once on a scroll down, on Talk, and otherwise.
+    public static func expanded(lastInteraction: Date?, now: Date = Date(), scrollingDown: Bool, onTalk: Bool) -> Bool {
+        if onTalk || scrollingDown { return false }
+        guard let lastInteraction else { return false }
+        return now.timeIntervalSince(lastInteraction) < holdSeconds
+    }
+
+    /// Whether a scroll by `delta` points (positive = content moved down the
+    /// page, i.e. reading further) counts as scrolling down; small jitters don't.
+    public static func isScrollDown(_ delta: Double) -> Bool? {
+        if delta > 6 { return true }
+        if delta < -6 { return false }
+        return nil
+    }
+}
+
+/// The orange "new" dot on the Home tiles (Dylan, 2026-11-19): something in
+/// Reports, Playbooks or Diet he hasn't seen since he last opened it. What
+/// he's seen is kept on the device; with nothing kept yet (a first launch)
+/// there's never a dot, and the current state becomes the seen one.
+public enum SeenTracker {
+    /// New when any current id wasn't there when he last looked; never on a
+    /// first launch (`seen` nil).
+    public static func hasNew(current: [String], seen: [String]?) -> Bool {
+        guard let seen else { return false }
+        return !Set(current).isSubset(of: Set(seen))
+    }
+
+    /// Diet's mark: the day and what was eaten ("2026-11-19:1052"); nil
+    /// when there's nothing logged today.
+    public static func dietMark(_ food: Nutrition?, now: Date = Date()) -> String? {
+        guard let food, food.isToday(now: now), food.eaten > 0 else { return nil }
+        return "\(food.date):\(Int(food.eaten.rounded()))"
+    }
+
+    /// New in Diet when something's been logged today since he last opened it.
+    public static func dietHasNew(current: String?, seen: String??) -> Bool {
+        guard let seen else { return false }        // never stored: first launch
+        guard let current else { return false }      // nothing logged today
+        return current != seen
+    }
+}
+
+/// The Chat input bar (Dylan, 2026-11-19: it "takes a lot of vertical space
+/// by always being there"): a slim one-line pill at the bottom of the chat,
+/// tucked into a small compose button while he reads further up.
+/// Where Chat's scroll sits relative to its newest line (Dylan,
+/// 2026-11-20: at the very bottom the Ask box was gone and the arrow showed,
+/// because the old sum left out the top inset and added the bottom one,
+/// about 270 pt off once the floating buttons and box arrived).
+public enum ChatScroll {
+    /// How far the newest line is below what can be seen, in points: the
+    /// content's height less the offset, the visible height and the top
+    /// inset (the content offset counts from above the top inset). Zero or
+    /// less means the end of the list is in view.
+    public static func gap(contentHeight: Double, offsetY: Double, visibleHeight: Double, insetTop: Double) -> Double {
+        contentHeight - (offsetY + visibleHeight + insetTop)
+    }
+
+    /// Within this of the end counts as at the bottom (the box shows).
+    public static let bottomWithin: Double = 60
+    /// Past this, by his own scrolling, he's reading further up.
+    public static let readingPast: Double = 120
+
+    /// The two flags after a scroll, changing only when a threshold is
+    /// crossed (and a gap between the thresholds keeps what was).
+    public static func next(gap: Double, byHand: Bool, atBottom: Bool, readingUp: Bool) -> (atBottom: Bool, readingUp: Bool) {
+        var bottom = atBottom
+        var reading = readingUp
+        if gap < bottomWithin { bottom = true } else if gap > 100 { bottom = false }
+        if gap < 40 { reading = false } else if gap > readingPast, byHand { reading = true }
+        return (bottom, reading)
+    }
+}
+
+/// The orange dot on Chat's arrow (Dylan, 2026-11-20): it means one thing,
+/// a new message arrived at the bottom while he was scrolled away from it.
+/// Older pages arriving at the top, merges and refreshes that change
+/// nothing, and his own message never light it.
+public enum NewReplyDot {
+    /// Whether the end of the chat changed: a different last line (a new
+    /// one appended), or the same last line grown (a reply streaming in).
+    public static func endChanged(oldLastId: String?, oldLastLength: Int, newLastId: String?, newLastLength: Int) -> Bool {
+        guard let newLastId else { return false }
+        return newLastId != oldLastId || newLastLength > oldLastLength
+    }
+
+    /// Lights the dot: the end changed, with a line of Jarvis's, while he
+    /// was away from the bottom and not waiting on his own message.
+    public static func lights(endChanged: Bool, lastIsJarvis: Bool, atBottom: Bool, sending: Bool) -> Bool {
+        endChanged && lastIsJarvis && !atBottom && !sending
+    }
+}
+
+public enum ComposerSize {
+    /// Tucked away only while scrolled up and idle: never while the field is
+    /// focused, holds words or photos, or Jarvis is answering what he just
+    /// sent, nor right after he tapped to open it.
+    public static func collapsed(atBottom: Bool, focused: Bool, hasDraft: Bool, sending: Bool, opened: Bool) -> Bool {
+        !atBottom && !focused && !hasDraft && !sending && !opened
+    }
+
+    /// Whether a new line should pull the chat down to it: at the bottom
+    /// already, or it's his own message or the reply to it. Otherwise the
+    /// place he's reading stays put and the compose button shows a dot.
+    public static func follows(atBottom: Bool, lastIsMine: Bool, sending: Bool) -> Bool {
+        atBottom || lastIsMine || sending
+    }
+}
+
+/// How much of the chat is on screen (Dylan, 2026-11-19: "the chat
+/// shouldnt load all history- it should lazy load as you scroll up"): the
+/// newest `page` messages at first, then `page` more each time he reaches
+/// the top. Everything else stays in memory, undrawn.
+public enum ChatWindow {
+    public static let page = 40
+
+    /// How many of `total` to show at first.
+    public static func first(total: Int) -> Int { min(total, page) }
+
+    /// One more page, never past the whole history.
+    public static func grow(_ shown: Int, total: Int) -> Int { min(total, shown + page) }
+
+    /// Enough to include the message at `index` (a notice opening an old
+    /// turn), rounded up to whole pages so the top isn't right at it.
+    public static func including(index: Int, shown: Int, total: Int) -> Int {
+        let need = total - index
+        guard need > shown else { return shown }
+        return min(total, ((need + page - 1) / page) * page + page)
+    }
+
+    /// Whether there's more above what's shown.
+    public static func hasMore(shown: Int, total: Int) -> Bool { shown < total }
+}
+
+/// The top line's two states (Dylan, 2026-11-19: Jarvis's status belongs at
+/// the top beside Tailscale's, not as a red line under the tiles): the
+/// tailnet, and Jarvis himself. One or two words each, a dot each, and the
+/// words change when something's wrong, so colour isn't the only signal.
+public struct ConnectionStatus: Equatable, Sendable {
+    public enum Light: Equatable, Sendable { case good, waiting, bad, unknown }
+    public let tailnet: Light
+    public let jarvis: Light
+    public let tailnetWords: String
+    public let jarvisWords: String
+
+    /// `reachable`: the PC answered at all (nil before the first try).
+    /// `jarvisRestarting`: it answered, but Jarvis is restarting or down
+    /// (502, 503, 504) after the quiet retries.
+    public static func of(reachable: Bool?, jarvisRestarting: Bool) -> ConnectionStatus {
+        // Written as ifs, not a switch over Bool?: CI's older Swift doesn't
+        // count nil/false/true as exhaustive.
+        guard let reachable else {
+            return ConnectionStatus(tailnet: .unknown, jarvis: .unknown, tailnetWords: "Tailscale", jarvisWords: "Connecting")
+        }
+        if !reachable {
+            return ConnectionStatus(tailnet: .bad, jarvis: .unknown, tailnetWords: "Tailscale off", jarvisWords: "Jarvis")
+        }
+        return jarvisRestarting
+            ? ConnectionStatus(tailnet: .good, jarvis: .waiting, tailnetWords: "Tailscale", jarvisWords: "Jarvis restarting")
+            : ConnectionStatus(tailnet: .good, jarvis: .good, tailnetWords: "Tailscale", jarvisWords: "Jarvis")
+    }
+
+    /// Both states in words for VoiceOver.
+    public var spoken: String {
+        let net: String
+        switch tailnet {
+        case .good: net = "On Tailscale"
+        case .bad: net = "Not on Tailscale"
+        default: net = "Checking Tailscale"
+        }
+        let him: String
+        switch jarvis {
+        case .good: him = "Jarvis is answering"
+        case .waiting: him = "Jarvis is restarting"
+        case .bad: him = "Jarvis is down"
+        case .unknown: him = tailnet == .bad ? "Jarvis can't be reached" : "Connecting to Jarvis"
+        }
+        return "\(net). \(him)."
+    }
+
+    /// Whether an error is only "Jarvis isn't answering", which the top line
+    /// already says; such an error isn't shown again under the tiles.
+    public static func isJustNotAnswering(_ error: Error) -> Bool {
+        guard let error = error as? JarvisError else { return false }
+        return error.isPassing
+    }
+}
+
+
+/// What stopping a job answered (POST /api/jarvis/jobs/stop {id}).
+public enum StopReply: Equatable, Sendable {
+    /// Stopped (or taken off the queue): Jarvis's one line, shown briefly.
+    case stopped(String)
+    /// It had already finished: drop the row, say nothing.
+    case gone
+    /// Not stopped (409 while it's going live, or a failure): his words.
+    case failed(String)
+
+    public static func read(status: Int, data: Data) -> StopReply {
+        let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let message = ((body["message"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if status == 410 || body["gone"] as? Bool == true { return .gone }
+        if (200..<300).contains(status), body["ok"] as? Bool != false { return .stopped(message.isEmpty ? "Stopped." : message) }
+        if [502, 503, 504].contains(status) { return .failed(ErrorWording.restarting) }
+        return .failed(message.isEmpty || message.hasPrefix("Jarvis answered") ? "Jarvis couldn’t stop it." : message)
+    }
+}
+
+/// Home's first load (Dylan, 2026-11-20: "a dynamic full page loader and
+/// then fade everything in once its fetched"): one loader until the first
+/// snapshot, then everything at once. Later refreshes never show it again.
+public enum HomeScreen: Equatable, Sendable {
+    case loading, failed, ready
+
+    /// A snapshot, however old, is the page; no snapshot yet is the loader,
+    /// or "couldn't reach Jarvis" once the first tries have all missed.
+    public static func state(hasSnapshot: Bool, firstLoadFailed: Bool) -> HomeScreen {
+        if hasSnapshot { return .ready }
+        return firstLoadFailed ? .failed : .loading
+    }
+
+    /// Seconds before the next try while there's no snapshot yet: quick at
+    /// first (a launch while the network wakes), then the usual pace.
+    public static func retryWait(misses: Int, usual: Double) -> Double {
+        let quick: [Double] = [1, 2, 4, 8]
+        return misses >= 1 && misses <= quick.count ? quick[misses - 1] : usual
+    }
+
+    /// Misses before the loader says it couldn't reach Jarvis.
+    public static let missesBeforeFailed = 4
+    /// Or this long since the first try with nothing to show (a try against
+    /// a dead address can itself take seconds, retries included).
+    public static let failAfterSeconds: Double = 10
+
+    /// Whether a failed try should turn the loader into "couldn't reach".
+    public static func gaveUp(misses: Int, sinceFirstTry: Double) -> Bool {
+        misses >= missesBeforeFailed || sinceFirstTry >= failAfterSeconds
+    }
+}
+
+/// Whether today's food has a card (Home, kiosk, TV): today's numbers with a goal.
+public enum DietSlide {
+    public static func shows(_ snapshot: Snapshot?, now: Date = Date()) -> Bool {
+        guard let food = snapshot?.nutrition else { return false }
+        return food.goal > 0 && food.isToday(now: now)
     }
 }

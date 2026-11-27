@@ -12,6 +12,8 @@ final class TalkTests: XCTestCase {
         XCTAssertEqual(TalkEvent.parse(#"{"type":"reply","text":"Clear, 61."}"#), .reply("Clear, 61."))
         XCTAssertEqual(TalkEvent.parse(#"{"type":"working","label":"Searching the web."}"#), .working("Searching the web."))
         XCTAssertEqual(TalkEvent.parse(#"{"type":"stop"}"#), .stop)
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"pause"}"#), .pause)
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"resume"}"#), .resume)
         XCTAssertEqual(
             TalkEvent.parse(#"{"type":"approval","id":"a1","tool":"send_email","summary":"Email Matt","expires":"x"}"#),
             .approval(Approval(id: "a1", tool: "send_email", summary: "Email Matt", expires: "x"))
@@ -95,5 +97,408 @@ final class TalkTests: XCTestCase {
 
     func testParsesBye() {
         XCTAssertEqual(TalkEvent.parse(#"{"type":"bye"}"#), .bye)
+    }
+
+    /// "woke" brings him back to listening whatever woke him, including
+    /// speech (Jarvis build 69) and reasons this app doesn't know yet.
+    func testWokeMeansListeningWhateverWokeHim() {
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"woke","by":"speech"}"#), .state(.listening))
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"woke","by":"voice"}"#), .state(.listening))
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"woke","by":"something-new"}"#), .state(.listening))
+        XCTAssertEqual(TalkEvent.parse(#"{"type":"woke"}"#), .state(.listening))
+    }
+}
+
+final class PlaybackTrackerTests: XCTestCase {
+    let t0 = Date(timeIntervalSince1970: 1_000)
+
+    /// The normal order: audio plays out, then "done", then idle once.
+    func testIdleOnceAfterPlayedAndDone() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 1.2, now: t0)
+        XCTAssertFalse(p.takeIdle(now: t0))
+        p.played()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(1.2)))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(1.3)), "only once")
+    }
+
+    /// A one-sentence reply that finished before "done" came.
+    func testShortReplyDoneAfterPlayback() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 0.4, now: t0)
+        p.played()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(0.5)))
+    }
+
+    /// The 10:44 case: the Bluetooth route reconfigures as the short reply
+    /// starts, the played callback never comes, and the clock backstop
+    /// sends idle shortly after the audio should have ended.
+    func testLostCallbackFallsBackToTheClock() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 0.6, now: t0)
+        p.done()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(0.6)), "not before the grace")
+        XCTAssertEqual(p.nextCheck(now: t0), t0.addingTimeInterval(0.6 + PlaybackTracker.grace))
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(0.6 + PlaybackTracker.grace)))
+    }
+
+    /// An engine restart forgets the buffers in flight; idle goes once done.
+    func testEngineRestartStopsWaitingOnCallbacks() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 2, now: t0)
+        p.scheduled(seconds: 2, now: t0)
+        p.engineRestarted()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(0.1)))
+    }
+
+    /// Sentences queue one after another, so the expected end adds up.
+    func testExpectedEndAddsUp() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 1, now: t0)
+        p.scheduled(seconds: 2, now: t0.addingTimeInterval(0.5))
+        XCTAssertEqual(p.expectedEnd, t0.addingTimeInterval(3))
+    }
+
+    /// Talking over him clears everything; nothing is owed.
+    func testResetOwesNothing() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 1, now: t0)
+        p.done()
+        p.reset()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(10)))
+    }
+
+    /// Barge-in (Jarvis's "stop") or Pause mid-reply: idle goes out once,
+    /// at once, and the reply's late "done" sends nothing more.
+    func testCutShortSendsIdleOnce() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 3, now: t0)
+        XCTAssertTrue(p.interrupted(), "idle owed: he was speaking")
+        p.done()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(10)), "the late done is spent")
+        XCTAssertNil(p.nextCheck(now: t0))
+    }
+
+    /// Jarvis's "pause" holds idle back, even past the clock, and "resume"
+    /// moves the expected end on by the pause; audio arriving while held
+    /// queues behind the spot.
+    func testPauseHoldsIdleAndResumeShiftsTheEnd() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 2, now: t0)
+        p.pause(now: t0.addingTimeInterval(1))
+        p.scheduled(seconds: 1, now: t0.addingTimeInterval(5))
+        p.done()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(30)), "held: never idle")
+        XCTAssertNil(p.nextCheck(now: t0.addingTimeInterval(30)))
+        p.resume(now: t0.addingTimeInterval(11))
+        XCTAssertEqual(p.expectedEnd, t0.addingTimeInterval(13), "3 s of audio from 0, plus a 10 s pause")
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(12)))
+        p.played(); p.played()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(13)))
+    }
+
+    /// A barge-in during a pause drops the held voice: idle once, nothing held.
+    func testStopDuringPauseClearsIt() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 2, now: t0)
+        p.pause(now: t0.addingTimeInterval(1))
+        XCTAssertTrue(p.interrupted())
+        XCTAssertNil(p.pausedAt)
+    }
+
+    /// Stopping with nothing playing and nothing owed sends nothing.
+    func testCutShortWithNothingPlayingOwesNothing() {
+        var p = PlaybackTracker()
+        XCTAssertFalse(p.interrupted())
+        p.scheduled(seconds: 1, now: t0)
+        p.played()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(1)))
+        XCTAssertFalse(p.interrupted(), "already idle")
+    }
+
+    /// The next reply after one cut short works as normal.
+    func testNextReplyAfterCutShort() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 1, now: t0)
+        XCTAssertTrue(p.interrupted())
+        p.scheduled(seconds: 1, now: t0.addingTimeInterval(5))
+        p.played()
+        p.done()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(6)))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(7)), "once")
+    }
+
+    /// A route change mid-sentence (AirPods out) before "done": the queued
+    /// audio is gone, more sentences come and play, and idle goes out once
+    /// when the last one has played, not on the lost sentence's clock.
+    func testRouteChangeMidSentence() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 4, now: t0)
+        p.engineRestarted()
+        XCTAssertNil(p.expectedEnd, "nothing is playing after the restart")
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(1)), "not done yet")
+        p.scheduled(seconds: 1, now: t0.addingTimeInterval(1))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(1.5)), "audio still queued")
+        p.done()
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(1.5)), "still playing")
+        p.played()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(2)))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(3)))
+    }
+
+    /// A route change after "done", with audio still queued: the audio has
+    /// ended with the engine, so idle goes out right away, once.
+    func testRouteChangeAfterDone() {
+        var p = PlaybackTracker()
+        p.scheduled(seconds: 4, now: t0)
+        p.done()
+        p.engineRestarted()
+        XCTAssertTrue(p.takeIdle(now: t0.addingTimeInterval(0.5)))
+        XCTAssertFalse(p.takeIdle(now: t0.addingTimeInterval(5)))
+    }
+}
+
+final class ChatWindowTests: XCTestCase {
+    func testPagesOfForty() {
+        XCTAssertEqual(ChatWindow.first(total: 240), 40)
+        XCTAssertEqual(ChatWindow.first(total: 12), 12)
+        XCTAssertEqual(ChatWindow.grow(40, total: 240), 80)
+        XCTAssertEqual(ChatWindow.grow(220, total: 240), 240)
+        XCTAssertTrue(ChatWindow.hasMore(shown: 40, total: 240))
+        XCTAssertFalse(ChatWindow.hasMore(shown: 240, total: 240))
+    }
+
+    /// Opening an old turn from a notice widens the window to reach it.
+    func testIncludingAnOldMessage() {
+        // Index 100 of 240 is the 140th from the end: three pages plus one.
+        XCTAssertEqual(ChatWindow.including(index: 100, shown: 40, total: 240), 200)
+        XCTAssertEqual(ChatWindow.including(index: 230, shown: 40, total: 240), 40)
+        XCTAssertEqual(ChatWindow.including(index: 0, shown: 40, total: 240), 240)
+    }
+}
+
+final class ChatHistoryTests: XCTestCase {
+    private func turn(_ id: Int, user: Bool) -> ChatTurn {
+        ChatTurn(role: user ? "user" : "assistant", text: "t\(id)", at: "", model: nil, id: id)
+    }
+
+    func testQueriesAndTodaysAnswer() throws {
+        XCTAssertEqual(HistoryQuery.before(40, limit: 50).parameters, ["limit": "50", "before": "40"])
+        XCTAssertEqual(HistoryQuery.around(7, limit: 500).parameters, ["limit": "100", "around": "7"])
+        // Today's server: turns only, so no older pages and pending unknown.
+        let today = try JSONDecoder().decode(HistoryPage.self, from: Data(#"{"turns":[{"role":"user","text":"hi","at":"","id":1}]}"#.utf8))
+        XCTAssertFalse(today.hasMore)
+        XCTAssertNil(today.pending)
+        let paged = try JSONDecoder().decode(HistoryPage.self, from: Data(#"{"turns":[],"hasMore":true,"pending":true}"#.utf8))
+        XCTAssertTrue(paged.hasMore)
+        XCTAssertEqual(paged.pending, true)
+    }
+
+    /// Older pages go in front, never twice.
+    func testPrependDropsOverlap() {
+        let held = [turn(5, user: true), turn(6, user: false)]
+        let older = [turn(3, user: true), turn(4, user: false), turn(5, user: true)]
+        XCTAssertEqual(ChatHistory.prepend(older, to: held).compactMap(\.id), [3, 4, 5, 6])
+    }
+
+    /// Back in the app: his last line unanswered (or the server says still
+    /// writing) means keep checking; an answered one doesn't.
+    func testReplyOwed() {
+        XCTAssertTrue(ChatHistory.replyOwed([turn(1, user: true)], pending: nil))
+        XCTAssertFalse(ChatHistory.replyOwed([turn(1, user: true), turn(2, user: false)], pending: nil))
+        XCTAssertTrue(ChatHistory.replyOwed([turn(1, user: true), turn(2, user: false)], pending: true))
+        XCTAssertFalse(ChatHistory.replyOwed([turn(1, user: true)], pending: false))
+        XCTAssertFalse(ChatHistory.replyOwed([], pending: nil))
+    }
+}
+
+final class ErrorWordingTests: XCTestCase {
+    func testNoCodesOnScreen() {
+        XCTAssertEqual(JarvisError.server(status: 502, message: "Jarvis answered 502").errorDescription, ErrorWording.restarting)
+        XCTAssertEqual(JarvisError.unreachable.errorDescription, ErrorWording.unreachable)
+        XCTAssertFalse(JarvisError.server(status: 500, message: "Jarvis answered 500").errorDescription!.contains("500"))
+        XCTAssertEqual(JarvisError.server(status: 400, message: "Say what the playbook should do").errorDescription, "Say what the playbook should do")
+    }
+
+    /// Reads retry a restart or a dropped line a few times, then give up;
+    /// anything else isn't retried.
+    func testRetryPolicy() async throws {
+        let calls = Counter()
+        let value = try await RetryPolicy.run(delays: [0, 0, 0], sleep: { _ in }) { () async throws -> Int in
+            let n = await calls.bump()
+            if n < 3 { throw JarvisError.server(status: 502, message: "") }
+            return n
+        }
+        XCTAssertEqual(value, 3)
+        let gaveUp = Counter()
+        do {
+            _ = try await RetryPolicy.run(delays: [0, 0], sleep: { _ in }) { () async throws -> Int in
+                _ = await gaveUp.bump(); throw JarvisError.unreachable
+            }
+            XCTFail("should give up")
+        } catch {}
+        let tries = await gaveUp.count
+        XCTAssertEqual(tries, 3)
+        let notRetried = Counter()
+        do {
+            _ = try await RetryPolicy.run(delays: [0, 0], sleep: { _ in }) { () async throws -> Int in
+                _ = await notRetried.bump(); throw JarvisError.server(status: 400, message: "no")
+            }
+        } catch {}
+        let once = await notRetried.count
+        XCTAssertEqual(once, 1)
+    }
+}
+
+actor Counter {
+    var count = 0
+    func bump() -> Int { count += 1; return count }
+}
+
+final class DeviceGroupsTests: XCTestCase {
+    func testGroupsInOrderNamesAtoZUnreachableLast() throws {
+        let json = #"""
+        [{"id":"1","name":"WiZ RGBW Tunable 7C1A2B","kind":"light","state":"on"},
+         {"id":"2","name":"Desk","kind":"light","state":"off"},
+         {"id":"3","name":"Thermostat","kind":"climate","state":"off"},
+         {"id":"4","name":"TV","kind":"media","state":"paused"},
+         {"id":"5","name":"Dylan asleep","kind":"input_boolean","state":"off"},
+         {"id":"6","name":"Porch","kind":"light","state":"unavailable"}]
+        """#
+        let devices = try JSONDecoder().decode([Device].self, from: Data(json.utf8))
+        let groups = DeviceGroups.groups(devices)
+        XCTAssertEqual(groups.map(\.title), ["Lights", "Climate", "TV and speakers", "Other", "Not responding"])
+        XCTAssertEqual(groups[0].devices.map(\.name), ["Desk", "WiZ RGBW Tunable 7C1A2B"])
+        XCTAssertEqual(groups.last?.devices.map(\.name), ["Porch"])
+        // Every device is in the drawer, once.
+        XCTAssertEqual(groups.flatMap(\.devices).count, devices.count)
+    }
+}
+
+final class ChatTurnEventTests: XCTestCase {
+    func testTheFirstEventCarriesHisMessagesId() {
+        XCTAssertEqual(ChatEvent.parse(line: #"{"type":"turn","id":812}"#), .turn(812))
+        XCTAssertNil(ChatEvent.parse(line: #"{"type":"turn"}"#))
+    }
+}
+
+final class ConnectionStatusTests: XCTestCase {
+    func testEachStateInWords() {
+        let ok = ConnectionStatus.of(reachable: true, jarvisRestarting: false)
+        XCTAssertEqual([ok.tailnetWords, ok.jarvisWords], ["Tailscale", "Jarvis"])
+        XCTAssertEqual(ok.spoken, "On Tailscale. Jarvis is answering.")
+        let restarting = ConnectionStatus.of(reachable: true, jarvisRestarting: true)
+        XCTAssertEqual(restarting.jarvisWords, "Jarvis restarting")
+        XCTAssertEqual(restarting.jarvis, .waiting)
+        let off = ConnectionStatus.of(reachable: false, jarvisRestarting: false)
+        XCTAssertEqual(off.tailnetWords, "Tailscale off")
+        XCTAssertEqual(off.spoken, "Not on Tailscale. Jarvis can't be reached.")
+        for s in [ok, restarting, off] { XCTAssertLessThanOrEqual(s.jarvisWords.split(separator: " ").count, 2) }
+        XCTAssertTrue(ConnectionStatus.isJustNotAnswering(JarvisError.server(status: 502, message: "")))
+        XCTAssertFalse(ConnectionStatus.isJustNotAnswering(JarvisError.server(status: 400, message: "no")))
+    }
+}
+
+final class NoticeFocusTests: XCTestCase {
+    func testLandsOnTheTurnOrTheNoticeItself() {
+        XCTAssertEqual(NoticeFocus.outcome(turnId: 7, loaded: [5, 6, 7, 8]), .scroll(to: 7))
+        // The server answered the newest window instead (an unknown or gone turn).
+        XCTAssertEqual(NoticeFocus.outcome(turnId: 7, loaded: [90, 91]), .read)
+        // No turn at all (a report-ready notice, say).
+        XCTAssertEqual(NoticeFocus.outcome(turnId: nil, loaded: [1, 2]), .read)
+        // The load failed after its quiet retries: nothing new is held.
+        XCTAssertEqual(NoticeFocus.outcome(turnId: 7, loaded: []), .read)
+        XCTAssertTrue(NoticeFocus.isLong(String(repeating: "a", count: 200)))
+        XCTAssertFalse(NoticeFocus.isLong("Short one"))
+    }
+}
+
+final class OlderPagingTests: XCTestCase {
+    func testLoadsUntilTheStartAndNeverLoops() {
+        var p = OlderPaging(hasMore: true)
+        XCTAssertTrue(p.begin())
+        XCTAssertFalse(p.begin(), "one load at a time")
+        p.finish(added: 50, hasMore: true)
+        XCTAssertEqual(p.state, .idle)
+        XCTAssertTrue(p.begin())
+        p.finish(added: 12, hasMore: false)
+        XCTAssertEqual(p.state, .done, "start of the chat")
+        XCTAssertFalse(p.begin())
+    }
+
+    func testEmptyOrDuplicatePageEndsPagingEvenIfServerSaysMore() {
+        var empty = OlderPaging(hasMore: true)
+        _ = empty.begin(); empty.finish(added: 0, hasMore: true)
+        XCTAssertEqual(empty.state, .done)
+    }
+
+    func testFailureStopsUntilRetry() {
+        var p = OlderPaging(hasMore: true)
+        _ = p.begin(); p.fail()
+        XCTAssertFalse(p.begin(), "no looping after a failure")
+        p.retry()
+        XCTAssertTrue(p.begin())
+    }
+
+    func testMissingHasMoreMeansNoPaging() throws {
+        let page = try JSONDecoder().decode(HistoryPage.self, from: Data(#"{"turns":[]}"#.utf8))
+        XCTAssertEqual(OlderPaging(hasMore: page.hasMore).state, .done)
+    }
+
+    func testABadTurnIsSkippedNotTheWholePage() throws {
+        let json = #"{"turns":[{"role":"user","text":"a","at":"","id":1},{"role":5},{"role":"assistant","text":"b","at":"","id":2}],"hasMore":true}"#
+        let page = try JSONDecoder().decode(HistoryPage.self, from: Data(json.utf8))
+        XCTAssertEqual(page.turns.compactMap(\.id), [1, 2])
+    }
+}
+
+final class StopJobTests: XCTestCase {
+    func testStopAnswers() {
+        XCTAssertEqual(StopReply.read(status: 200, data: Data(#"{"ok":true,"message":"Stopped \"X\" and put things back."}"#.utf8)), .stopped("Stopped \"X\" and put things back."))
+        XCTAssertEqual(StopReply.read(status: 409, data: Data(#"{"ok":false,"message":"It's going live right now."}"#.utf8)), .failed("It's going live right now."))
+        XCTAssertEqual(StopReply.read(status: 410, data: Data(#"{"ok":false,"gone":true}"#.utf8)), .gone)
+        XCTAssertEqual(StopReply.read(status: 502, data: Data()), .failed(ErrorWording.restarting))
+        guard case .failed(let words) = StopReply.read(status: 500, data: Data(#"{"message":"Jarvis answered 500"}"#.utf8)) else { return XCTFail() }
+        XCTAssertFalse(words.contains("500"))
+    }
+
+    func testStopOnlyOfferedWhenTheServerSaysSo() throws {
+        let old = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"j","label":"x","state":"running"}"#.utf8))
+        XCTAssertFalse(old.canStop)
+        let new = try JSONDecoder().decode(RunningTask.self, from: Data(#"{"id":"j","label":"x","state":"running","stoppable":true}"#.utf8))
+        XCTAssertTrue(new.canStop)
+    }
+}
+
+
+final class DismissCardTests: XCTestCase {
+    /// An orange dot's label offers Dismiss (Done for a reminder); that's
+    /// the button that must clear it, not just close the label.
+    func testOrangeDotCardOffersDismiss() {
+        let notice = Notice(id: "n1", kind: .heads, title: "PS5 Pro back in stock", source: "lookout", created: "2026-11-21T10:00:00Z")
+        let actions = NoticeAction.card(kind: .notice, notice: notice, canOpen: true, canDismiss: true)
+        XCTAssertEqual(actions.first, .dismiss)
+        let reminder = Notice(id: "n2", kind: .heads, title: "Buy the gift", source: "reminder", created: "2026-11-21T10:00:00Z")
+        XCTAssertTrue(NoticeAction.card(kind: .notice, notice: reminder, canOpen: false, canDismiss: true).contains(.done))
+        // Kept: the label's Dismiss lets it go (Kept page's Dismiss).
+        XCTAssertEqual(NoticeAction.card(kind: .kept, notice: notice, canOpen: false, canDismiss: true).first, .unkeep)
+        XCTAssertEqual(NoticeAction.unkeep.label, "Dismiss")
+    }
+
+    /// Cleared here: hidden at once and kept hidden while the snapshot
+    /// still lists it; back if the server didn't take it.
+    func testPendingClearsHideUntilRestored() {
+        var clears = PendingClears()
+        let a = Notice(id: "a", kind: .fyi, title: "A", source: "job", created: "2026-11-21T10:00:00Z")
+        let b = Notice(id: "b", kind: .fyi, title: "B", source: "job", created: "2026-11-21T10:00:00Z")
+        clears.hide(["a"])
+        XCTAssertEqual(clears.visible([a, b]).map(\.id), ["b"])
+        XCTAssertEqual(clears.visible([a, b]).map(\.id), ["b"], "a refresh still listing it doesn't bring it back")
+        clears.restore(["a"])
+        XCTAssertEqual(clears.visible([a, b]).map(\.id), ["a", "b"])
     }
 }

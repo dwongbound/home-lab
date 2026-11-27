@@ -17,6 +17,8 @@ public enum WatchRequest: Equatable, Sendable {
     case board
     /// Clear notices everywhere (empty = all).
     case clear([String])
+    /// Flip something in the house (a WatchDevice's id and command).
+    case control(entity: String, command: String)
 
     /// As a WatchConnectivity message.
     public var message: [String: Any] {
@@ -26,6 +28,7 @@ public enum WatchRequest: Equatable, Sendable {
         case .answer(let id, let ok): return ["op": "answer", "id": id, "ok": ok]
         case .board: return ["op": "board"]
         case .clear(let ids): return ["op": "clear", "ids": ids]
+        case .control(let entity, let command): return ["op": "control", "entity": entity, "command": command]
         }
     }
 
@@ -44,6 +47,9 @@ public enum WatchRequest: Equatable, Sendable {
             self = .board
         case "clear":
             self = .clear(message["ids"] as? [String] ?? [])
+        case "control":
+            guard let entity = message["entity"] as? String, let command = message["command"] as? String else { return nil }
+            self = .control(entity: entity, command: command)
         default:
             return nil
         }
@@ -148,6 +154,9 @@ extension JarvisClient {
                 return .board(WatchBoard(snapshot: try await snapshot(), settled: settled))
             case .clear(let ids):
                 if ids.isEmpty { try await clearAllNotices() } else { try await clearNotices(ids: ids) }
+                return .done
+            case .control(let entity, let command):
+                try await homeControl(entity: entity, command: command)
                 return .done
             }
         } catch {

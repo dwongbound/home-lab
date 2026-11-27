@@ -17,3 +17,7 @@ ios/Watch/Info.plist
 ios/TV/Info.plist
 ios/.build/
 ios/.swiftpm/
+
+# App Store Connect API keys and the upload script's local ids: never committed.
+*.p8
+ios/scripts/asc.local

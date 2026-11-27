@@ -17,6 +17,8 @@ const KINDS = ['need', 'heads', 'fyi']
 // "kept" = a chat message he asked to keep, which never was a notification.
 const SOURCES = ['approval', 'lookout', 'reminder', 'alert', 'job', 'message', 'kept']
 const ID = /^[\w-]{1,64}$/
+// A report's id (server/sources/reports.mjs): 16 lowercase hex characters.
+const REPORT_ID = /^[0-9a-f]{16}$/
 
 /** Trimmed text of at most `max` characters, or '' when it isn't text. */
 function words(value, max) {
@@ -36,6 +38,8 @@ export function parseNotice(raw) {
   if (typeof raw.approval_id === 'string' && ID.test(raw.approval_id)) notice.approvalId = raw.approval_id
   // The chat turn holding the full message (the notice is only a preview), so a tap can open the chat there.
   if (Number.isInteger(raw.turn_id) && raw.turn_id > 0) notice.turnId = raw.turn_id
+  // The report a "Report ready" notice is about, so the apps can open /reports/{id}.
+  if (typeof raw.report_id === 'string' && REPORT_ID.test(raw.report_id)) notice.reportId = raw.report_id
   // Kept until he lets it go; left off the ones that aren't.
   if (raw.kept === true) notice.kept = true
   return notice

@@ -32,12 +32,59 @@ private func onMain(_ body: @escaping @MainActor () -> Void) {
     }
 }
 
-/// A line in the Xcode console for debug builds, so a dead microphone can
-/// be traced on the phone; silent in release builds.
+/// One line about the Talk line: the Xcode console in debug builds, and in
+/// every build the phone's own talk-log.txt, so a dropped line can be traced
+/// afterwards (Dylan, 2026-11-25: "the line to jarvis just dropped").
 func talkLog(_ message: @autoclosure () -> String) {
+    let line = message()
     #if DEBUG
-    print("[talk] \(message())")
+    print("[talk] \(line)")
     #endif
+    TalkFileLog.shared.add(line)
+}
+
+/// The last few hundred Talk lines in Documents/talk-log.txt, read off the
+/// phone from the Mac. Lines collect in memory and are written at most every
+/// 3 s, so a burst (a failing mic frame each 20 ms) costs nothing; a line
+/// repeated back to back is counted rather than written again. No words
+/// Dylan or Jarvis said go in it, only what the line did.
+final class TalkFileLog: @unchecked Sendable {
+    static let shared = TalkFileLog()
+    private let queue = DispatchQueue(label: "talk.filelog", qos: .utility)
+    private var pending: [String] = []
+    private var last = ""
+    private var repeats = 0
+    private var flushDue = false
+    private let stamp = ISO8601DateFormatter()
+
+    /// Queues one line for the file.
+    func add(_ line: String) {
+        let now = Date()
+        queue.async {
+            if line == self.last {
+                self.repeats += 1
+                return
+            }
+            if self.repeats > 0 { self.pending.append("  (\(self.repeats) more like that)") }
+            self.repeats = 0
+            self.last = line
+            self.pending.append("\(self.stamp.string(from: now)) \(line)")
+            guard !self.flushDue else { return }
+            self.flushDue = true
+            self.queue.asyncAfter(deadline: .now() + 3) { self.flush() }
+        }
+    }
+
+    /// Writes what's pending, keeping the newest 400 lines.
+    private func flush() {
+        flushDue = false
+        guard !pending.isEmpty, let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let url = dir.appendingPathComponent("talk-log.txt")
+        var lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        lines.append(contentsOf: pending)
+        pending = []
+        try? lines.suffix(400).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
 }
 
 /// Why opening the line failed, worded for the screen.
@@ -73,12 +120,17 @@ final class TalkLine: @unchecked Sendable {
     private var voiceRate: Double = 22050
     private var voiceFormat: AVAudioFormat?
     private var state: TalkState = .listening
-    /// Sentences scheduled and not yet heard.
-    private var queued = 0
+    /// Sentences scheduled and not yet heard, and when "idle" is due
+    /// (JarvisKit PlaybackTracker: callbacks, with the clock as backstop).
+    private var playback = PlaybackTracker()
     /// Bumped on every "stop", so sentences dropped then don't count down later.
     private var generation = 0
-    private var replyDone = false
     private var muted = false
+    /// Jarvis's "pause" is holding his voice (he may be being interrupted).
+    private var held = false
+    /// Some of this turn's reply text has arrived. A "stop" before any
+    /// (Dylan talking over a filler like "Hmm.") only clears the audio.
+    private var replyStarted = false
     private var closed = false
     private(set) var canDoze = false
     private var observers: [NSObjectProtocol] = []
@@ -307,36 +359,78 @@ final class TalkLine: @unchecked Sendable {
         floats.withUnsafeBufferPointer { source in
             buffer.floatChannelData?[0].update(from: source.baseAddress!, count: floats.count)
         }
-        queued += 1
-        if queued == 1 { onMain { self.handlers.onVoice(true) } }
+        playback.scheduled(seconds: Double(floats.count) / format.sampleRate, now: Date())
+        if playback.queued == 1 { onMain { self.handlers.onVoice(true) } }
         let mine = generation
         voice.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             guard let self else { return }
             self.queue.async {
                 guard mine == self.generation else { return }
-                self.queued -= 1
-                if self.queued <= 0 { onMain { self.handlers.onVoice(false) } }
+                self.playback.played()
+                if self.playback.queued <= 0 { onMain { self.handlers.onVoice(false) } }
                 self.maybeIdle()
             }
         }
-        if !voice.isPlaying { voice.play() }
+        // While held, the new sentence waits in the queue behind the spot.
+        if !voice.isPlaying, !held { startVoice() }
     }
 
-    /// Tells Jarvis the speaker's quiet, once his whole reply has played.
+    /// Tells Jarvis the speaker's quiet, once his whole reply has played:
+    /// exactly once, whichever comes last of "done" and the audio ending.
+    /// If a played callback never comes (the route reconfigured mid-reply),
+    /// a timer set for the audio's expected end sends it anyway.
     private func maybeIdle() {
-        guard replyDone, queued <= 0 else { return }
-        replyDone = false
-        queued = 0
-        send(text: TalkMessage.idle)
+        let now = Date()
+        if playback.takeIdle(now: now) {
+            talkLog("idle")
+            send(text: TalkMessage.idle)
+            return
+        }
+        if let check = playback.nextCheck(now: now) {
+            let mine = generation
+            queue.asyncAfter(deadline: .now() + check.timeIntervalSince(now) + 0.01) { [weak self] in
+                guard let self, !self.closed, mine == self.generation else { return }
+                self.maybeIdle()
+            }
+        }
     }
 
     /// Drops whatever of his voice is still queued (Dylan talked over him).
     private func silence() {
         generation += 1
-        queued = 0
+        held = false
         onMain { self.handlers.onVoice(false) }
-        replyDone = false
+        // A reply cut off still ends: tell Jarvis the speaker is quiet,
+        // once (he'd otherwise wait out his 3 s watchdog).
+        if playback.interrupted() {
+            talkLog("idle (cut short)")
+            send(text: TalkMessage.idle)
+        }
         voice.stop()
+        startVoice()
+    }
+
+    /// Jarvis stopped a filler ("Hmm.", "One sec") that Dylan talked over:
+    /// drop its audio and nothing else. No idle goes out (the real reply is
+    /// still to come and gets its own, once), and nothing changes on screen.
+    private func dropFiller() {
+        generation += 1
+        held = false
+        playback.reset()
+        onMain { self.handlers.onVoice(false) }
+        voice.stop()
+        startVoice()
+    }
+
+    /// Starts his voice player, but only while the engine runs: play() on a
+    /// player whose engine has stopped (a call, a route change, the app
+    /// going to the background mid-reply) throws an Objective-C exception
+    /// that kills the app. A stopped engine is the watchdog's to restart.
+    private func startVoice() {
+        guard audioStarted, engine.isRunning else {
+            talkLog("voice not started: engine stopped")
+            return
+        }
         voice.play()
     }
 
@@ -357,10 +451,13 @@ final class TalkLine: @unchecked Sendable {
             let length = min(noteLength + tail, total - start)
             for i in 0..<length {
                 let t = Double(i) / rate
-                // Swell over 12 ms, then fade, so no edge clicks.
-                let swell = min(1, t / 0.012)
+                // Swell over 25 ms, then fade, so no edge clicks. About 40%
+                // quieter and softer than before (Dylan, 2026-11-25: "slightly
+                // lower the chime volume or make it more subtle"), matching
+                // the page's playGotIt; it sits under Jarvis's "Hmm." filler.
+                let swell = min(1, t / 0.025)
                 let fade = exp(-t / 0.035)
-                out[start + i] += Float(sin(2 * .pi * hz * t) * swell * fade * 0.07)
+                out[start + i] += Float(sin(2 * .pi * hz * t) * swell * fade * 0.042)
             }
         }
         chime.scheduleBuffer(buffer, completionHandler: nil)
@@ -379,7 +476,9 @@ final class TalkLine: @unchecked Sendable {
                     self.listen()
                 }
             case .failure(let error):
-                talkLog("line dropped: \(error)")
+                // The close code and reason too, for matching with Jarvis's log.
+                let reason = self.socket.closeReason.map { String(decoding: $0.prefix(120), as: UTF8.self) } ?? ""
+                talkLog("line dropped: \(error.localizedDescription) (code \((error as NSError).code), close \(self.socket.closeCode.rawValue) \(reason), engine \(self.engine.isRunning ? "running" : "stopped"))")
                 self.shutDown(message: "The line to Jarvis dropped. Tap Talk to call again.")
             }
         }
@@ -392,10 +491,10 @@ final class TalkLine: @unchecked Sendable {
             play(data)
         case .string(let text):
             guard let event = TalkEvent.parse(text) else {
-                talkLog("unread event: \(text.prefix(200))")
+                talkLog("unread event (\(text.count) characters)")
                 return
             }
-            if case .transcript(let words, _) = event { talkLog("heard: \(words)") }
+            if case .transcript(let words, _, _) = event { talkLog("heard \(words.split(separator: " ").count) words") }
             apply(event)
             onMain { self.handlers.onEvent(event) }
         @unknown default:
@@ -422,10 +521,33 @@ final class TalkLine: @unchecked Sendable {
             if TalkAudio.heardYouOut(before: state, after: next) { playGotIt() }
             state = next
         case .done:
-            replyDone = true
+            replyStarted = false
+            playback.done()
             maybeIdle()
         case .stop:
-            silence()
+            if replyStarted {
+                silence()
+            } else {
+                dropFiller()
+            }
+        case .reply:
+            replyStarted = true
+        case .transcript:
+            // A new turn: its reply hasn't begun.
+            replyStarted = false
+        case .pause:
+            // AVAudioPlayerNode.pause keeps the exact spot and the queue.
+            talkLog("pause")
+            held = true
+            playback.pause(now: Date())
+            if audioStarted, engine.isRunning { voice.pause() }
+        case .resume:
+            guard held else { break }
+            talkLog("resume")
+            held = false
+            playback.resume(now: Date())
+            startVoice()
+            maybeIdle()
         case .bye:
             // He's said goodbye and is closing the line: hang up quietly
             // (no "line dropped" message), mic and audio off, no reconnect.
@@ -506,6 +628,10 @@ final class TalkLine: @unchecked Sendable {
     private func rewire() {
         guard !closed else { return }
         talkLog("audio route changed, rewiring")
+        // Buffers in flight won't report played after this; go by the clock.
+        // A held voice went with the engine, so nothing is held now.
+        playback.engineRestarted()
+        held = false
         engine.stop()
         connectNodes()
         do {
@@ -515,6 +641,8 @@ final class TalkLine: @unchecked Sendable {
         } catch {
             talkLog("rewire failed: \(error)")
         }
+        // A reply already done is owed its idle now, not after a timer.
+        maybeIdle()
     }
 
     // MARK: The microphone watchdog
@@ -562,6 +690,8 @@ final class TalkLine: @unchecked Sendable {
         talkLog("restarting mic: \(reason)\(rebuild ? " (new engine)" : "")")
         engine.inputNode.removeTap(onBus: 0)
         voice.removeTap(onBus: 0)
+        playback.engineRestarted()
+        held = false
         engine.stop()
         if rebuild {
             engine = AVAudioEngine()
@@ -571,7 +701,7 @@ final class TalkLine: @unchecked Sendable {
             engine.attach(chime)
             // Whatever of his voice was queued went with the old engine.
             generation += 1
-            queued = 0
+            playback.engineRestarted()
         }
         let session = AVAudioSession.sharedInstance()
         do {
@@ -590,6 +720,7 @@ final class TalkLine: @unchecked Sendable {
         } catch {
             talkLog("engine wouldn't start: \(error)")
         }
+        maybeIdle()
     }
 
     /// "Mic paused. Tap to resume.": a fresh engine and a fresh count.

@@ -131,3 +131,31 @@ public enum HomeGlance {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
+
+/// Every device, for the Home drawer (Dylan, 2026-11-19: "when i click home
+/// it should show a drawer of all my devices in a scrollable list"), in
+/// plain groups, names A to Z; the ones Home Assistant can't reach last.
+public enum DeviceGroups {
+    static let order: [(title: String, kinds: Set<String>)] = [
+        ("Lights", ["light"]),
+        ("Climate", ["climate"]),
+        ("TV and speakers", ["media"]),
+        ("Switches and fans", ["switch", "fan"]),
+        ("Locks and blinds", ["lock", "cover"]),
+    ]
+
+    public static func groups(_ devices: [Device]) -> [(title: String, devices: [Device])] {
+        let byName: (Device, Device) -> Bool = { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let up = devices.filter(\.isAvailable)
+        var out: [(String, [Device])] = order.compactMap { group in
+            let these = up.filter { group.kinds.contains($0.kind) }.sorted(by: byName)
+            return these.isEmpty ? nil : (group.title, these)
+        }
+        let known = order.reduce(into: Set<String>()) { $0.formUnion($1.kinds) }
+        let other = up.filter { !known.contains($0.kind) }.sorted(by: byName)
+        if !other.isEmpty { out.append(("Other", other)) }
+        let down = devices.filter { !$0.isAvailable }.sorted(by: byName)
+        if !down.isEmpty { out.append(("Not responding", down)) }
+        return out
+    }
+}

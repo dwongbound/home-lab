@@ -27,10 +27,14 @@ public enum TalkEvent: Equatable, Sendable {
     /// doze and wake on "Hey Jarvis" (older ones can only hang up).
     case hello(rate: Double, wakeWord: Bool)
     case state(TalkState)
-    /// What Whisper has heard so far while Dylan is still talking.
-    case partial(String, joined: Bool)
-    /// One whole turn heard. joined: carries on the question he was answering.
-    case transcript(String, joined: Bool)
+    /// What Whisper has heard so far while Dylan is still talking. `stable`
+    /// is how many leading words are settled and won't change again (nil
+    /// from an older Jarvis: all tentative).
+    case partial(String, joined: Bool, stable: Int? = nil)
+    /// One whole turn heard. joined: carries on the question he was
+    /// answering. same: the final says what the live words already said, so
+    /// the shown words stay as they are.
+    case transcript(String, joined: Bool, same: Bool = false)
     /// More of his reply's text.
     case reply(String)
     case working(String)
@@ -38,8 +42,14 @@ public enum TalkEvent: Equatable, Sendable {
     case model(String)
     /// He finished this reply.
     case done
-    /// Dylan talked over him: drop the rest of his voice.
+    /// Dylan talked over him: drop the rest of his voice, including any
+    /// held by a pause.
     case stop
+    /// He heard a little voice while speaking (about 96 ms): hold his voice
+    /// at the exact spot, queue whatever arrives, and send no idle.
+    case pause
+    /// It was an echo or a cough: carry on from the exact spot, then the queue.
+    case resume
     /// He said goodbye (Dylan said "talk to you later"): his goodbye has
     /// played and he's hanging up for good, not dozing. Even "Hey Jarvis"
     /// won't wake him; only a tap on Talk starts a new call.
@@ -63,15 +73,22 @@ public enum TalkEvent: Equatable, Sendable {
         case "hello":
             let rate = (object["rate"] as? NSNumber)?.doubleValue ?? 22050
             return .hello(rate: rate, wakeWord: object["wake_word"] as? Bool ?? false)
+        case "woke":
+            // He's awake again after dozing, whatever woke him: the wake
+            // word, or (Jarvis build 69) speech within 10 s of dozing off by
+            // himself ("by": "speech"), or a reason not known yet. Any of
+            // them means listening, even before his own "state" arrives.
+            return .state(.listening)
         case "state":
             guard let raw = object["state"] as? String, let state = TalkState(rawValue: raw) else { return nil }
             return .state(state)
         case "partial":
             if words.isEmpty { return nil }
-            return .partial(words, joined: joined)
+            let stable = (object["stable"] as? NSNumber).map { max(0, $0.intValue) }
+            return .partial(words, joined: joined, stable: stable)
         case "transcript":
             if words.isEmpty { return nil }
-            return .transcript(words, joined: joined)
+            return .transcript(words, joined: joined, same: object["same"] as? Bool ?? false)
         case "reply":
             if words.isEmpty { return nil }
             return .reply(words)
@@ -86,6 +103,10 @@ public enum TalkEvent: Equatable, Sendable {
             return .done
         case "stop":
             return .stop
+        case "pause":
+            return .pause
+        case "resume":
+            return .resume
         case "bye":
             return .bye
         case "approval":
@@ -121,9 +142,11 @@ public enum TalkMessage {
     /// Mute tapped: "I'm finished talking", so he answers what he has heard at once.
     public static let endTurn = #"{"type":"end_turn"}"#
 
-    /// For Jarvis's log, so a crackle report can be matched to the phone's audio.
-    public static func client(micRate: Double, audioRate: Double) -> String {
-        let object: [String: Any] = ["type": "client", "mic_rate": micRate, "audio_rate": audioRate, "agent": "Jarvis iOS"]
+    /// For Jarvis's log, so a crackle report can be matched to the phone's
+    /// audio. pause: true says this app holds his voice on "pause"/"resume".
+    /// The Watch has no echo cancelling, so it says pause: false.
+    public static func client(micRate: Double, audioRate: Double, agent: String = "Jarvis iOS", pause: Bool = true) -> String {
+        let object: [String: Any] = ["type": "client", "mic_rate": micRate, "audio_rate": audioRate, "agent": agent, "pause": pause]
         let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
         return String(decoding: data, as: UTF8.self)
     }
@@ -238,5 +261,174 @@ extension JarvisClient {
         request.setValue(origin, forHTTPHeaderField: "Origin")
         request.setValue("1", forHTTPHeaderField: "x-home-lab")
         return request
+    }
+}
+
+/// Where the words Jarvis just heard go on the Talk screen (Dylan,
+/// 2026-11-18: "it didnt print what i said at all, and it was doing it out
+/// of order"). The native twin of the page's canJoin (src/lib/heard.ts):
+/// keep the two in step. Partials are sparse or absent, so nothing here
+/// depends on them: a transcript alone opens or fills an exchange.
+public enum HeardPlacement: Equatable, Sendable {
+    /// Into the open exchange, replacing what was heard so far.
+    case same
+    /// The open exchange moves up into the transcript; these words start a new one.
+    case new
+
+    /// Where words go, given the open exchange. Joined words (Jarvis carried
+    /// on the question he was answering) stay in it only while he hasn't
+    /// answered and it isn't done: canJoin. Words that aren't joined are the
+    /// same turn still being heard (a partial, then its transcript) under
+    /// the same condition. Once there's an answer, or the exchange is done,
+    /// any words start a new one, so the last question and its answer stay
+    /// where they were.
+    public static func of(openReply: String, openDone: Bool, joined: Bool) -> HeardPlacement {
+        let stillOpen = openReply.isEmpty && !openDone
+        if joined { return stillOpen ? .same : .new }
+        return stillOpen ? .same : .new
+    }
+}
+
+/// The live words on the Talk screen (Dylan, 2026-11-18: the live words got
+/// rewritten a lot). Jarvis marks how many leading words are settled; those
+/// show solid and only the tail is light. When the final transcript says
+/// the same as what's shown, the shown words stay put instead of being
+/// swapped. The native twin of src/lib/heard.ts; keep the two in step.
+public enum HeardWords {
+    /// How light the tentative tail is (the page's 55%).
+    public static let tailOpacity = 0.55
+
+    /// The settled words and the tentative tail. `stable` nil (an older
+    /// Jarvis) means nothing is settled; more than there are means all is.
+    public static func split(_ text: String, stable: Int?) -> (settled: String, tail: String) {
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let n = min(max(stable ?? 0, 0), words.count)
+        return (words[..<n].joined(separator: " "), words[n...].joined(separator: " "))
+    }
+
+    /// What the bubble says once the final transcript arrives: the shown
+    /// words when Jarvis says they match (`same`) and something was shown,
+    /// otherwise the final.
+    public static func afterFinal(shown: String, final: String, same: Bool) -> String {
+        same && !shown.trimmingCharacters(in: .whitespaces).isEmpty ? shown : final
+    }
+}
+
+/// When a reply has finished playing, so the app tells Jarvis "idle" once
+/// and promptly (Dylan, 2026-11-19, 10:44: after a short reply on his
+/// Bluetooth headset no idle went out, so Jarvis sat in "speaking" for 40 s
+/// and didn't hear him). Each sentence's buffer is counted, and its played
+/// callback counts it back, but the callback isn't to be trusted: when the
+/// audio route reconfigures (Bluetooth HFP does this as playback starts)
+/// the engine restarts and buffers in flight never report. So the
+/// tracker also knows when the audio should have ended, and once that time
+/// plus a short grace has passed, the reply counts as played.
+public struct PlaybackTracker: Equatable, Sendable {
+    /// Grace after the expected end before the backstop calls it played.
+    public static let grace: TimeInterval = 0.8
+
+    /// Buffers scheduled and not yet reported played.
+    public private(set) var queued = 0
+    /// Jarvis said the reply is complete ("done").
+    public private(set) var replyDone = false
+    /// When the last scheduled audio should finish playing.
+    public private(set) var expectedEnd: Date?
+    /// "idle" already went out for a reply cut short (stop, pause): its
+    /// late "done" mustn't send a second one.
+    public private(set) var cutShort = false
+    /// When Jarvis's "pause" held the voice; nil while it plays.
+    public private(set) var pausedAt: Date?
+
+    public init() {}
+
+    /// A buffer of `seconds` of audio was scheduled at `now`; it plays after
+    /// whatever is still queued.
+    public mutating func scheduled(seconds: TimeInterval, now: Date) {
+        cutShort = false
+        queued += 1
+        // While paused the clock stands still at the pause, so resume can
+        // move the whole queue on by however long the pause lasted.
+        let clock = pausedAt ?? now
+        let start = max(clock, expectedEnd ?? clock)
+        expectedEnd = start.addingTimeInterval(seconds)
+    }
+
+    /// Jarvis's "pause": the voice holds where it is.
+    public mutating func pause(now: Date) {
+        if pausedAt == nil { pausedAt = now }
+    }
+
+    /// Jarvis's "resume": the held audio plays on, so its expected end moves
+    /// later by the length of the pause.
+    public mutating func resume(now: Date) {
+        guard let pausedAt else { return }
+        if let expectedEnd { self.expectedEnd = expectedEnd.addingTimeInterval(max(0, now.timeIntervalSince(pausedAt))) }
+        self.pausedAt = nil
+    }
+
+    /// One buffer reported played.
+    public mutating func played() { queued = max(0, queued - 1) }
+
+    /// Jarvis's "done": no more audio for this reply.
+    public mutating func done() {
+        // The "done" of a reply already cut short and answered with idle.
+        if cutShort, queued == 0, expectedEnd == nil { cutShort = false; return }
+        replyDone = true
+    }
+
+    /// The engine stopped and restarted (a route change: Bluetooth on or
+    /// off, AirPods out; a configuration change; a media reset). Whatever
+    /// was queued went with it and won't report, and nothing is playing
+    /// now: the audio has ended, so a finished reply is owed idle at once.
+    public mutating func engineRestarted() {
+        queued = 0
+        expectedEnd = nil
+        pausedAt = nil
+    }
+
+    /// His voice was cut off (Jarvis's "stop" for a barge-in, Pause, the
+    /// line resetting): true when a reply was playing or owed idle, so idle
+    /// goes out now, once. Its "done", if it comes later, sends nothing.
+    public mutating func interrupted() -> Bool {
+        let owed = replyDone || queued > 0 || expectedEnd != nil
+        self = PlaybackTracker()
+        cutShort = owed
+        return owed
+    }
+
+    /// Dylan talked over him, or the line reset: nothing is owed.
+    public mutating func reset() { self = PlaybackTracker() }
+
+    /// Whether to send "idle" now. True once per reply: the reply is done,
+    /// and either every buffer reported played or the clock says it ended.
+    /// Calling it with a true answer clears the reply, so it can't fire twice.
+    public mutating func takeIdle(now: Date) -> Bool {
+        // Never idle while his voice is held: the speaker isn't done.
+        guard replyDone, pausedAt == nil else { return false }
+        let clockSaysEnded = expectedEnd.map { now >= $0.addingTimeInterval(Self.grace) } ?? true
+        guard queued <= 0 || clockSaysEnded else { return false }
+        self = PlaybackTracker()
+        return true
+    }
+
+    /// When to look again if idle isn't due yet (the backstop's timer).
+    public func nextCheck(now: Date) -> Date? {
+        guard replyDone, pausedAt == nil, let expectedEnd else { return nil }
+        let due = expectedEnd.addingTimeInterval(Self.grace)
+        return due > now ? due : nil
+    }
+}
+
+/// Which of the live words are new and sweep in (Dylan, 2026-11-21:
+/// "fading the words in … from left to right"). Matches the web Talk page:
+/// words are keyed by their place in the line, so a word that is rewritten
+/// in place changes without replaying its sweep; only words beyond what was
+/// shown before are new.
+public enum FreshWords {
+    /// The index of the first new word in `new` (its word count when none).
+    public static func firstNew(old: String, new: String) -> Int {
+        let before = old.split(whereSeparator: \.isWhitespace).count
+        let now = new.split(whereSeparator: \.isWhitespace).count
+        return min(before, now)
     }
 }

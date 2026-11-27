@@ -5,6 +5,7 @@
 // iPad kiosk). Refreshes every 15 s like the page, and keeps the TV from
 // dimming while it's open. Reaches the PC over Tailscale's Apple TV app,
 // the same front door as the phone. Read-only: nothing here acts.
+import Charts
 import SwiftUI
 import UIKit
 import JarvisKit
@@ -42,6 +43,11 @@ final class AlwaysOnModel: ObservableObject {
 
     /// The unread notices, newest first, less any just cleared.
     var notices: [Notice] {
+        Notices.unread(orbitNotices)
+    }
+
+    /// Unread and kept together: what orbits the orb (kept ones yellow).
+    var orbitNotices: [Notice] {
         TVSettled.shared.record.showing(Notices.sorted((snapshot?.notices ?? []).filter { !cleared.contains($0.id) }))
     }
 
@@ -159,7 +165,7 @@ struct AlwaysOnView: View {
     @State private var cardScroll: Double = 0
     /// The most a card's rows may take before they scroll: less when the
     /// Now/Next card is above.
-    @State private var rowsMax: CGFloat = 274
+    @State private var rowsMax: CGFloat = 334
     @FocusState private var typing: Bool
     /// Guest-friendly (on by default): people walking in see this screen,
     /// so it leaves out sleep, steps, Jarvis's suggestions and the private
@@ -316,11 +322,27 @@ struct AlwaysOnView: View {
         .onChange(of: scenePhase) { _, phase in
             UIApplication.shared.isIdleTimerDisabled = phase == .active
         }
+        // Dylan, 2026-11-20: launched by the arrive-home playbook, the TV
+        // still went to its screensaver before he got in. Setting the flag
+        // to what it already is doesn't restart tvOS's own idle clock, so
+        // every 30 s while in front it's switched off and on again, which
+        // does; and it's set whenever the app becomes active, however it
+        // was opened (a playbook, jarvis://, the remote).
         .task {
             while !Task.isCancelled {
-                if scenePhase == .active { UIApplication.shared.isIdleTimerDisabled = true }
-                try? await Task.sleep(for: .seconds(60))
+                if scenePhase == .active {
+                    UIApplication.shared.isIdleTimerDisabled = false
+                    UIApplication.shared.isIdleTimerDisabled = true
+                }
+                try? await Task.sleep(for: .seconds(30))
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
+        // jarvis:// brings the app to its usual screen; nothing more to do.
+        .onOpenURL { _ in
+            UIApplication.shared.isIdleTimerDisabled = true
         }
     }
 
@@ -343,10 +365,14 @@ struct AlwaysOnView: View {
     /// first press, so Select wakes the board instead of opening Ask Jarvis.
     private var calmLayout: some View {
         Button(action: wake) {
+            ZStack {
+            // A big, dim orb behind the clock (Dylan, 2026-11-19), so the
+            // night screen gives off less light than the small brighter one
+            // did; at night only the pips that need him.
+            OrbView(state: .listening, size: 620, orbit: Orbit.items(running: [], notices: model.notices, night: true), tappable: false, onLight: false)
+                .opacity(NightCalm.orbOpacity)
+                .allowsHitTesting(false)
             VStack(spacing: 22) {
-                // At night only the pips that need him.
-                OrbView(state: .listening, size: 240, orbit: Orbit.items(running: [], notices: model.notices, night: true), tappable: false, onLight: false)
-                    .opacity(0.3)
                 TimelineView(.periodic(from: .now, by: 30)) { tick in
                     let now = SunLampPreview.now(at: tick.date)
                     VStack(spacing: 10) {
@@ -355,21 +381,26 @@ struct AlwaysOnView: View {
                             .monospacedDigit()
                             .fixedSize()
                             .foregroundStyle(ink)
+                            // Dimmed so it gives off little light in the dark.
+                            .opacity(NightCalm.clockOpacity)
                             .contentTransition(.numericText())
                             .animation(reduceMotion ? nil : .smooth(duration: 0.8), value: now.formatted(.dateTime.hour().minute()))
                         Text(now, format: .dateTime.weekday(.wide).month(.wide).day())
                             .font(.title3)
                             .foregroundStyle(inkDim)
+                            .opacity(NightCalm.secondaryOpacity)
                         if let snapshot = model.snapshot,
                            let line = NightCalm.morningLine(events: snapshot.events, agenda: snapshot.today, now: now, guest: guest) {
                             Label(line, systemImage: "alarm.fill")
                                 .font(.headline)
                                 .foregroundStyle(inkDim)
                                 .labelStyle(TintedIconLabel(icon: accent))
+                                .opacity(NightCalm.secondaryOpacity)
                                 .padding(.top, 8)
                         }
                     }
                 }
+            }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -448,7 +479,7 @@ struct AlwaysOnView: View {
         VStack(spacing: 26) {
             // The orb follows the chat while it's open: thinking, working,
             // speaking with each word.
-            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, orbit: Orbit.items(running: model.snapshot?.jobs?.running ?? [], notices: model.notices), tappable: false, onLight: palette.darkInk)
+            OrbView(state: chat.orbMood ?? (model.snapshot?.jobs?.running.isEmpty == false ? .working : .listening), size: 400, level: chat.level, orbit: Orbit.items(running: model.snapshot?.jobs?.running ?? [], notices: model.orbitNotices), tappable: false, onLight: palette.darkInk)
                 // Dim at night so the bedroom stays dark (the text is dimmed
                 // by the palette instead, only as far as it stays readable).
                 .opacity(0.35 + 0.65 * min(1, lamp.brightness * 3))
@@ -557,7 +588,7 @@ struct AlwaysOnView: View {
     private var right: some View {
         if let snapshot = model.snapshot {
             let cards = TVBoard.cards(snapshot, guest: guest)
-            let active = CardSwipe.index(turn: turn, count: cards.count)
+            let active = Self.pinnedCard(cards) ?? CardSwipe.index(turn: turn, count: cards.count)
             TimelineView(.periodic(from: .now, by: SunLampPreview.enabled ? 0.5 : 15)) { tick in
                 let now = SunLampPreview.now(at: tick.date)
                 let hero = TVBoard.hero(snapshot, now: now, guest: guest)
@@ -568,7 +599,7 @@ struct AlwaysOnView: View {
                     }
                     greeting(snapshot, showBody: false)
                     if let hero {
-                        NowNextCard(item: hero, now: now, palette: palette)
+                        NowNextStrip(item: hero, after: TVBoard.after(snapshot, now: now, guest: guest), now: now, palette: palette)
                             .transition(.opacity.combined(with: .scale(scale: 0.97)))
                     }
                     if !cards.isEmpty {
@@ -582,25 +613,37 @@ struct AlwaysOnView: View {
                                 ))
                             // The remote's swipes page the cards.
                             if cards.count > 1 {
-                                CardSwipeCatcher(onSwipe: { step in
+                                // Up and down on the remote change the card (a
+                                // click or a swipe); left and right stay with
+                                // the buttons.
+                                CardPager(onStep: { step in
                                     lastSwipe = Date()
+                                    // The dots brighten for a moment: the press registered.
+                                    cardFocused = true
+                                    Task {
+                                        try? await Task.sleep(for: .seconds(1.2))
+                                        cardFocused = false
+                                    }
                                     slide = step
                                     cardScroll = 0
                                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.6)) { turn += step }
-                                }, onFocus: { cardFocused = $0 })
-                                .allowsHitTesting(true)
+                                }, enabled: !calm && !asking && !showingNotices)
+                                .allowsHitTesting(false)
                             }
                         }
                         // With three or more cards the height holds still so
                         // nothing below jumps; with fewer, the card takes
                         // its own height and the column centres itself.
-                        .frame(height: cards.count >= 3 ? (hero == nil ? 470 : 400) : nil, alignment: .top)
+                        // The slim Now/Next strip leaves the cards nearly
+                        // their full room (Dylan, 2026-11-24: Sleep and
+                        // other cards were cut off at their edges).
+                        .frame(height: cards.count >= 3 ? (hero == nil ? 500 : 460) : nil, alignment: .top)
                         .onPreferenceChange(ScrollCycleKey.self) { cardScroll = $0 }
-                        .onAppear { rowsMax = hero == nil ? 344 : 274 }
-                        .onChange(of: hero == nil) { _, none in rowsMax = none ? 344 : 274 }
+                        .onAppear { rowsMax = hero == nil ? 374 : 334 }
+                        .onChange(of: hero == nil) { _, none in rowsMax = none ? 374 : 334 }
                         if cards.count > 1 {
                             CardDots(count: cards.count, active: active, seconds: TVBoard.turnSeconds, palette: palette)
-                                // Brighter while the remote is on the cards.
+                                // Brighter for a moment after up or down.
                                 .opacity(cardFocused ? 1 : 0.7)
                                 .scaleEffect(cardFocused ? 1.15 : 1)
                                 .animation(.smooth(duration: 0.3), value: cardFocused)
@@ -624,7 +667,8 @@ struct AlwaysOnView: View {
         let notices = model.notices
         if let count = Notices.countLabel(notices) {
             let label = HStack(spacing: 8) {
-                ForEach(Array(Notices.pips(notices).prefix(4).enumerated()), id: \.offset) { _, kind in
+                // One dot however many there are, like the iPhone's.
+                if let kind = Notices.headerDot(notices) {
                     Circle().fill(OrbView.noticeOrange(onLight: palette.darkInk).opacity(kind == .need ? 1 : 0.75))
                         .frame(width: 12, height: 12)
                 }
@@ -711,6 +755,25 @@ struct AlwaysOnView: View {
                     .staggered(index)
                 }
             }
+        case .devices:
+            // Every device, grouped as on the phone, two to a row; what's on
+            // is lit warm and the thermostat's temperature reads big. The
+            // palette dims it at night like every card; display only.
+            card(which) {
+                ForEach(Array(DeviceGroups.groups(snapshot.home?.devices ?? []).enumerated()), id: \.element.title) { index, group in
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(group.title)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(inkDim)
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 22, alignment: .top), GridItem(.flexible(), spacing: 22, alignment: .top)], alignment: .leading, spacing: 18) {
+                            ForEach(group.devices) { device in
+                                tvDeviceTile(device)
+                            }
+                        }
+                    }
+                    .staggered(index)
+                }
+            }
         case .playing:
             card(which) {
                 ForEach(Array(TVBoard.playing(snapshot.home).prefix(3).enumerated()), id: \.element.id) { index, device in
@@ -762,9 +825,29 @@ struct AlwaysOnView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         ForEach(Array(running.prefix(4).enumerated()), id: \.element.id) { index, task in
                             HStack(alignment: .firstTextBaseline, spacing: 18) {
-                                Circle().fill(OrbView.taskBlue(onLight: palette.darkInk)).frame(width: 16, height: 16)
-                                    .frame(width: 44)
-                                Text(TaskCard.title(task, index: index, guest: guest)).lineLimit(2)
+                                // Queued: a hollow, dimmer dot.
+                                Group {
+                                    if task.isQueued {
+                                        Circle().strokeBorder(OrbView.taskBlue(onLight: palette.darkInk).opacity(0.6), lineWidth: 3)
+                                    } else {
+                                        Circle().fill(OrbView.taskBlue(onLight: palette.darkInk))
+                                    }
+                                }
+                                .frame(width: 16, height: 16)
+                                .frame(width: 44)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(TaskCard.title(task, index: index, guest: guest)).lineLimit(2)
+                                    // Where it's at, one line, when Jarvis says.
+                                    if !guest, let step = task.step, !step.isEmpty {
+                                        Text(step).font(.callout).foregroundStyle(inkDim).lineLimit(1)
+                                    }
+                                }
+                                // Who's doing it, the chat chip's words ("Jarvis (CO)").
+                                if let chip = ModelWording.jobChip(task.model) {
+                                    Text(chip.label)
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(chip.tone == .claude ? warm : accent)
+                                }
                                 Spacer(minLength: 24)
                                 Text(task.state == "queued" ? "Queued" : Orbit.elapsed(since: task.startedAt, now: tick.date) ?? "Running")
                                     .font(.headline.monospacedDigit())
@@ -817,10 +900,47 @@ struct AlwaysOnView: View {
                     .staggered(4)
                 }
             }
+        case .sleep:
+            // Last night at ten feet: score, time asleep, bed and wake, the
+            // stage bar and the week. No small text, no score parts.
+            let sleep = SleepSlide.card(snapshot)
+            card(which) {
+                // One screen's worth at the card's height (no scrolling):
+                // the score and times beside the week, the stages under them.
+                HStack(alignment: .center, spacing: 30) {
+                    if sleep.kind == .noNight {
+                        Text(sleep.emptyWords ?? "").font(.title3).foregroundStyle(inkDim)
+                    } else {
+                        SleepHeadline(card: sleep, scale: 1.4, tenFeet: true)
+                    }
+                    Spacer(minLength: 0)
+                    if !sleep.trend.isEmpty {
+                        VStack(alignment: .trailing, spacing: 6) {
+                            SleepTrendBars(trend: sleep.trend, scale: 1.35)
+                            if let average = sleep.trendAverage {
+                                Text(average).font(.callout).foregroundStyle(inkDim)
+                            }
+                        }
+                    }
+                }
+                .staggered(0)
+                if sleep.kind != .noNight, !sleep.stages.isEmpty {
+                    SleepStageBar(shares: sleep.stages, scale: 2.0, legend: false).staggered(1)
+                }
+            }
+            .environment(\.sleepInk, SleepInk(ink: ink, dim: inkDim, faint: inkDim.opacity(0.75), track: inkDim.opacity(0.18)))
+        case .diet:
+            // Today's food at ten feet: calories left and macros.
+            card(which) {
+                if let food = snapshot.nutrition {
+                    DietHeadline(nutrition: food, scale: 2.0, ink: ink, dim: inkDim).staggered(0)
+                }
+            }
         case .health:
             card(which) {
                 HStack(spacing: 60) {
-                    if let asleep = snapshot.health?.sleep?.asleepMin {
+                    // Minutes asleep only from an older Jarvis; otherwise sleep has its own card.
+                    if snapshot.sleep == nil, let asleep = snapshot.health?.sleep?.asleepMin {
                         stat(TodayWording.hours(asleep), "asleep last night", symbol: "bed.double.fill")
                     }
                     if let steps = snapshot.health?.yesterday?.steps {
@@ -839,6 +959,48 @@ struct AlwaysOnView: View {
                     .staggered(index)
                 }
             }
+        case .gpu:
+            // The PC (Dylan, 2026-11-21): a ring per gauge, split by who
+            // holds it, with its recent line, and the card's holders as a bar.
+            card(which) {
+                // One screen's worth at the card's height: the rings, then
+                // the graphics card's holders as a bar.
+                VStack(alignment: .leading, spacing: 16) {
+                    SystemCheckedLabel(generatedAt: snapshot.generatedAt, scale: 1.6)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, -44)
+                    SystemGaugeRow(snapshot: snapshot, scale: 1.35, ringSize: 62)
+                    if let gpu = snapshot.gpuShare?.breakdown {
+                        SystemBreakdownBar(breakdown: gpu, scale: 1.2, legendLimit: 0)
+                            .staggered(1)
+                    }
+                }
+                .environment(\.sleepInk, SleepInk(ink: ink, dim: inkDim, faint: inkDim.opacity(0.75), track: inkDim.opacity(0.18)))
+            }
+        }
+    }
+
+    /// `-tvCard gpu` holds that card up (simulator screenshots); nil otherwise.
+    private static func pinnedCard(_ cards: [TVCard]) -> Int? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let at = args.firstIndex(of: "-tvCard"), at + 1 < args.count, let card = TVCard(rawValue: args[at + 1]) {
+            return cards.firstIndex(of: card)
+        }
+        #endif
+        return nil
+    }
+
+    /// The page's colours from the lamp's palette (so they read on the day
+    /// sky too): local models warm, speech models cool (the accent, then a
+    /// lighter accent), the rest the dim ink, free a faint ink.
+    private func gpuColor(_ slice: GpuSlice, in share: GpuShare) -> Color {
+        let step = share.shade(of: slice)
+        switch slice.kind {
+        case .local: return warm.opacity(max(0.5, 1 - Double(step) * 0.2))
+        case .speech: return accent.opacity(max(0.45, 1 - Double(step) * 0.3))
+        case .other: return inkDim.opacity(0.7)
+        case .free: return inkDim.opacity(0.2)
         }
     }
 
@@ -893,6 +1055,39 @@ struct AlwaysOnView: View {
         case .some(false): return "Can’t reach Jarvis. Is Tailscale on for this Apple TV?"
         case .none: return "Connecting…"
         }
+    }
+
+    /// One device on the Devices card: its symbol in a circle (warm when
+    /// on), the whole name, and its state; a thermostat's temperature big.
+    private func tvDeviceTile(_ device: Device) -> some View {
+        let on = device.isOn
+        return HStack(alignment: .center, spacing: 18) {
+            ZStack {
+                Circle().fill(on ? warm.opacity(0.2) : inkDim.opacity(0.12)).frame(width: 64, height: 64)
+                Image(systemName: TodayWording.deviceSymbol(device))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(on ? warm : inkDim)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(device.name)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                // The thermostat's temperature under its name, big enough
+                // to read from the bed.
+                if device.kind == "climate", let now = device.current {
+                    Text("\(Int(now.rounded()))°")
+                        .font(.system(size: 56, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                }
+                Text(device.isAvailable ? TodayWording.deviceState(device) : "Not responding")
+                    .font(.callout)
+                    .foregroundStyle(on ? warm : inkDim)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     /// A roomy titled card on a real surface, large type.

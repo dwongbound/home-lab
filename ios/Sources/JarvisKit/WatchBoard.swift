@@ -13,10 +13,14 @@ public struct WatchNotice: Equatable, Identifiable, Sendable {
     public let body: String
     public let source: String
     public let approvalId: String?
+    /// A "Report ready" notice: the Watch can't show the page, so it says
+    /// to open it on the iPhone (Reports.elsewhere).
+    public let isReport: Bool
 
     public init(_ notice: Notice) {
         id = notice.id; kind = notice.kind; title = notice.title; body = notice.body
         source = notice.source; approvalId = notice.approvalId
+        isReport = notice.reportId != nil
     }
 
     init?(row: [String: String]) {
@@ -27,13 +31,41 @@ public struct WatchNotice: Equatable, Identifiable, Sendable {
         body = row["body"] ?? ""
         source = row["source"] ?? "message"
         approvalId = row["approvalId"].flatMap { $0.isEmpty ? nil : $0 }
+        isReport = row["report"] == "1"
     }
 
     var row: [String: String] {
         var out = ["id": id, "kind": kind.rawValue, "title": title, "body": body, "source": source]
         if let approvalId { out["approvalId"] = approvalId }
+        if isReport { out["report"] = "1" }
         return out
     }
+}
+
+/// One bar on the Watch's Info page: the PC's memory, graphics card or a disk.
+public struct WatchBar: Equatable, Sendable {
+    public let name: String
+    public let usedGb: Double
+    public let totalGb: Double
+
+    public init(name: String, usedGb: Double, totalGb: Double) {
+        self.name = name; self.usedGb = usedGb; self.totalGb = totalGb
+    }
+}
+
+/// One thing in the house the Watch's Actions page can switch.
+public struct WatchDevice: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let kind: String
+    public var on: Bool
+
+    public init(id: String, name: String, kind: String, on: Bool) {
+        self.id = id; self.name = name; self.kind = kind; self.on = on
+    }
+
+    /// The home control command that flips it (server/sources/home.mjs).
+    public var command: String { kind == "media" ? "power" : "toggle" }
 }
 
 /// The Watch's board: notices, running tasks and the next thing today.
@@ -46,9 +78,25 @@ public struct WatchBoard: Equatable, Sendable {
     public var nextAt: String?
     /// Today's calories (numbers only), when Jarvis has them.
     public var nutrition: Nutrition?
+    /// Kept notices (yellow dots on the orb).
+    public var kept = 0
+    /// His most recent night: the score, minutes asleep, and the week's
+    /// scores newest first (0 = no score that night).
+    public var sleepScore: Int?
+    public var sleepMinutes: Double?
+    public var sleepTrend: [Int] = []
+    /// The PC: memory, graphics card, disks.
+    public var pc: [WatchBar] = []
+    /// What the Actions page can switch.
+    public var devices: [WatchDevice] = []
+    /// Claude's plan use, 0-100: this session and this week (nil when unknown).
+    public var claudeSession: Int?
+    public var claudeWeekly: Int?
 
     public static func == (a: WatchBoard, b: WatchBoard) -> Bool {
         a.notices == b.notices && a.tasks.map(\.label) == b.tasks.map(\.label) && a.tasks.map(\.startedAt) == b.tasks.map(\.startedAt) && a.nextTitle == b.nextTitle && a.nextAt == b.nextAt && a.nutrition == b.nutrition
+            && a.kept == b.kept && a.sleepScore == b.sleepScore && a.sleepMinutes == b.sleepMinutes && a.sleepTrend == b.sleepTrend && a.pc == b.pc && a.devices == b.devices
+            && a.claudeSession == b.claudeSession && a.claudeWeekly == b.claudeWeekly
     }
 
     public init(notices: [WatchNotice] = [], tasks: [(label: String, startedAt: String?)] = [], nextTitle: String? = nil, nextAt: String? = nil, nutrition: Nutrition? = nil) {
@@ -59,7 +107,8 @@ public struct WatchBoard: Equatable, Sendable {
     /// and the next event or agenda item still to come today.
     /// Approval rows already over (`settled`, the phone's record) are left off.
     public init(snapshot: Snapshot?, settled: SettledApprovals = SettledApprovals(), now: Date = Date()) {
-        notices = settled.showing(Notices.sorted(snapshot?.notices ?? [])).prefix(12).map(WatchNotice.init)
+        // Kept items (yellow) aren't new: the Watch shows only the unread.
+        notices = settled.showing(Notices.unread(Notices.sorted(snapshot?.notices ?? []))).prefix(12).map(WatchNotice.init)
         tasks = (snapshot?.jobs?.running ?? []).map { ($0.label, $0.startedAt) }
         let next = snapshot.flatMap { s in
             NowNext.pick(events: s.events, agenda: s.today, now: now).flatMap { $0.kind == .tomorrow ? nil : $0 }
@@ -67,6 +116,32 @@ public struct WatchBoard: Equatable, Sendable {
         nextTitle = next?.title
         nextAt = next.map { ISO8601DateFormatter().string(from: $0.start) }
         nutrition = snapshot?.nutrition
+        kept = (snapshot?.notices ?? []).filter(\.kept).count
+        sleepScore = snapshot?.sleep?.last?.score
+        sleepMinutes = snapshot?.sleep?.last?.minutes?.asleep
+        sleepTrend = (snapshot?.sleep?.trend ?? []).map { $0.score ?? 0 }
+        if let ram = snapshot?.ram, let used = ram.usedMb, let total = ram.totalMb {
+            pc.append(WatchBar(name: "Memory", usedGb: used / 1024, totalGb: total / 1024))
+        }
+        if let gpu = snapshot?.gpu, let used = gpu.usedMb, let total = gpu.totalMb {
+            pc.append(WatchBar(name: "Graphics", usedGb: used / 1024, totalGb: total / 1024))
+        }
+        pc += (snapshot?.disks ?? []).map { WatchBar(name: $0.name, usedGb: $0.usedGb, totalGb: $0.totalGb) }
+        devices = (snapshot?.homeTiles ?? [])
+            .filter { ["light", "switch", "fan", "media"].contains($0.kind) }
+            .prefix(12)
+            .map { WatchDevice(id: $0.id, name: $0.name, kind: $0.kind, on: $0.isOn) }
+        let limits = snapshot?.claudeUsage?.rings ?? []
+        claudeSession = limits.first { $0.name == "session" }?.usedPct
+        claudeWeekly = limits.first { $0.name == "weekly" }?.usedPct
+    }
+
+    /// The orb's dots, as on the phone: orange notices, blue tasks, yellow kept.
+    public var orbit: [OrbitItem] {
+        let orange = notices.map { OrbitItem(id: "notice-" + $0.id, kind: .notice, title: $0.title, detail: $0.body, startedAt: nil, notice: nil) }
+        let blue = tasks.enumerated().map { OrbitItem(id: "task-\($0.offset)", kind: .task, title: $0.element.label, detail: "", startedAt: $0.element.startedAt, notice: nil) }
+        let yellow = (0..<kept).map { OrbitItem(id: "kept-\($0)", kind: .kept, title: "", detail: "", startedAt: nil, notice: nil) }
+        return orange + blue + yellow
     }
 
     /// As a WatchConnectivity dictionary.
@@ -78,6 +153,14 @@ public struct WatchBoard: Equatable, Sendable {
         if let nextTitle { out["nextTitle"] = nextTitle }
         if let nextAt { out["nextAt"] = nextAt }
         if let nutrition { out["nutrition"] = nutrition.dictionary }
+        out["kept"] = kept
+        if let sleepScore { out["sleepScore"] = sleepScore }
+        if let sleepMinutes { out["sleepMinutes"] = sleepMinutes }
+        out["sleepTrend"] = sleepTrend
+        out["pc"] = pc.map { ["name": $0.name, "used": $0.usedGb, "total": $0.totalGb] as [String: Any] }
+        out["devices"] = devices.map { ["id": $0.id, "name": $0.name, "kind": $0.kind, "on": $0.on] as [String: Any] }
+        if let claudeSession { out["claudeSession"] = claudeSession }
+        if let claudeWeekly { out["claudeWeekly"] = claudeWeekly }
         return out
     }
 
@@ -92,6 +175,20 @@ public struct WatchBoard: Equatable, Sendable {
         nextTitle = message["nextTitle"] as? String
         nextAt = message["nextAt"] as? String
         nutrition = (message["nutrition"] as? [String: Any]).flatMap(Nutrition.init(dictionary:))
+        kept = message["kept"] as? Int ?? 0
+        sleepScore = message["sleepScore"] as? Int
+        sleepMinutes = message["sleepMinutes"] as? Double
+        sleepTrend = message["sleepTrend"] as? [Int] ?? []
+        pc = (message["pc"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let name = row["name"] as? String, let used = row["used"] as? Double, let total = row["total"] as? Double else { return nil }
+            return WatchBar(name: name, usedGb: used, totalGb: total)
+        }
+        devices = (message["devices"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let id = row["id"] as? String, let name = row["name"] as? String else { return nil }
+            return WatchDevice(id: id, name: name, kind: row["kind"] as? String ?? "", on: row["on"] as? Bool ?? false)
+        }
+        claudeSession = message["claudeSession"] as? Int
+        claudeWeekly = message["claudeWeekly"] as? Int
     }
 }
 
@@ -107,6 +204,14 @@ public struct ComplicationData: Equatable, Sendable {
     public var nutrition: Nutrition?
     /// When the phone sent it.
     public var updated: Date
+    /// The first few running jobs' names (Jobs running).
+    public var runningLabels: [String] = []
+    /// Last night's sleep score and minutes asleep (Sleep score).
+    public var sleepScore: Int?
+    public var sleepMinutes: Double?
+    /// Claude's plan use, 0-100 (Claude usage).
+    public var claudeSession: Int?
+    public var claudeWeekly: Int?
 
     /// Older than this, the complications say they're out of date.
     public static let staleAfter: TimeInterval = 45 * 60
@@ -118,6 +223,11 @@ public struct ComplicationData: Equatable, Sendable {
         nextAt = board.nextAt
         nutrition = board.nutrition
         self.updated = updated
+        runningLabels = Array(board.tasks.map(\.label).prefix(3))
+        sleepScore = board.sleepScore
+        sleepMinutes = board.sleepMinutes
+        claudeSession = board.claudeSession
+        claudeWeekly = board.claudeWeekly
     }
 
     public init(needCount: Int, runningCount: Int, nextTitle: String?, nextAt: String?, nutrition: Nutrition? = nil, updated: Date) {
@@ -131,6 +241,11 @@ public struct ComplicationData: Equatable, Sendable {
         if let nextTitle { out["nextTitle"] = nextTitle }
         if let nextAt { out["nextAt"] = nextAt }
         if let nutrition { out["nutrition"] = nutrition.dictionary }
+        out["runningLabels"] = runningLabels
+        if let sleepScore { out["sleepScore"] = sleepScore }
+        if let sleepMinutes { out["sleepMinutes"] = sleepMinutes }
+        if let claudeSession { out["claudeSession"] = claudeSession }
+        if let claudeWeekly { out["claudeWeekly"] = claudeWeekly }
         return out
     }
 
@@ -142,6 +257,30 @@ public struct ComplicationData: Equatable, Sendable {
         nextAt = dictionary["nextAt"] as? String
         nutrition = (dictionary["nutrition"] as? [String: Any]).flatMap(Nutrition.init(dictionary:))
         self.updated = Date(timeIntervalSince1970: updated)
+        runningLabels = dictionary["runningLabels"] as? [String] ?? []
+        sleepScore = dictionary["sleepScore"] as? Int
+        sleepMinutes = dictionary["sleepMinutes"] as? Double
+        claudeSession = dictionary["claudeSession"] as? Int
+        claudeWeekly = dictionary["claudeWeekly"] as? Int
+    }
+
+    /// Last night's score, kept all day (a night doesn't go stale by the
+    /// hour); nil without one.
+    public var sleep: (score: Int, asleep: String?)? {
+        guard let sleepScore, sleepScore > 0 else { return nil }
+        return (sleepScore, sleepMinutes.map { m in "\(Int(m) / 60)h \(String(format: "%02d", Int(m) % 60))m" })
+    }
+
+    /// Claude's session and weekly use while fresh; nil when stale or unknown.
+    public func claude(now: Date = Date()) -> (session: Int?, weekly: Int?)? {
+        guard !isStale(now: now), claudeSession != nil || claudeWeekly != nil else { return nil }
+        return (claudeSession, claudeWeekly)
+    }
+
+    /// The running jobs while fresh: their count and first names.
+    public func jobs(now: Date = Date()) -> (count: Int, names: [String])? {
+        guard !isStale(now: now) else { return nil }
+        return (runningCount, runningLabels)
     }
 
     /// Today's calories if fresh and for today; nil means "Open Jarvis to update".

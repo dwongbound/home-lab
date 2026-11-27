@@ -1,7 +1,7 @@
 // The pieces of the TV's always-on board (Dylan, 2026-11-17: "more dynamic /
 // nicely styled — people will see this as they walk into my room"): the
 // living sky (the sun or moon on its arc, stars at night, drifting haze and
-// rain from the weather), the status chips, the Now/Next hero card, the
+// rain from the weather), the status chips, the slim Now/Next strip, the
 // rotating cards' rows entering one after another, and page dots that fill
 // while a card is up. Every colour comes from the measured LampPalette, so
 // the contrast tests still hold. Everything that moves stops for Reduce
@@ -192,66 +192,110 @@ struct ChipRow: View {
 
 // MARK: Now / Next
 
-/// The hero card: the event on now (with how far through it is) or next
-/// (with a live countdown), its time and place.
-struct NowNextCard: View {
+/// One slim strip for what's on and what's next (Dylan, 2026-11-24: "no
+/// need to waste so much space on whats currently happening. Maybe use less
+/// space and also mention whats next and when (thats probably more
+/// important)"). Next leads, in the accent colour with its time; what's on
+/// now sits after it, dimmer, with a thin bar for how far through it is.
+/// About half the old hero card's height, so the cards below get the room.
+struct NowNextStrip: View {
+    /// What the board picked: on now, or (with nothing on) the next one.
     let item: NowNext
+    /// What follows the one on now; nil when `item` already is the next.
+    let after: NowNext?
     let now: Date
     let palette: LampPalette
 
+    /// The next thing to show big: `after` when something is on, else `item`.
+    private var next: NowNext? { item.kind == .now ? after : item }
+    /// What's on now, if anything.
+    private var current: NowNext? { item.kind == .now ? item : nil }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 30) {
-            ZStack {
-                Circle().fill(palette.accent.color.opacity(0.14)).frame(width: 96, height: 96)
-                Image(systemName: KioskIcons.agendaSymbol(item.title))
-                    .font(.system(size: 40, weight: .semibold))
-                    .foregroundStyle(palette.accent.color)
+        HStack(alignment: .center, spacing: 28) {
+            if let next {
+                nextSide(next)
             }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(item.label.uppercased())
-                    .font(.caption.weight(.bold))
-                    .kerning(2)
-                    .foregroundStyle(palette.inkDim.color)
-                Text(item.title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(palette.ink.color)
-                    .lineLimit(1)
-                HStack(spacing: 14) {
-                    Text(item.countdown(now: now))
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(palette.accent.color)
-                        .contentTransition(.numericText())
-                        .monospacedDigit()
-                    Text(detail).font(.callout).foregroundStyle(palette.inkDim.color).lineLimit(1).minimumScaleFactor(0.75)
+            if let current {
+                if next != nil {
+                    Rectangle().fill(palette.panelEdge.color).frame(width: 2, height: 56)
                 }
-                if let progress = item.progress(now: now) {
-                    GeometryReader { area in
-                        Capsule().fill(palette.dot.color.opacity(0.35))
-                            .overlay(alignment: .leading) {
-                                Capsule().fill(palette.accent.color).frame(width: area.size.width * progress)
-                            }
-                    }
-                    .frame(height: 8)
-                    .padding(.top, 6)
-                }
+                nowSide(current)
             }
             Spacer(minLength: 0)
         }
-        .padding(28)
-        .background(RoundedRectangle(cornerRadius: 34, style: .continuous).fill(palette.panel.color))
-        .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).strokeBorder(palette.accent.color, lineWidth: 3))
-        .animation(.smooth(duration: 0.8), value: item.countdown(now: now))
+        .padding(.horizontal, 28)
+        .padding(.vertical, 18)
+        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(palette.panel.color))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(palette.accent.color.opacity(0.8), lineWidth: 2))
+        .animation(.smooth(duration: 0.8), value: next?.countdown(now: now))
     }
 
-    /// "8:00 PM · Tender Greens".
-    private var detail: String {
-        let format = DateFormatter()
-        format.locale = Locale(identifier: "en_US")
-        format.dateFormat = "h:mm a"
-        var parts = [format.string(from: item.start)]
-        if item.kind == .now, let end = item.end { parts = ["until \(format.string(from: end))"] }
-        if let place = item.location { parts.append(place) }
-        return parts.joined(separator: " · ")
+    /// "NEXT  Volleyball  7:30 PM · in 42 min".
+    private func nextSide(_ next: NowNext) -> some View {
+        HStack(alignment: .center, spacing: 18) {
+            Image(systemName: KioskIcons.agendaSymbol(next.title))
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(palette.accent.color)
+                .frame(width: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    Text(next.label.uppercased())
+                        .font(.caption2.weight(.bold))
+                        .kerning(2)
+                        .foregroundStyle(palette.inkDim.color)
+                    Text(next.title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(palette.ink.color)
+                        .lineLimit(1)
+                }
+                HStack(spacing: 10) {
+                    Text(next.when())
+                        .font(.callout.weight(.bold))
+                        .foregroundStyle(palette.accent.color)
+                    if next.kind == .next {
+                        Text(next.countdown(now: now))
+                            .font(.callout)
+                            .foregroundStyle(palette.inkDim.color)
+                            .contentTransition(.numericText())
+                            .monospacedDigit()
+                    }
+                    if let place = next.location {
+                        Text(place).font(.callout).foregroundStyle(palette.inkDim.color).lineLimit(1)
+                    }
+                }
+                .minimumScaleFactor(0.8)
+            }
+        }
+    }
+
+    /// "NOW  Lunch with Sam · 18 min left", with its progress bar.
+    private func nowSide(_ current: NowNext) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("NOW")
+                    .font(.caption2.weight(.bold))
+                    .kerning(2)
+                    .foregroundStyle(palette.inkDim.color)
+                Text(current.title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(palette.ink.color)
+                    .lineLimit(1)
+                Text(current.countdown(now: now))
+                    .font(.callout)
+                    .foregroundStyle(palette.inkDim.color)
+                    .monospacedDigit()
+            }
+            if let progress = current.progress(now: now) {
+                GeometryReader { area in
+                    Capsule().fill(palette.dot.color.opacity(0.35))
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(palette.accent.color).frame(width: area.size.width * progress)
+                        }
+                }
+                .frame(width: 260, height: 6)
+            }
+        }
     }
 }
 

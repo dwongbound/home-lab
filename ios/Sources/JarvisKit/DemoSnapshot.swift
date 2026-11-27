@@ -31,6 +31,7 @@ public enum DemoSnapshot {
         let greeting = long
             ? "Good evening, Dylan. Volleyball is up next at the Y, and after that the CG x SOW rehearsal runs until ten. I finished rewriting the reminder code so repeats work again, the PS5 Pro is back in stock at Target, your thermostat is heating to 70, the bedroom speaker is playing lo-fi, flights to Tokyo in March dropped by eighty dollars, and tomorrow starts with the dentist at nine, so I'd aim for bed by midnight."
             : "Good evening, Dylan. Volleyball is up next and I'm rewriting the reminder code in the background."
+        let args = ProcessInfo.processInfo.arguments
         let iso = { (offset: Double) in ISO8601DateFormatter().string(from: now.addingTimeInterval(offset * 60)) }
         let cal = Calendar.current
         let sunrise = ISO8601DateFormatter().string(from: cal.date(bySettingHour: 6, minute: 28, second: 0, of: now) ?? now)
@@ -38,7 +39,7 @@ public enum DemoSnapshot {
         let tomorrow9 = ISO8601DateFormatter().string(from: cal.date(byAdding: .day, value: 1, to: cal.date(bySettingHour: 9, minute: 0, second: 0, of: now) ?? now) ?? now)
         if sparse {
             let json = """
-            {"generatedAt":"x","services":[{"id":"j","name":"Jarvis","detail":"","status":"up"}],"today":[],
+            {"generatedAt":"\(iso(0))","services":[{"id":"j","name":"Jarvis","detail":"","status":"up"}],"today":[],
              "home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"off","current":69}],
                "weather":{"condition":"sunny","temperature":66,"unit":"°F"},"sun":{"rising":"\(sunrise)","setting":"\(sunset)"}}}
             """
@@ -49,10 +50,12 @@ public enum DemoSnapshot {
             return #"{"at":"\#(iso(Double(h) * 60))","condition":"\#(conditions[h - 1])","temperature":\#(62 - h),"rain":\#([10, 20, 40, 70, 60, 30, 10, 0, 0, 0][h - 1])}"#
         }.joined(separator: ",")
         let json = """
-        {"generatedAt":"x",
-         "notices":[{"id":"n1","kind":"need","title":"Turn off the bedroom lights?","body":"Jarvis wants to run home_service light.turn_off","source":"approval","created":"\(iso(-3))","approvalId":"ap1"},
+        {"generatedAt":"\(iso(0))",
+         "notices":[\(args.contains("-demoLongNotice") ? DemoSnapshot.longNotice + "," : "")
+                    {"id":"n0","kind":"heads","title":"⏰ Buy Natalia's Secret Santa gift.","body":"Secret Santa Overflow is Wednesday, November 25th. Tell me once it's bought and I'll stop reminding you.","source":"reminder","created":"\(iso(-1440))","turnId":12},
+                    {"id":"n1","kind":"need","title":"Turn off the bedroom lights?","body":"Jarvis wants to run home_service light.turn_off","source":"approval","created":"\(iso(-3))","approvalId":"ap1"},
                     {"id":"n2","kind":"heads","title":"PS5 Pro back in stock at Target","body":"Lookout spotted it 10 minutes ago","source":"lookout","created":"\(iso(-12))"},
-                    {"id":"n3","kind":"fyi","title":"Reminder code rewrite finished","body":"Changing my code so reminders repeat: done","source":"job","created":"\(iso(-95))"}],
+                    {"id":"n3","kind":"fyi","title":"Reminder code rewrite finished","body":"Changing my code so reminders repeat: done","source":"job","created":"\(iso(-95))"}\(args.contains("-demoKept") ? DemoSnapshot.keptJSON(iso) : "")],
          "services":[{"id":"h","name":"Home Assistant","detail":"","status":"up"},{"id":"o","name":"Ollama","detail":"","status":"idle"},{"id":"j","name":"Jarvis","detail":"","status":"up"}],
          "today":[{"id":"jarvis-a@0830","at":"\(iso(-300))","title":"Marketplace deal watch","detail":"Jarvis: scan","status":"done"},
                   {"id":"c1","at":"\(iso(-150))","title":"Lunch with Sam"},
@@ -61,7 +64,7 @@ public enum DemoSnapshot {
                   {"id":"c3","at":"\(iso(180))","title":"CG x SOW rehearsal"}],
          "offers":{"greeting":"\(greeting)","offers":[{"id":"o1","title":"Draft the rehearsal set list","body":"","startText":""}]},
          "home":{"devices":[{"id":"t","name":"Thermostat","kind":"climate","state":"heat","detail":"heating","current":68,"target":70,"humidity":44},
-            {"id":"a","name":"Entrance","kind":"light","state":"on"},{"id":"b","name":"Hall","kind":"light","state":"off"},
+            {"id":"a","name":"Entrance","kind":"light","state":"on"},{"id":"b","name":"WiZ RGBW Tunable 7C1A2B","kind":"light","state":"off"},
             {"id":"e","name":"Desk","kind":"light","state":"on","brightness":0.6},
             {"id":"g","name":"Bed lamp","kind":"light","state":"on"},
             {"id":"c","name":"Dylans Apple TV","kind":"media","state":"playing","detail":"Severance · Apple TV+"},
@@ -73,6 +76,17 @@ public enum DemoSnapshot {
          "jobs":{"running":[{"id":"j1","label":"Changing my code so reminders repeat","state":"running","startedAt":"\(iso(-9))"}],
                  "lookout":{"checks":["calendar","email"],"watching":["Flight prices to Tokyo in March","The PS5 Pro restock at Target"],"heldBack":[{"text":"x","reason":null},{"text":"y","reason":null}]},
                  "messenger":{"sentToday":3,"cap":8,"quiet":"10 PM–7 AM"}},
+         "claudeUsage":{"limits":[{"name":"session","usedPct":34,"resetsAt":"\(iso(140))"},{"name":"weekly","usedPct":61,"resetsAt":"\(iso(4000))"}],"today":[{"kind":"chat","usd":1.84,"calls":23,"tokens":412000},{"kind":"nightly","usd":2.10,"calls":3,"tokens":380000},{"kind":"talk","usd":0.36,"calls":11,"tokens":64000}],"days":[{"date":"2026-11-21","usd":3.2,"tokens":510000},{"date":"2026-11-22","usd":5.8,"tokens":990000},{"date":"2026-11-23","usd":2.1,"tokens":330000},{"date":"2026-11-24","usd":6.4,"tokens":1210000},{"date":"2026-11-25","usd":4.0,"tokens":700000},{"date":"2026-11-26","usd":3.3,"tokens":560000},{"date":"2026-11-27","usd":4.3,"tokens":856000}]},
+         "metrics":[{"id":"ram","value":19.6,"total":32,"history":[17.2,17.8,18.1,18.0,18.6,19.2,19.0,19.4,19.9,19.5,19.6,19.6]},
+                    {"id":"gpu","value":10.1,"total":12,"history":[6.2,6.4,9.8,10.0,10.1,9.9,10.2,10.1,10.0,10.1,10.1,10.1]},
+                    {"id":"cpu","value":18,"total":100,"history":[12,9,22,35,18,14,27,19,16,21,18,18]},
+                    {"id":"disk","value":93,"total":237,"history":[95,95,94.6,94.4,94,93.8,93.6,93.4,93.2,93.1,93,93]}],
+         "gpu":{"totalMb":12288,"usedMb":10342,"utilization":37,"users":[{"name":"Ornith","role":"Local brain","mb":6554,"kind":"local"},{"name":"Parakeet","role":"Hears you","mb":2560,"kind":"speech"},{"name":"Kokoro","role":"His voice","mb":1024,"kind":"speech"},{"name":"Everything else","mb":204,"kind":"other"}]},
+         "ram":{"totalMb":32768,"usedMb":27650,"scope":"pc","users":[{"name":"Linux file cache","role":"Given back when needed","mb":13800},{"name":"Windows and its apps","role":"Everything on the Windows side","mb":9400},{"name":"Jarvis","role":"The assistant","mb":1950},{"name":"Ollama","role":"Local models","mb":1850},{"name":"Claude sessions","role":"Coding helpers","mb":690},{"name":"Home Assistant","role":"The house","mb":360},{"name":"Docker","role":"Containers","mb":110},{"name":"Home page","role":"This dashboard","mb":45},{"name":"Home page preview (the staging copy here)","role":"A test copy of the page","mb":38},{"name":"Everything else","role":"Other programs","mb":12}]},
+         "disks":[{"id":"c","name":"C: drive","usedGb":231,"totalGb":255,"users":[{"name":"Linux disk file","gb":63},{"name":"Everything else","gb":168}]},
+                  {"id":"linux","name":"Linux disk","usedGb":54,"totalGb":1081,"users":[{"name":"Ollama models","gb":12.5},{"name":"Docker","gb":9.8},{"name":"Jarvis data","gb":6.1},{"name":"Speech models","gb":4.2},{"name":"Home page","gb":1.1},{"name":"Logs","gb":0.6},{"name":"Everything else","gb":19.7}]},
+                  {"id":"d","name":"D: drive","usedGb":590,"totalGb":1989,"users":[]}],
+         \(args.contains("-demoNoSleep") ? "" : #""sleep":\#(DemoSleep.summaryJSON(now: now)),"#)
          "cloud":{"health":{"yesterday":{"steps":9580},"sleep":{"asleep_min":422}},
                   "calendar":[{"id":"c1","title":"Lunch with Sam","start":"\(iso(-150))","end":"\(iso(-90))","allDay":false,"location":"Tender Greens"},
                               {"id":"c2","title":"Volleyball at the Y","start":"\(iso(42))","end":"\(iso(132))","allDay":false,"location":"Westside YMCA"},
@@ -81,6 +95,89 @@ public enum DemoSnapshot {
                   "money":{"netWorth":1}}}
         """
         return try? JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+    }
+}
+
+extension DemoSnapshot {
+    /// `-demoKept`: two kept items (the Kept page), made up.
+    static func keptJSON(_ iso: (Double) -> String) -> String {
+        """
+        ,{"id":"k1","kind":"fyi","title":"The ramen place Sam liked is Marufuku on Post St","body":"You asked me to remember this for date night.","source":"chat","created":"\(iso(-2880))","turnId":41,"kept":true},
+        {"id":"k2","kind":"heads","title":"Passport renewal: book the appointment before December 10","body":"","source":"reminder","created":"\(iso(-600))","kept":true}
+        """
+    }
+
+    /// `-demoLongNotice`: a notice with a title over three lines and a body
+    /// over two screens, ending "the very last words." (UI tests).
+    static var longNotice: String {
+        let title = String(repeating: "A long heads-up title that runs on ", count: 5) + "and ends here"
+        let body = (1...60).map { "Line \($0) of a long notice body, with enough words to wrap." }.joined(separator: " ") + " The very last words."
+        return #"{"id":"nlong","kind":"heads","title":"\#(title)","body":"\#(body)","source":"lookout","created":"2026-11-20T19:00:00-08:00","turnId":77}"#
+    }
+}
+
+/// Made-up sleep for the simulator: 14 nights ending this morning, with
+/// stage timelines. Not anyone's real numbers.
+public enum DemoSleep {
+    /// The nights, newest first. `-demoSleepFirstNights` leaves out the
+    /// consistency part (too few nights yet); `-demoSleepNoVitals` the vitals.
+    public static func nights(now: Date) -> [SleepDay] {
+        let args = ProcessInfo.processInfo.arguments
+        let data = Data("[\(nightsJSON(now: now, firstNights: args.contains("-demoSleepFirstNights"), vitals: !args.contains("-demoSleepNoVitals")))]".utf8)
+        return (try? JSONDecoder().decode([SleepDay].self, from: data)) ?? []
+    }
+
+    static func summaryJSON(now: Date) -> String {
+        let args = ProcessInfo.processInfo.arguments
+        let all = nightsJSONList(now: now, firstNights: args.contains("-demoSleepFirstNights"), vitals: !args.contains("-demoSleepNoVitals"), stages: false)
+        let trend = (0..<7).map { i in
+            let night = SleepNights.key(now.addingTimeInterval(Double(-i) * 86_400))
+            return #"{"night":"\#(night)","score":\#(scores[i % scores.count]),"asleep":\#(asleeps[i % asleeps.count])}"#
+        }.joined(separator: ",")
+        return #"{"last":\#(all[0]),"trend":[\#(trend)]}"#
+    }
+
+    private static let scores = [82, 74, 88, 61, 79, 90, 69, 77, 84, 58, 72, 86, 80, 66]
+    private static let asleeps = [440, 405, 468, 352, 425, 476, 398, 415, 452, 330, 410, 462, 438, 380]
+
+    static func nightsJSON(now: Date, firstNights: Bool, vitals: Bool) -> String {
+        nightsJSONList(now: now, firstNights: firstNights, vitals: vitals, stages: true).joined(separator: ",")
+    }
+
+    private static func nightsJSONList(now: Date, firstNights: Bool, vitals: Bool, stages: Bool) -> [String] {
+        let f = ISO8601DateFormatter()
+        f.timeZone = SleepNights.zone
+        return (0..<14).map { i in
+            let night = SleepNights.key(now.addingTimeInterval(Double(-i) * 86_400))
+            let window = SleepNights.window(night)!
+            let asleep = asleeps[i % asleeps.count]
+            let bed = window.start.addingTimeInterval(Double(5 * 3600 + (i % 3) * 600))   // about 11 PM
+            let wake = bed.addingTimeInterval(Double(asleep + 25) * 60)
+            // A plausible pattern of cycles: core, deep, core, REM, a short wake.
+            var segs: [String] = []
+            var t = bed
+            let pattern: [(String, Double)] = [("core", 30), ("deep", 45), ("core", 40), ("rem", 20), ("awake", 6), ("core", 50), ("deep", 25), ("rem", 30), ("core", 60), ("rem", 35), ("awake", 4), ("core", 70), ("rem", 40)]
+            for (stage, mins) in pattern where t < wake {
+                let end = min(wake, t.addingTimeInterval(mins * 60))
+                segs.append(#"{"stage":"\#(stage)","start":"\#(f.string(from: t))","end":"\#(f.string(from: end))"}"#)
+                t = end
+            }
+            if t < wake { segs.append(#"{"stage":"core","start":"\#(f.string(from: t))","end":"\#(f.string(from: wake))"}"#) }
+            let score = scores[i % scores.count]
+            let band = score >= 85 ? "great" : score >= 70 ? "good" : score >= 50 ? "fair" : "poor"
+            let consistency = firstNights ? "null" : "\(18 + i % 10)"
+            let vitalsJSON = vitals
+                ? #"{"heartRate":{"avg":\#(54 + i % 5),"min":\#(47 + i % 4)},"hrvMs":\#(42 + i % 9),"hrvRmssdMs":null,"respiratoryRate":14.\#(i % 9),"spo2":{"avg":96,"min":\#(91 + i % 3)},"wristTempC":34.5,"wristTempDeltaC":\#(i % 2 == 0 ? "-0.2" : "0.3"),"breathingDisturbances":null}"#
+                : "null"
+            return #"""
+            {"night":"\#(night)","bedtime":"\#(f.string(from: bed))","wake":"\#(f.string(from: wake))",
+             "minutes":{"asleep":\#(asleep),"inBed":\#(asleep + 25),"awake":12,"deep":\#(asleep / 6),"rem":\#(asleep / 4),"core":\#(asleep - asleep / 6 - asleep / 4),"unspecified":0},
+             "interruptions":\#(1 + i % 3),"vitals":\#(vitalsJSON),
+             "score":\#(score),"scoreSource":"jarvis","scoreBand":"\#(band)",
+             "scoreParts":{"duration":\#(min(50, asleep * 50 / 450)),"consistency":\#(consistency),"interruptions":\#(firstNights ? "null" : "\(20 - i % 6)")},
+             "stages":[\#(stages ? segs.joined(separator: ",") : "")]}
+            """#
+        }
     }
 }
 #endif

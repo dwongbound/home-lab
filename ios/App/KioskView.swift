@@ -29,8 +29,8 @@ struct KioskView: View {
                 Group {
                     if wide {
                         HStack(alignment: .center, spacing: 48) {
-                            lead(orb: min(area.size.height * 0.34, 300))
-                                .frame(maxWidth: .infinity)
+                            pinnedLead(orb: min(area.size.height * 0.34, 300))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                             rotating(count: 2)
                                 .frame(maxWidth: .infinity)
                         }
@@ -70,8 +70,49 @@ struct KioskView: View {
 
     // MARK: Lead column
 
+    /// Landscape's left column with the orb held still (Dylan, 2026-11-24:
+    /// "the orb on the left during kiosk moves sometimes. that shouldnt be
+    /// the case"). In a plain stack the orb rode up and down whenever the
+    /// hero card or the weather line changed height, since the stack was
+    /// centred as a whole. Here the orb sits at the column's centre and the
+    /// clock and hero each get their own half, so nothing they do moves it.
+    private func pinnedLead(orb size: CGFloat) -> some View {
+        ZStack {
+            KioskTalkOrb(talk: talk, app: app, size: size, work: today.snapshot?.jobs?.running ?? [])
+                .frame(width: size, height: size)
+                .zIndex(1)
+            VStack(spacing: 0) {
+                // The clock's half: hugs the orb from above.
+                clockBlock
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 22)
+                // The orb's own room (drawn by the ZStack above).
+                Color.clear.frame(height: size)
+                // The hero's half: hangs under the orb, cut off rather than
+                // pushing the orb if it ever grows taller than its half.
+                heroCard
+                    .animation(.smooth(duration: 0.6), value: hero)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 22)
+                    .clipped()
+            }
+        }
+    }
+
     /// The clock and greeting, the live orb, and the hero card.
     private func lead(orb size: CGFloat) -> some View {
+        VStack(spacing: 22) {
+            clockBlock
+            // Tap to talk, tap again to stop (KioskTalkOrb).
+            KioskTalkOrb(talk: talk, app: app, size: size, work: today.snapshot?.jobs?.running ?? [])
+                .zIndex(1)
+            heroCard
+                .animation(.smooth(duration: 0.6), value: hero)
+        }
+    }
+
+    /// The time, the date and the weather line.
+    private var clockBlock: some View {
         VStack(spacing: 22) {
             TimelineView(.everyMinute) { context in
                 VStack(spacing: 4) {
@@ -96,11 +137,6 @@ struct KioskView: View {
                     }
                 }
             }
-            // Tap to talk, tap again to stop (KioskTalkOrb).
-            KioskTalkOrb(talk: talk, app: app, size: size, work: today.snapshot?.jobs?.running ?? [])
-                .zIndex(1)
-            heroCard
-                .animation(.smooth(duration: 0.6), value: hero)
         }
     }
 
@@ -166,7 +202,13 @@ struct KioskView: View {
 
     /// The panels taking turns: `count` at a time, cross-fading.
     private func rotating(count: Int) -> some View {
-        let panels = KioskPlan.panels(snapshot: today.snapshot)
+        var panels = KioskPlan.panels(snapshot: today.snapshot)
+        #if DEBUG
+        // `-kioskSleepFirst`: the Sleep panel in the first turn (screenshots).
+        if ProcessInfo.processInfo.arguments.contains("-kioskSleepFirst"), let i = panels.firstIndex(of: .sleep) { panels.insert(panels.remove(at: i), at: 0) }
+        // `-kioskSystemFirst`: the System panel in the first turn.
+        if ProcessInfo.processInfo.arguments.contains("-kioskSystemFirst"), let i = panels.firstIndex(of: .system) { panels.insert(panels.remove(at: i), at: 0) }
+        #endif
         let showing = KioskPlan.showing(panels, turn: turn, count: count)
         return VStack(spacing: 20) {
             ForEach(showing, id: \.self) { panel in
@@ -194,7 +236,10 @@ struct KioskView: View {
         case .home: homePanel
         case .work: workPanel
         case .health: healthPanel
+        case .sleep: sleepPanel
+        case .diet: dietPanel
         case .offers: offersPanel
+        case .system: systemPanel
         }
     }
 
@@ -265,16 +310,67 @@ struct KioskView: View {
         }
     }
 
+    /// Today's food: calories left and macros, sized for across the room.
+    @ViewBuilder
+    private var dietPanel: some View {
+        if let food = today.snapshot?.nutrition {
+            frame("Diet", icon: "fork.knife") {
+                DietHeadline(nutrition: food, scale: 1.5)
+            }
+        }
+    }
+
     /// Last night's sleep and yesterday's steps.
     private var healthPanel: some View {
         let health = today.snapshot?.health
         return frame("You", icon: "heart.fill") {
             HStack(spacing: 32) {
-                if let asleep = health?.sleep?.asleepMin {
+                // Minutes asleep only from an older Jarvis; otherwise sleep has its own slide.
+                if today.snapshot?.sleep == nil, let asleep = health?.sleep?.asleepMin {
                     stat(TodayWording.hours(asleep), "asleep last night")
                 }
                 if let steps = health?.yesterday?.steps {
                     stat(steps.formatted(), "steps yesterday")
+                }
+            }
+        }
+    }
+
+    /// Last night: the score ring and time asleep, the stage bar, the
+    /// score's parts and the week, sized for across the room.
+    @ViewBuilder
+    private var sleepPanel: some View {
+        if let snapshot = today.snapshot {
+            let sleep = SleepSlide.card(snapshot)
+            frame("Sleep", icon: "bed.double.fill", note: sleep.trendAverage) {
+                VStack(alignment: .leading, spacing: 20) {
+                    if sleep.kind == .noNight {
+                        Text(sleep.emptyWords ?? "").font(.title3).foregroundStyle(Theme.frostDim)
+                    } else {
+                        SleepHeadline(card: sleep, scale: 1.5)
+                        if !sleep.stages.isEmpty { SleepStageBar(shares: sleep.stages, scale: 1.5) }
+                        if !sleep.parts.isEmpty { SleepPartBars(parts: sleep.parts, scale: 1.3) }
+                    }
+                    if !sleep.trend.isEmpty { SleepTrendBars(trend: sleep.trend, scale: 1.4) }
+                }
+            }
+        }
+    }
+
+    /// The PC: a ring per gauge with its sparkline, and who holds the
+    /// graphics card as a bar.
+    @ViewBuilder
+    private var systemPanel: some View {
+        if let snapshot = today.snapshot {
+            frame("System", icon: "desktopcomputer") {
+                VStack(alignment: .leading, spacing: 22) {
+                    SystemCheckedLabel(generatedAt: snapshot.generatedAt, scale: 1.4)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, -38)
+                    SystemGaugeRow(snapshot: snapshot, scale: 1.4, ringSize: 64)
+                    if let gpu = snapshot.gpuShare?.breakdown {
+                        SystemBreakdownBar(breakdown: gpu, scale: 1.2, legendLimit: 3)
+                    }
                 }
             }
         }

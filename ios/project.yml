@@ -18,18 +18,38 @@ settings:
   base:
     MARKETING_VERSION: "1.0.0"
     # CI sets this to the run number so every TestFlight upload is newer.
-    CURRENT_PROJECT_VERSION: "2"
+    CURRENT_PROJECT_VERSION: "92"
     # Your team id goes here (or in Xcode's Signing tab) to sign for a device.
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
 
 targets:
+  # Scripted swipes for the Home-to-Talk freeze (2026-11-19); simulator only.
+  JarvisUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Jarvis
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis.uitests
+        TEST_TARGET_NAME: Jarvis
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
   Jarvis:
     type: application
     platform: iOS
+    # Its scheme runs the swipe-freeze UI test too.
+    scheme:
+      testTargets:
+        - JarvisUITests
     sources:
       - path: App
       - path: Shared
+      # The widgets' views, for the debug gallery (-widgetGallery).
+      - path: LiveActivity/JarvisWidgets.swift
     dependencies:
       - package: JarvisKit
       # Talk's Live Activity (Dynamic Island), drawn by this extension.
@@ -44,6 +64,11 @@ targets:
       properties:
         aps-environment: development
         com.apple.developer.usernotifications.time-sensitive: true
+        # Apple Health, read-only, for sleep (Dylan, 2026-11-21); background
+        # delivery so a finished night goes in the morning.
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        com.apple.developer.healthkit.background-delivery: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis
@@ -59,6 +84,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
+        # Set with the HealthKit entitlement above (App/SleepSync.swift entitled).
+        JarvisHealthKit: true
         NSFaceIDUsageDescription: Face ID unlocks your money details on the Today tab.
         NSCameraUsageDescription: Take a photo, like your food, to send to Jarvis in the chat.
         # Talk shows in the Dynamic Island while the app is in the background.
@@ -81,9 +108,16 @@ targets:
         UIUserInterfaceStyle: Dark
         # Talk: the microphone, and background audio so a call keeps going
         # with the screen locked.
+        NSHealthShareUsageDescription: Jarvis reads your sleep from Apple Health so he can track how you slept, and your activity, heart and weight to show them in the app. Sleep is sent only to your own Jarvis; the rest stays on this phone.
+        # Required by App Store review whenever HealthKit is entitled, even
+        # though Jarvis never writes to Health.
+        NSHealthUpdateUsageDescription: Jarvis never writes to Apple Health. It only reads it to show you your sleep and activity.
         NSMicrophoneUsageDescription: Jarvis listens while you talk to him on the Talk tab.
         UIBackgroundModes:
           - audio
+          # A quiet push from Jarvis in the morning wakes the app to send
+          # last night's sleep (App/SleepSync.swift, Dylan 2026-11-22).
+          - remote-notification
         # No encryption beyond HTTPS: skips the export-compliance question
         # on every TestFlight upload.
         ITSAppUsesNonExemptEncryption: false
@@ -95,6 +129,8 @@ targets:
     sources:
       - path: LiveActivity
       - path: Shared
+    dependencies:
+      - package: JarvisKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dwongbound.jarvis.LiveActivity
@@ -110,8 +146,8 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
-  # Apple Watch: ask by voice, see the answer, approve or deny. Talks to
-  # Jarvis through the iPhone app (App/WatchBridge.swift).
+  # Apple Watch: talk to Jarvis, see diet, sleep and the PC, switch things
+  # at home. Everything goes through the iPhone app (App/WatchBridge.swift).
   JarvisWatch:
     type: application
     platform: watchOS
@@ -143,6 +179,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.dwongbound.jarvis
+        NSMicrophoneUsageDescription: Jarvis listens while you hold the orb or tap Talk.
 
   # Apple Watch complications: Ask Jarvis, Needs you, Next up.
   JarvisWatchComplications:
@@ -179,6 +216,9 @@ targets:
       - path: TV
       - path: App/OrbView.swift
       - path: App/Theme.swift
+      - path: App/SleepViews.swift
+      - path: App/SystemViews.swift
+      - path: App/DietViews.swift
     dependencies:
       - package: JarvisKit
     settings:
@@ -198,3 +238,9 @@ targets:
           UIColorName: ""
         UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
+        # jarvis://  opens the app to its usual always-on screen (a playbook
+        # can launch it by this as well as by bundle id).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.dwongbound.jarvis.tv
+            CFBundleURLSchemes: [jarvis]
+

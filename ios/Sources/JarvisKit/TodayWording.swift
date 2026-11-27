@@ -25,7 +25,7 @@ public enum TodayWording {
 
     /// An ISO time as "4:48 PM" in the phone's zone.
     public static func time(_ iso: String?) -> String? {
-        guard let iso, let date = ISO8601DateFormatter().date(from: iso) else { return nil }
+        guard let iso, let date = ISODate.parse(iso) else { return nil }
         return date.formatted(date: .omitted, time: .shortened)
     }
 

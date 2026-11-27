@@ -26,6 +26,11 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
     /// at launch if permission was already given.
     func start(app: AppModel) {
         self.app = app
+        // A tap that launched the app is handled now that it's ready.
+        if let tap = waitingTap {
+            waitingTap = nil
+            handle(tap)
+        }
         let center = UNUserNotificationCenter.current()
         // Already set at launch by the app delegate; set again in case.
         center.delegate = self
@@ -43,7 +48,11 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
             }
             await refreshStatus()
             let settings = await center.notificationSettings()
-            if enabled && (settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional) {
+            PushLog.add("launch: switch \(enabled ? "on" : "off"), permission \(settings.authorizationStatus.rawValue)")
+            if enabled && settings.authorizationStatus == .notDetermined {
+                // Never asked on this device (the iPad had no token at all).
+                await askIfNeeded()
+            } else if enabled && (settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral) {
                 UIApplication.shared.registerForRemoteNotifications()
             }
         }
@@ -99,19 +108,21 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
     func gotToken(_ token: Data) {
         guard let app else { return }
         let hex = PushWords.hex(token)
-        #if DEBUG
-        let environment = PushWords.environment(debug: true)
-        #else
-        let environment = PushWords.environment(debug: false)
-        #endif
+        // From the build's own provisioning profile: an Xcode install (any
+        // configuration) has a development profile and a sandbox token.
+        let profile = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision").flatMap { try? Data(contentsOf: $0) }
+        let environment = PushWords.environment(profile: profile)
+        PushLog.add("got a token (\(environment))")
         Task {
             do {
                 try await app.client.registerPush(token: hex, platform: "ios", environment: environment, bundle: Bundle.main.bundleIdentifier ?? "com.dwongbound.jarvis", name: UIDevice.current.name)
                 UserDefaults.standard.set(hex, forKey: Self.tokenKey)
                 status = .registered
+                PushLog.add("registered with Jarvis (\(environment))")
             } catch {
                 // Tried again at the next launch.
                 status = .failed(error.localizedDescription)
+                PushLog.add("register failed: \(error.localizedDescription)")
             }
         }
     }
@@ -119,39 +130,95 @@ final class PushCenter: NSObject, ObservableObject, UNUserNotificationCenterDele
     /// Banners show while the app is open too, and the snapshot is fetched
     /// at once so the new orange dot appears straight away. Being shown is
     /// not acting on it: nothing is cleared (NoticeResponse.shown).
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        await MainActor.run {
-            if let app = self.app { Task { await app.today.load(app: app) } }
+    ///
+    /// The completion-handler form, answered on the main thread. The async
+    /// form let the system's own completion run on a background thread,
+    /// which UIKit doesn't allow (the likely cause of the tap crash,
+    /// Dylan 2026-11-18).
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        nonisolated(unsafe) let done = completionHandler
+        let turnId = PushWords.turnId(from: notification.request.content.userInfo)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard let app = self.app else { done([.banner, .list, .sound]); return }
+                Task { await app.today.load(app: app) }
+                // A reply to the chat he's looking at: it's already on
+                // screen (the app catches up), so no banner or sound.
+                if turnId != nil, app.tab == .chat {
+                    Task {
+                        await app.chat.catchUp(app: app)
+                        app.clearSeenInChat()
+                    }
+                    done([.list])
+                } else {
+                    done([.banner, .list, .sound])
+                }
+            }
         }
-        return [.banner, .list, .sound]
     }
 
     /// Tapping a notification (or Approve/Deny on it) is acting on it: the
     /// notice is cleared everywhere, so its orange dot fades on every
-    /// device. A tap also opens the Notices sheet. Swiping it away is not
-    /// acting (NoticeResponse in JarvisKit).
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let payload = response.notification.request.content.userInfo
-        let reply = NoticeResponse.from(action: response.actionIdentifier)
-        let approvalId = PushWords.approvalId(from: payload)
-        let noticeId = PushWords.noticeId(from: payload)
-        await MainActor.run {
-            guard let app = self.app else { return }
-            Task {
-                if let approvalId, reply == .approved || reply == .denied {
-                    await app.answerApproval(id: approvalId, summary: response.notification.request.content.body, ok: reply == .approved)
-                }
-                if reply.clearsNotice, let noticeId { await app.clearNotices([noticeId]) }
-            }
-            // A tap opens the full message in Chat when the push points at
-            // one; otherwise the Notices list.
-            if reply == .opened {
-                if let turnId = PushWords.turnId(from: payload) {
-                    Task { await app.openTurn(turnId) }
+    /// device. Swiping it away is not acting (NoticeResponse in JarvisKit).
+    /// Everything needed is read off the response here, into plain values
+    /// (PushTap), then handled on the main thread, and the system's
+    /// completion is called there too. A tap that cold-launches the app
+    /// before it's ready waits and is handled once `start(app:)` runs.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let content = response.notification.request.content
+        let tap = PushTap(payload: content.userInfo, action: response.actionIdentifier, body: content.body.isEmpty ? content.title : content.body)
+        nonisolated(unsafe) let done = completionHandler
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                if self.app == nil {
+                    self.waitingTap = tap
                 } else {
-                    app.showNotices = true
+                    self.handle(tap)
                 }
+                done()
             }
         }
+    }
+
+    /// A tap that arrived before the app was ready (a cold launch).
+    private var waitingTap: PushTap?
+
+    /// What a tap does: answers an approval, clears its notice, then opens
+    /// the report, the chat turn or the notices list (PushTap.destination).
+    private func handle(_ tap: PushTap) {
+        guard let app else { return }
+        Task {
+            if let answer = tap.answer {
+                await app.answerApproval(id: answer.id, summary: tap.body, ok: answer.ok)
+            }
+            if let noticeId = tap.noticeToClear { await app.clearNotices([noticeId]) }
+        }
+        switch tap.destination {
+        case .app:
+            break
+        case .report(let reportId):
+            // "Report ready": the report itself, in the app's reader.
+            Task { await app.openReport(id: reportId) }
+        case .turn(let turnId):
+            let about = app.notice(id: tap.noticeId, turnId: turnId)
+                ?? Notice(id: tap.noticeId ?? "push-\(turnId)", kind: .fyi, title: "Jarvis", body: tap.body, source: "push", created: "", turnId: turnId)
+            Task { await app.openTurn(turnId, about: about) }
+        case .notices:
+            app.showNotices = true
+        }
+    }
+}
+
+
+/// A short log of push setup on this device (no tokens), kept in the app's
+/// Documents as push-log.txt so it can be read back from the Mac.
+enum PushLog {
+    static func add(_ line: String) {
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let url = dir.appendingPathComponent("push-log.txt")
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        var lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        lines.append("\(stamp) \(line)")
+        try? lines.suffix(60).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 }

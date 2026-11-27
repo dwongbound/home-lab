@@ -22,7 +22,7 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(Notices.pips(n), [.need, .heads, .fyi])
         XCTAssertEqual(Notices.pips(n, night: true), [.need])
         let many = (0..<12).map { Notice(id: "\($0)", kind: .fyi, title: "", source: "job", created: "") }
-        XCTAssertEqual(Notices.pips(many).count, Notices.maxPips)
+        XCTAssertEqual(Notices.pips(many).count, many.count)
         XCTAssertEqual(Notices.countLabel(many), "12 new")
         XCTAssertNil(Notices.countLabel([]))
     }
@@ -78,5 +78,18 @@ final class TVBannerTests: XCTestCase {
         XCTAssertEqual(batch?.more, 1)
         XCTAssertNil(TVBanner.banner([]))
         XCTAssertEqual(TVBanner.seconds(b), 8)
+    }
+
+    /// Notices about messages on the chat screen count as read; kept ones,
+    /// approvals and other turns stay.
+    func testSeenInChat() {
+        let list = [
+            Notice(id: "a", kind: .fyi, title: "Reply", source: "chat", created: "", turnId: 5),
+            Notice(id: "b", kind: .heads, title: "Lookout", source: "lookout", created: "", turnId: 9),
+            Notice(id: "c", kind: .need, title: "OK?", source: "approval", created: "", approvalId: "x", turnId: 5),
+            Notice(id: "d", kind: .fyi, title: "Kept", source: "kept", created: "", turnId: 5, kept: true),
+            Notice(id: "e", kind: .fyi, title: "No turn", source: "lookout", created: ""),
+        ]
+        XCTAssertEqual(Notices.seenInChat(list, turnIds: [5, 6]), ["a"])
     }
 }

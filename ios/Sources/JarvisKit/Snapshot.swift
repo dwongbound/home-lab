@@ -15,14 +15,39 @@ public struct Snapshot: Decodable, Sendable {
     public var money: Money?
     /// Sleep and steps from the cloud digest (Apple Health by way of the PC).
     public var health: Health?
+    /// Last night's sleep and a 7 night trend; nil from an older Jarvis or
+    /// before any night exists (then `health.sleep` is the fallback).
+    public var sleep: SleepSummary?
     /// Calendar events from the cloud digest, with their end and place.
     public var events: [CalendarEvent] = []
     /// Unread notices, newest first; empty from an older server.
     public var notices: [Notice] = []
     /// Today's food numbers; nil from an older Jarvis.
     public var nutrition: Nutrition?
+    /// Jarvis's reports and how long they're kept; nil from an older Jarvis.
+    public var reports: ReportShelf?
+    /// The PC's gauges (memory, GPU memory, processor, disk).
+    public var metrics: [Metric] = []
+    /// The models Ollama has loaded, with their GPU memory.
+    public var models: [LoadedModel] = []
+    /// Other things Jarvis says hold GPU memory, when he names them.
+    public var gpuUsers: [GpuUser] = []
+    /// The card's own reading with every holder named (newer servers).
+    public var gpu: GpuReading?
+    /// Memory and who holds it (newer servers).
+    public var ram: RamReading?
+    /// The disks and their biggest folders (newer servers).
+    public var disks: [DiskReading]?
+    /// Jarvis's local model in Ollama, and whether it's loaded now.
+    public var localModel: LocalModel?
+    /// Categories picked in the apps for unsorted purchases, waiting to be applied in Copilot.
+    public var moneyPicks: [MoneyPick] = []
+    /// Jarvis's Claude limits, tokens and spend; nil from an older Jarvis.
+    public var claudeUsage: ClaudeUsage?
+    /// Claude project threads from the cloud digest.
+    public var threads: [ClaudeThread] = []
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, notices, nutrition }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu, ram, disks, claudeUsage, moneyPicks, localModel = "model" }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -35,8 +60,9 @@ public struct Snapshot: Decodable, Sendable {
         let money: Money?
         let health: Health?
         let calendar: [CalendarEvent]?
+        let threads: [ClaudeThread]?
 
-        enum CodingKeys: String, CodingKey { case money, health, calendar }
+        enum CodingKeys: String, CodingKey { case money, health, calendar, threads }
 
         /// Any section that won't decode is left out.
         init(from decoder: Decoder) throws {
@@ -44,6 +70,7 @@ public struct Snapshot: Decodable, Sendable {
             money = try? c.decodeIfPresent(Money.self, forKey: .money)
             health = try? c.decodeIfPresent(Health.self, forKey: .health)
             calendar = try? c.decodeIfPresent([CalendarEvent].self, forKey: .calendar)
+            threads = ((try? c.decodeIfPresent([LenientRow<ClaudeThread>].self, forKey: .threads)) ?? nil)?.compactMap(\.value)
         }
     }
 
@@ -62,6 +89,26 @@ public struct Snapshot: Decodable, Sendable {
         nutrition = try? c.decodeIfPresent(Nutrition.self, forKey: .nutrition)
         notices = ((try? c.decodeIfPresent([MaybeNotice].self, forKey: .notices)) ?? nil)?.compactMap(\.notice) ?? []
         health = cloud?.health
+        sleep = (try? c.decodeIfPresent(SleepSummary.self, forKey: .sleep)) ?? nil
+        reports = try? c.decodeIfPresent(ReportShelf.self, forKey: .reports)
+        metrics = ((try? c.decodeIfPresent([Metric].self, forKey: .metrics)) ?? nil) ?? []
+        models = ((try? c.decodeIfPresent([LoadedModel].self, forKey: .models)) ?? nil) ?? []
+        gpuUsers = ((try? c.decodeIfPresent([GpuUser].self, forKey: .gpuUsers)) ?? nil) ?? []
+        gpu = (try? c.decodeIfPresent(GpuReading.self, forKey: .gpu)) ?? nil
+        ram = (try? c.decodeIfPresent(RamReading.self, forKey: .ram)) ?? nil
+        disks = ((try? c.decodeIfPresent([LenientRow<DiskReading>].self, forKey: .disks)) ?? nil)?.compactMap(\.value)
+        localModel = (try? c.decodeIfPresent(LocalModel.self, forKey: .localModel)) ?? nil
+        claudeUsage = (try? c.decodeIfPresent(ClaudeUsage.self, forKey: .claudeUsage)) ?? nil
+        moneyPicks = ((try? c.decodeIfPresent(MoneyPicks.self, forKey: .moneyPicks)) ?? nil)?.picks ?? []
+        threads = cloud?.threads ?? []
+    }
+
+    /// Who's using the graphics card right now; nil without a GPU reading.
+    public var gpuShare: GpuShare? {
+        // The server's named reading when there is one; else the guess.
+        if let gpu, let share = GpuShare.from(gpu) { return share }
+        let gauge = metrics.first { $0.id == "gpu" }
+        return GpuShare.from(usedGb: gauge?.value, totalGb: gauge?.total, models: models, users: gpuUsers)
     }
 
     /// Services that are down or struggling: the app's alert banner.
@@ -287,6 +334,18 @@ public struct Money: Decodable, Sendable {
         public let date: String
         public let merchant: String
         public let amount: Double
+        /// Copilot's category; "" or "Other" means not sorted yet.
+        public var category: String? = nil
+        /// Which account, when the digest says.
+        public var account: String? = nil
+        public var accountId: String? = nil
+        public var pending: Bool? = nil
+        /// regular, income or transfer, when the digest says.
+        public var type: String? = nil
+
+        public init(id: String, date: String, merchant: String, amount: Double, category: String? = nil, type: String? = nil) {
+            self.id = id; self.date = date; self.merchant = merchant; self.amount = amount; self.category = category; self.type = type
+        }
     }
 }
 
@@ -317,8 +376,12 @@ public struct Jobs: Decodable, Sendable {
     public let lookout: Lookout?
     /// How many messages Jarvis has sent today.
     public let messenger: Messenger?
+    /// His regular jobs (Lookout, Messenger, Nightly…) and how each last went.
+    public let jobs: [JobRecord]
+    /// What ended today, newest first; nil from an older Jarvis.
+    public let finished: [FinishedJob]?
 
-    enum CodingKeys: String, CodingKey { case running, lookout, messenger }
+    enum CodingKeys: String, CodingKey { case running, lookout, messenger, jobs, finished }
 
     /// An older Jarvis has no `running` list; read that as none. Lookout and
     /// Messenger are optional and skipped if they won't decode.
@@ -327,6 +390,41 @@ public struct Jobs: Decodable, Sendable {
         running = try c.decodeIfPresent([RunningTask].self, forKey: .running) ?? []
         lookout = try? c.decodeIfPresent(Lookout.self, forKey: .lookout)
         messenger = try? c.decodeIfPresent(Messenger.self, forKey: .messenger)
+        jobs = ((try? c.decodeIfPresent([Maybe].self, forKey: .jobs)) ?? nil)?.compactMap(\.job) ?? []
+        finished = ((try? c.decodeIfPresent([MaybeFinished].self, forKey: .finished)) ?? nil)?.compactMap(\.job)
+    }
+
+    /// One finished job that may or may not decode.
+    private struct MaybeFinished: Decodable {
+        let job: FinishedJob?
+        init(from decoder: Decoder) throws { job = try? FinishedJob(from: decoder) }
+    }
+
+    /// The Recently finished rows: from `finished` when Jarvis sends it
+    /// (Live, Failed, No change needed), else from the jobs' last runs.
+    public func finishedRows(now: Date = Date()) -> [(id: String, name: String, word: String, at: Date?, model: String?, detail: String?)] {
+        if let finished {
+            return finished.map { ($0.id, $0.label, $0.word, $0.finishedAt.flatMap(AgendaTime.parse), $0.model, nil) }
+        }
+        return recentlyFinished(now: now).map { ($0.job.id, $0.job.name, $0.word, $0.at, $0.job.model, $0.job.lastResult) }
+    }
+
+    /// One job that may or may not decode.
+    private struct Maybe: Decodable {
+        let job: JobRecord?
+        init(from decoder: Decoder) throws { job = try? JobRecord(from: decoder) }
+    }
+
+    /// Jobs that finished in the last `hours`, newest first, with a result
+    /// word: "Done", or "Failed" for an error. Running and paused ones are
+    /// left out.
+    public func recentlyFinished(now: Date = Date(), hours: Double = 24) -> [(job: JobRecord, word: String, at: Date)] {
+        jobs.compactMap { job in
+            guard job.status != "running", job.status != "paused", let raw = job.lastRun, let at = AgendaTime.parse(raw) else { return nil }
+            guard now.timeIntervalSince(at) <= hours * 3600, at <= now.addingTimeInterval(60) else { return nil }
+            return (job, job.status == "error" ? "Failed" : "Done", at)
+        }
+        .sorted { $0.at > $1.at }
     }
 }
 
@@ -357,6 +455,46 @@ public struct Messenger: Decodable, Sendable {
 }
 
 /// One piece of background work, until it finishes.
+/// Something Jarvis finished today.
+public struct FinishedJob: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let label: String
+    /// live, failed or nothing.
+    public let state: String
+    public let finishedAt: String?
+    public let model: String?
+
+    /// The result in plain words: "Live", "Failed", "No change needed".
+    public var word: String {
+        switch state {
+        case "live": return "Live"
+        case "failed": return "Failed"
+        case "nothing": return "No change needed"
+        case "stopped": return "Stopped"
+        default: return state.prefix(1).uppercased() + state.dropFirst()
+        }
+    }
+}
+
+/// One of Jarvis's regular jobs, as the snapshot lists it.
+public struct JobRecord: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    /// ok, running, error or paused.
+    public let status: String
+    public let lastRun: String?
+    /// One plain sentence about the last run.
+    public let lastResult: String?
+    /// The model doing it (same raw names as chat turns); nil for plain code.
+    public let model: String?
+    /// When it runs next (ISO), when Jarvis says.
+    public var nextRun: String? = nil
+
+    public init(id: String, name: String, status: String, lastRun: String?, lastResult: String?, model: String? = nil) {
+        self.id = id; self.name = name; self.status = status; self.lastRun = lastRun; self.lastResult = lastResult; self.model = model
+    }
+}
+
 public struct RunningTask: Decodable, Identifiable, Sendable {
     public let id: String
     public let label: String
@@ -364,21 +502,40 @@ public struct RunningTask: Decodable, Identifiable, Sendable {
     public let state: String
     /// When it started (ISO), if Jarvis said.
     public let startedAt: String?
+    /// The model doing it ("claude-opus-5-5"); nil for plain code.
+    public let model: String?
+    /// Where it's at, one plain line ("Running tests"); nil when unsaid.
+    public let step: String?
+    /// Whether Jarvis can stop it (POST /api/jarvis/jobs/stop). Absent on a
+    /// server without stopping: then no Stop is offered at all.
+    public var stoppable: Bool? = nil
 
-    public init(id: String, label: String, state: String, startedAt: String? = nil) {
+    /// A swipe-to-stop is offered only when the server says it can.
+    public var canStop: Bool { stoppable == true }
+
+    public init(id: String, label: String, state: String, startedAt: String? = nil, model: String? = nil, step: String? = nil) {
         self.id = id
         self.label = label
         self.state = state
         self.startedAt = startedAt
+        self.model = model
+        self.step = step
+    }
+
+    /// True while it waits its turn.
+    public var isQueued: Bool { state == "queued" }
+
+    /// The one line under the name: the step when Jarvis says it, else
+    /// the usual status ("Running for 4 min", "Queued").
+    public func stepLine(now: Date = Date()) -> String {
+        if let step = step?.trimmingCharacters(in: .whitespacesAndNewlines), !step.isEmpty { return step }
+        return runningWords(now: now)
     }
 
     /// "Queued", "Just started", "Running for 4 min", "Running for 1 h 5 min".
     public func runningWords(now: Date = Date()) -> String {
         if state == "queued" { return "Queued" }
-        let plain = ISO8601DateFormatter()
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let startedAt, let start = fractional.date(from: startedAt) ?? plain.date(from: startedAt) else { return "Running" }
+        guard let startedAt, let start = ISODate.parse(startedAt) else { return "Running" }
         let minutes = Int(now.timeIntervalSince(start) / 60)
         if minutes < 1 { return "Just started" }
         if minutes < 60 { return "Running for \(minutes) min" }
@@ -400,13 +557,7 @@ public enum AgendaTime {
     }
 
     /// Reads an ISO 8601 time with or without fractional seconds.
-    static func parse(_ text: String) -> Date? {
-        let plain = ISO8601DateFormatter()
-        if let date = plain.date(from: text) { return date }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: text)
-    }
+    static func parse(_ text: String) -> Date? { ISODate.parse(text) }
 }
 
 /// Sleep and activity from the digest (Apple Health by way of the PC).
@@ -430,6 +581,13 @@ public struct Health: Decodable, Sendable {
     }
 }
 
+/// The snapshot's `model`: Jarvis's local model and whether it holds GPU memory.
+public struct LocalModel: Decodable, Equatable, Sendable {
+    public let name: String
+    public let loaded: Bool
+    public let vramGb: Double?
+}
+
 /// Today's food numbers from Jarvis's meal log (numbers only, never meals).
 public struct Nutrition: Decodable, Equatable, Sendable {
     /// The Pacific-time day these are for, "2026-11-18".
@@ -441,6 +599,11 @@ public struct Nutrition: Decodable, Equatable, Sendable {
     public let burned: Double?
     public let protein: Double?
     public let proteinGoal: Double?
+    /// Grams of fat and carbs today and their goals; nil on an older Jarvis or an empty day.
+    public var fat: Double? = nil
+    public var fatGoal: Double? = nil
+    public var carbs: Double? = nil
+    public var carbsGoal: Double? = nil
 
     public init(date: String, eaten: Double, goal: Double, left: Double, burned: Double? = nil, protein: Double? = nil, proteinGoal: Double? = nil) {
         self.date = date; self.eaten = eaten; self.goal = goal; self.left = left
@@ -486,6 +649,10 @@ public struct Nutrition: Decodable, Equatable, Sendable {
         if let burned { out["burned"] = burned }
         if let protein { out["protein"] = protein }
         if let proteinGoal { out["proteinGoal"] = proteinGoal }
+        if let fat { out["fat"] = fat }
+        if let fatGoal { out["fatGoal"] = fatGoal }
+        if let carbs { out["carbs"] = carbs }
+        if let carbsGoal { out["carbsGoal"] = carbsGoal }
         return out
     }
 
@@ -494,6 +661,10 @@ public struct Nutrition: Decodable, Equatable, Sendable {
               let goal = dictionary["goal"] as? Double, let left = dictionary["left"] as? Double else { return nil }
         self.init(date: date, eaten: eaten, goal: goal, left: left, burned: dictionary["burned"] as? Double,
                   protein: dictionary["protein"] as? Double, proteinGoal: dictionary["proteinGoal"] as? Double)
+        fat = dictionary["fat"] as? Double
+        fatGoal = dictionary["fatGoal"] as? Double
+        carbs = dictionary["carbs"] as? Double
+        carbsGoal = dictionary["carbsGoal"] as? Double
     }
 }
 

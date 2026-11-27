@@ -41,6 +41,20 @@ public enum ChatEvent: Equatable, Sendable {
     /// A meal photo that looks like one already logged: Dylan picks same,
     /// leftovers or new (the buttons under the reply).
     case mealQuestion(key: String, choices: [String])
+    /// The first event of a send: the id Jarvis saved Dylan's message
+    /// under, the same id history gives it.
+    case turn(Int)
+    /// A message sent while a reply was still running was taken into it
+    /// (Dylan, 2026-11-21: "i should be able to send more than one message
+    /// even while claude is thinking (and it should steer it)"). `into` is
+    /// the running turn (nil when Jarvis doesn't say); `as` is "steered"
+    /// (the reply carries on, on the first stream, reflecting it),
+    /// "stopped" (it was a stop word; the first reply ends with what it
+    /// had) or "approval" (it answered a waiting approval).
+    case steered(into: Int?, as: String)
+    /// A message sent mid-reply that waits its turn: this same stream
+    /// carries its own reply once the running one ends.
+    case queued(after: Int?)
 
     /// Reads one line of the stream. Blank lines, bad JSON and event types
     /// this build doesn't know yet come back nil, so a newer Jarvis never
@@ -75,6 +89,13 @@ public enum ChatEvent: Equatable, Sendable {
         case "model":
             guard let model = object["model"] as? String else { return nil }
             return .model(model)
+        case "turn":
+            guard let id = (object["id"] as? NSNumber)?.intValue else { return nil }
+            return .turn(id)
+        case "steered":
+            return .steered(into: (object["into"] as? NSNumber)?.intValue, as: object["as"] as? String ?? "steered")
+        case "queued":
+            return .queued(after: (object["after"] as? NSNumber)?.intValue)
         case "meal_question":
             guard let key = object["key"] as? String, !key.isEmpty else { return nil }
             let choices = (object["choices"] as? [String] ?? MealChoice.all).filter { MealChoice.all.contains($0) }
@@ -97,6 +118,24 @@ public enum ChatEvent: Equatable, Sendable {
 }
 
 /// One saved line of the web chat (GET /api/jarvis/history), oldest first.
+/// A quoted earlier message: its turn id, who wrote it ("user" or
+/// "jarvis") and up to 300 characters of it. Sent as `replyTo` (the id
+/// only) and read back on history turns.
+public struct ChatQuote: Codable, Equatable, Sendable {
+    public let id: Int
+    public let role: String
+    public let text: String
+
+    public init(id: Int, role: String, text: String) {
+        self.id = id; self.role = role; self.text = String(text.prefix(300))
+    }
+
+    /// True when Dylan wrote the quoted message.
+    public var isUser: Bool { role == "user" }
+    /// "You" or "Jarvis", over the quote.
+    public var who: String { isUser ? "You" : "Jarvis" }
+}
+
 public struct ChatTurn: Codable, Equatable, Sendable {
     public let role: String
     public let text: String
@@ -108,13 +147,21 @@ public struct ChatTurn: Codable, Equatable, Sendable {
     public let images: Int?
     /// Jarvis's id for the turn, so a notice can point at it.
     public let id: Int?
+    /// For a message he sent unasked ("notice:…"): the model that wrote its
+    /// words, when one did (absent on reminders, alerts and older turns).
+    public let writer: String?
+    /// True when Dylan kept this message (a yellow dot); absent otherwise.
+    public let kept: Bool?
+    /// The earlier message this one replies to (Dylan 2026-11-27), when it does.
+    public let replyTo: ChatQuote?
 
     /// True for Dylan's own lines.
     public var isUser: Bool { role == "user" }
 
     /// Builds a turn (sample data and tests; the server's are decoded).
-    public init(role: String, text: String, at: String, model: String?, images: Int? = nil, id: Int? = nil) {
-        self.role = role; self.text = text; self.at = at; self.model = model; self.images = images; self.id = id
+    public init(role: String, text: String, at: String, model: String?, images: Int? = nil, id: Int? = nil, writer: String? = nil, kept: Bool? = nil, replyTo: ChatQuote? = nil) {
+        self.role = role; self.text = text; self.at = at; self.model = model; self.images = images; self.id = id; self.writer = writer; self.kept = kept
+        self.replyTo = replyTo
     }
 
     /// The position of the turn with Jarvis's id `turnId`, or nil.
@@ -123,3 +170,62 @@ public struct ChatTurn: Codable, Equatable, Sendable {
     }
 }
 
+
+
+/// Where a message sent mid-reply goes (the page's layout): a steered one
+/// moves to just above the reply still coming (under the question being
+/// answered); a queued one waits at the end, marked Queued, and moves into
+/// its own turn when its reply starts. Pure, over the chat's lines.
+/// Where a settled approval's one-line entry goes back after a reload
+/// (history doesn't hold them). Anchored by Jarvis's id of the nearest
+/// turn above it, so it can't drift down among later messages (Dylan
+/// 2026-11-27: a Palm Springs approval showed under his dinner chat).
+public enum ApprovalPlace {
+    /// The insert position in `turnIds` (the chat's lines in order, nil for
+    /// a line with no id): just after the anchor turn; if that turn isn't
+    /// on the page, just before the first newer one; with no anchor, after
+    /// the last line whose text matches, else at the end.
+    public static func index(anchor: Int?, afterText: String?, turnIds: [Int?], texts: [String]) -> Int {
+        if let anchor {
+            if let at = turnIds.lastIndex(where: { $0 == anchor }) { return at + 1 }
+            if let newer = turnIds.firstIndex(where: { ($0 ?? Int.min) > anchor }) { return newer }
+            if turnIds.contains(where: { $0 != nil }) { return turnIds.count }
+        }
+        if let afterText, let at = texts.lastIndex(of: afterText) { return at + 1 }
+        return turnIds.count
+    }
+}
+
+public enum SendFlow {
+    public struct Line: Equatable, Sendable {
+        public let id: String
+        public let isUser: Bool
+        /// A reply of Jarvis's still coming in.
+        public let open: Bool
+        public init(id: String, isUser: Bool, open: Bool) {
+            self.id = id; self.isUser = isUser; self.open = open
+        }
+    }
+
+    /// Where `mine` belongs once steered into the running reply: the index
+    /// to move it to (just above the reply still coming), or nil to leave
+    /// it where it is (no reply still open, e.g. it had just ended).
+    public static func steeredIndex(_ lines: [Line], mine: String) -> Int? {
+        guard let from = lines.firstIndex(where: { $0.id == mine }),
+              let reply = lines.lastIndex(where: { !$0.isUser && $0.open }),
+              reply < from else { return nil }
+        // Above the reply, after any of his other steered messages already there.
+        return reply
+    }
+
+    /// The lines with `mine` moved to `to` (for steered), or to the end
+    /// (for a queued one whose reply starts).
+    public static func move(_ ids: [String], _ mine: String, to index: Int?) -> [String] {
+        guard let from = ids.firstIndex(of: mine) else { return ids }
+        var out = ids
+        out.remove(at: from)
+        let at = min(index ?? out.count, out.count)
+        out.insert(mine, at: at)
+        return out
+    }
+}

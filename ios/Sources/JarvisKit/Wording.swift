@@ -74,10 +74,7 @@ public enum ApprovalWording {
     /// True once an approval's `expires` time has passed. An unreadable or
     /// missing time never expires here (the PC's own timeout still settles it).
     public static func hasExpired(_ expires: String, now: Date = Date()) -> Bool {
-        let plain = ISO8601DateFormatter()
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = fractional.date(from: expires) ?? plain.date(from: expires) else { return false }
+        guard let date = ISODate.parse(expires) else { return false }
         return now >= date
     }
 }
@@ -121,8 +118,50 @@ public enum ModelWording {
     /// "Reminder", "Lookout", "Alert", "Finished", "Digest"; anything else
     /// he sends unasked is just "Jarvis".
     public static func noticeLabel(_ model: String) -> String {
+        let word = noticeWord(model)
+        return word.isEmpty ? "Jarvis" : word
+    }
+
+    /// Where an unasked message came from, as a word ("Lookout"); "" for a
+    /// source with no word (the page's noticeWord).
+    public static func noticeWord(_ model: String) -> String {
         let source = String(clean(model).dropFirst("notice:".count))
-        return ["reminder": "Reminder", "lookout": "Lookout", "alert": "Alert", "job": "Finished", "digest": "Digest"][source] ?? "Jarvis"
+        return ["reminder": "Reminder", "lookout": "Lookout", "alert": "Alert", "job": "Finished", "digest": "Digest"][source] ?? ""
+    }
+
+    /// What a chip shows: who wrote it, its colour, and for an unasked
+    /// message where it came from (the page's Chip).
+    public struct Chip: Equatable, Sendable {
+        public enum Tone: Equatable, Sendable { case claude, local, notice }
+        public let label: String
+        public let tone: Tone
+        /// "Lookout", "Reminder"…, in quiet grey after the label; "" for a reply.
+        public let source: String
+    }
+
+    /// The chip for a running or finished job (Dylan, 2026-11-19: "be sure
+    /// when indicating parallel jobs what's doing it"): the model's chip, or
+    /// nil for a plain code job with no model.
+    public static func jobChip(_ model: String?) -> Chip? {
+        guard let model = model?.trimmingCharacters(in: .whitespaces), !model.isEmpty else { return nil }
+        let chip = chip(model: model)
+        return chip.label.isEmpty ? nil : chip
+    }
+
+    /// The chip for one turn (the page's chipFor). A reply: its model's
+    /// label and colour. An unasked message: the writer's label and colour
+    /// ("Jarvis" in the plain notice tone when no model wrote it) plus the
+    /// source word: "Jarvis (CO) Lookout", "Jarvis Reminder". Never the
+    /// source word alone (Dylan, 2026-11-18: "this should also say jarvis or
+    /// ornith").
+    public static func chip(model: String, writer: String? = nil) -> Chip {
+        guard isNotice(model) else {
+            return Chip(label: label(model), tone: isClaude(model) ? .claude : .local, source: "")
+        }
+        let source = noticeWord(model)
+        let writer = writer?.trimmingCharacters(in: .whitespaces) ?? ""
+        if writer.isEmpty || isNotice(writer) { return Chip(label: "Jarvis", tone: .notice, source: source) }
+        return Chip(label: label(writer), tone: isClaude(writer) ? .claude : .local, source: source)
     }
 
     /// Claude's chip (any of its models) is orange; every local model's is blue.

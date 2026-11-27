@@ -35,6 +35,19 @@ describe('parseNotices', () => {
     expect(parsed?.[1]).not.toHaveProperty('turnId')
   })
 
+  it('passes on the report a notice is about, only when the id is 16 lowercase hex', () => {
+    const parsed = parseNotices({
+      notices: [
+        { id: 'n1', kind: 'heads', title: 'Report ready: Disk', source: 'job', report_id: '0123456789abcdef' },
+        { id: 'n2', kind: 'heads', title: 'Bad id', source: 'job', report_id: '0123456789ABCDEF' },
+        { id: 'n3', kind: 'heads', title: 'Path', source: 'job', report_id: '../../etc/passwd' },
+      ],
+    })
+    expect(parsed?.[0]).toHaveProperty('reportId', '0123456789abcdef')
+    expect(parsed?.[1]).not.toHaveProperty('reportId')
+    expect(parsed?.[2]).not.toHaveProperty('reportId')
+  })
+
   it('is null for an answer that isn’t a list, and caps a long one at 30', () => {
     expect(parseNotices(null)).toBeNull()
     expect(parseNotices({ notices: 'x' })).toBeNull()

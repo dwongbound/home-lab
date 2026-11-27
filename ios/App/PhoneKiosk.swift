@@ -19,8 +19,28 @@ final class OrientationLock: NSObject, UIApplicationDelegate {
     /// The notification delegate is set before launch finishes, so a tap on
     /// a notification that opened the app is handled too.
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        MainActor.assumeIsolated { UNUserNotificationCenter.current().delegate = PushCenter.shared }
+        MainActor.assumeIsolated {
+            UNUserNotificationCenter.current().delegate = PushCenter.shared
+            // Sleep's observer must be back in place at every launch, a
+            // background one from Health included, for a finished night to
+            // go in the morning (once he's allowed it; App/SleepSync.swift).
+            SleepSync.shared.start()
+        }
         return true
+    }
+
+    /// A quiet push (content-available, no alert) from Jarvis: in the
+    /// morning he sends `{"sleep": true}` until last night arrives, so the
+    /// night goes as soon as the watch has synced and the phone is
+    /// unlocked, without opening the app (Dylan, 2026-11-22: "ideally id
+    /// want to see them as soon or as early as i can after i wake up").
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let wantsSleep = userInfo["sleep"] as? Bool == true
+        Task { @MainActor in
+            if wantsSleep { await SleepSync.shared.catchUp() }
+            completionHandler(wantsSleep ? .newData : .noData)
+        }
     }
 
     /// APNs gave this device a token (PushCenter sends it on).
@@ -30,7 +50,10 @@ final class OrientationLock: NSObject, UIApplicationDelegate {
 
     /// No token this time (no network, or a build without push): tried
     /// again at the next launch.
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {}
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        let words = error.localizedDescription
+        MainActor.assumeIsolated { PushLog.add("APNs gave no token: \(words)") }
+    }
 
     /// Asked by UIKit whenever it considers rotating.
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {

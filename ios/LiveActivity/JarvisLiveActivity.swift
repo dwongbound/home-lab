@@ -10,6 +10,14 @@ import WidgetKit
 struct JarvisLiveActivityBundle: WidgetBundle {
     var body: some Widget {
         TalkLiveActivity()
+        GlanceWidget()
+        TodayWidget()
+        CaloriesWidget()
+        SleepWidget()
+        HomeWidget()
+        BoardWidget()
+        OrbWidget()
+        SystemWidget()
     }
 }
 

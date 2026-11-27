@@ -22,12 +22,32 @@ public enum PushWords {
         debug ? "sandbox" : "production"
     }
 
+    /// Which APNs a build's tokens belong to, from its provisioning profile
+    /// (embedded.mobileprovision) rather than the build configuration
+    /// (Dylan, 2026-11-21: a Release build installed from Xcode registered
+    /// as "production", APNs refused its sandbox token, and no pushes came).
+    /// The profile's `aps-environment` entitlement "development" means the
+    /// sandbox; no profile (TestFlight, App Store) or "production" means
+    /// production.
+    public static func environment(profile: Data?) -> String {
+        guard let profile, let plist = profilePlist(profile) else { return "production" }
+        let entitlements = plist["Entitlements"] as? [String: Any]
+        return (entitlements?["aps-environment"] as? String) == "development" ? "sandbox" : "production"
+    }
+
+    /// The property list inside a provisioning profile (a signed CMS
+    /// envelope around an XML plist): cut out from "<?xml" to "</plist>".
+    static func profilePlist(_ data: Data) -> [String: Any]? {
+        guard let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex) else { return nil }
+        let xml = data.subdata(in: start.lowerBound..<end.upperBound)
+        return (try? PropertyListSerialization.propertyList(from: xml, options: [], format: nil)) as? [String: Any]
+    }
+
     /// The approval a notification is about, from `approval_id` at the top
     /// of the payload or inside its `jarvis` part.
     public static func approvalId(from payload: [AnyHashable: Any]) -> String? {
-        if let id = payload["approval_id"] as? String, !id.isEmpty { return id }
-        if let jarvis = payload["jarvis"] as? [String: Any], let id = jarvis["approval_id"] as? String, !id.isEmpty { return id }
-        return nil
+        text(payload["approval_id"]) ?? text((payload["jarvis"] as? [String: Any])?["approval_id"])
     }
 
     /// The chat turn a notification previews (`turn_id`), so tapping it can
@@ -44,12 +64,25 @@ public enum PushWords {
         return nil
     }
 
+    /// The report a notification is about (`report_id`, 16 lowercase hex),
+    /// so tapping it opens the report; anything else reads as none.
+    public static func reportId(from payload: [AnyHashable: Any]) -> String? {
+        let raw = text(payload["report_id"]) ?? text((payload["jarvis"] as? [String: Any])?["report_id"])
+        guard let raw, raw.count == 16, raw.allSatisfy({ ("0"..."9").contains($0) || ("a"..."f").contains($0) }) else { return nil }
+        return raw
+    }
+
+    /// A string field, or a number written as text; nil for anything else or empty.
+    static func text(_ any: Any?) -> String? {
+        if let s = any as? String { return s.isEmpty ? nil : s }
+        if let n = any as? NSNumber { return n.stringValue }
+        return nil
+    }
+
     /// The notice a notification is about (`notice_id`), so tapping it can
     /// open the list there.
     public static func noticeId(from payload: [AnyHashable: Any]) -> String? {
-        if let id = payload["notice_id"] as? String, !id.isEmpty { return id }
-        if let jarvis = payload["jarvis"] as? [String: Any], let id = jarvis["notice_id"] as? String, !id.isEmpty { return id }
-        return nil
+        text(payload["notice_id"]) ?? text((payload["jarvis"] as? [String: Any])?["notice_id"])
     }
 }
 
@@ -100,5 +133,66 @@ public enum PushStatus: Equatable, Sendable {
         case .registered: return "Push: registered"
         case .failed(let why): return "Push: couldn't register (\(why))"
         }
+    }
+}
+
+/// A tapped notification, read once off the system's response into plain
+/// values (Dylan, 2026-11-18: tapping a notification crashed the app). Every
+/// field is optional and read leniently: a number may come as text, a
+/// missing or odd field reads as none, and a shape nobody planned for just
+/// opens the app. Sendable, so it can cross to the main thread safely.
+public struct PushTap: Equatable, Sendable {
+    /// What he did: opened it, Approve, Deny, or swiped it away.
+    public let response: NoticeResponse
+    public let noticeId: String?
+    public let approvalId: String?
+    public let turnId: Int?
+    public let reportId: String?
+    /// The alert's words (may be empty: a push can carry only a title).
+    public let body: String
+
+    /// Reads a payload. `action` is the response's action identifier.
+    public init(payload: [AnyHashable: Any], action: String, body: String = "") {
+        response = NoticeResponse.from(action: action)
+        noticeId = PushWords.noticeId(from: payload)
+        approvalId = PushWords.approvalId(from: payload)
+        turnId = PushWords.turnId(from: payload)
+        reportId = PushWords.reportId(from: payload)
+        self.body = body
+    }
+
+    /// The "While you were asleep" summary: its notice id starts "held-"
+    /// and isn't in the notices list, so it opens the list and clears nothing.
+    public var isHeldSummary: Bool { noticeId?.hasPrefix("held-") == true }
+
+    /// The approval to answer from the lock screen, if this was Approve or Deny on one.
+    public var answer: (id: String, ok: Bool)? {
+        guard let approvalId, response == .approved || response == .denied else { return nil }
+        return (approvalId, response == .approved)
+    }
+
+    /// The notice to clear everywhere: acted on, and a real notice.
+    public var noticeToClear: String? {
+        guard response.clearsNotice, !isHeldSummary else { return nil }
+        return noticeId
+    }
+
+    /// Where a tap goes.
+    public enum Destination: Equatable, Sendable {
+        /// Just open the app (Approve/Deny, a swipe, or nothing to show).
+        case app
+        case report(String)
+        case turn(Int)
+        case notices
+    }
+
+    /// A report first, then the chat turn, else the notices list; only a
+    /// plain tap goes anywhere.
+    public var destination: Destination {
+        guard response == .opened else { return .app }
+        if isHeldSummary { return .notices }
+        if let reportId { return .report(reportId) }
+        if let turnId { return .turn(turnId) }
+        return .notices
     }
 }
