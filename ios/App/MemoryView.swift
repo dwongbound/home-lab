@@ -19,6 +19,8 @@ struct MemoryView: View {
     @State private var pinchStart: CGFloat?
     /// The bubble being dragged: it lifts, its lines light, its neighbours follow.
     @State private var dragging: String?
+    /// The bubble under a finger right now, dragged or not.
+    @State private var pressed: String?
 
     /// The bubble whose sheet is open.
     struct OpenNode: Identifiable { let id: String }
@@ -88,16 +90,35 @@ struct MemoryView: View {
                 .onTapGesture(count: 2) { setZoom(zoom >= 2 ? fitZoom(side) : zoom * 1.6) }
                 ForEach(graph.nodes) { node in
                     bubble(node)
-                        .scaleEffect(dragging == node.id ? 1.25 : 1)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: dragging == node.id)
+                        // Answers the moment a finger lands: a lift and a tick,
+                        // bigger once it's being dragged (Dylan, 2026-11-27:
+                        // "would be cool if the nodes can be more responsive").
+                        .scaleEffect(dragging == node.id ? 1.3 : pressed == node.id ? 1.15 : 1)
+                        .brightness(pressed == node.id ? 0.12 : 0)
+                        .animation(.spring(response: 0.22, dampingFraction: 0.55), value: pressed == node.id)
+                        .animation(.spring(response: 0.22, dampingFraction: 0.55), value: dragging == node.id)
                         .position(spots[node.id].map { CGPoint(x: $0.x * z, y: $0.y * z) } ?? CGPoint(x: side * z / 2, y: side * z / 2))
                         .opacity(matches(node) ? 1 : 0.2)
+                        // One gesture for touch, drag and tap, so a tap opens on
+                        // lift with no wait to rule out a drag.
                         .highPriorityGesture(
-                            DragGesture(minimumDistance: 2)
-                                .onChanged { drag($0, node.id, graph: graph, zoom: z) }
-                                .onEnded { _ in dragging = nil }
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if pressed != node.id {
+                                        pressed = node.id
+                                        Haptics.play(.tab)
+                                    }
+                                    let moved = hypot(value.translation.width, value.translation.height)
+                                    if dragging == node.id || moved > 6 {
+                                        drag(value, node.id, graph: graph, zoom: z)
+                                    }
+                                }
+                                .onEnded { _ in
+                                    if dragging != node.id { open = OpenNode(id: node.id) }
+                                    dragging = nil
+                                    pressed = nil
+                                }
                         )
-                        .onTapGesture { open = OpenNode(id: node.id) }
                 }
             }
             .frame(width: side * z, height: side * z)
@@ -162,10 +183,7 @@ struct MemoryView: View {
     /// Moves the dragged bubble under the finger and pulls its direct
     /// neighbours a third of the way along, so the web feels alive.
     private func drag(_ value: DragGesture.Value, _ id: String, graph: MemoryGraph, zoom: CGFloat) {
-        if dragging != id {
-            dragging = id
-            Haptics.play(.tab)
-        }
+        if dragging != id { dragging = id }
         let to = CGPoint(x: value.location.x / zoom, y: value.location.y / zoom)
         guard let from = spots[id] else { spots[id] = to; return }
         let dx = to.x - from.x, dy = to.y - from.y
