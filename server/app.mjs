@@ -22,6 +22,7 @@
 //   POST /api/jarvis/approve        {"id", "ok"} -> Approve or Deny one thing Jarvis asked to do on the PC
 //   GET  /api/jarvis/approvals      what Jarvis is still waiting on you to approve ({pending})
 //   (chat messages may add "images": up to 4 photos as {"media_type", "data": base64})
+//   (and "replyTo": the turn id of one earlier message this one replies to)
 //   POST /api/jarvis/chat/meal     {"key", "choice"} -> same | leftovers | new, for a meal photo he may have logged already
 //   POST /api/jarvis/offers/hide   {"id"} -> Hide on one of Jarvis's offer cards
 //   POST /api/jarvis/jobs/stop     {"id"} -> stop one piece of background work and clean up after it
@@ -44,7 +45,7 @@ import { cleanSleepNight, sleepDayCount } from './sources/sleep.mjs'
 import { createLiveSource } from './sources/live.mjs'
 import { checkVoiceChoice, choiceFromQuery } from './voice.mjs'
 import { parseClear, parseKeep, parsePushDevice, parseUnkeep } from './sources/notices.mjs'
-import { parseHistoryPage } from './sources/history.mjs'
+import { parseHistoryPage, parseReplyTo } from './sources/history.mjs'
 import { isJobId } from './sources/jobs.mjs'
 import { nodeIdFromPath } from './sources/memory-graph.mjs'
 import { cleanPlaybook } from './sources/playbooks.mjs'
@@ -204,10 +205,16 @@ export function createApi(source) {
     if (!text && images.length === 0) {
       return sendJson(res, 400, { ok: false, message: 'Send JSON like {"text": "..."}' })
     }
+    // A reply to one earlier message (Dylan 2026-11-27): Jarvis is told which, so "this" needs no explaining.
+    const replyTo = parseReplyTo(body?.replyTo)
+    if (replyTo === null) {
+      return sendJson(res, 400, { ok: false, message: 'replyTo is the id of the message being replied to, like {"text": "...", "replyTo": 412}' })
+    }
     const login = req.headers['tailscale-user-login'] ?? ''
     // Start on an offer card: Jarvis marks it started and takes it as Dylan's ask.
     const caller = { login }
     if (images.length > 0) caller.images = images
+    if (replyTo) caller.replyTo = replyTo
     if (typeof body.offerId === 'string' && /^[\w-]{1,64}$/.test(body.offerId)) caller.offerId = body.offerId
     res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' })
     // If the phone leaves mid-reply, keep reading Jarvis's answer to the end

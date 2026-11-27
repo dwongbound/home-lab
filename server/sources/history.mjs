@@ -12,6 +12,26 @@ function turnId(value) {
   return Number(value)
 }
 
+/** How much of the message being replied to goes back with a history turn, in characters. */
+export const REPLY_QUOTE_MAX = 300
+
+/**
+ * The turn a chat message replies to, from the request body: the turn's id
+ * (a number, or the same as text), undefined when the message replies to
+ * nothing, null when what was sent isn't a turn id.
+ */
+export function parseReplyTo(raw) {
+  if (raw === undefined || raw === null) return undefined
+  if (Number.isInteger(raw)) return turnId(String(raw))
+  return turnId(raw)
+}
+
+/** The message a turn replies to, as { id, role, text } with the text cut short; null when Jarvis's line doesn't hold one. */
+function toReplyTo(raw) {
+  if (!Number.isInteger(raw?.id) || raw.id <= 0 || typeof raw.text !== 'string') return null
+  return { id: raw.id, role: raw.role === 'user' ? 'user' : 'jarvis', text: raw.text.slice(0, REPLY_QUOTE_MAX) }
+}
+
 /**
  * Reads ?limit=&before=&around= into { limit, before?, around? }; null when
  * something is off (a limit outside 1-100, an id that isn't a number, or both
@@ -60,6 +80,9 @@ function toTurn(t) {
   if (Number.isInteger(t.id) && t.id > 0) turn.id = t.id
   // Dylan asked to keep this one (it's on the notices list until he lets it go).
   if (t.kept === true) turn.kept = true
+  // He sent this one as a reply to an earlier message: which one, and its first words for the quote above it.
+  const replyTo = toReplyTo(t.reply_to)
+  if (replyTo) turn.replyTo = replyTo
   return turn
 }
 

@@ -664,6 +664,13 @@ describe('live chat with Jarvis', () => {
     expect(JSON.parse(init!.body as string)).toEqual({ text: 'lunch', images: [{ media_type: 'image/jpeg', data: 'aGVsbG8=' }] })
   })
 
+  it('tells Jarvis which message a chat message replies to', async () => {
+    const { source, fetch } = liveWith({})
+    await source.chat('AM or PM?', { login: 'dylan@example.com', replyTo: 7 }, () => {})
+    const [, init] = fetch.mock.calls.find((c) => c[0] === `${config.jarvisApiUrl}/chat/stream`)!
+    expect(JSON.parse(init!.body as string)).toEqual({ text: 'AM or PM?', reply_to: 7 })
+  })
+
   it('stops a background job, passing on what Jarvis said', async () => {
     const who = { login: 'dylan@example.com' }
     const { source, fetch } = liveWith({})

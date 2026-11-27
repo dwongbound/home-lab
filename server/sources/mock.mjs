@@ -7,7 +7,7 @@
 
 import { scoreBand, sleepSummary } from './sleep.mjs'
 import { createPickStore } from '../money-picks.mjs'
-import { HISTORY_DEFAULT, pageOfTurns } from './history.mjs'
+import { HISTORY_DEFAULT, REPLY_QUOTE_MAX, pageOfTurns } from './history.mjs'
 import { DEFAULT_STEP_TYPES, DEFAULT_THINKERS } from './step-types.mjs'
 import { SAMPLE_VOICES, sampleWav } from '../voice.mjs'
 
@@ -608,6 +608,9 @@ export function createMockSource({ now = () => new Date() } = {}) {
       const photos = caller?.images?.length ?? 0
       const turn = { role: 'user', text, at }
       if (photos > 0) turn.images = photos
+      // A reply to an earlier message keeps that message's first words, like the real Jarvis.
+      const quoted = state.chat[(caller?.replyTo ?? 0) - 1]
+      if (quoted) turn.replyTo = { id: caller.replyTo, role: quoted.role, text: quoted.text.slice(0, REPLY_QUOTE_MAX) }
       state.chat.push(turn)
       // The message's number, as the real Jarvis says first.
       onEvent({ type: 'turn', id: state.chat.length })
