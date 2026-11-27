@@ -97,6 +97,7 @@ struct TodayView: View {
     /// The Sleep screen.
     @State private var showSleep = false
     @State private var showActivity = false
+    @State private var showMoney = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The one-time "send your sleep" card (App/SleepSync.swift).
@@ -189,6 +190,9 @@ struct TodayView: View {
         }
         .sheet(isPresented: $showSleep) {
             SleepDetailView().environmentObject(app)
+        }
+        .sheet(isPresented: $showMoney) {
+            MoneyDetailView(today: today).environmentObject(app)
         }
         .sheet(isPresented: $showActivity) {
             ActivityDetailView(sync: activitySync)
@@ -286,7 +290,9 @@ struct TodayView: View {
             }
             if let money = snapshot.money {
                 if app.moneyUnlocked {
-                    moneyCard(money)
+                    // The whole card opens the Money screen (accounts, purchases, picks).
+                    Button { showMoney = true } label: { moneyCard(money) }
+                        .buttonStyle(.plain)
                 } else {
                     lockedMoney
                 }
@@ -495,7 +501,7 @@ struct TodayView: View {
 
     /// Net worth, this month against budget, what's over, and Jarvis's notes.
     private func moneyCard(_ money: Money) -> some View {
-        card("Money", icon: "creditcard.fill") {
+        card("Money", icon: "creditcard.fill", trailing: "Details  ›") {
             HStack(alignment: .firstTextBaseline) {
                 if let worth = money.netWorth {
                     VStack(alignment: .leading, spacing: 2) {

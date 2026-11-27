@@ -40,12 +40,14 @@ public struct Snapshot: Decodable, Sendable {
     public var disks: [DiskReading]?
     /// Jarvis's local model in Ollama, and whether it's loaded now.
     public var localModel: LocalModel?
+    /// Categories picked in the apps for unsorted purchases, waiting to be applied in Copilot.
+    public var moneyPicks: [MoneyPick] = []
     /// Jarvis's Claude limits, tokens and spend; nil from an older Jarvis.
     public var claudeUsage: ClaudeUsage?
     /// Claude project threads from the cloud digest.
     public var threads: [ClaudeThread] = []
 
-    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu, ram, disks, claudeUsage, localModel = "model" }
+    enum CodingKeys: String, CodingKey { case generatedAt, today, offers, home, services, jobs, cloud, sleep, notices, nutrition, reports, metrics, models, gpuUsers, gpu, ram, disks, claudeUsage, moneyPicks, localModel = "model" }
 
     /// One notice that may or may not decode; a bad one is skipped, not fatal.
     private struct MaybeNotice: Decodable {
@@ -97,6 +99,7 @@ public struct Snapshot: Decodable, Sendable {
         disks = ((try? c.decodeIfPresent([LenientRow<DiskReading>].self, forKey: .disks)) ?? nil)?.compactMap(\.value)
         localModel = (try? c.decodeIfPresent(LocalModel.self, forKey: .localModel)) ?? nil
         claudeUsage = (try? c.decodeIfPresent(ClaudeUsage.self, forKey: .claudeUsage)) ?? nil
+        moneyPicks = ((try? c.decodeIfPresent(MoneyPicks.self, forKey: .moneyPicks)) ?? nil)?.picks ?? []
         threads = cloud?.threads ?? []
     }
 
@@ -331,6 +334,18 @@ public struct Money: Decodable, Sendable {
         public let date: String
         public let merchant: String
         public let amount: Double
+        /// Copilot's category; "" or "Other" means not sorted yet.
+        public var category: String? = nil
+        /// Which account, when the digest says.
+        public var account: String? = nil
+        public var accountId: String? = nil
+        public var pending: Bool? = nil
+        /// regular, income or transfer, when the digest says.
+        public var type: String? = nil
+
+        public init(id: String, date: String, merchant: String, amount: Double, category: String? = nil, type: String? = nil) {
+            self.id = id; self.date = date; self.merchant = merchant; self.amount = amount; self.category = category; self.type = type
+        }
     }
 }
 
