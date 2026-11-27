@@ -339,3 +339,41 @@ public enum SystemChecked {
         return ("Checked \(at.formatted(date: .abbreviated, time: .shortened))", true)
     }
 }
+
+/// Which point of a chart a finger is on (Dylan, 2026-11-27: "make the
+/// plots and graphs more interactive"). A line puts its first and last
+/// points on the edges; bars split the width into equal slots.
+public enum ChartPick {
+    public static func line(x: Double, width: Double, count: Int) -> Int? {
+        guard count > 0, width > 0 else { return nil }
+        guard count > 1 else { return 0 }
+        return min(count - 1, max(0, Int((x / width * Double(count - 1)).rounded())))
+    }
+
+    public static func bar(x: Double, width: Double, count: Int) -> Int? {
+        guard count > 0, width > 0 else { return nil }
+        return min(count - 1, max(0, Int(x / (width / Double(count)))))
+    }
+
+    /// "3 PM", "12 AM" for an hour of the day.
+    public static func hourName(_ hour: Int) -> String {
+        let h = ((hour % 24) + 24) % 24
+        return "\(h % 12 == 0 ? 12 : h % 12) \(h < 12 ? "AM" : "PM")"
+    }
+}
+
+public extension SystemGauge {
+    /// One reading from the history in words: "10.1 of 16 GB", "42% busy".
+    func historyText(_ index: Int) -> String? {
+        guard history.indices.contains(index) else { return nil }
+        let value = history[index]
+        if kind == .cpu { return "\(Int((value * 100).rounded()))% busy" }
+        return "\(SystemGauge.number(value * total)) of \(SystemGauge.number(total)) GB"
+    }
+
+    /// How long ago a reading was, counting from the newest: "now", "3 readings ago".
+    func historyAge(_ index: Int) -> String {
+        let back = history.count - 1 - index
+        return back <= 0 ? "Latest reading" : "\(back) reading\(back == 1 ? "" : "s") ago"
+    }
+}

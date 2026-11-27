@@ -70,6 +70,8 @@ struct SystemDrawer: View {
 private struct SystemDrawerBody: View {
     @ObservedObject var today: TodayModel
     let fallback: Snapshot
+    /// The reading each gauge's line is showing, by gauge.
+    @State private var picked: [String: Int] = [:]
 
     var body: some View {
         let snapshot = today.snapshot ?? fallback
@@ -122,9 +124,24 @@ private struct SystemDrawerBody: View {
                 }
                 Spacer(minLength: 0)
             }
-            Sparkline(values: gauge.history, tint: SystemStyle.tint(gauge.kind), scale: 1.2)
-                .frame(height: 54)
-                .background(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
+            // Tap or press and slide to read a reading (Dylan, 2026-11-27).
+            let pick = Binding<Int?>(get: { picked[gauge.id] }, set: { picked[gauge.id] = $0 })
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    if let index = picked[gauge.id], let words = gauge.historyText(index) {
+                        Text(words).font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(SystemStyle.tint(gauge.kind))
+                        Spacer()
+                        Text(gauge.historyAge(index)).font(.caption).foregroundStyle(Theme.frostDim)
+                    } else {
+                        Text("Tap or slide along the line to read it").font(.caption).foregroundStyle(Theme.frostFaint)
+                    }
+                }
+                .frame(height: 20)
+                Sparkline(values: gauge.history, tint: SystemStyle.tint(gauge.kind), scale: 1.2, picked: picked[gauge.id])
+                    .frame(height: 54)
+                    .background(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
+                    .chartScrub(count: gauge.history.count, picked: pick)
+            }
             if gauge.kind == .disk, !snapshot.diskBreakdowns.isEmpty {
                 ForEach(snapshot.diskBreakdowns) { disk in
                     breakdownBlock(disk, heading: disk.headline)

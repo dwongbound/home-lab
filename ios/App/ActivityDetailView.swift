@@ -201,25 +201,36 @@ struct ActivityDetailView: View {
 private struct HourBars: View {
     let steps: [Double]
     let total: Double?
+    /// The hour a finger picked (Dylan, 2026-11-27: "more interactive").
+    @State private var picked: Int?
 
     var body: some View {
         let top = max(steps.max() ?? 1, 1)
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Steps").font(.caption.weight(.semibold)).foregroundStyle(Theme.frostDim)
-                Spacer()
-                Text(total.map { ActivityGlance.whole($0) } ?? "–").font(.caption).foregroundStyle(Theme.frostDim).monospacedDigit()
+                if let hour = picked {
+                    let value = steps.indices.contains(hour) ? steps[hour] : 0
+                    Text("\(ChartPick.hourName(hour))–\(ChartPick.hourName(hour + 1))").font(.caption.weight(.semibold)).foregroundStyle(Theme.frost)
+                    Spacer()
+                    Text("\(ActivityGlance.whole(value)) steps").font(.caption.weight(.semibold)).foregroundStyle(Theme.moss).monospacedDigit()
+                } else {
+                    Text("Steps").font(.caption.weight(.semibold)).foregroundStyle(Theme.frostDim)
+                    Spacer()
+                    Text(total.map { ActivityGlance.whole($0) } ?? "–").font(.caption).foregroundStyle(Theme.frostDim).monospacedDigit()
+                }
             }
             HStack(alignment: .bottom, spacing: 2) {
                 ForEach(0..<24, id: \.self) { hour in
                     let value = steps.indices.contains(hour) ? steps[hour] : 0
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Theme.moss.opacity(value > 0 ? 0.9 : 0.2))
+                        .fill(Theme.moss.opacity(value > 0 ? (picked == nil || picked == hour ? 0.9 : 0.35) : 0.2))
                         .frame(height: max(2, 50 * CGFloat(value / top)))
                         .frame(maxWidth: .infinity)
                 }
             }
             .frame(height: 50, alignment: .bottom)
+            .chartScrub(count: 24, bars: true, picked: $picked)
+            .animation(.easeOut(duration: 0.15), value: picked)
             HStack {
                 Text("12 AM"); Spacer(); Text("6 AM"); Spacer(); Text("12 PM"); Spacer(); Text("6 PM")
             }

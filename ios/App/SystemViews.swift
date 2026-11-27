@@ -101,6 +101,8 @@ struct Sparkline: View {
     let values: [Double]
     var tint: Color
     var scale: CGFloat = 1
+    /// The point a finger is on: a rule and a dot mark it.
+    var picked: Int? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -122,6 +124,14 @@ struct Sparkline: View {
                         points.dropFirst().forEach { p.addLine(to: $0) }
                     }
                     .stroke(tint, style: StrokeStyle(lineWidth: 1.6 * scale, lineCap: .round, lineJoin: .round))
+                    if let picked, points.indices.contains(picked) {
+                        let at = points[picked]
+                        Rectangle().fill(Color.white.opacity(0.35)).frame(width: 1, height: geo.size.height)
+                            .position(x: at.x, y: geo.size.height / 2)
+                        Circle().fill(tint).frame(width: 9 * scale, height: 9 * scale)
+                            .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                            .position(at)
+                    }
                 }
             }
         }
@@ -238,3 +248,60 @@ struct SystemCheckedLabel: View {
         }
     }
 }
+
+#if os(iOS)
+/// Tap a chart to read the point under the finger, or press and slide to
+/// scrub along it; tapping the same point again lets go. A short press
+/// first so swipes still scroll and page the screen around it.
+struct ChartScrub: ViewModifier {
+    let count: Int
+    /// Bars split the width into slots; a line puts its points on the edges.
+    var bars = false
+    @Binding var picked: Int?
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            GeometryReader { geo in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        LongPressGesture(minimumDuration: 0.15)
+                            .sequenced(before: DragGesture(minimumDistance: 0))
+                            .onChanged { value in
+                                switch value {
+                                case .first(true): if picked == nil { Haptics.play(.tab) }
+                                case .second(true, let drag?): pick(drag.location.x, width: geo.size.width, toggle: false)
+                                default: break
+                                }
+                            }
+                    )
+                    .simultaneousGesture(SpatialTapGesture().onEnded { tap in
+                        pick(tap.location.x, width: geo.size.width, toggle: true)
+                    })
+            }
+        }
+    }
+
+    private func pick(_ x: CGFloat, width: CGFloat, toggle: Bool) {
+        let index = bars ? ChartPick.bar(x: x, width: width, count: count) : ChartPick.line(x: x, width: width, count: count)
+        guard let index else { return }
+        if toggle, index == picked {
+            picked = nil
+        } else if index != picked {
+            picked = index
+            Haptics.play(.tab)
+        }
+    }
+}
+
+extension View {
+    func chartScrub(count: Int, bars: Bool = false, picked: Binding<Int?>) -> some View {
+        modifier(ChartScrub(count: count, bars: bars, picked: picked))
+    }
+}
+#else
+extension View {
+    /// No touch on the TV: the charts just show.
+    func chartScrub(count: Int, bars: Bool = false, picked: Binding<Int?>) -> some View { self }
+}
+#endif
