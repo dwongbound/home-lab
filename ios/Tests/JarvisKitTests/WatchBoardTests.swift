@@ -63,3 +63,39 @@ final class ComplicationStoreTests: XCTestCase {
         XCTAssertEqual(ComplicationStore.load(defaults: defaults), data)
     }
 }
+
+/// The new complications' data: sleep score, Claude usage, jobs.
+final class ComplicationMoreTests: XCTestCase {
+    func testRoundTripAndReadings() throws {
+        var data = ComplicationData(needCount: 1, runningCount: 2, nextTitle: nil, nextAt: nil, updated: Date())
+        data.runningLabels = ["Rewriting reminders", "Deal watch"]
+        data.sleepScore = 82; data.sleepMinutes = 440
+        data.claudeSession = 34; data.claudeWeekly = 61
+        let back = try XCTUnwrap(ComplicationData(dictionary: data.dictionary))
+        XCTAssertEqual(back.runningLabels, ["Rewriting reminders", "Deal watch"])
+        XCTAssertEqual(back.sleep?.score, 82)
+        XCTAssertEqual(back.sleep?.asleep, "7h 20m")
+        XCTAssertEqual(back.claude()?.session, 34)
+        XCTAssertEqual(back.claude()?.weekly, 61)
+        XCTAssertEqual(back.jobs()?.count, 2)
+    }
+
+    func testStaleHidesClaudeAndJobsButKeepsSleep() {
+        var data = ComplicationData(needCount: 0, runningCount: 1, nextTitle: nil, nextAt: nil, updated: Date().addingTimeInterval(-3 * 3600))
+        data.sleepScore = 70; data.claudeSession = 10
+        XCTAssertNil(data.claude())
+        XCTAssertNil(data.jobs())
+        XCTAssertEqual(data.sleep?.score, 70, "last night's score holds all day")
+    }
+
+    func testBoardCarriesClaudeLimits() throws {
+        let json = #"{"generatedAt":"x","services":[],"today":[],"claudeUsage":{"limits":[{"name":"weekly","usedPct":61},{"name":"session","usedPct":34}],"today":[],"days":[]},"jobs":{"running":[{"id":"j","label":"Rewriting reminders","state":"running"}]}}"#
+        let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
+        let board = WatchBoard(snapshot: snapshot)
+        XCTAssertEqual(board.claudeSession, 34)
+        XCTAssertEqual(board.claudeWeekly, 61)
+        let again = WatchBoard(message: board.message)
+        XCTAssertEqual(again.claudeSession, 34)
+        XCTAssertEqual(ComplicationData(board: again).runningLabels, ["Rewriting reminders"])
+    }
+}

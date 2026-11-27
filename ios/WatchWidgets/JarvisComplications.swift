@@ -82,6 +82,73 @@ struct CaloriesWidget: Widget {
     }
 }
 
+/// Last night's sleep score as a ring.
+struct SleepScoreWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "jarvis.sleep", provider: JarvisProvider()) { entry in
+            FamilyReader { family in SleepScoreView(entry: entry, family: family) }
+                .widgetURL(URL(string: "jarvis://sleep"))
+                .containerBackground(.clear, for: .widget)
+        }
+        .configurationDisplayName("Sleep score")
+        .description("Last night's sleep score, and how long you slept.")
+        .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular, .accessoryInline])
+    }
+}
+
+/// How much of Claude's plan is used this session and this week.
+struct ClaudeUsageWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "jarvis.claude", provider: JarvisProvider()) { entry in
+            FamilyReader { family in ClaudeUsageView(entry: entry, family: family) }
+                .containerBackground(.clear, for: .widget)
+        }
+        .configurationDisplayName("Claude usage")
+        .description("How much of your Claude plan is used: this session and this week.")
+        .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular, .accessoryInline])
+    }
+}
+
+/// How many jobs Jarvis is running, and which.
+struct JobsWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "jarvis.jobs", provider: JarvisProvider()) { entry in
+            FamilyReader { family in JobsView(entry: entry, family: family) }
+                .widgetURL(URL(string: "jarvis://notices"))
+                .containerBackground(.clear, for: .widget)
+        }
+        .configurationDisplayName("Jobs running")
+        .description("How many jobs Jarvis is working on.")
+        .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular, .accessoryInline])
+    }
+}
+
+/// Calories and protein as the phone's layered ring.
+struct DietRingWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "jarvis.diet", provider: JarvisProvider()) { entry in
+            FamilyReader { family in DietRingView(entry: entry, family: family) }
+                .containerBackground(.clear, for: .widget)
+        }
+        .configurationDisplayName("Diet ring")
+        .description("Calories outside, protein inside, and what's left.")
+        .supportedFamilies([.accessoryCircular, .accessoryRectangular])
+    }
+}
+
+/// The next event, sized for the round and corner slots too.
+struct NextEventWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "jarvis.nextevent", provider: JarvisProvider()) { entry in
+            FamilyReader { family in NextCircleView(entry: entry, family: family) }
+                .containerBackground(.clear, for: .widget)
+        }
+        .configurationDisplayName("Next event")
+        .description("When your next event starts.")
+        .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular])
+    }
+}
+
 /// Hands the complication's size to a view that draws for it.
 struct FamilyReader<Content: View>: View {
     @Environment(\.widgetFamily) private var family
@@ -96,5 +163,10 @@ struct JarvisComplications: WidgetBundle {
         NeedsWidget()
         NextWidget()
         CaloriesWidget()
+        SleepScoreWidget()
+        ClaudeUsageWidget()
+        JobsWidget()
+        DietRingWidget()
+        NextEventWidget()
     }
 }
