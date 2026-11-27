@@ -47,6 +47,8 @@ struct ChatItem: Identifiable, Equatable {
     /// When it was sent (history's `at`; now, for one just sent here). Nil
     /// for approval cards. Shown on a leftward drag and in the day lines.
     var at: Date?
+    /// The earlier message this one replies to, shown as a quote over it.
+    var replyTo: ChatQuote?
 
     /// A line of Dylan's.
     static func user(_ text: String, photos: [UIImage] = [], photoCount: Int? = nil) -> ChatItem {
@@ -73,6 +75,9 @@ struct ChatItem: Identifiable, Equatable {
 @MainActor
 final class ChatModel: ObservableObject {
     @Published private(set) var items: [ChatItem] = []
+    /// The message he's replying to (Reply in a message's menu), shown as a
+    /// strip over the text box until he sends or taps its x.
+    @Published var replyingTo: ChatQuote?
     /// Sends going out or replies still streaming (several at once: he can
     /// send while Jarvis is answering, Dylan 2026-11-21).
     @Published private(set) var sendsInFlight = 0
@@ -381,6 +386,16 @@ final class ChatModel: ObservableObject {
         }
     }
 
+    /// Starts a reply to one of the chat's lines; a line without an id yet
+    /// (still arriving) can't be quoted.
+    func reply(to item: ChatItem) {
+        guard let id = item.turnId, item.isTurn else { return }
+        Haptics.play(.tab)
+        withAnimation(.snappy) {
+            replyingTo = ChatQuote(id: id, role: item.kind == .user ? "user" : "jarvis", text: item.text)
+        }
+    }
+
     /// Saved turns as chat lines; each reply remembers the question before it.
     static func items(from turns: [ChatTurn]) -> [ChatItem] {
         var out: [ChatItem] = []
@@ -398,6 +413,7 @@ final class ChatModel: ObservableObject {
             item.at = ChatTime.parse(turn.at)
             item.writer = turn.writer
             item.kept = turn.kept ?? false
+            item.replyTo = turn.replyTo
             out.append(item)
         }
         return out
@@ -413,7 +429,11 @@ final class ChatModel: ObservableObject {
             sentPhotos[trimmed] = previews
             PhotoDiskCache.save(previews, text: trimmed)
         }
-        let mine = ChatItem.user(trimmed, photos: previews)
+        var mine = ChatItem.user(trimmed, photos: previews)
+        // The message being replied to goes with this send, then the strip clears.
+        let quote = replyingTo
+        mine.replyTo = quote
+        if quote != nil { replyingTo = nil }
         Haptics.play(.send)
         // Sent while a reply is still running: Jarvis steers it or queues
         // this one (its stream says which). Its own reply, if any, is made
@@ -443,7 +463,7 @@ final class ChatModel: ObservableObject {
         failed = nil
 
         do {
-            for try await event in replyStream(trimmed, offerId: offerId, photos: photos, alongside: alongside, app: app) {
+            for try await event in replyStream(trimmed, offerId: offerId, photos: photos, replyTo: quote?.id, alongside: alongside, app: app) {
                 uploading = false
                 switch event {
                 case .turn(let id):
@@ -487,6 +507,8 @@ final class ChatModel: ObservableObject {
             sendDropped(error, text: trimmed, photos: photos, mine: mine.id, reply: replyId ?? "", app: app)
             app.noteReach(error)
         }
+        // A send that didn't go keeps its quote for the retry.
+        if problem != nil || failed != nil, replyingTo == nil { replyingTo = quote }
         uploading = false
         update(mine.id) { $0.queued = false }
         finish(replyId)
@@ -505,7 +527,7 @@ final class ChatModel: ObservableObject {
     /// Jarvis's reply to a send, as it streams in. `-fixtureChat` (debug
     /// builds) plays a canned reply instead, so the chat's send behaviour
     /// can be tested without writing to live Jarvis.
-    private func replyStream(_ text: String, offerId: String?, photos: [PickedPhoto], alongside: Bool, app: AppModel) -> AsyncThrowingStream<ChatEvent, Error> {
+    private func replyStream(_ text: String, offerId: String?, photos: [PickedPhoto], replyTo: Int?, alongside: Bool, app: AppModel) -> AsyncThrowingStream<ChatEvent, Error> {
         #if DEBUG
         // `-fixtureChat`: a send while one is running is steered, or with
         // `-fixtureQueue` queued then answered (nothing reaches Jarvis).
@@ -545,7 +567,7 @@ final class ChatModel: ObservableObject {
             }
         }
         #endif
-        return app.client.chat(text, offerId: offerId, photos: photos.map { ChatPhoto(jpeg: $0.jpeg) })
+        return app.client.chat(text, offerId: offerId, photos: photos.map { ChatPhoto(jpeg: $0.jpeg) }, replyTo: replyTo)
     }
 
     /// Debug builds: `-fixtureChat` answers sends with a canned reply.

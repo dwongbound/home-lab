@@ -109,8 +109,8 @@ public struct JarvisClient: Sendable {
 
     /// Sends a message and streams Jarvis's reply as it's written. `offerId`
     /// says which offer card's Start began it, so he knows the context.
-    public func chat(_ text: String, offerId: String? = nil, photos: [ChatPhoto] = []) -> AsyncThrowingStream<ChatEvent, Error> {
-        let request = chatRequest(text, offerId: offerId, photos: photos)
+    public func chat(_ text: String, offerId: String? = nil, photos: [ChatPhoto] = [], replyTo: Int? = nil) -> AsyncThrowingStream<ChatEvent, Error> {
+        let request = chatRequest(text, offerId: offerId, photos: photos, replyTo: replyTo)
         let session = self.session
         return AsyncThrowingStream { continuation in
             let task = Task {
@@ -135,10 +135,12 @@ public struct JarvisClient: Sendable {
     }
 
     /// The chat request: the words, which offer started it, and up to four
-    /// photos as {media_type, data}. Text may be empty when photos go.
-    public func chatRequest(_ text: String, offerId: String? = nil, photos: [ChatPhoto] = []) -> URLRequest {
+    /// photos as {media_type, data}, and the turn id of a message it
+    /// replies to. Text may be empty when photos go.
+    public func chatRequest(_ text: String, offerId: String? = nil, photos: [ChatPhoto] = [], replyTo: Int? = nil) -> URLRequest {
         var body: [String: Any] = ["text": text]
         if let offerId { body["offerId"] = offerId }
+        if let replyTo { body["replyTo"] = replyTo }
         if !photos.isEmpty { body["images"] = photos.prefix(PhotoLimits.maxPhotos).map(\.json) }
         var request = request("api/jarvis/chat", method: "POST", json: body)
         // Photos take a while to upload on a slow line.

@@ -118,6 +118,24 @@ public enum ChatEvent: Equatable, Sendable {
 }
 
 /// One saved line of the web chat (GET /api/jarvis/history), oldest first.
+/// A quoted earlier message: its turn id, who wrote it ("user" or
+/// "jarvis") and up to 300 characters of it. Sent as `replyTo` (the id
+/// only) and read back on history turns.
+public struct ChatQuote: Codable, Equatable, Sendable {
+    public let id: Int
+    public let role: String
+    public let text: String
+
+    public init(id: Int, role: String, text: String) {
+        self.id = id; self.role = role; self.text = String(text.prefix(300))
+    }
+
+    /// True when Dylan wrote the quoted message.
+    public var isUser: Bool { role == "user" }
+    /// "You" or "Jarvis", over the quote.
+    public var who: String { isUser ? "You" : "Jarvis" }
+}
+
 public struct ChatTurn: Codable, Equatable, Sendable {
     public let role: String
     public let text: String
@@ -134,13 +152,16 @@ public struct ChatTurn: Codable, Equatable, Sendable {
     public let writer: String?
     /// True when Dylan kept this message (a yellow dot); absent otherwise.
     public let kept: Bool?
+    /// The earlier message this one replies to (Dylan 2026-11-27), when it does.
+    public let replyTo: ChatQuote?
 
     /// True for Dylan's own lines.
     public var isUser: Bool { role == "user" }
 
     /// Builds a turn (sample data and tests; the server's are decoded).
-    public init(role: String, text: String, at: String, model: String?, images: Int? = nil, id: Int? = nil, writer: String? = nil, kept: Bool? = nil) {
+    public init(role: String, text: String, at: String, model: String?, images: Int? = nil, id: Int? = nil, writer: String? = nil, kept: Bool? = nil, replyTo: ChatQuote? = nil) {
         self.role = role; self.text = text; self.at = at; self.model = model; self.images = images; self.id = id; self.writer = writer; self.kept = kept
+        self.replyTo = replyTo
     }
 
     /// The position of the turn with Jarvis's id `turnId`, or nil.

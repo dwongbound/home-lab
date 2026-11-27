@@ -557,11 +557,14 @@ struct ChatView: View {
     private var rowActions: ChatRowActions {
         let app = app, chat = chat
         let flag = $flagging
+        let focus = $typing
         return ChatRowActions(
             flag: { flag.wrappedValue = $0 },
             keep: { turn in Task { await app.keep(turnId: turn) } },
             letGo: { turn in Task { await app.letGo(turnId: turn) } },
-            answerMeal: { item, choice in Task { await chat.answerMeal(item, choice: choice, app: app) } }
+            answerMeal: { item, choice in Task { await chat.answerMeal(item, choice: choice, app: app) } },
+            reply: { item in chat.reply(to: item); focus.wrappedValue = true },
+            openQuote: { quote in Task { await app.openTurn(quote.id) } }
         )
     }
 
@@ -638,6 +641,20 @@ struct ChatView: View {
     /// The Ask box: one slim pill with the photo and send buttons inside,
     /// growing only as he types more lines (Dylan, 2026-11-19).
     private var composer: some View {
+        VStack(spacing: 0) {
+            if let quote = chat.replyingTo {
+                ReplyStrip(quote: quote) {
+                    Haptics.play(.tab)
+                    withAnimation(.snappy) { chat.replyingTo = nil }
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+            composerRow
+        }
+    }
+
+    /// The photo button, the words and the send button.
+    private var composerRow: some View {
         HStack(alignment: .bottom, spacing: 0) {
             // Photos: take one, or choose up to four.
             Menu {
@@ -1122,6 +1139,69 @@ struct ChatRowActions {
     let keep: (Int) -> Void
     let letGo: (Int) -> Void
     let answerMeal: (ChatItem, String) -> Void
+    /// Reply: quote this line over the text box.
+    let reply: (ChatItem) -> Void
+    /// A tap on a quote: open the message it quotes.
+    let openQuote: (ChatQuote) -> Void
+}
+
+/// The message being replied to, over the text box: who wrote it, a line
+/// of it, and an x to drop the reply.
+private struct ReplyStrip: View {
+    let quote: ChatQuote
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 1.5).fill(Theme.glacier).frame(width: 3, height: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Replying to \(quote.who == "You" ? "yourself" : "Jarvis")")
+                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.glacier)
+                Text(quote.text).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .foregroundStyle(Theme.frostDim)
+            .accessibilityLabel("Stop replying")
+        }
+        .padding(.leading, 14)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("replyStrip")
+    }
+}
+
+/// The quote over a message that replies to an earlier one; a tap opens
+/// the original (loading around it when it isn't on screen).
+private struct QuoteChip: View {
+    let quote: ChatQuote
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5).fill(Theme.frostFaint).frame(width: 2.5)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(quote.who).font(.caption2.weight(.semibold)).foregroundStyle(Theme.frostDim)
+                    Text(quote.text).font(.caption).foregroundStyle(Theme.frostDim).lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05)))
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Reply to \(quote.who): \(quote.text)")
+        .accessibilityHint("Opens that message")
+    }
 }
 
 /// A day's line between messages: a hairline either side of its date.
@@ -1265,6 +1345,9 @@ private struct ChatRowsList: View, Equatable {
         switch item.kind {
         case .user:
             VStack(alignment: .trailing, spacing: 6) {
+                if let quote = item.replyTo {
+                    QuoteChip(quote: quote) { actions.openQuote(quote) }
+                }
                 if !item.photos.isEmpty {
                     BubblePhotos(photos: item.photos)
                 } else if item.photoCount > 0 {
@@ -1300,6 +1383,9 @@ private struct ChatRowsList: View, Equatable {
             .padding(.leading, 60)
             // His own messages can be kept as a dot too (Dylan, 2026-11-20).
             .contextMenu {
+                if item.turnId != nil {
+                    Button("Reply", systemImage: "arrowshape.turn.up.left") { actions.reply(item) }
+                }
                 if let turnId = item.turnId {
                     if keptTurns.contains(turnId) {
                         Button("Dismiss", systemImage: "xmark") { actions.letGo(turnId) }
@@ -1312,12 +1398,18 @@ private struct ChatRowsList: View, Equatable {
         case .jarvis:
             if !item.text.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
+                    if let quote = item.replyTo {
+                        QuoteChip(quote: quote) { actions.openQuote(quote) }
+                    }
                     // A notice opened here: the bubble itself glows softly.
                     JarvisBubble(item: item, glowing: item.turnId != nil && item.turnId == highlighted, kept: keptTurns.contains(item.turnId ?? -1)) { actions.flag(item) }
                         .accessibilityIdentifier("jarvisBubble")
                         // Keep any finished message as a yellow dot, or let
                         // a kept one go (Dylan, 2026-11-19).
                         .contextMenu {
+                            if item.turnId != nil, item.finished {
+                                Button("Reply", systemImage: "arrowshape.turn.up.left") { actions.reply(item) }
+                            }
                             if let turnId = item.turnId, item.finished {
                                 if keptTurns.contains(turnId) {
                                     Button("Dismiss", systemImage: "xmark") { actions.letGo(turnId) }
