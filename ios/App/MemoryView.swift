@@ -17,6 +17,8 @@ struct MemoryView: View {
     /// Pinch zoom on the web (Dylan, 2026-11-26), and where the pinch started.
     @State private var zoom: CGFloat = 1
     @State private var pinchStart: CGFloat?
+    /// The bubble being dragged: it lifts, its lines light, its neighbours follow.
+    @State private var dragging: String?
 
     /// The bubble whose sheet is open.
     struct OpenNode: Identifiable { let id: String }
@@ -74,18 +76,23 @@ struct MemoryView: View {
                 Canvas { context, _ in
                     for link in graph.links {
                         guard let a = spots[link.from], let b = spots[link.to] else { continue }
+                        let lit = dragging != nil && (link.from == dragging || link.to == dragging)
                         var path = Path()
                         path.move(to: CGPoint(x: a.x * z, y: a.y * z))
                         path.addLine(to: CGPoint(x: b.x * z, y: b.y * z))
-                        context.stroke(path, with: .color(.white.opacity(0.18)), lineWidth: 1)
+                        context.stroke(path, with: .color(.white.opacity(lit ? 0.6 : 0.18)), lineWidth: lit ? 2 : 1)
                     }
                 }
                 ForEach(graph.nodes) { node in
                     bubble(node)
+                        .scaleEffect(dragging == node.id ? 1.25 : 1)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: dragging == node.id)
                         .position(spots[node.id].map { CGPoint(x: $0.x * z, y: $0.y * z) } ?? CGPoint(x: side * z / 2, y: side * z / 2))
                         .opacity(matches(node) ? 1 : 0.2)
                         .highPriorityGesture(
-                            DragGesture(minimumDistance: 4).onChanged { spots[node.id] = CGPoint(x: $0.location.x / z, y: $0.location.y / z) }
+                            DragGesture(minimumDistance: 2)
+                                .onChanged { drag($0, node.id, graph: graph, zoom: z) }
+                                .onEnded { _ in dragging = nil }
                         )
                         .onTapGesture { open = OpenNode(id: node.id) }
                 }
@@ -107,6 +114,24 @@ struct MemoryView: View {
             if spots.isEmpty {
                 spots = MemoryLayout.place(graph, side: side - 80).mapValues { CGPoint(x: $0.x + 40, y: $0.y + 40) }
             }
+        }
+    }
+
+    /// Moves the dragged bubble under the finger and pulls its direct
+    /// neighbours a third of the way along, so the web feels alive.
+    private func drag(_ value: DragGesture.Value, _ id: String, graph: MemoryGraph, zoom: CGFloat) {
+        if dragging != id {
+            dragging = id
+            Haptics.play(.tab)
+        }
+        let to = CGPoint(x: value.location.x / zoom, y: value.location.y / zoom)
+        guard let from = spots[id] else { spots[id] = to; return }
+        let dx = to.x - from.x, dy = to.y - from.y
+        spots[id] = to
+        for link in graph.links where link.from == id || link.to == id {
+            let other = link.from == id ? link.to : link.from
+            if other == "dylan" { continue } // the centre stays put
+            if let at = spots[other] { spots[other] = CGPoint(x: at.x + dx * 0.33, y: at.y + dy * 0.33) }
         }
     }
 
