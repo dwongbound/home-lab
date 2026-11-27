@@ -605,6 +605,8 @@ export function createLiveSource(config, deps = {}) {
       }
       const message = { text }
       if (caller.offerId) message.offer_id = caller.offerId
+      // The earlier message this one replies to; Jarvis reads it alongside the new one.
+      if (caller.replyTo) message.reply_to = caller.replyTo
       // Photos go along as base64, the way Claude takes them.
       if (caller.images) message.images = caller.images.map((image) => ({ media_type: image.type, data: image.data }))
       /** Sends the message to Jarvis; null when he can't be reached at all. */
