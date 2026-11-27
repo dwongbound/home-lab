@@ -522,7 +522,18 @@ struct NoticesList: View {
 /// Each complication at its size, with sample data (`-complicationGallery`),
 /// for screenshots without a real watch face.
 struct ComplicationGallery: View {
-    private let entry = JarvisEntry(date: Date(), data: ComplicationData(needCount: 2, runningCount: 1, nextTitle: "Volleyball at the Y", nextAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(42 * 60)), nutrition: ComplicationGallery.sampleFood, updated: Date()))
+    private let entry: JarvisEntry = {
+        var data = ComplicationData(needCount: 2, runningCount: 2, nextTitle: "Volleyball at the Y", nextAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(42 * 60)), nutrition: ComplicationGallery.sampleFood, updated: Date())
+        data.runningLabels = ["Rewriting reminders", "Deal watch"]
+        data.sleepScore = 82; data.sleepMinutes = 440
+        data.claudeSession = 34; data.claudeWeekly = 61
+        return JarvisEntry(date: Date(), data: data)
+    }()
+
+    /// A round slot's size (about a 45 mm face's).
+    private func circle<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        content().frame(width: 50, height: 50)
+    }
 
     /// Today's sample calories (Pacific date, so it counts as today).
     static var sampleFood: Nutrition {
@@ -535,6 +546,24 @@ struct ComplicationGallery: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
+                // `-galleryNew`: the second set first (no scrolling on a simulator).
+                if ProcessInfo.processInfo.arguments.contains("-galleryNew") {
+                HStack(spacing: 12) {
+                    circle { SleepScoreView(entry: entry, family: .accessoryCircular) }
+                    circle { ClaudeUsageView(entry: entry, family: .accessoryCircular) }
+                }
+                HStack(spacing: 12) {
+                    circle { JobsView(entry: entry, family: .accessoryCircular) }
+                    circle { DietRingView(entry: entry, family: .accessoryCircular) }
+                    circle { NextCircleView(entry: entry, family: .accessoryCircular) }
+                }
+                SleepScoreView(entry: entry, family: .accessoryRectangular)
+                    .padding(8).frame(height: 70).background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12)))
+                ClaudeUsageView(entry: entry, family: .accessoryRectangular)
+                    .padding(8).frame(height: 70).background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12)))
+                JobsView(entry: entry, family: .accessoryRectangular)
+                    .padding(8).frame(height: 70).background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12)))
+                }
                 HStack(spacing: 12) {
                     ZStack { Circle().fill(.white.opacity(0.12)); OrbGlyph() }.frame(width: 50, height: 50)
                     ZStack { Circle().fill(.white.opacity(0.12)); NeedsView(entry: entry, family: .accessoryCircular) }.frame(width: 50, height: 50)
