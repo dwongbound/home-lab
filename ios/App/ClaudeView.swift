@@ -344,9 +344,22 @@ private struct CostTiles: View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             tile("Today", ClaudeUsage.dollars(use.todayUSD), note: use.dailyUsd.map { "of \(ClaudeUsage.dollars($0)) budget" }, fill: use.dailyUsd.map { $0 > 0 ? use.todayUSD / $0 : 0 })
             tile("This week", ClaudeUsage.dollars(use.weekUSD), note: "\(ClaudeUsage.dollars(use.dailyAverageUSD)) a day", fill: nil)
+            tile("Month at this pace", ClaudeUsage.dollars(use.monthPaceUSD), note: "the daily average × 30", fill: nil)
+            if let busiest = use.busiestDay {
+                tile("Busiest day", ClaudeUsage.dollars(busiest.usd ?? 0), note: Self.weekday(busiest.date), fill: nil)
+            }
             if let tokens = use.todayTokens { tile("Tokens today", ClaudeUsage.tokenWords(tokens), note: use.weekTokens.map { ClaudeUsage.tokenWords($0) + " this week" }, fill: nil) }
             if let calls = use.todayCalls { tile("Calls today", "\(calls)", note: "\(use.today.count) kinds of work", fill: nil) }
         }
+    }
+
+    /// "Tuesday" from "2026-11-25".
+    private static func weekday(_ date: String) -> String? {
+        guard let day = ActivityDay.date(date) else { return nil }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US")
+        format.dateFormat = "EEEE"
+        return format.string(from: day)
     }
 
     /// A tile: name, big number, a note and, for the budget, a thin bar.
@@ -395,6 +408,7 @@ private struct KindRow: View {
     private var details: String {
         var parts: [String] = []
         if let calls = kind.calls { parts.append("\(calls) call" + (calls == 1 ? "" : "s")) }
+        if let calls = kind.calls, calls > 0, let usd = kind.usd, usd > 0 { parts.append(ClaudeUsage.dollars(usd / Double(calls)) + " a call") }
         if let t = kind.tokens { parts.append(ClaudeUsage.tokenWords(t) + " tokens") }
         parts.append(ClaudeUsage.dollars(kind.usd ?? 0))
         return parts.joined(separator: " · ")
