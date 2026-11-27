@@ -79,6 +79,13 @@ public struct ClaudeUsage: Decodable, Sendable, Equatable {
     /// The average day's spend this week, over the days in the list.
     public var dailyAverageUSD: Double { days.isEmpty ? 0 : weekUSD / Double(days.count) }
 
+    /// The month at this week's pace: the daily average times 30.
+    public var monthPaceUSD: Double { dailyAverageUSD * 30 }
+    /// The day with the most spend this week, nil when nothing was spent.
+    public var busiestDay: Day? {
+        days.filter { ($0.usd ?? 0) > 0 }.max { ($0.usd ?? 0) < ($1.usd ?? 0) }
+    }
+
     /// "$0.42", "$12.30".
     public static func dollars(_ usd: Double) -> String { String(format: "$%.2f", usd) }
 

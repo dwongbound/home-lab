@@ -28,6 +28,8 @@ final class ClaudeUsageTests: XCTestCase {
         XCTAssertEqual(use.weekTokens, 5)
         XCTAssertEqual(use.todayCalls, 12)
         XCTAssertEqual(ClaudeUsage.dollars(0.4), "$0.40")
+        XCTAssertEqual(use.monthPaceUSD, 45, accuracy: 0.001)
+        XCTAssertEqual(use.busiestDay?.date, "2026-11-26")
     }
 
     /// An older Jarvis: no limits, no tokens, still decodes.
